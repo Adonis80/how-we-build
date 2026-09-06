@@ -12,8 +12,9 @@ The rulebook for every product Dhayan's AI studio builds. This repository says *
 ## How a product joins
 
 1. Its repository's `AGENTS.md` begins with one line: `Rulebook: https://github.com/Adonis80/how-we-build — read HOW-WE-BUILD.md before anything else.` Below that, only what is true for that product.
-2. Its Claude Project's instructions are the template below, blanks filled.
-3. In the Project's knowledge, add this repository from GitHub (`HOW-WE-BUILD.md` and `CHARTER.md`) so chats on the phone read it too. Tap **Sync** when the rulebook changes.
+2. Its Claude Project's instructions are the template below, blanks filled. That is the whole setup.
+
+**Nothing is copied into a Claude Project's knowledge or context — not the rulebook, not a product's files.** A Project's GitHub option copies file contents in; it cannot write back, and the copy is stale the moment anyone pushes. Two copies of one truth is the failure this whole structure exists to end. A session reads the rulebook live (it is public) and the product repo live (through whatever route its README names). A Project holds instructions and prose for the Chairman, nothing else.
 
 ### Project instructions template
 
@@ -28,8 +29,9 @@ This project builds <Product>. Its repo is https://github.com/Adonis80/<repo> (p
 The repo's AGENTS.md holds the rules true only for this product; PRODUCT.md is what we
 are building; roadmap.json is what comes next.
 
-No repo access from the cloud? Read claude/infrastructure-status.md in this Project's
-docs before anything else.
+Read both live, every session; never from a copy kept in this Project. Cannot reach the
+repo from the cloud? The repo's README names the route, and this Project's
+claude/infrastructure-status.md wins if it exists.
 
 Prose for the Chairman lives in this Project's docs, never in a repo. The pull request
 is the handover. Speak to the Chairman in plain English: summaries and actions, no
@@ -46,4 +48,4 @@ or fetch `https://raw.githubusercontent.com/Adonis80/how-we-build/main/HOW-WE-BU
 
 ## Changing the rulebook
 
-By pull request only; `main` is protected. `check.sh` runs in CI and refuses a page over 500 words, a file not on the list, or anything that looks like a secret. A change to *how we build* needs the charter's gate (§13): the same failure twice, in two separate product tasks. Fixing wording needs no gate. Every product picks the change up at its next session; Projects that synced the rulebook into their knowledge pick it up on **Sync**.
+By pull request only; `main` is protected. `check.sh` runs in CI and refuses a page over 500 words, a file not on the list, or anything that looks like a secret. A change to *how we build* needs the charter's gate (§13): the same failure twice, in two separate product tasks. Fixing wording needs no gate. Every product picks the change up at its next session, because every session reads this repository live. There is no copy anywhere to refresh.
