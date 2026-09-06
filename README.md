@@ -29,9 +29,13 @@ This project builds <Product>. Its repo is https://github.com/Adonis80/<repo> (p
 The repo's AGENTS.md holds the rules true only for this product; PRODUCT.md is what we
 are building; roadmap.json is what comes next.
 
-Read both live, every session; never from a copy kept in this Project. Cannot reach the
-repo from the cloud? The repo's README names the route, and this Project's
-claude/infrastructure-status.md wins if it exists.
+Read both live, every session; never from a copy kept in this Project. <If the cloud
+cannot reach the repo, two sentences here say how a session gets in — the connected
+folder, where the key is, never the key itself. The repo's README holds the rest.>
+
+A product decision the Chairman makes goes into PRODUCT.md or roadmap.json in the repo,
+never into a page in this Project. This Project holds instructions and prose written
+for him, nothing else.
 
 Prose for the Chairman lives in this Project's docs, never in a repo. The pull request
 is the handover. Speak to the Chairman in plain English: summaries and actions, no
@@ -48,4 +52,4 @@ or fetch `https://raw.githubusercontent.com/Adonis80/how-we-build/main/HOW-WE-BU
 
 ## Changing the rulebook
 
-By pull request only; `main` is protected. `check.sh` runs in CI and refuses a page over 500 words, a file not on the list, or anything that looks like a secret. A change to *how we build* needs the charter's gate (§13): the same failure twice, in two separate product tasks. Fixing wording needs no gate. Every product picks the change up at its next session, because every session reads this repository live. There is no copy anywhere to refresh.
+By pull request only; `main` is protected. `check.sh` runs in CI and refuses a page over 500 words, a file not on the list, or anything that looks like a secret. Adding a rule, step, file, check or agent needs the charter's gate (§13): the same failure twice, in two separate product tasks. Removing one, or correcting wording, needs no gate; nor does a change the Chairman rules himself. The CTO never approves and merges an addition of its own. Every product picks the change up at its next session, because every session reads this repository live. There is no copy anywhere to refresh.
