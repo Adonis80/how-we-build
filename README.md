@@ -14,7 +14,7 @@ The rulebook for every product Dhayan's AI studio builds. This repository says *
 1. Its repository's `AGENTS.md` begins with one line: `Rulebook: https://github.com/Adonis80/how-we-build — read HOW-WE-BUILD.md before anything else.` Below that, only what is true for that product.
 2. Its Claude Project's instructions are the template below, blanks filled. That is the whole setup.
 
-**Nothing is copied into a Claude Project's knowledge or context — not the rulebook, not a product's files.** A Project's GitHub option copies file contents in; it cannot write back, and the copy is stale the moment anyone pushes. Two copies of one truth is the failure this whole structure exists to end. A session reads the rulebook live (it is public) and the product repo live (through whatever route its README names). A Project holds instructions and prose for the Chairman, nothing else.
+**Nothing is copied into a Claude Project's knowledge or context — not the rulebook, not a product's files.** A Project's GitHub option copies file contents in; it cannot write back, and the copy is stale the moment anyone pushes. Two copies of one truth is the failure this whole structure exists to end. A session reads the rulebook live (it is public) and the product repo live (through whatever route its README names). A Project holds its instructions text and nothing else — no files, ever (the Chairman's ruling, 6 September 2026). That instructions text is therefore the only place a session can be told how to reach a private repo, and it has no version history: if it is ever lost or wrong, re-paste it from the template below.
 
 ### Project instructions template
 
@@ -33,13 +33,12 @@ Read both live, every session; never from a copy kept in this Project. <If the c
 cannot reach the repo, two sentences here say how a session gets in — the connected
 folder, where the key is, never the key itself. The repo's README holds the rest.>
 
-A product decision the Chairman makes goes into PRODUCT.md or roadmap.json in the repo,
-never into a page in this Project. This Project holds instructions and prose written
-for him, nothing else.
+A product decision the Chairman makes goes into PRODUCT.md or roadmap.json in the repo.
+This Project holds these instructions and no files of any kind.
 
-Prose for the Chairman lives in this Project's docs, never in a repo. The pull request
-is the handover. Speak to the Chairman in plain English: summaries and actions, no
-technical commentary.
+Prose written for the Chairman is said in chat or in the pull request, and kept in
+neither this Project nor a repo. The pull request is the handover. Speak to the
+Chairman in plain English: summaries and actions, no technical commentary.
 ```
 
 ## Reading it from a session
