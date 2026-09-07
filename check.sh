@@ -7,7 +7,12 @@ cd "$(dirname "$0")"
 fail=0
 
 # 1. The operating page stays short.
-words=$(wc -w < HOW-WE-BUILD.md | tr -d ' ')
+# Counted with python, not `wc -w`: wc answers differently by locale — it
+# splits on the em dash in C.UTF-8 and not in C — so the same bytes passed on
+# a session's machine and failed in CI. On 7 September 2026 that cost a build
+# in the Alma repo, whose identical guard was fixed the same way. A cap must
+# mean one thing wherever it is measured.
+words=$(python3 -c 'import sys; print(len(open(sys.argv[1],encoding="utf-8").read().split()))' HOW-WE-BUILD.md)
 if [ "$words" -gt 500 ]; then
   echo "FAIL: HOW-WE-BUILD.md is $words words; the cap is 500."
   fail=1
