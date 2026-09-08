@@ -22,7 +22,7 @@ A repository not listed here is not under this rulebook.
 
 ## How a product joins
 
-1. Its repository's `AGENTS.md` begins with one line: `Rulebook: https://github.com/Adonis80/how-we-build — read HOW-WE-BUILD.md before anything else.` Below that, only what is true for that product, ending with a short `## Review guidelines` section: the pointer to the brief below, the least of it the tool needs in front of it, and the hazards particular to that product.
+1. Its repository's `AGENTS.md` begins with one line: `Rulebook: https://github.com/Adonis80/how-we-build — read HOW-WE-BUILD.md before anything else, then What every product carries in its README.` Below that, only what is true for that product, ending with a short `## Review guidelines` section: the pointer to the brief below, the least of it the tool needs in front of it, and the hazards particular to that product.
 2. Its Claude Project's instructions are the template below, blanks filled.
 3. One line in *Products under this rulebook* above.
 4. Code review switched on for the repository in Codex — the Chairman's tap. That is the whole setup.
@@ -35,8 +35,10 @@ A repository not listed here is not under this rulebook.
 # <Product> — how this project works
 
 Rulebook: https://github.com/Adonis80/how-we-build. At the start of every working
-session, read HOW-WE-BUILD.md from it (clone the repo, or fetch the raw file). It says
-who decides, the loop, and when a slice is done. Nothing below overrides it.
+session, read HOW-WE-BUILD.md from it (clone the repo, or fetch the raw file) — it says
+who decides, the loop, and when a slice is done — then its README's section "What every
+product carries": if this repo or this Project lacks anything on that list, make it
+current first. Nothing below overrides the rulebook.
 
 This project builds <Product>. Its repo is https://github.com/Adonis80/<repo> (private).
 The repo's AGENTS.md holds the rules true only for this product; PRODUCT.md is what we
@@ -97,7 +99,7 @@ him. Prefer a fresh conversation for each substantial question.
 
 ## What every product carries, and how a change reaches it
 
-A change to how we build is made here once and then lands in every product — not by anyone remembering, but because the list below is read at the start of every session and a repo that lacks something on it makes itself current in its next pull request. A product carries, as of 8 September 2026:
+A change to how we build is made here once and then lands in every product — not by anyone remembering, but because every session is sent to this list at its start (by the first line of its `AGENTS.md`, and by its Project's instructions) and a repo that lacks something on it makes itself current in its next pull request. A product carries, as of 8 September 2026:
 
 - `AGENTS.md` ending with `## Review guidelines`: the pointer to the brief above, the least of it the tool needs, and the product's own hazards.
 - A check that goes green in a pull request only when the reviewer has read the current commit, and runs again when a review is submitted.

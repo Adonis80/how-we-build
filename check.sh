@@ -40,6 +40,48 @@ else
   echo "ok: nothing that looks like a secret"
 fi
 
+# 4. In a pull request, a review clears only the commit it read: green only when the
+# reviewer has read this very commit. A later push turns it red until it has.
+case "${GITHUB_EVENT_NAME:-}" in pull_request|pull_request_review)
+  if [ -z "${GH_TOKEN:-}" ] || [ -z "${PR_NUMBER:-}" ] || [ -z "${HEAD_SHA:-}" ]; then
+    echo "FAIL: the check cannot ask GitHub which commit the reviewer read — the workflow must set PR_NUMBER, HEAD_SHA and GH_TOKEN."; fail=1
+  elif python3 - "${GITHUB_REPOSITORY:-Adonis80/how-we-build}" "$PR_NUMBER" "$HEAD_SHA" "$GH_TOKEN" <<'PY'
+import json, sys, urllib.request, urllib.error
+repo, num, head, token = sys.argv[1:5]
+def get(url):
+    req = urllib.request.Request(url, headers={"Authorization": "Bearer " + token, "Accept": "application/vnd.github+json"})
+    with urllib.request.urlopen(req) as r:
+        return json.load(r)
+def pages(url):
+    page = 1
+    while True:
+        batch = get("%s?per_page=100&page=%d" % (url, page))
+        if not batch:
+            return
+        for item in batch:
+            yield item
+        page += 1
+bot = "chatgpt-codex-connector[bot]"
+try:
+    for r in pages("https://api.github.com/repos/%s/pulls/%s/reviews" % (repo, num)):
+        if r["user"]["login"] == bot and r["commit_id"] == head:
+            sys.exit(0)
+    for c in pages("https://api.github.com/repos/%s/issues/%s/comments" % (repo, num)):
+        if c["user"]["login"] == bot and "codex-pull-request-review-summary" in c["body"]:
+            for line in c["body"].splitlines():
+                if "Completed" in line and "`" + head[:7] in line:
+                    sys.exit(0)
+except urllib.error.HTTPError as e:
+    print("reason: GitHub answered HTTP %s when asked for the reviews — the workflow's token needs pull-requests: read" % e.code)
+    sys.exit(2)
+print("reason: the reviewer has not read commit %s — write '@codex review' on the pull request, and when it has finished, re-run this check" % head)
+sys.exit(1)
+PY
+  then echo "ok: the reviewer has read $HEAD_SHA"
+  else echo "FAIL: see the reason above."; fail=1
+  fi
+;; esac
+
 if [ "$fail" -eq 0 ]; then
   echo "check.sh: all clear"
 fi

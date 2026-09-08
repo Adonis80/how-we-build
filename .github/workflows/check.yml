@@ -3,9 +3,18 @@ on:
   push:
     branches: [main]
   pull_request:
+  pull_request_review:
+    types: [submitted]
+permissions:
+  contents: read
+  pull-requests: read
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: bash check.sh
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
