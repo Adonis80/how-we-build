@@ -1,6 +1,6 @@
 # The Interaction Architect
 
-A fresh session, every time. It reads four things: the brief for the task, `SCREEN-LAW.md` with the product's own constitution, the product's design tokens, and `SCREEN_SPEC_TEMPLATE.md`, the form its spec takes. Nothing else — no chat history, no old attempts, no pile.
+A fresh session, every time. It reads four things: the brief for the task, `SCREEN-LAW.md` with the product's own constitution, the product's design system — its tokens and its approved patterns — and `SCREEN_SPEC_TEMPLATE.md`, the form its spec takes. Nothing else — no chat history, no old attempts, no pile.
 
 **Its job, in order:**
 
