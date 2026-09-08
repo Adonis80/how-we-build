@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # The rulebook's own guard. CI runs it on every push and pull request.
 # It refuses: an operating page over 500 words, a file that is not on the
-# list, and anything that looks like a secret. Nothing else.
+# list, anything that looks like a secret, and — in a pull request — a commit
+# the reviewer has not read. Nothing else.
 set -euo pipefail
 cd "$(dirname "$0")"
 fail=0
@@ -72,7 +73,15 @@ try:
                 if "Completed" in line and "`" + head[:7] in line:
                     sys.exit(0)
 except urllib.error.HTTPError as e:
-    print("reason: GitHub answered HTTP %s when asked for the reviews — the workflow's token needs pull-requests: read" % e.code)
+    if e.code in (401, 403):
+        why = "the workflow's token may not read pull requests (it needs pull-requests: read), or GitHub is rate-limiting"
+    elif e.code == 404:
+        why = "GitHub found no such repository or pull request — check GITHUB_REPOSITORY and PR_NUMBER"
+    elif e.code >= 500:
+        why = "GitHub itself answered with an error — re-run the check"
+    else:
+        why = "GitHub refused the request"
+    print("reason: HTTP %s when asked for the reviews — %s" % (e.code, why))
     sys.exit(2)
 print("reason: the reviewer has not read commit %s — write '@codex review' on the pull request, and when it has finished, re-run this check" % head)
 sys.exit(1)
