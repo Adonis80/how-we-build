@@ -20,9 +20,10 @@ A repository not listed here is not under this rulebook.
 
 ## How a product joins
 
-1. Its repository's `AGENTS.md` begins with one line: `Rulebook: https://github.com/Adonis80/how-we-build — read HOW-WE-BUILD.md before anything else.` Below that, only what is true for that product.
+1. Its repository's `AGENTS.md` begins with one line: `Rulebook: https://github.com/Adonis80/how-we-build — read HOW-WE-BUILD.md before anything else.` Below that, only what is true for that product, ending with the `## Review guidelines` section below.
 2. Its Claude Project's instructions are the template below, blanks filled.
-3. One line in *Products under this rulebook* above. That is the whole setup.
+3. One line in *Products under this rulebook* above.
+4. Code review switched on for the repository in Codex — the Chairman's tap. That is the whole setup.
 
 **Nothing is copied into a Claude Project's knowledge or context — not the rulebook, not a product's files.** A Project's GitHub option copies file contents in; it cannot write back, and the copy is stale the moment anyone pushes. Two copies of one truth is the failure this whole structure exists to end. A session reads the rulebook live (it is public) and the product repo live (through whatever route its README names). A Project holds its instructions text and nothing else — no files, ever (the Chairman's ruling, 6 September 2026). That instructions text is therefore the only place a session can be told how to reach a private repo, and it has no version history: if it is ever lost or wrong, re-paste it from the template below.
 
@@ -53,7 +54,7 @@ Chairman in plain English: summaries and actions, no technical commentary.
 
 ## The independent reviewer
 
-Step 5 of the loop — an independent reviewer reads every pull request cold — is done by Codex on GitHub. Once code review is switched on for a repository, `@codex review` written on a pull request (or automatic review) makes it read the diff and post its findings on that pull request, where the CTO answers them. Nothing is pasted between models, and nothing passes through the Chairman. Codex takes its brief from the repository's own `AGENTS.md`, so every product's `AGENTS.md` ends with this section, pasted whole and not reworded:
+Step 5 of the loop — an independent reviewer reads every pull request cold — is done by Codex on GitHub. Once code review is switched on for a repository, `@codex review` written on a pull request (or automatic review) makes it read the diff and post its findings on that pull request, where the CTO answers them. Nothing is pasted between models, and nothing passes through the Chairman. It is one reviewer for every repository under this rulebook, this one included, with one brief; the switch is per repository only because that is how GitHub grants access, not because each product gets its own reviewer. Codex takes its brief from the repository's own `AGENTS.md`, so every product's `AGENTS.md` ends with this section, pasted whole and not reworded:
 
 ```
 ## Review guidelines
