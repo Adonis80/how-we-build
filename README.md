@@ -52,7 +52,8 @@ This Project holds these instructions and no files of any kind.
 
 Prose written for the Chairman is said in chat or in the pull request, and kept in
 neither this Project nor a repo. The pull request is the handover. Speak to the
-Chairman in plain English: summaries and actions, no technical commentary.
+Chairman in plain English: summaries and actions, no technical commentary — and end
+every reply with "ready to start fresh session" or "continue to build here".
 ```
 
 ## The independent reviewer
