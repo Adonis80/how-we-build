@@ -20,7 +20,7 @@ A repository not listed here is not under this rulebook.
 
 ## How a product joins
 
-1. Its repository's `AGENTS.md` begins with one line: `Rulebook: https://github.com/Adonis80/how-we-build — read HOW-WE-BUILD.md before anything else.` Below that, only what is true for that product, ending with a short `## Review guidelines` section: a pointer to the brief below, and the hazards particular to that product.
+1. Its repository's `AGENTS.md` begins with one line: `Rulebook: https://github.com/Adonis80/how-we-build — read HOW-WE-BUILD.md before anything else.` Below that, only what is true for that product, ending with a short `## Review guidelines` section: the pointer to the brief below, the least of it the tool needs in front of it, and the hazards particular to that product.
 2. Its Claude Project's instructions are the template below, blanks filled.
 3. One line in *Products under this rulebook* above.
 4. Code review switched on for the repository in Codex — the Chairman's tap. That is the whole setup.
@@ -58,7 +58,7 @@ Step 5 of the loop — an independent reviewer reads every pull request cold —
 
 **A review clears only the commit it read.** A later push voids it: the CTO asks again after every push, and a product repository's check goes green only when the reviewer has read the current commit. A report to the Chairman names the commit that was reviewed.
 
-Codex takes its brief from the repository's own `AGENTS.md`. The brief lives here, once; a product's `AGENTS.md` ends with a short `## Review guidelines` section that points at this one and lists the hazards particular to that product — not a copy. Whether the pointer alone is enough is being proved on real reviews; if it is not, the least local wording that works is accepted as a fitting for the tool, and named as one.
+Codex takes its brief from the repository's own `AGENTS.md`. The brief lives here, once. A pointer alone was tried on two real reviews and the marks of the brief vanished from them — no addressee, no account of what was checked, no confidence — while a review with the brief in front of it carried all three. So a product's `AGENTS.md` ends with a short `## Review guidelines` section: the pointer here, the least of the brief the tool needs in front of it, and the hazards particular to that product. Those few lines are a copy, kept only because the tool cannot follow a link, and they change only when this brief does.
 
 ```
 ## Review guidelines
