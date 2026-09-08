@@ -7,6 +7,8 @@ The rulebook for every product Dhayan's AI studio builds. This repository says *
 - `HOW-WE-BUILD.md` — the operating page. Under 500 words. The only page a working session loads.
 - `CHARTER.md` — Systems Blueprint v2.0, the reasoning behind the page. Read once, never loaded into a working session.
 
+A third, `AGENTS.md`, is not for sessions at all: it carries the reviewer's brief for changes to this repository, because the reviewing tool loads only a file of that name.
+
 **Why it is public.** It holds no secrets, prices or customer data — only the way we work — and a public repository is the one thing every Claude session can read directly, in every project, with no extra setup. Product repositories stay private.
 
 ## Products under this rulebook
@@ -55,7 +57,7 @@ Chairman in plain English: summaries and actions, no technical commentary.
 
 ## The independent reviewer
 
-Step 5 of the loop — an independent reviewer reads every pull request cold — is done by Codex on GitHub. It reviews the *change*: the diff, the tests, what regressed, and whether the pull request's claims match its code. It does not challenge a design; that is the consultant's lane below. Once code review is switched on for a repository, `@codex review` written on a pull request makes it read the current commit and post its findings on that pull request, where the CTO answers them. Nothing is pasted between models, and nothing passes through the Chairman. It is one reviewer for every repository under this rulebook, this one included; the switch is per repository only because that is how GitHub grants access, not because each product gets its own reviewer.
+Step 5 of the loop — an independent reviewer reads every pull request cold — is done by Codex on GitHub. It reviews the *change*: the diff, the tests, what regressed, and whether the pull request's claims match its code. It does not challenge a design; that is the consultant's lane below. Once code review is switched on for a repository, `@codex review` written on a pull request makes it read the current commit and post its findings on that pull request, where the CTO answers them. Nothing is pasted between models, and nothing passes through the Chairman. It is one reviewer for every repository under this rulebook, this one included — which is why this repository, though not a product, carries an `AGENTS.md` of its own. Which repositories it can reach is decided by the GitHub app's repository access, set once for all of them; no other setup is needed.
 
 **A review clears only the commit it read.** A later push voids it: the CTO asks again after every push, and a product repository's check goes green only when the reviewer has read the current commit. A report to the Chairman names the commit that was reviewed.
 

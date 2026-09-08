@@ -21,7 +21,7 @@ else
 fi
 
 # 2. Only these files exist at the root (plus .git and .github).
-allowed=" CHARTER.md HOW-WE-BUILD.md README.md check.sh "
+allowed=" AGENTS.md CHARTER.md HOW-WE-BUILD.md README.md check.sh "
 for f in $(ls -A); do
   case "$f" in .git|.github) continue ;; esac
   case "$allowed" in
