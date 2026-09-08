@@ -94,6 +94,17 @@ box-and-arrow drawing where it materially helps, and end with three plain lines 
 him. Prefer a fresh conversation for each substantial question.
 ```
 
+## What every product carries, and how a change reaches it
+
+A change to how we build is made here once and then lands in every product — not by anyone remembering, but because the list below is read at the start of every session and a repo that lacks something on it makes itself current in its next pull request. A product carries, as of 8 September 2026:
+
+- `AGENTS.md` ending with `## Review guidelines`: the pointer to the brief above, the least of it the tool needs, and the product's own hazards.
+- A check that goes green in a pull request only when the reviewer has read the current commit, and runs again when a review is submitted.
+- A `README.md` route section that says: a session attached to the repo at its start works in it directly; a session started without it goes through the Mac; the ten-second test tells which.
+- A Claude Project whose instructions are the template below, whole, and nothing else.
+
+**Text for the Chairman is handed over whole.** When the template below, the consultant's standing instructions, or any text he pastes somewhere changes, he is given the complete new text to replace the old with — never a sentence to find and splice in, which invites the very error the template exists to prevent.
+
 ## Reading it from a session
 
 ```
