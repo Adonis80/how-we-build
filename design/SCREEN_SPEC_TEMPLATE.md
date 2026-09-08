@@ -4,7 +4,7 @@
 id: <area.screen>
 status: draft | in-review | approved | implemented | deprecated
 source_commit: <sha>
-brief: design/briefs/<file>
+brief: design/briefs/<file>, as it stood at source_commit  # a brief is deleted when its spec lands: read it from that commit, never the current tree
 prototype_ref: <canvas link, when it exists>
 ```
 

@@ -49,6 +49,11 @@ for f in $(ls -A design); do
     *) echo "FAIL: 'design/$f' is not on the design file list ($design_allowed)."; fail=1 ;;
   esac
 done
+# The list is both ways: an unexpected page fails, and a missing one fails too,
+# or a later change could quietly delete a role, a form or the rubric and stay green.
+for f in $design_allowed; do
+  [ -f "design/$f" ] || { echo "FAIL: 'design/$f' is missing; the design pages are a fixed set."; fail=1; }
+done
 
 # 3. Nothing that looks like a secret, anywhere.
 pattern='(ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,})'
