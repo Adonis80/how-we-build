@@ -23,4 +23,4 @@
 
 **When something goes wrong**: reproduce; repair or delete the cause; add the smallest regression test; shrink the slice; change method after two identical failures; start fresh on a file you hold changing, or a rule restated not applied. Never answer one failure with a new rule, agent or document. Rules live in Git and CI, never in a model's memory or a hook. Changing this page needs the charter's gate (§13).
 
-**Every product has** one private repo (`AGENTS.md`: first line points here, then only what is true there, under 500 words, machine-checked; `PRODUCT.md`; `NAMES.md`; `roadmap.json`; `README.md`) and one Claude Project holding no files: instructions pointing at both, nothing else. Prose for the Chairman is said in chat or the pull request.
+**Every product has** one private repo (`AGENTS.md`: first line points here, then only what is true there, under 500 words, machine-checked; `PRODUCT.md`; `NAMES.md`; `roadmap.json`; `README.md`) and one Claude Project holding no files, only instructions pointing at both. Prose for the Chairman is said in chat or the pull request.
