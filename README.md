@@ -40,9 +40,10 @@ This project builds <Product>. Its repo is https://github.com/Adonis80/<repo> (p
 The repo's AGENTS.md holds the rules true only for this product; PRODUCT.md is what we
 are building; roadmap.json is what comes next.
 
-Read both live, every session; never from a copy kept in this Project. <If the cloud
-cannot reach the repo, two sentences here say how a session gets in — the connected
-folder, where the key is, never the key itself. The repo's README holds the rest.>
+Read both live, every session; never from a copy kept in this Project. <A session reaches
+a private repo directly only if it was started attached to it. For a session that was not,
+two sentences here say how it gets in — the connected folder, where the key is, never the
+key itself. The repo's README holds the rest.>
 
 A product decision the Chairman makes goes into PRODUCT.md or roadmap.json in the repo.
 This Project holds these instructions and no files of any kind.
