@@ -120,6 +120,8 @@ A change to how we build is made here once and then lands in every product — n
 - `AGENTS.md` ending with `## Review guidelines`: the pointer to the brief above, the least of it the tool needs, and the product's own hazards.
 - A check that goes green in a pull request only when the reviewer has read the current commit, and runs again when a review is submitted.
 - A `README.md` route section that says: a session started at claude.ai/code has GitHub through the Chairman's account and works in the repo directly (it also reads `CLAUDE.md`, which points at `AGENTS.md`); a session started anywhere else — Cowork, chat — has no GitHub and goes through the Mac; the ten-second test tells which.
+- A `CLAUDE.md` of two lines — read `AGENTS.md`; open other files only as the task needs them, never the repo whole — because that is the one file a code session reads on its own, and the door into everything else.
+- Deploys that run from CI with the deploy key held as a repository secret, so no session of any kind ever holds the key.
 - A Claude Project whose instructions are the template below, whole, and nothing else.
 
 **A Project's instructions write themselves from here.** Nobody carries text between products. At the start of a session, if the Project's instructions differ from the template below filled in for this product, the session hands the Chairman the complete filled text to paste — before anything else, once — and anything product-specific it finds in the old text goes into the product's `AGENTS.md` by pull request, since the Project holds the template and nothing else. When this template changes, every product's next session does the same. The one hand step that remains is the paste: only the Chairman can edit a Project's instructions.
