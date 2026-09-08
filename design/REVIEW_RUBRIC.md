@@ -1,6 +1,6 @@
 # Review rubric
 
-For any reviewer — a fresh session, or the consultant briefed cold. Judge the spec and the boards against the brief, `SCREEN-LAW.md` and the product's own constitution. Nothing else is in scope.
+For any reviewer — a fresh session, or the consultant briefed cold. Judge the spec and the boards against the brief, `SCREEN-LAW.md`, the product's own constitution, and its accepted design system and tokens. Nothing else is in scope.
 
 **Ask of every element and step:**
 
@@ -18,4 +18,4 @@ For any reviewer — a fresh session, or the consultant briefed cold. Judge the 
 **Verdict:** PASS · PASS WITH REQUIRED CHANGES · FAIL.
 Each finding: severity (blocking / important / optional) · the rule or need affected · the evidence · the user cost · the smallest correction.
 
-**Bounds:** no new requirements unless from the brief, the screen law, the product's constitution, or accessibility. Prefer removal over explanatory UI, the minimal diff over a fresh design. Stop at PASS. Two rounds maximum; then it escalates to the CTO, and the Chairman only if business truth is in question.
+**Bounds:** no new requirements unless from the brief, the screen law, the product's constitution, its design system, or accessibility. Prefer removal over explanatory UI, the minimal diff over a fresh design. Stop at PASS. Two rounds maximum; then it escalates to the CTO, and the Chairman only if business truth is in question.
