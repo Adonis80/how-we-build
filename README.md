@@ -97,6 +97,22 @@ box-and-arrow drawing where it materially helps, and end with three plain lines 
 him. Prefer a fresh conversation for each substantial question.
 ```
 
+## Which session, and how a day starts
+
+Two kinds of session, and the repo between them. A **chat session** — Cowork, or chat in the Project — is where the Chairman thinks aloud: decisions, statements, questions, pushback, and anything that needs his Mac or his browser. It writes his decisions into `PRODUCT.md` and `roadmap.json` through the Mac, and never builds. A **builder session** is started at claude.ai/code with the product's repository chosen and builds one slice. It needs no prompt from anyone — the repo is its brief — so the line that starts it is the same every day and for every product:
+
+```
+Read AGENTS.md and the rulebook it points to. Take the top roadmap item that has the
+Chairman's word. If PRODUCT.md already states its outcome in his words, build it as one
+slice; if not, propose the slice — outcome, acceptance criteria, non-goals — and wait for
+his "agreed". Prove it on phone and desktop, ask the reviewer with "@codex review" after
+every push and answer its findings, and open the pull request with a preview link. Stop
+there and report in plain English: what changed, the journey to try, and "Decision
+needed: … or none".
+```
+
+A morning with nothing to discuss goes straight to a builder session with that line. A morning with something to think through goes to a chat session first, and the builder follows.
+
 ## What every product carries, and how a change reaches it
 
 A change to how we build is made here once and then lands in every product — not by anyone remembering, but because every session is sent to this list at its start (by the first line of its `AGENTS.md`, and by its Project's instructions) and a repo that lacks something on it makes itself current in its next pull request. A product carries, as of 8 September 2026:
