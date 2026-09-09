@@ -16,7 +16,7 @@ A third, `AGENTS.md`, is not for sessions at all: it carries the reviewer's brie
 The whole map: what exists, where it lives, one line on what it is for, and the file to open first. It is a directory board, not a summary — nothing here says more about a product than its one line.
 
 - **Juku Perfume** — `https://github.com/Adonis80/juku-perfume` (private). A fragrance intelligence and exchange platform: a Personal Nose that learns a person's taste, samples picked for them, and the value sitting on collectors' shelves. Open `AGENTS.md`, then `PRODUCT.md`, then `roadmap.json`.
-- **Hemz OS** — `https://github.com/Adonis80/Alma` (private). The operating system for an alterations business, grown out of Alma's Alterations in Brighton. Open `AGENTS.md`, then `PRODUCT.md`, then `roadmap.json`.
+- **Hemz OS** — `https://github.com/Adonis80/Hemz-OS` (private). The operating system for an alterations business, grown out of Alma's Alterations in Brighton. Open `AGENTS.md`, then `PRODUCT.md`, then `roadmap.json`.
 
 A repository not listed here is not under this rulebook.
 
@@ -44,7 +44,9 @@ This project builds <Product>. Its repo is https://github.com/Adonis80/<repo> (p
 The repo's AGENTS.md holds the rules true only for this product; PRODUCT.md is what we
 are building; roadmap.json is what comes next.
 
-Read both live, every session; never from a copy kept in this Project. <A session reaches
+Read both live, every session; never from a copy kept in this Project. Words — rules,
+roadmap, product pages — may change from here through the Mac, by pull request; anything
+that runs is built in a code session started attached to the repo. <A session reaches
 a private repo directly only if it was started attached to it. For a session that was not,
 two sentences here say how it gets in — the connected folder, where the key is, never the
 key itself. The repo's README holds the rest.>
@@ -55,7 +57,11 @@ This Project holds these instructions and no files of any kind.
 Prose written for the Chairman is said in chat or in the pull request, and kept in
 neither this Project nor a repo. The pull request is the handover. Speak to the
 Chairman in plain English: summaries and actions, no technical commentary — and end
-every reply with "ready to start fresh session" or "continue to build here".
+every reply with "ready to start fresh session" or "continue to build here". "Continue
+to build here" means this session carries on. "Ready to start fresh session" is never
+left bare: the line above it names where — Cowork, or code mode at
+https://claude.ai/code with this repository chosen — and the words to send when it
+opens.
 ```
 
 ## The independent reviewer
@@ -97,6 +103,22 @@ box-and-arrow drawing where it materially helps, and end with three plain lines 
 him. Prefer a fresh conversation for each substantial question.
 ```
 
+## How a screen gets designed
+
+Beautiful is not a step at the end. A screen earns its look by being the smallest coherent thing that does the job, and the order below is what produces that. It is the same order for every product; only the constitution differs.
+
+1. **The brief.** The CTO writes it from current product truth: who uses it, the real-world task, the fixed business rules, the data already known, the states that matter, what success looks like measurably, the non-goals. It describes the problem, never the layout. One brief exists at a time; it is an input, not a record.
+2. **The Interaction Architect.** Its role page is `design/ARCHITECT.md` here. A fresh session every time, reading four things only — the brief, `design/SCREEN-LAW.md` with the product's own constitution, the product's design system (tokens and approved patterns), and the spec template it fills. No chat history, no old attempts, no pile. Its order is: reduce the concepts before arranging any pixels; fix the information hierarchy (act now / act confidently / supporting context / on demand / not on this screen); choose the smallest interaction model; then write the short screen spec. It may challenge a brief that over-complicates the workflow, in one line per challenge. It may not change a business rule, invent a number, or optimise for novelty or tap count alone.
+3. **The visual.** Phone-first artboards of the real states, with real derived figures — never a happy path alone. This is what Claude Design is for, and the canvas link becomes the spec's `prototype_ref`. An advisory session may produce it; only an attached builder session puts it into the product.
+4. **The Chairman approves by looking.** He sees the visual and nothing else. The brief and the spec stay between the roles; he is never asked to read or approve written interaction prose.
+5. **Build the approved direction into the real product** — not into a separate finished artefact.
+
+Claude Design is a workbench, not the authority: the accepted design system, the current product and the Chairman's acceptance are. A routine change to an existing screen goes straight into the product from the design system, with no canvas at all. And no polished canvas is made before the interaction logic behind it is settled — a beautiful screen can price wrong.
+
+The screen spec is the durable record — contract, hierarchy, layout tree, states, responsive behaviour, access, acceptance, decisions — and the reviewer judges against it, the screen law and the product's constitution.
+
+**The pages live here, once.** `design/SCREEN-LAW.md` is the screen law every product's screens obey, capped at 450 words and machine-checked. `design/ARCHITECT.md` is the role. `design/BRIEF_TEMPLATE.md`, `design/SCREEN_SPEC_TEMPLATE.md` and `design/REVIEW_RUBRIC.md` are the three forms the work takes. A product copies none of them. It writes only its own constitution — its money rules, its units, its domain law — which points here for the rest, and its own screen specs.
+
 ## What every product carries, and how a change reaches it
 
 A change to how we build is made here once and then lands in every product — not by anyone remembering, but because every session is sent to this list at its start (by the first line of its `AGENTS.md`, and by its Project's instructions) and a repo that lacks something on it makes itself current in its next pull request. A product carries, as of 8 September 2026:
@@ -105,6 +127,27 @@ A change to how we build is made here once and then lands in every product — n
 - A check that goes green in a pull request only when the reviewer has read the current commit, and runs again when a review is submitted.
 - A `README.md` route section that says: a session attached to the repo at its start works in it directly; a session started without it goes through the Mac; the ten-second test tells which.
 - A Claude Project whose instructions are the template below, whole, and nothing else.
+- A `design/` folder, for a product with a user interface: its own constitution on one capped, machine-checked page holding only what is true there, and one spec per designed screen. The screen law, the architect's role page, the templates and the rubric are read from this repository, never copied down. Its check holds the shape: one constitution page, one brief at a time, one spec per screen, no two specs sharing an id.
+
+**Code and words.** Anything that runs — code, tests, a database change, a deploy — is built in a code session started attached to the repo, because only that workshop can prove it: the build, the tests, the Playwright journey on phone and desktop, the preview. Words — this rulebook, a product's `AGENTS.md`, `PRODUCT.md`, `NAMES.md`, `roadmap.json`, its screen specs, its README — may change from a Cowork session, through the Mac, by the same branch, pull request and review as everything else. Size is not the line: a one-line change to code still needs the workshop; a long change to words does not. One session holds one key, reads up, writes down:
+
+```mermaid
+flowchart LR
+  RB["Rulebook · how-we-build<br/>public — every session reads it, no key"]
+  H["Hemz-OS · private"]
+  P["juku-perfume · private"]
+  C1["Code session<br/>key: Hemz-OS — code and words"]
+  C2["Code session<br/>key: juku-perfume — code and words"]
+  W["Cowork session<br/>through the Mac — words only"]
+  RB -. reads .-> C1
+  RB -. reads .-> C2
+  RB -. reads .-> W
+  C1 -->|writes| H
+  C2 -->|writes| P
+  W -->|writes words| H
+  W -->|writes words| P
+  W -->|writes words| RB
+```
 
 **A Project's instructions write themselves from here.** Nobody carries text between products. At the start of a session, if the Project's instructions differ from the template below filled in for this product, the session hands the Chairman the complete filled text to paste — before anything else, once — and anything product-specific it finds in the old text goes into the product's `AGENTS.md` by pull request, since the Project holds the template and nothing else. When this template changes, every product's next session does the same. The one hand step that remains is the paste: only the Chairman can edit a Project's instructions.
 

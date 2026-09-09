@@ -22,7 +22,7 @@ else
 fi
 
 # 2. Only these files exist at the root (plus .git and .github).
-allowed=" AGENTS.md CHARTER.md HOW-WE-BUILD.md README.md check.sh "
+allowed=" AGENTS.md CHARTER.md HOW-WE-BUILD.md README.md check.sh design "
 for f in $(ls -A); do
   case "$f" in .git|.github) continue ;; esac
   case "$allowed" in
@@ -31,6 +31,29 @@ for f in $(ls -A); do
   esac
 done
 [ "$fail" -eq 0 ] && echo "ok: file list unchanged"
+
+# 2b. The design pages: a fixed list, and a law that stays law-sized.
+# The screen law is carried here once so every product reads the same one; a
+# product's own constitution holds only what is true there and points at this.
+lawwords=$(python3 -c 'import sys; print(len(open(sys.argv[1],encoding="utf-8").read().split()))' design/SCREEN-LAW.md)
+if [ "$lawwords" -gt 450 ]; then
+  echo "FAIL: design/SCREEN-LAW.md is $lawwords words; the cap is 450 - a rule in means a rule out."
+  fail=1
+else
+  echo "ok: design/SCREEN-LAW.md is $lawwords words (cap 450)"
+fi
+design_allowed=" ARCHITECT.md BRIEF_TEMPLATE.md REVIEW_RUBRIC.md SCREEN-LAW.md SCREEN_SPEC_TEMPLATE.md "
+for f in $(ls -A design); do
+  case "$design_allowed" in
+    *" $f "*) ;;
+    *) echo "FAIL: 'design/$f' is not on the design file list ($design_allowed)."; fail=1 ;;
+  esac
+done
+# The list is both ways: an unexpected page fails, and a missing one fails too,
+# or a later change could quietly delete a role, a form or the rubric and stay green.
+for f in $design_allowed; do
+  [ -f "design/$f" ] || { echo "FAIL: 'design/$f' is missing; the design pages are a fixed set."; fail=1; }
+done
 
 # 3. Nothing that looks like a secret, anywhere.
 pattern='(ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,})'
