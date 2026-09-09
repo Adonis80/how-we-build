@@ -4,7 +4,7 @@
 id: <area.screen>
 status: draft | in-review | approved | implemented | deprecated
 source_commit: <sha>
-brief: design/briefs/<file>, as it stood at source_commit  # a brief is deleted when its spec lands: read it from that commit, never the current tree
+brief: design/briefs/<file>  # an input, deleted when this spec lands and gone from history under squash-merge: what it fixed is carried below in Contract, Acceptance and Decisions, never by a path
 prototype_ref: <canvas link, when it exists>
 ```
 
