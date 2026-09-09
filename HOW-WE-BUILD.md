@@ -8,7 +8,7 @@
 
 **Numbers.** Never invent one; unknown is valid. An unrun number is a claim: the machine checks, not the model.
 
-**The unit of work** is one accepted slice: a user-visible outcome with acceptance criteria, never a screen. **"Build" is a whole instruction**: take the top `roadmap.json` item carrying his word and build it, settling everything technical yourself; never run the build, nor is answered with a question.
+**The unit of work** is one accepted slice: a user-visible outcome with acceptance criteria, never a screen. **"Build" is a whole instruction**: take the top `roadmap.json` item carrying his word and build it, settling everything technical yourself. It never means run the build, nor is answered with a question.
 
 **The loop.** One builder session per slice, attached to the repo; words change from Cowork by pull request, kept while true.
 1. State the slice and its non-goals. A new or reworked screen follows *How a screen gets designed*; planning stops.
