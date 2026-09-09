@@ -133,6 +133,8 @@ A change to how we build is made here once and then lands in every product — n
 
 - `AGENTS.md` ending with `## Review guidelines`: the pointer to the brief above, the least of it the tool needs, and the product's own hazards.
 - A check that goes green in a pull request only when the reviewer has read the current commit. The reviewer answers in two shapes — a submitted review when it has findings, a plain comment naming the commit when it has none — and the check counts both. Counting only the first fails in the good case: a clean pass leaves the check red for ever, which is how Juku Perfume's own pull request sat red overnight on 8 September with the reviewer having read it and said it was fine.
+- A `roadmap.json` left fit for a one-word start. The Chairman's ruling, 9 September 2026: *make sure the session has all the context it needs so all I have to do is say "build"*. He should never be handed a paragraph of instructions to paste — that paragraph is context the repo was missing, and it is his memory being used as storage. So a session that ends leaves each `next` line current, self-sufficient and in the order work will be taken up, and a session that starts on the word *build* alone takes the top item carrying his word and needs nothing else. Words still waiting in an unmerged pull request are the one exception, and while any are, the session that opened them says so and carries the difference in the meantime.
+
 - A `README.md` route section that says: a session attached to the repo at its start works in it directly; a session started without it goes through the Mac; the ten-second test tells which.
 - A Claude Project whose instructions are the template below, whole, and nothing else.
 
