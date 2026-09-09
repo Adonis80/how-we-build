@@ -90,11 +90,16 @@ try:
     for r in pages("https://api.github.com/repos/%s/pulls/%s/reviews" % (repo, num)):
         if r["user"]["login"] == bot and r["commit_id"] == head:
             sys.exit(0)
+    # The reviewer answers in two shapes: a submitted review when it has findings,
+    # caught above by commit_id, and a plain comment naming the commit when it has
+    # none. A gate that counts only the first fails in the good case — a clean pass
+    # leaves the check red for ever. The README requires both to count; this is that.
     for c in pages("https://api.github.com/repos/%s/issues/%s/comments" % (repo, num)):
-        if c["user"]["login"] == bot and "codex-pull-request-review-summary" in c["body"]:
-            for line in c["body"].splitlines():
-                if "Completed" in line and "`" + head[:7] in line:
-                    sys.exit(0)
+        if c["user"]["login"] != bot:
+            continue
+        for line in (c["body"] or "").splitlines():
+            if ("Reviewed commit" in line or "Completed" in line) and "`" + head[:7] in line:
+                sys.exit(0)
 except urllib.error.HTTPError as e:
     if e.code in (401, 403):
         why = "the workflow's token may not read pull requests (it needs pull-requests: read), or GitHub is rate-limiting"
