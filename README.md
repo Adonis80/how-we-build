@@ -16,7 +16,7 @@ A third, `AGENTS.md`, is not for sessions at all: it carries the reviewer's brie
 The whole map: what exists, where it lives, one line on what it is for, and the file to open first. It is a directory board, not a summary — nothing here says more about a product than its one line.
 
 - **Juku Perfume** — `https://github.com/Adonis80/juku-perfume` (private). A fragrance intelligence and exchange platform: a Personal Nose that learns a person's taste, samples picked for them, and the value sitting on collectors' shelves. Open `AGENTS.md`, then `PRODUCT.md`, then `roadmap.json`.
-- **Hemz OS** — `https://github.com/Adonis80/Alma` (private). The operating system for an alterations business, grown out of Alma's Alterations in Brighton. Open `AGENTS.md`, then `PRODUCT.md`, then `roadmap.json`.
+- **Hemz OS** — `https://github.com/Adonis80/Hemz-OS` (private). The operating system for an alterations business, grown out of Alma's Alterations in Brighton. Open `AGENTS.md`, then `PRODUCT.md`, then `roadmap.json`.
 
 A repository not listed here is not under this rulebook.
 
@@ -44,7 +44,9 @@ This project builds <Product>. Its repo is https://github.com/Adonis80/<repo> (p
 The repo's AGENTS.md holds the rules true only for this product; PRODUCT.md is what we
 are building; roadmap.json is what comes next.
 
-Read both live, every session; never from a copy kept in this Project. <A session reaches
+Read both live, every session; never from a copy kept in this Project. Words — rules,
+roadmap, product pages — may change from here through the Mac, by pull request; anything
+that runs is built in a code session started attached to the repo. <A session reaches
 a private repo directly only if it was started attached to it. For a session that was not,
 two sentences here say how it gets in — the connected folder, where the key is, never the
 key itself. The repo's README holds the rest.>
@@ -119,13 +121,33 @@ The screen spec is the durable record — contract, hierarchy, layout tree, stat
 
 ## What every product carries, and how a change reaches it
 
-A change to how we build is made here once and then lands in every product — not by anyone remembering, but because every session is sent to this list at its start (by the first line of its `AGENTS.md`, and by its Project's instructions) and a repo that lacks something on it makes itself current in its next pull request — the one kind of pull request an advisory session opens itself, since it moves documents and no product code. A product carries, as of 8 September 2026:
+A change to how we build is made here once and then lands in every product — not by anyone remembering, but because every session is sent to this list at its start (by the first line of its `AGENTS.md`, and by its Project's instructions) and a repo that lacks something on it makes itself current in its next pull request. A product carries, as of 8 September 2026:
 
 - `AGENTS.md` ending with `## Review guidelines`: the pointer to the brief above, the least of it the tool needs, and the product's own hazards.
 - A check that goes green in a pull request only when the reviewer has read the current commit, and runs again when a review is submitted.
 - A `README.md` route section that says: a session attached to the repo at its start works in it directly; a session started without it goes through the Mac; the ten-second test tells which.
 - A Claude Project whose instructions are the template below, whole, and nothing else.
 - A `design/` folder, for a product with a user interface: its own constitution on one capped, machine-checked page holding only what is true there, and one spec per designed screen. The screen law, the architect's role page, the templates and the rubric are read from this repository, never copied down. Its check holds the shape: one constitution page, one brief at a time, one spec per screen, no two specs sharing an id.
+
+**Code and words.** Anything that runs — code, tests, a database change, a deploy — is built in a code session started attached to the repo, because only that workshop can prove it: the build, the tests, the Playwright journey on phone and desktop, the preview. Words — this rulebook, a product's `AGENTS.md`, `PRODUCT.md`, `NAMES.md`, `roadmap.json`, its screen specs, its README — may change from a Cowork session, through the Mac, by the same branch, pull request and review as everything else. Size is not the line: a one-line change to code still needs the workshop; a long change to words does not. One session holds one key, reads up, writes down:
+
+```mermaid
+flowchart LR
+  RB["Rulebook · how-we-build<br/>public — every session reads it, no key"]
+  H["Hemz-OS · private"]
+  P["juku-perfume · private"]
+  C1["Code session<br/>key: Hemz-OS — code and words"]
+  C2["Code session<br/>key: juku-perfume — code and words"]
+  W["Cowork session<br/>through the Mac — words only"]
+  RB -. reads .-> C1
+  RB -. reads .-> C2
+  RB -. reads .-> W
+  C1 -->|writes| H
+  C2 -->|writes| P
+  W -->|writes words| H
+  W -->|writes words| P
+  W -->|writes words| RB
+```
 
 **A Project's instructions write themselves from here.** Nobody carries text between products. At the start of a session, if the Project's instructions differ from the template below filled in for this product, the session hands the Chairman the complete filled text to paste — before anything else, once — and anything product-specific it finds in the old text goes into the product's `AGENTS.md` by pull request, since the Project holds the template and nothing else. When this template changes, every product's next session does the same. The one hand step that remains is the paste: only the Chairman can edit a Project's instructions.
 
