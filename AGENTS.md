@@ -1,8 +1,8 @@
-Rulebook: this repository. A session reads `HOW-WE-BUILD.md`; this file exists for the reviewer of changes to the rulebook itself, because the reviewing tool loads only `AGENTS.md`.
+Rulebook: this repository. A working session reads `HOW-WE-BUILD.md`; this file exists for the reviewer of changes to the rulebook itself.
 
 # AGENTS.md — how-we-build
 
-What is particular here: this repository is the rulebook, not a product. It changes only by pull request against protected `main`. Adding a rule, step, file, check or agent needs the charter's gate (§13) or the Chairman's own ruling; removing one, or correcting wording, needs neither; the CTO never merges an addition of its own here. `check.sh` is the only check.
+This repository is the development system, not a product. Changes land only by pull request against protected `main`. Adding global machinery must be justified by the Charter or Dhayan's explicit ruling; deletion, consolidation and wording corrections need no separate architecture layer. `check.sh` is the deterministic guard.
 
 ## Review guidelines
-The brief is in `README.md`, *The independent reviewer*, and these lines repeat the least of it that the tool needs in front of it. Address the CTO. Form your view from the diff and the existing pages before the pull request's own account. With each finding say what you checked, what you did not, and how sure you are. Two rounds at most, then as the brief says. Hazards particular here: an addition to how we build without the gate or the Chairman's ruling; the operating page over its word cap; a file not on the list; two copies of one truth; a rule kept in prose that `check.sh` could hold.
+Cold-read the changed global files and current architecture before the pull request's own account. Look especially for: two owners of one truth; provider-specific detail leaking into global rules; old rules left beside replacements; new machinery where deletion would work; recurring token/context cost; a setup that still requires Dhayan to relay technical state; and any claim that `build` is self-sufficient when a fresh provider session could not actually recover the work. Say what you checked, what you did not, and how sure you are. Prefer simplification over another exception. Do not manufacture disagreement.
