@@ -63,6 +63,12 @@ Configure the cloud environment from the repository's actual toolchain rather th
 
 Codex may use its automatic environment detection, but the repository's explicit setup and test commands remain authoritative. The final test is a fresh Codex thread receiving only `build`.
 
+**Proven autonomous bootstrap route.** When the Codex project/environment does not yet exist, the active CTO may use **ChatGPT for Chrome** against an already-open Codex Cloud tab to create it rather than asking Dhayan to configure it manually. The proven Hemz OS instruction was:
+
+> Use my open Codex Cloud tab in Chrome. Create the Hemz OS environment for `Adonis80/Hemz-OS` using the agreed setup. Configure it fully, but do not start a build.
+
+For a new product, substitute the product name and repository, and derive "the agreed setup" from this adapter plus the repository's real toolchain. Configure and save the environment, but do not start product work during bootstrap. If the Codex UI changes, preserve the outcome rather than the old click sequence. Ask Dhayan only when the platform itself requires a human permission or authentication action.
+
 **Current proven example — Hemz OS:** Ubuntu 24.04, Node 22, `npm ci`, system Chrome, no redundant Playwright browser install, `how-we-build` cloned to `~/.juku/how-we-build`, caching on, workspace sharing on, common-development internet on, and no secrets by default. Copy the method, not blindly these dependencies.
 
 ## Anthropic adapter — Claude
