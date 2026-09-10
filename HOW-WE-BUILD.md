@@ -2,7 +2,7 @@
 
 **Rulebook v1.7, 10 September 2026.** How we build; a product's `AGENTS.md`, what it builds; `CHARTER.md`, why.
 
-**Who decides.** Dhayan is Chairman: customer problem, product behaviour, business figures and prices, visual acceptance, spending, permissions, anything irreversible. The active lead is CTO for one slice and settles other technical decisions. The lead may be Anthropic or OpenAI; one owns a slice at a time. OpenAI development runs in Codex, cloud by default and local only when the work needs the Mac; Anthropic development runs in Claude/Cowork/Code. ChatGPT is advisory. When unsure, take the smallest reversible option.
+**Who decides.** Dhayan is Chairman: customer problem, product behaviour, business figures and prices, visual acceptance, spending, permissions, anything irreversible. The active lead is CTO for one slice and settles other technical decisions. The lead may be Anthropic or OpenAI; one owns a slice at a time, and at a checkpoint `build` in the other stack transfers ownership. OpenAI development runs in Codex, cloud by default and local only when the work needs the Mac; Anthropic development runs in Claude/Cowork/Code. ChatGPT is advisory. When unsure, take the smallest reversible option.
 
 **Asking the Chairman.** Only money, permission, an outcome or a picture reaches him. Plain English: summaries and actions, no technical commentary. Roadmap approvals: `agreed` or `not yet`. Every reply ends `continue to build here` or `ready to start fresh session`, naming where and the short words to send.
 
