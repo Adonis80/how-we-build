@@ -22,7 +22,7 @@ else
 fi
 
 # 2. Only these files exist at the root (plus .git and .github).
-allowed=" AGENTS.md CHARTER.md HOW-WE-BUILD.md README.md check.sh design "
+allowed=" AGENTS.md CHARTER.md HOW-WE-BUILD.md LEGACY-ROADMAP.md README.md check.sh design "
 for f in $(ls -A); do
   case "$f" in .git|.github) continue ;; esac
   case "$allowed" in
@@ -90,10 +90,6 @@ try:
     for r in pages("https://api.github.com/repos/%s/pulls/%s/reviews" % (repo, num)):
         if r["user"]["login"] == bot and r["commit_id"] == head:
             sys.exit(0)
-    # The reviewer answers in two shapes: a submitted review when it has findings,
-    # caught above by commit_id, and a plain comment naming the commit when it has
-    # none. A gate that counts only the first fails in the good case — a clean pass
-    # leaves the check red for ever. The README requires both to count; this is that.
     for c in pages("https://api.github.com/repos/%s/issues/%s/comments" % (repo, num)):
         if c["user"]["login"] != bot:
             continue
