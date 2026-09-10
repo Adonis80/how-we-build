@@ -23,6 +23,6 @@
 
 **When something goes wrong:** reproduce; repair or delete the cause; add the smallest regression test; shrink the slice; change method after two identical failures. Never answer a failure with a new rule or agent.
 
-**Changing this system:** read the whole current rule first; replace or remove what a new rule supersedes. Never stack exceptions.
+**Changing this system:** before changing `HOW-WE-BUILD.md`, read that file in full. Replace or remove what the change supersedes; never stack exceptions.
 
 **Every product has** one private repo with `AGENTS.md`, `PRODUCT.md`, `NAMES.md`, `roadmap.json`, `README.md`. GitHub is the only project truth. Provider caches, compaction and model memory may help a session but are never sources of truth.
