@@ -25,4 +25,4 @@
 
 **Changing this system:** before changing `HOW-WE-BUILD.md`, read that file in full. Replace or remove what the change supersedes; never stack exceptions.
 
-**Every product has** one private repo with `AGENTS.md`, `PRODUCT.md`, `NAMES.md`, `roadmap.json`, `README.md`. GitHub is the only project truth. Provider caches, compaction and model memory may help a session but are never sources of truth.
+**Every product has** one private repo with `AGENTS.md`, `PRODUCT.md`, `NAMES.md`, `roadmap.json`, `README.md`. GitHub is the only project truth. **New product bootstrap:** the active lead creates or normalises those files, registers the product in this repo, creates both provider workspaces from the repo's real toolchain, makes this rulebook reachable, enables the standard check/review gate, and proves a fresh session can start from `build` alone. Cloud, caching, workspace sharing and common-development internet are defaults; secrets are added only when the product proves they are needed. Provider caches, compaction and model memory may help a session but are never sources of truth.
