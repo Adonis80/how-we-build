@@ -12,7 +12,7 @@
 
 **The loop.** One builder task per slice, attached to the repo. Each turn stays only while the work is the same, staying costs less than a fresh start from GitHub, and its history still helps; otherwise checkpoint and start fresh. No schedules, polling or timed wake-ups in the build loop.
 1. State slice and non-goals.
-2. From latest `main`, read open PRs, run the product, branch, open a draft PR.
+2. Before project work, read the latest global rulebook and its open PRs; record any agreed global change there first. Then from latest product `main`, read open PRs, run the product, branch, open a draft PR.
 3. Build the smallest coherent change. Replace rather than wrap. No speculative abstraction.
 4. Prove it: build, tests, phone and desktop journey, preview deploy.
 5. Independent cold review. Prefer the other vendor where practical; cross-vendor review is mandatory for pricing logic, live database mutation/schema, authentication/authorisation, public trust-boundary changes, deploy/release machinery, and the review gate itself. If unclear whether a trust boundary is crossed, count it as crossed.
