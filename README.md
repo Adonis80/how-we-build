@@ -20,6 +20,8 @@ The whole map: what exists, where it lives, one line on what it is for, and the 
 
 A repository not listed here is not under this rulebook.
 
+**Regular ChatGPT Project routing (Dhayan's ruling, 11 September 2026).** Juku OS normally reads this repository and uses the map above as its canonical ecosystem registry; it opens a child repository only when detailed live state is needed. Hemz OS reads `Adonis80/Hemz-OS` plus the applicable global rules here. Juku Perfume reads `Adonis80/juku-perfume` plus those global rules. These are source-routing instructions, not repository permission grants. Verify each Project's connected GitHub access with live default-branch commits and open pull requests; a successful read in another interface is not proof for that Project. Reuse this registry; do not create another ecosystem map.
+
 ## How a product joins
 
 1. Its repository's `AGENTS.md` begins with one line: `Rulebook: https://github.com/Adonis80/how-we-build — read HOW-WE-BUILD.md before anything else, then What every product carries in its README.` Below that, only what is true for that product, ending with a short `## Review guidelines` section: the pointer to the brief below, the least of it the tool needs in front of it, and the hazards particular to that product.
