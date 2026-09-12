@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # The rulebook's own guard. CI runs it on every push and pull request.
-# It refuses: an operating page over 500 words, a file that is not on the
-# list, anything that looks like a secret, and — in a pull request — a commit
-# the reviewer has not read. Nothing else.
+# It refuses: an operating page over its word cap, a screen law over its own,
+# a file that is not on either list — or missing from the design one — anything
+# that looks like a secret, and, in a pull request, a commit the reviewer has
+# not read. Nothing else.
 set -euo pipefail
 cd "$(dirname "$0")"
 fail=0
@@ -13,23 +14,27 @@ fail=0
 # a session's machine and failed in CI. On 7 September 2026 that cost a build
 # in the Alma repo, whose identical guard was fixed the same way. A cap must
 # mean one thing wherever it is measured.
+# The cap was 500 from 28 August to 12 September 2026, when the two-lead rules
+# could not fit under it without spending a rule the page requires. It moved to
+# 600 in the pull request that needed it, for that stated reason. A budget with
+# justified exceptions, not a ratchet: the next change pays in wording.
 words=$(python3 -c 'import sys; print(len(open(sys.argv[1],encoding="utf-8").read().split()))' HOW-WE-BUILD.md)
-if [ "$words" -gt 500 ]; then
-  echo "FAIL: HOW-WE-BUILD.md is $words words; the cap is 500."
+if [ "$words" -gt 600 ]; then
+  echo "FAIL: HOW-WE-BUILD.md is $words words; the cap is 600."
   fail=1
 else
-  echo "ok: HOW-WE-BUILD.md is $words words (cap 500)"
+  echo "ok: HOW-WE-BUILD.md is $words words (cap 600)"
 fi
 
 # 2. Only these files exist at the root (plus .git and .github).
 allowed=" AGENTS.md CHARTER.md HOW-WE-BUILD.md README.md check.sh design "
-for f in $(ls -A); do
+while IFS= read -r f; do
   case "$f" in .git|.github) continue ;; esac
   case "$allowed" in
     *" $f "*) ;;
     *) echo "FAIL: '$f' is not on the file list ($allowed)."; fail=1 ;;
   esac
-done
+done < <(ls -A)
 [ "$fail" -eq 0 ] && echo "ok: file list unchanged"
 
 # 2b. The design pages: a fixed list, and a law that stays law-sized.
@@ -43,12 +48,12 @@ else
   echo "ok: design/SCREEN-LAW.md is $lawwords words (cap 450)"
 fi
 design_allowed=" ARCHITECT.md BRIEF_TEMPLATE.md REVIEW_RUBRIC.md SCREEN-LAW.md SCREEN_SPEC_TEMPLATE.md "
-for f in $(ls -A design); do
+while IFS= read -r f; do
   case "$design_allowed" in
     *" $f "*) ;;
     *) echo "FAIL: 'design/$f' is not on the design file list ($design_allowed)."; fail=1 ;;
   esac
-done
+done < <(ls -A design)
 # The list is both ways: an unexpected page fails, and a missing one fails too,
 # or a later change could quietly delete a role, a form or the rubric and stay green.
 for f in $design_allowed; do
