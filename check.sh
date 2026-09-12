@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # The rulebook's own guard. CI runs it on every push and pull request.
-# It refuses: an operating page over 500 words, a file that is not on the
-# list, anything that looks like a secret, and — in a pull request — a commit
-# the reviewer has not read. Nothing else.
+# It refuses: an operating page over its word cap, a screen law over its own,
+# a file that is not on either list — or missing from the design one — anything
+# that looks like a secret, and, in a pull request, a commit the reviewer has
+# not read. Nothing else.
 set -euo pipefail
 cd "$(dirname "$0")"
 fail=0
@@ -27,13 +28,13 @@ fi
 
 # 2. Only these files exist at the root (plus .git and .github).
 allowed=" AGENTS.md CHARTER.md HOW-WE-BUILD.md README.md check.sh design "
-for f in $(ls -A); do
+while IFS= read -r f; do
   case "$f" in .git|.github) continue ;; esac
   case "$allowed" in
     *" $f "*) ;;
     *) echo "FAIL: '$f' is not on the file list ($allowed)."; fail=1 ;;
   esac
-done
+done < <(ls -A)
 [ "$fail" -eq 0 ] && echo "ok: file list unchanged"
 
 # 2b. The design pages: a fixed list, and a law that stays law-sized.
@@ -47,12 +48,12 @@ else
   echo "ok: design/SCREEN-LAW.md is $lawwords words (cap 450)"
 fi
 design_allowed=" ARCHITECT.md BRIEF_TEMPLATE.md REVIEW_RUBRIC.md SCREEN-LAW.md SCREEN_SPEC_TEMPLATE.md "
-for f in $(ls -A design); do
+while IFS= read -r f; do
   case "$design_allowed" in
     *" $f "*) ;;
     *) echo "FAIL: 'design/$f' is not on the design file list ($design_allowed)."; fail=1 ;;
   esac
-done
+done < <(ls -A design)
 # The list is both ways: an unexpected page fails, and a missing one fails too,
 # or a later change could quietly delete a role, a form or the rubric and stay green.
 for f in $design_allowed; do

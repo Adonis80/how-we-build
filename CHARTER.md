@@ -4,7 +4,7 @@
 **Primary outcome:** Dhayan can move between interchangeable AI development stacks while GitHub preserves the work, and each stack can ship accepted software with minimal founder coordination.
 **Supersedes:** Earlier development-system blueprints, control planes, orchestration proposals, permanent model assignments and instruction stacks.
 
-`HOW-WE-BUILD.md` is the short operating rule. This Charter explains **why**. Product repositories define **what** each product is.
+`HOW-WE-BUILD.md` is the short operating rule. This Charter explains **why**. Product repositories define **what** each product is. Where they disagree, `HOW-WE-BUILD.md` governs how we build, a product's `AGENTS.md` governs what that product is, and this document governs why.
 
 ## 1. Authority
 
@@ -88,7 +88,7 @@ Anthropic development uses Claude/Cowork/Code through the best current route to 
 
 Only one provider owns a slice at a time. At a clean checkpoint, opening the other provider and sending `build` transfers ownership. The outgoing provider does not prepare a prose explanation for the incoming provider; it prepares the PR and repository.
 
-What the Chairman established on 11 September 2026: OpenAI's strongest model is reachable only from ChatGPT's cloud work mode; the ChatGPT desktop app cannot work in a repository; Codex cloud can. So OpenAI builds in Codex cloud and thinks in cloud work mode. And while Claude Opus 5 at maximum effort is the strongest model available to him, it leads; the OpenAI path stays configured and is used for review. Because the rules are written by role, that swap costs nothing the day it changes.
+Which model leads is the Chairman's, and changes as the models do; because the rules are written by role, that swap costs nothing. What each stack can actually do, and how its workspace is configured, lives in `README.md`, which changes faster than this Charter.
 
 A new provider in future earns one adapter. It does not justify another roadmap, state store, handover format or copy of the global rules.
 
@@ -189,9 +189,11 @@ The lead may never: write directly to protected `main` or force-push it; disable
 System changes are expensive because they affect every product. A change is justified by either:
 
 - Dhayan's explicit ruling about how he wants the system to work; or
-- a measured repeated delivery failure, or one severe security/data-loss incident, where ordinary product repair is insufficient.
+- the same material failure in two separate product tasks, or one severe security or data-loss incident, where ordinary product repair is insufficient.
 
-Prefer the smallest reversible intervention. Compare it with doing nothing. Define what success would look like.
+The case is made where the change is made — in the pull request — and carries the evidence of the failure, a cause that could be proved wrong, and why repairing the product would not do. Prefer the smallest reversible intervention; compare it with doing nothing; say what success would look like. One system experiment runs at a time. The lead proposing a major change does not clear it: the independent cold review does. A change that fails is reverted and deleted, never left standing as a dormant layer.
+
+Removing a rule, or correcting wording, needs none of this.
 
 Most importantly: **change the existing system, do not layer around it.** Read the canonical owner, replace or remove superseded rules, and check the surrounding architecture still makes sense.
 
