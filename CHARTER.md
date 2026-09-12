@@ -1,6 +1,6 @@
-# Systems Blueprint v2.1
+# Systems Blueprint v2.2
 
-**Status:** Current charter, 10 September 2026. Read for rationale, not as routine build context.
+**Status:** Current charter, 12 September 2026. Read for rationale, not as routine build context.
 **Primary outcome:** Dhayan can move between interchangeable AI development stacks while GitHub preserves the work, and each stack can ship accepted software with minimal founder coordination.
 **Supersedes:** Earlier development-system blueprints, control planes, orchestration proposals, permanent model assignments and instruction stacks.
 
@@ -50,27 +50,7 @@ Useful ideas retained from the older work: fresh sessions are disposable; determ
 
 The active development system is:
 
-```text
-Dhayan
-  product intent / acceptance
-        |
-        v
-one active CTO stack
-  OpenAI or Anthropic
-        |
-        v
-product repository + PR
-  durable state and handover
-        |
-        v
-builder + deterministic checks
-        |
-        v
-preview / acceptance
-        |
-        v
-protected merge -> deploy -> smoke -> rollback if needed
-```
+Dhayan defines product outcomes. One active CTO implements a bounded slice in the product repository, proves it with deterministic checks and a preview, obtains acceptance and independent review, then merges through protected `main`, deploys, smoke-tests and rolls back failure.
 
 `Adonis80/how-we-build` contains only global development rules and shared design method. Each product has its own private repository. Products do not depend on one another for project truth.
 
@@ -82,11 +62,11 @@ OpenAI and Anthropic are **adapters**, not separate development systems.
 
 The shared contract is GitHub: current product truth, open PRs, branch state, checks and the roadmap. Provider-specific setup exists only where the products genuinely differ in how they reach and execute that contract.
 
-OpenAI development uses Codex; cloud execution is the default, with local execution only when the task genuinely needs the Mac. ChatGPT is the advisory/thinking surface.
+OpenAI work uses a verified capable surface: ChatGPT Work or Codex for implementation, and dialogue where helpful. The requested model and available tools decide the route. Provider capability details live in README.md; neither a Project attachment nor a model name proves repository write access.
 
 Anthropic development uses Claude/Cowork/Code through the best current route to the same repository.
 
-Only one provider owns a slice at a time. At a clean checkpoint, opening the other provider and sending `build` transfers ownership. The outgoing provider does not prepare a prose explanation for the incoming provider; it prepares the PR and repository.
+Only one lead owns a slice at a time, including sessions in different accounts of the same provider. The outgoing lead stops and pushes a checkpoint before the incoming lead claims the PR and verifies its live head. A new chat cannot implicitly stop another process. README.md owns the takeover procedure.
 
 A new provider in future earns one adapter. It does not justify another roadmap, state store, handover format or copy of the global rules.
 
@@ -126,7 +106,7 @@ A new document is justified only when it owns durable information that cannot li
 
 ## 8. The unit of work
 
-The unit is one accepted **vertical slice**: a bounded user-visible outcome with observable acceptance criteria, or a necessary cross-cutting change inseparable from that outcome.
+Product work uses one accepted **vertical slice**: a bounded user-visible outcome with observable acceptance criteria, or a necessary cross-cutting change inseparable from that outcome. Juku OS itself uses an explicitly requested system repair and its PR, not an invented product roadmap.
 
 A screen is not automatically a slice. A slice can touch several screens. The boundary follows behaviour and proof.
 
@@ -136,7 +116,7 @@ A screen is not automatically a slice. A slice can touch several screens. The bo
 
 A slice is not complete because an agent says so.
 
-Use deterministic evidence appropriate to the product: install/build, type/lint checks, unit/domain/integration tests, the actual browser or application journey, relevant mobile and desktop states, preview deployment, production smoke and rollback capability.
+Use deterministic evidence appropriate to the product: install/build, type/lint checks, unit/domain/integration tests, a Playwright journey at phone and desktop sizes for web products, preview deployment, production smoke and rollback capability.
 
 Business invariants such as pricing, permissions or transformations should be executable tests wherever practical.
 
@@ -146,7 +126,7 @@ Independent cold review is required where `HOW-WE-BUILD.md` says so. Review is a
 
 ## 10. PR as handover
 
-The PR carries objective state: objective, acceptance criteria, done, remaining, checks, preview, next action, rollback, active lead and reviewer.
+The PR carries objective state: objective, acceptance criteria, done, remaining, checks, preview, next action, rollback, active lead, ownership state, source/head SHAs and reviewer. Rulebook-only changes mark product preview and deployment not applicable, with a reason.
 
 If a session stops mid-slice, it pushes a coherent checkpoint and leaves the PR sufficient for a fresh session. No necessary continuation state may live only in conversation.
 
@@ -176,7 +156,7 @@ Development agents may use the internet needed for ordinary dependencies and dev
 
 Secrets belong in provider or repository secret stores, never ordinary repository files or prompts. Add them only when a real product need requires them. Use least-privilege repository access and protected `main`.
 
-Dhayan must approve new spending, wider permissions, raw-secret exposure, destructive production-data changes, domains/DNS/legal commitments and other irreversible/high-consequence actions.
+Dhayan must approve new spending, wider permissions, destructive production-data changes, domains/DNS/legal commitments and other irreversible/high-consequence actions. Existing explicit authorisation remains valid; do not ask again for routine technical work. Do not expose raw secrets as an approval shortcut. This global repository is public: private product/customer facts and account-specific authentication evidence remain private.
 
 ## 13. Changing the development system
 
@@ -189,17 +169,19 @@ Prefer the smallest reversible intervention. Compare it with doing nothing. Defi
 
 Most importantly: **change the existing system, do not layer around it.** Read the canonical owner, replace or remove superseded rules, and check the surrounding architecture still makes sense.
 
+Changes go through protected main and independent review. The CTO never merges its own additions to this rulebook. The explicit 12 September 2026 audit/build ruling authorises the bounded provider, bootstrap and check repairs; it is not blanket authority to bypass review.
+
 A provider-specific problem should normally change only that provider adapter. A product-specific problem should normally stay in that product. Global rules should remain genuinely global.
 
 ## 14. New-product test
 
-A product is integrated only when the shared repository contract and both provider adapters are configured and tested. The exact setup lives in `README.md`, because provider configuration changes faster than this Charter.
+A product can ship once the shared repository contract and its selected provider route are configured and tested. Each additional provider/account is independently verified; an unavailable secondary account must not block the working route. The exact setup and instruction drift check live in `README.md`, because provider configuration changes faster than this Charter.
 
 The acceptance test is deliberately simple:
 
 > In a completely fresh working session for either provider, with the product selected, Dhayan sends `build` and the CTO finds the correct current work without further technical context from him.
 
-If that fails, the bootstrap is incomplete.
+If that fails, that route is unverified. Do not claim synchronisation or readiness beyond the accounts and capabilities actually tested. Stable Project launch instructions read the latest GitHub rulebook; no automatic cross-account mirror is assumed.
 
 ## 15. Final constraint
 

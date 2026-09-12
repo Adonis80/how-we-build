@@ -1,8 +1,9 @@
-Rulebook: this repository. A working session reads `HOW-WE-BUILD.md`; this file exists for the reviewer of changes to the rulebook itself.
+Read HOW-WE-BUILD.md before working. This repository is the rulebook, not a product. Provider setup and the Juku OS build entry point are in README.md.
 
-# AGENTS.md — how-we-build
+Changes go through a PR against protected main. A new rule, file, check or agent needs CHARTER.md §13's gate or Dhayan's explicit ruling; record the evidence in the PR. Deletion and wording repairs need no new permission. The CTO never merges its own additions here.
 
-This repository is the development system, not a product. Changes land only by pull request against protected `main`. Adding global machinery must be justified by the Charter or Dhayan's explicit ruling; deletion, consolidation and wording corrections need no separate architecture layer. `check.sh` is the deterministic guard.
+Run bash check.sh before committing. It includes the regression suite. In CI the review receipt is an additional check, not an approval or a substitute for resolving findings.
 
 ## Review guidelines
-Cold-read the changed global files and current architecture before the pull request's own account. Look especially for: two owners of one truth; provider-specific detail leaking into global rules; old rules left beside replacements; new machinery where deletion would work; recurring token/context cost; a setup that still requires Dhayan to relay technical state; and any claim that `build` is self-sufficient when a fresh provider session could not actually recover the work. Say what you checked, what you did not, and how sure you are. Prefer simplification over another exception. Do not manufacture disagreement.
+
+Review the diff and existing canonical files before reading the PR's account. Address the CTO. Each finding says what was checked, what was not and confidence. Check for conflicting instructions, duplicated truth, weakened business/design/proof requirements, inaccurate claims about provider access, and review-gate bypasses. A provider limitation belongs in its adapter; private product facts never belong in this public repository. Cross-vendor review is required for gate changes. Prefer executable checks over prose reminders, and deletion over more machinery.

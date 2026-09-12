@@ -1,124 +1,120 @@
-# how-we-build
+# Juku OS — how we build
 
-The global operating system for Dhayan's AI-built products. This repository says **how** products are built. Each product repository says **what** that product is and what comes next.
+The shared operating system for Dhayan's products. This repository owns **how** we work; private product repositories own **what** we build. GitHub holds current truth and PRs hold unfinished work. Chats are disposable.
 
-## What matters
+`HOW-WE-BUILD.md` is the short operating page. `CHARTER.md` gives rationale. `design/` owns the shared screen method. `LEGACY-ROADMAP.md` is an inactive idea bank, never approved work. `scripts/` implements checks and Project instruction rendering; it is not an orchestrator.
 
-- `HOW-WE-BUILD.md` — the short operating rule. A working session reads this first.
-- `CHARTER.md` — why the system is shaped this way. It is not normal working context.
-- `AGENTS.md` — instructions for reviewing changes to this repository.
-- `design/` — shared screen law, interaction-architect role and design forms.
-- `LEGACY-ROADMAP.md` — non-authoritative ideas rescued from retired repositories. It never drives work.
+## Projects and source routing
 
-GitHub is the only durable project truth. Chats, provider memory and copied Project files are not.
+This is the canonical registry used by the instruction generator. Register a new product here once. Routing grants no repository permission.
 
-## Products under this rulebook
+<!-- juku-projects:start -->
+| Key | Project | Repository | Scope |
+|---|---|---|---|
+| juku-os | Juku OS | Adonis80/how-we-build | global |
+| hemz-os | Hemz OS | Adonis80/Hemz-OS | product |
+| juku-perfume | Juku Perfume | Adonis80/juku-perfume | product |
+<!-- juku-projects:end -->
 
-- **Hemz OS** — `Adonis80/Hemz-OS` (private). Alterations-business operating system.
-- **Juku Perfume** — `Adonis80/juku-perfume` (private). Fragrance intelligence, discovery and exchange.
+Juku OS reads the global repository and reads registered products only when the task needs them. A product Project reads its own private repository plus the global rulebook, never another product by default. Verify each account's access independently. Private product content, customer data, credentials and account identifiers must not be copied into this public repository or its PRs.
 
-A repository not listed here is not automatically governed by this rulebook.
+## Start and switch CTO
 
-# New product bootstrap
+`build` is an instruction to complete approved work, not a shell command. Resolve the selected repository, read current global `main`, then its `AGENTS.md` and relevant canonical files. Read open PRs before choosing work. A proposed global change is context, not merged policy; unrelated global PRs do not block product delivery. A session uses its recorded rulebook revision until a user ruling or relevant safety fix requires re-reading it.
 
-A new product has **one shared bootstrap contract** and **provider-specific adapters**. Do not duplicate the common rules inside each provider setup.
+For a product, resume an approved unfinished slice; otherwise take the first approved roadmap item. Do not reorder the owner's roadmap. For Juku OS, use the user's explicit system request and the relevant open PR. No `PRODUCT.md` or `roadmap.json` is required in this rulebook repository, and its inactive idea bank never supplies work.
 
-## Shared contract
+One lead owns a slice. Its PR records `Lead: provider / surface`, `Ownership: active | checkpointed | blocked`, the full head SHA, checks, remaining work and next action. On a user-requested switch, the outgoing session stops and pushes first. The incoming CTO checks that checkpoint against the live branch, records its ownership and resumes that branch. Starting another chat alone does not stop the outgoing process or grant a lock. If the PR still says active and no stop is evidenced, do useful independent work but do not concurrently edit that slice. Never force-push another lead's work. Before any push, compare the remote head with the checkpoint; reconcile changed work rather than overwriting it.
 
-The active CTO does this agentically; Dhayan only supplies permissions, money, irreversible decisions or product truth that cannot be derived.
+Keep one PR per slice. A handover must contain objective, acceptance criteria, done, remaining, commands/results, preview (or why not applicable), source SHAs, next action and rollback. Record the reviewer and the commit reviewed separately from the lead. Source SHAs belong in PR metadata; a PR cannot contain its own final commit hash in that same commit.
 
-1. Create or normalise the private product repository.
-2. Give it the canonical product files required by `HOW-WE-BUILD.md`: `AGENTS.md`, `PRODUCT.md`, `NAMES.md`, `roadmap.json`, `README.md`; add only product files the product genuinely needs.
-3. Put product-specific truth in that repo. Do not copy the global rulebook into it.
-4. Register the product in **Products under this rulebook** above.
-5. Install the standard deterministic checks and independent-review gate, adapted only where the product's toolchain requires it.
-6. Configure both provider adapters below.
-7. From a completely fresh session in each provider, send only `build`. Bootstrap is complete only when each provider can identify the right repo, read the global rule, inspect open PRs and the roadmap, and continue the correct work without Dhayan explaining state.
+## What every product carries
 
-A setup difference belongs in a provider adapter. A product difference belongs in the product repo. A global rule belongs in `HOW-WE-BUILD.md`. Never maintain the same truth in two places.
+One private repository with `AGENTS.md` (under 500 words), `PRODUCT.md`, `NAMES.md`, `roadmap.json`, `README.md`, source and tests. Product `AGENTS.md` points to this rulebook and holds only domain invariants. Product README owns exact install, check, preview, deployment, smoke and rollback commands. Keep one implementation for each business calculation. Roadmap order and product/business truth belong to Dhayan; status, proof and technical implementation belong to the CTO.
 
-## OpenAI adapter — ChatGPT + Codex
+Preserve existing product safeguards and constraints when refreshing an adapter. A stale access recipe is not a domain rule: verify the available connector or execution route before requiring a Mac. Fix that recipe in the product's own PR; never duplicate it here. Do not use a global rewrite to silently relax product checks.
 
-**ChatGPT is the thinking/advisory surface. Codex is the development surface.**
+## Project instructions and synchronisation
 
-### ChatGPT Project
+Use one Project per product **within each account or workspace actually needed**. Reuse existing Projects and Cloud environments after verifying their repository mapping; names alone are insufficient. Do not copy source files or handover notes into Project knowledge. Projects are launch points, not mirrors of GitHub.
 
-Create one lightweight ChatGPT Project named for the product. Its instructions identify the product repo and this rulebook. Keep copied project files and project-state handovers out of it. When current product state matters, read GitHub live.
+Generate instructions from this README, normally on merged `main`. Record the source revision when preparing a routing change in a PR; the rendered instructions always load operating rules from merged `main`:
 
-ChatGPT may research, challenge architecture, resolve product/UI questions and update durable decisions through GitHub. Normal software implementation belongs in Codex.
+```sh
+python3 -B scripts/project_bootstrap.py --list
+python3 -B scripts/project_bootstrap.py juku-os
+python3 -B scripts/project_bootstrap.py hemz-os
+python3 -B scripts/project_bootstrap.py juku-perfume
+```
 
-### Codex
+The generator fills the single template below from the registry and adds a content fingerprint. To verify a saved Project, read its actual instructions back through the provider UI/tool and compare the complete text, not just its fingerprint:
 
-Create a Codex project attached to the product repository. Normal execution uses **Codex Cloud**; local execution is chosen only when the task genuinely needs the Mac.
+```sh
+python3 -B scripts/project_bootstrap.py hemz-os --check /temporary/path/actual-instructions.txt
+```
 
-Configure the cloud environment from the repository's actual toolchain rather than from a universal template:
+Exit zero means the text matches this checkout; it does **not** mean an account is authenticated or a fresh build has succeeded. These commands render and compare text; they do not log into accounts or write provider settings. Use a temporary file outside the repository for readback.
 
-- detect runtimes and package managers from lockfiles, manifests and existing scripts;
-- install only what the repository needs;
-- make `how-we-build` reachable at startup, normally by cloning it to `~/.juku/how-we-build` or reading the live raw file;
-- enable container caching and workspace sharing;
-- allow common development internet access;
-- add a system browser only when the repository's tests or UI work require it;
-- add no secret or environment variable until the product proves it needs one, then use the platform secret store rather than repository files.
+The CTO updates reachable Project settings during authorised setup work and verifies the saved text. Reconcile the installed text with merged `main` when the routing/template PR lands; installing a launch instruction does not make its unmerged policy proposals authoritative. Other accounts require their own permitted login and repository connection; a shared Project does not prove GitHub write access. Record account-specific setup evidence in the relevant private setup PR or chat, never here. Never share cookies, credentials or customer content between accounts. If authentication is required, use the real sign-in/approval screen; do not invent a handed-off screen.
 
-Codex may use its automatic environment detection, but the repository's explicit setup and test commands remain authoritative. The final test is a fresh Codex thread receiving only `build`.
+Routine rule changes need no Project rewrite: the instructions load the latest rulebook at session start. **This is live source loading plus explicit instruction drift checking, not an automatic cross-account sync service.** Missing secondary accounts do not stop an already verified CTO from shipping.
 
-**Proven autonomous bootstrap route.** When the Codex project/environment does not yet exist, the active CTO may use **ChatGPT for Chrome** against an already-open Codex Cloud tab to create it rather than asking Dhayan to configure it manually. The proven Hemz OS instruction was:
+<!-- juku-instructions:start -->
+```text
+You are the CTO for ${project_name}. Canonical repository: https://github.com/${repository}.
+Global operating rule: https://github.com/Adonis80/how-we-build/blob/main/HOW-WE-BUILD.md.
+At session start, fetch the current global rule from GitHub and follow it. Read this repository's AGENTS.md and relevant current files, open PRs and their live heads before continuing work. Treat open proposals and prior chats as context, not current policy.
+${source_scope}
+Make technical decisions and complete authorized work. Use the tools actually available: verify repository read access, execution, branch writes and PR capability separately. A Project name, a model choice or a successful read does not prove write access. Never claim to control the Mac or select a Cloud model unless verified.
+For build, follow the operating rule and README's Start and switch CTO section. Resume the checkpointed approved slice before starting another; never overlap an active builder. Keep main protected, use branches and PRs, and leave a complete handover there.
+Fetch README's Project instructions and synchronisation section when setup or routing changes. Do not copy rules, product files, credentials or handover notes into this Project. If live access fails, report the exact blocker without inventing repository state.
+```
+<!-- juku-instructions:end -->
 
-> Use my open Codex Cloud tab in Chrome. Create the Hemz OS environment for `Adonis80/Hemz-OS` using the agreed setup. Configure it fully, but do not start a build.
+## Provider adapters
 
-For a new product, substitute the product name and repository, and derive "the agreed setup" from this adapter plus the repository's real toolchain. Configure and save the environment, but do not start product work during bootstrap. If the Codex UI changes, preserve the outcome rather than the old click sequence. Ask Dhayan only when the platform itself requires a human permission or authentication action.
+Choose a route by **verified capabilities and the requested model**, not the provider label. A successful read proves reading; a successful branch push and PR update prove those operations. Use real authorized work to verify writes, not dummy commits on `main`.
 
-**Current proven example — Hemz OS:** Ubuntu 24.04, Node 22, `npm ci`, system Chrome, no redundant Playwright browser install, `how-we-build` cloned to `~/.juku/how-we-build`, caching on, workspace sharing on, common-development internet on, and no secrets by default. Copy the method, not blindly these dependencies.
+### OpenAI: ChatGPT Projects, Work and Codex
 
-## Anthropic adapter — Claude
+ChatGPT Projects can hold dialogue and Work chats. Work may implement, test and publish changes when its execution and GitHub tools support them. An ordinary chat without those tools cannot claim the same capabilities. The desktop app is optional for repository work; use it when a local device or installed tool is actually needed.
 
-Create one Claude Project named for the product. It contains routing instructions, not a second copy of product truth. Its instructions identify this rulebook and the private product repository.
+Codex Cloud is another execution route. Reuse the environment attached to the exact repository. Derive runtime, package manager, installation and tests from the repository; install a browser only when required. Grant only needed network destinations, repository access and secret-store entries. Sharing and caching depend on the workspace's needs and data, not a universal switch-on rule.
 
-Use the provider's current attached-repo/code environment when it can read and write the private repository reliably. If that path is unavailable, use the product's checked-out Mac folder as the working route. The route may change; GitHub does not.
+**Model constraint, checked 12 September 2026:** OpenAI's [model documentation](https://learn.chatgpt.com/docs/models#choose-a-model-for-cloud-chats) says the default model for Codex Cloud chats cannot currently be changed. Do not promise “any model,” assume the chat's selector controls delegated Cloud work, or block on making Cloud environments appear as desktop folders. For an explicitly requested Astra level, use a capable surface that actually exposes it; record a user-selected setting as user-reported unless directly verifiable. [Project documentation](https://learn.chatgpt.com/docs/projects?surface=app) describes shared Project instructions across Chat and Work, not automatic GitHub permission grants.
 
-Claude reads the live global rule first, then the product repo and open PRs. It uses the repository's actual setup/test commands and adds only permissions or secrets the task requires. A fresh Claude working session must also succeed from `build` alone.
+Keep GitHub App access selected to required repositories, with contents and PR write capability for building; no administration or branch-protection bypass. Account, workspace, ChatGPT connector and Codex installation access are distinct and must be checked where used.
 
-# Switching CTO
+### Anthropic: Claude
 
-Only one provider owns a slice at a time. The PR is the handover.
+Use the same generated routing instructions in the existing Claude Project. Choose its available coding environment or repository connector after proving capabilities. A read-only Project attachment cannot push a branch. Use an authorized local checkout only if the work or available execution route needs it. Verify provider-specific setup against current provider documentation when changing it; do not assume another provider's instructions or permissions apply.
 
-At a checkpoint, starting `build` in the other provider transfers CTO ownership. The incoming provider reads the global rule, global open PRs, product open PRs and current product truth before acting. Dhayan does not relay the previous provider's reasoning.
+### New product or additional account
 
-Do not switch providers while the outgoing provider is still modifying the same slice.
+Normalise the canonical product files, register it, install its checks, configure the selected provider's existing Project/environment and apply generated routing instructions. Do not create a duplicate because another account cannot see an existing workspace. Reconnect the correct account or use its own deliberately separate Project.
 
-# The independent reviewer
+Verify each configured route with a fresh session: identify repository and global SHA, read relevant product truth and open PRs, select the right approved slice from `build` alone, then execute its real checks and publish its authorized branch/PR. Bootstrap inspection alone must not start product work if the user asked only for setup. A second provider is an independent acceptance test, not a prerequisite to shipping with the first. Mark untested routes unverified; never claim all accounts are configured.
 
-Every product uses cold review according to `HOW-WE-BUILD.md`. A review clears only the commit it actually read; a later push requires the new head to be reviewed. Review requests are batched, never used as a polling mechanism.
+## The independent reviewer
 
-The reviewer checks the diff, tests, product truth and roadmap independently. It looks for wrong, missing, duplicated, untested or quietly expanded work and states what it did and did not check. Cross-vendor review is mandatory for the protected changes named in `HOW-WE-BUILD.md`.
+Cold review starts from the diff, tests and canonical truth before the PR's narrative. Address the CTO, state evidence, omissions and confidence. Resolve important findings in a batch, then request at most one review of that new head. Two rounds is a coordination limit, never permission to ship a known blocking bug. If the reviewer is unavailable or blocking issues remain, checkpoint and park; take independent approved work if available. No polling or repeated asks.
 
-# Context and documentation hygiene
+Prefer another provider; the operating page names changes that require one. An OpenAI builder's own audit is not independent review, and another OpenAI session does not satisfy a cross-vendor requirement. A reviewer unable to post directly may supply findings, but the lead must attribute them honestly with the exact reviewed SHA and preserve the evidence in the PR. Never manufacture a bot review or an approval.
 
-Canonical files contain **current truth, not history**. Git history preserves old truth.
+This repository's required `check` includes a **Codex review receipt**, preserving the existing GitHub gate. It recognises a submitted bot review on the exact head or the bot's known completed-comment formats with a commit identifier resolved to that full SHA. Pending/dismissed reviews and changes-requested reviews cannot clear it. API failure or ambiguous/stale commit fails closed. A receipt says a review happened, not that findings are resolved or that cross-vendor review occurred; those remain explicit merge requirements. Reaction-only responses without a verifiable commit do not clear the gate.
 
-When changing a canonical file:
+PR pushes and submitted reviews run CI. A plain issue comment does **not** trigger this workflow. After a clean completed bot comment, rerun the failed `check` workflow on that PR once using an available GitHub action. Do not repeatedly ask for another review to wake CI. The gate needs only repository and PR read permission; do not add an elevated comment-triggered workflow that executes PR code.
 
-1. find the existing owner of the subject;
-2. read enough surrounding material to understand the current rule;
-3. replace, consolidate or delete superseded wording;
-4. search other active files and code for conflicting copies;
-5. update tests where the truth is executable.
+## How a screen gets designed
 
-Small always-read instruction files carry hard size limits. Large product documents are not given arbitrary size caps; they are searched and edited at the relevant section rather than reread in full for every task.
+For materially new or reworked UI, use `design/BRIEF_TEMPLATE.md` to state the real user problem and fixed domain rules. The fresh Interaction Architect follows `design/ARCHITECT.md` and `design/SCREEN-LAW.md` with the product's constitution and design system. Reduce concepts, settle the interaction model, write the screen spec, then show phone-first real states and desktop where composition differs. Use real derived values, truthful unknown/error/empty states, accessible controls and existing approved patterns.
 
-Temporary reasoning, status and handover prose belongs in the PR and disappears when the PR closes. Do not create standalone handover, restart, review, context or status files. Historical evidence may exist where a product genuinely needs evidence, but it is excluded from normal execution context and is not rewritten as current truth.
+Dhayan accepts the visual before material UI implementation. Review against `design/REVIEW_RUBRIC.md`; a pretty mockup cannot override business truth. Routine changes to an already accepted pattern do not need another design ceremony. The implemented Playwright journey, preview and acceptance must still agree. Keep one active brief; delete it when its durable contract and decisions reach the spec. Specifications remain in the product, not global Project knowledge.
 
-# Design
+## Checks and changes to this repository
 
-Shared interaction rules live once in `design/`. A product carries only its own domain constitution, design system and screen specifications.
+Run `bash check.sh` from any directory. Python 3 and Bash are the only dependencies. It validates the fixed file tree, the 500-word operating page, the 450-word screen law, registry/template rendering and secret patterns, then runs the regression suite. It reports suspected secrets by location without printing values. Pattern checks are not a comprehensive secret audit. Local success makes no claim of independent review or provider access; CI adds the receipt check on PR events.
 
-For materially new UI: brief the real user problem, reduce concepts, settle the interaction model, create the visual, obtain Dhayan's material visual acceptance, then build it into the real product. A polished mockup never overrides business truth.
+A global change needs the Charter §13 gate or Dhayan's explicit ruling, recorded in the PR. The 12 September 2026 instruction to audit/build Juku OS and implement interchangeable CTOs and Project synchronisation authorises this bounded repair. It does not authorise weakening protected `main`, merging one's own system additions, exposing private data or bypassing review.
 
-# Changing this repository
-
-Changes use a branch and pull request against protected `main`. Before changing `HOW-WE-BUILD.md`, read it in full and replace or remove what the change supersedes.
-
-Do not answer development-system friction by creating another control plane, scheduler, memory system, agent hierarchy or instruction layer. Prefer deletion, ordinary GitHub state and deterministic checks.
-
-A fresh product session normally needs only `HOW-WE-BUILD.md` plus the relevant product files. This README is setup/reference material, not recurring build context.
+Read the canonical owner fully; replace obsolete text, search active files for contradictions, and test executable rules. Do not create another memory database, scheduler or handover file. Product-specific fixes stay in their own repositories. Open proposals are not active policy. Saved launch instructions still read merged policy, even while a routing repair is under review. After this repair, return to approved product delivery; measure released, accepted customer outcomes rather than OS maintenance. Revenue is a product result to validate, not a guarantee a rulebook can make.
