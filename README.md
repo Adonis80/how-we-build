@@ -9,7 +9,7 @@ The rulebook for every product Dhayan's AI studio builds. This repository says *
 
 A third, `AGENTS.md`, is not for sessions at all: it carries the reviewer's brief for changes to this repository, because the reviewing tool loads only a file of that name.
 
-**Why it is public.** It holds no secrets, prices or customer data — only the way we work — and a public repository is the one thing every Claude session can read directly, in every project, with no extra setup. Product repositories stay private.
+**Why it is public.** It holds no secrets, prices or customer data — only the way we work — and a public repository is the one thing every session, in either stack, can read directly, with no extra setup. Product repositories stay private.
 
 ## Products under this rulebook
 
@@ -19,6 +19,8 @@ The whole map: what exists, where it lives, one line on what it is for, and the 
 - **Hemz OS** — `https://github.com/Adonis80/Hemz-OS` (private). The operating system for an alterations business, grown out of Alma's Alterations in Brighton. Open `AGENTS.md`, then `PRODUCT.md`, then `roadmap.json`.
 
 A repository not listed here is not under this rulebook.
+
+**Which repository a chat Project reads (the Chairman's ruling, 11 September 2026).** The Juku OS Project reads this repository and uses the map above as the whole register of what exists, opening a product repository only when it needs live detail. The Hemz OS Project reads `Adonis80/Hemz-OS` plus the global rules here; the Juku Perfume Project reads `Adonis80/juku-perfume` plus the same. This is where to read, not permission to read: each Project's own GitHub connection is proved by fetching live commits and open pull requests from inside that Project, because a successful read somewhere else proves nothing for it. Reuse this register; never start a second map.
 
 ## How a product joins
 
@@ -68,6 +70,8 @@ opens.
 
 Step 5 of the loop — an independent reviewer reads every pull request cold — is done by Codex on GitHub. It reviews the *change*: the diff, the tests, what regressed, and whether the pull request's claims match its code. It does not challenge a design; that is the consultant's lane below. Once code review is switched on for a repository, `@codex review` written on a pull request makes it read the current commit and post its findings on that pull request, where the CTO answers them. Nothing is pasted between models, and nothing passes through the Chairman. It is one reviewer for every repository under this rulebook, this one included — which is why this repository, though not a product, carries an `AGENTS.md` of its own. Which repositories it can reach is decided by the GitHub app's repository access, set once for all of them; no other setup is needed.
 
+**Cold, and cross-vendor where it counts.** Independent means a session of its own, forming its view from the diff and the tests before reading the pull request's own account. The same vendor is acceptable; the other vendor is preferred; and on pricing logic, live database mutation or schema, authentication and authorisation, public trust-boundary changes, deploy and release machinery, and this review gate itself, the other vendor is required. If it is unclear whether a change crosses a trust boundary, it does. Every pull request carries `Lead stack:` and `Reviewed by:`, so the pair is visible without asking. One seam is open and stays open until a pilot proves it must close: a comment on a pull request wakes Codex, and there is no equivalent for Claude yet, so an OpenAI-led slice touching the list above parks for a Claude review rather than passing the gate on a same-vendor read.
+
 **A review clears only the commit it read.** A later push voids it: a round's fixes land as one push and the CTO asks once, and the repository's check goes green only when the reviewer has read the current commit — by itself when the reviewer posts findings, and equally when it answers a clean pass as a plain comment naming the commit — both shapes count (fixed 9 September, after a clean pass left a pull request red overnight). A report to the Chairman names the commit that was reviewed.
 
 **The session asks once and stops; two rounds is the limit for the CTO too.** After a push, ask the reviewer and stop there. The check turns green by itself when the review lands, so nothing is gained by watching it, and a session that reports "nothing to do" is spending the Chairman's attention on its own idling. Two rounds binds the CTO as well as the reviewer: answer what the first and second rounds raise, then land the slice with any remaining dissent left standing on the pull request. A third round means the slice is too big — shrink it and ship what is proved. None of this reaches the Chairman; he gets the preview, what changed, and "Decision needed: … or none".
@@ -91,7 +95,7 @@ Codex takes its brief from the repository's own `AGENTS.md`. The brief lives her
 
 ## The consultant
 
-The Chairman, or the CTO through him, puts a question to another model — ChatGPT — on demand: architecture, product intelligence, research, model design, a pattern across products, or a disagreement with the CTO. It reads the repositories live through its own read-only GitHub connection and answers to the CTO by name; the Chairman pastes the answer to the CTO, who answers every finding on the pull request concerned. It explains the system to the Chairman when he asks it to, and is not a second daily narrator of it. Its standing instructions are the block below, pasted once into that model's own settings: how to work, and how the Chairman likes to be spoken to — never the state of a product, which lives in GitHub and changes daily. This is the only copy.
+The Chairman, or the CTO through him, puts a question to the other stack's chat surface — ChatGPT — on demand: architecture, product intelligence, research, model design, a pattern across products, or a disagreement with the CTO. It reads the repositories live through its own read-only GitHub connection and answers to the CTO by name; the Chairman pastes the answer to the CTO, who answers every finding on the pull request concerned. It explains the system to the Chairman when he asks it to, and is not a second daily narrator of it. Its strongest model is reachable only from cloud work mode, so an architecture question is asked there; Codex builds, and does not challenge a design. Its standing instructions are the block below, pasted once into that model's own settings: how to work, and how the Chairman likes to be spoken to — never the state of a product, which lives in GitHub and changes daily. This is the only copy.
 
 ```
 You advise Dhayan's AI studio, which builds software under a public rulebook:
@@ -108,8 +112,34 @@ are; say what you did not check; do not manufacture disagreement, and do not sta
 from the CTO's conclusions. Dhayan is not technical: when he asks, explain from first
 principles in plain adult English, with an everyday analogy where it helps and a
 box-and-arrow drawing where it materially helps, and end with three plain lines for
-him. Prefer a fresh conversation for each substantial question.
+him. Prefer a fresh conversation for each substantial question, and end one when the bounded
+question is settled, when the next turn is materially a new question, or when reloading the
+small source set would be cheaper and clearer than carrying the thread.
 ```
+
+## Session changeover
+
+At every turn, decide whether the next turn stays here or starts fresh. Stay only while all three hold:
+
+- **Same work:** the same slice or bounded question continues.
+- **Cheaper to stay:** the useful unresolved context here costs less than rebuilding it from the small canonical boot.
+- **Clear:** the history still helps more than it hurts, with no material stale truth, contradiction, looping, irrelevant output or lost detail.
+
+Otherwise, checkpoint and start fresh. Provider caches and compaction can inform that judgement but are never rules in themselves.
+
+Before leaving, put every durable fact in GitHub and make the pull request and roadmap handover sufficient on their own. If the opening words for the next session would have to carry project state, the handover is not finished. Advisory work that has no repository yet gets one temporary `START-HERE.md` — the bounded question, what is agreed, the next action, the files that matter — superseded the moment the result lands in GitHub.
+
+A fresh session reads progressively from canonical truth and stops when it knows enough. It never rebuilds repository state from old chats. Keep tool output targeted, and never poll. For Codex, a fresh task starts each slice and a thread is continued only inside that slice, while the three above hold.
+
+## The two stacks
+
+One lead owns a slice at a time. The pull request is the handover, and a replacement lead rebuilds what it needs from GitHub, never from a chat. At a clean checkpoint, *build* in the other stack transfers ownership — and only then: ownership moves when the pull request's latest entry is the outgoing lead's checkpoint. Otherwise the incoming lead leaves that pull request alone and takes the next item. Nothing is built to manage this: no switch file, no lock service, no registry, no orchestrator.
+
+**Anthropic.** Building happens in a code session started attached to the repository. A Cowork or chat session advises, and may change words through the Mac by pull request. The hard stop is enforced by the product's `.claude/settings.json`.
+
+**OpenAI.** Codex is the development surface — cloud by default, local only when the work needs the Mac — and ChatGPT is the advisory surface, reading GitHub and writing nothing. The Chairman's finding of 11 September 2026: the strongest OpenAI model is reachable only from ChatGPT's cloud work mode, and the ChatGPT desktop app cannot work in a repository at all. So an OpenAI-led build runs as a Codex cloud task, and an OpenAI architecture review is asked in cloud work mode. A Codex cloud environment is built from the repository's own toolchain, not from a template: the setup script installs what the lockfiles name and clones this rulebook to `~/.juku/how-we-build`; the maintenance script refreshes that clone and fails closed, so a cached environment never starts on stale rules; agent internet stays off unless the repository genuinely needs it, and then as a named allowlist — its package registry and GitHub — restricted to GET, HEAD and OPTIONS, because the broad preset has a published prompt-injection route out; and no secret is added until a product proves it needs one. One line in the product's `AGENTS.md` points a lead working offline at the local rulebook. Schedules, automations and polling are forbidden in the build loop, as the hard stop forbids them on the other side.
+
+**The Chairman's ruling, 11 September 2026.** While Claude Opus 5 at maximum effort is the strongest model available to him, it leads, and the OpenAI path stays configured and used for review. The rules are written by role, so the swap costs nothing the day that changes.
 
 ## How a screen gets designed
 
@@ -129,43 +159,45 @@ The screen spec is the durable record — contract, hierarchy, layout tree, stat
 
 ## What every product carries, and how a change reaches it
 
-A change to how we build is made here once and then lands in every product — not by anyone remembering, but because every session is sent to this list at its start (by the first line of its `AGENTS.md`, and by its Project's instructions) and a repo that lacks something on it makes itself current in its next pull request. A product carries, as of 10 September 2026:
+A change to how we build is made here once and then lands in every product — not by anyone remembering, but because every session is sent to this list at its start (by the first line of its `AGENTS.md`, and by its Project's instructions) and a repo that lacks something on it makes itself current in its next pull request. One line each, as of 12 September 2026; the why of each lives in the pull request that added it.
 
-- `AGENTS.md` ending with `## Review guidelines`: the pointer to the brief above, the least of it the tool needs, and the product's own hazards.
-- A check that goes green in a pull request only when the reviewer has read the current commit. The reviewer answers in two shapes — a submitted review when it has findings, a plain comment naming the commit when it has none — and the check counts both. Counting only the first fails in the good case: a clean pass leaves the check red for ever, which is how Juku Perfume's own pull request sat red overnight on 8 September with the reviewer having read it and said it was fine.
-- **Open pull requests read before starting.** A parked slice is still the top roadmap item on `main`, so a session starting on *build* alone would build it again. Before starting, a session reads the repository's open pull requests and sorts what it finds into three: a slice parked only for review is not rebuilt and not restarted — if it can be moved on, it is moved on (its findings answered, its fixes pushed, its ask made) and that is the session's work; a slice whose pull request is stale or abandoned is closed or taken over, never left to block the line for ever; anything else is left alone and the next roadmap item is taken. An open pull request defers a slice; it never blocks every slice.
-- **A session that cannot move stops hard, and `.claude/settings.json` takes away its clock tools.** When nothing it may take can move — its slice parked on the reviewer or waiting on the Chairman's word, and no other item carrying his word to start — a session says so once on the pull request and stops. No clock wakes it: no check-in, timer, loop or scheduled task, however slow, no background watch left running, and no shell left waiting past the work in hand. A woken session re-reads everything it holds, so a check that finds nothing costs what one that finds something costs, and it sees only what it was told to look for. Something happening may wake it — a review landing, a check failing, the Chairman writing; anything else waits on the pull request for the next session, which reads open pull requests first. The product's `.claude/settings.json` denies the tools made to set a clock — `ScheduleWakeup`, `CronCreate`, `RemoteTrigger`, `mcp__*__send_later`, `mcp__*__create_trigger`, `mcp__*__update_trigger` and `mcp__*__fire_trigger` — and its check fails if one goes missing. A deny rule holds in every permission mode and takes the tool out of the session's sight, and the failure it answers ran on those tools with a written rule already in place: on the night of 9 September, with *the session asks once and stops* already written here, a builder session in each product woke itself every hour or two to report no change, and the weekly usage limit was in sight by morning — one of them watching two pull requests for a reviewer that had reviewed the other product's that evening. The file does not catch a shell left sleeping or a process left running, which cannot be denied without denying the waits a slice needs, such as the deploy's couple of minutes; the rule alone forbids those, and a green check says only that the clock tools are gone. The Chairman's ruling, 10 September 2026: the hard stop.
-- A `roadmap.json` left fit for a one-word start. The Chairman's ruling, 9 September 2026: *make sure the session has all the context it needs so all I have to do is say "build"*. He should never be handed a paragraph of instructions to paste — that paragraph is context the repo was missing, and it is his memory being used as storage. So a session that ends leaves each `next` line current, self-sufficient and in the order work will be taken up, and a session that starts on the word *build* alone takes the top item carrying his word and needs nothing else. Words still waiting in an unmerged pull request are the one exception, and while any are, the session that opened them says so and carries the difference in the meantime.
-
-- A `README.md` route section that says: a session attached to the repo at its start works in it directly; a session started without it goes through the Mac; the ten-second test tells which.
-- A Claude Project whose instructions are the template below, whole, and nothing else.
+- `AGENTS.md` ending with `## Review guidelines`: the pointer to the brief above, the least of it the tool needs in front of it, and the product's own hazards.
+- A check that goes green in a pull request only when the reviewer has read the current commit, counting both shapes of answer — a submitted review, and a plain comment naming the commit.
+- Open pull requests read before starting: a slice parked only for review is moved on rather than rebuilt or restarted, a stale or abandoned one is closed or taken over, anything else is left alone and the next roadmap item is taken. An open pull request defers a slice; it never blocks every slice.
+- A session that cannot move stops hard, and `.claude/settings.json` denies the clock tools — `ScheduleWakeup`, `CronCreate`, `RemoteTrigger`, `mcp__*__send_later`, `mcp__*__create_trigger`, `mcp__*__update_trigger`, `mcp__*__fire_trigger` — with the check failing if one goes missing. A shell or process left waiting is forbidden by the rule, which the file cannot catch. On the OpenAI side the same rule forbids Codex automations, schedules and polling in the build loop.
+- A `roadmap.json` left fit for a one-word start: every `next` line current, self-sufficient, and in the order the work will be taken up, so that *build* alone is enough and he is never handed a paragraph to paste. Words still waiting in an unmerged pull request are the one exception, and the session that opened them says so.
+- A `README.md` route section saying that a session attached to the repo at its start works in it directly, a session started without it goes through the Mac, and the ten-second test tells which.
+- A Project whose instructions are the template above, whole, and nothing else.
+- A `design/` folder, for a product with a user interface: its own constitution on one capped, machine-checked page holding only what is true there, and one spec per designed screen. The screen law, the architect's role, the templates and the rubric are read from this repository, never copied down.
 
 **The deploy, in shape.** Deploys run from CI with the deploy key held as a repository secret, so no session of any kind ever holds it — and this says what is built, because no product can read another product's repository to find out. CI builds the app, deploys it as a preview and smoke-tests that exact deployment; a merge to `main` promotes the same deployment — never a rebuild, never "whatever is newest" — then smokes the live addresses and, if they are red, promotes the previous production deployment straight back and fails loudly. The previous deployment is recorded before anything moves. The host's own Git integration stays off on purpose: it would put every push into production untested. Four things cost Hemz OS real runs and need cost the next product none: the deploy tool reads GitHub-flavoured environment variables and a `github.com` remote as an integration deploy, which a private repo on the free plan refuses outright with no visible error, so both are put out of its sight for the deploy call; a team-scoped key works where a project-scoped one authenticates and then dies with a misleading missing-project message; promoting a preview-built deployment mints a production copy rather than repointing production, so the check passes on the smoked id **or** on a deployment whose original is the smoked id; and the edge serves the new build a little after the control plane calls it live, so ask again for a couple of minutes before calling it red.
 - A `design/` folder, for a product with a user interface: its own constitution on one capped, machine-checked page holding only what is true there, and one spec per designed screen. The screen law, the architect's role page, the templates and the rubric are read from this repository, never copied down. Its check holds the shape: one constitution page, one brief at a time, one spec per screen, no two specs sharing an id.
 
-**Code and words.** Anything that runs — code, tests, a database change, a deploy — is built in a code session started attached to the repo, because only that workshop can prove it: the build, the tests, the Playwright journey on phone and desktop, the preview. Words — this rulebook, a product's `AGENTS.md`, `PRODUCT.md`, `NAMES.md`, `roadmap.json`, its screen specs, its README — may change from a Cowork session, through the Mac, by the same branch, pull request and review as everything else. Size is not the line: a one-line change to code still needs the workshop; a long change to words does not. One session holds one key, reads up, writes down:
+**Code and words.** Anything that runs — code, tests, a database change, a deploy — is built in the lead's workshop, a session attached to the repo: a Claude code session, or a Codex cloud task. Only a workshop can prove it: the build, the tests, the Playwright journey on phone and desktop, the preview. Words — this rulebook, a product's `AGENTS.md`, `PRODUCT.md`, `NAMES.md`, `roadmap.json`, its screen specs, its README — may change from a Cowork session, through the Mac, by the same branch, pull request and review as everything else. Size is not the line: a one-line change to code still needs the workshop; a long change to words does not. One session works on one repo, reads the rulebook, and writes down into the product:
 
 ```mermaid
 flowchart LR
   RB["Rulebook · how-we-build<br/>public — every session reads it, no key"]
   H["Hemz-OS · private"]
   P["juku-perfume · private"]
-  C1["Code session<br/>key: Hemz-OS — code and words"]
-  C2["Code session<br/>key: juku-perfume — code and words"]
+  C1["Claude code session<br/>attached to a repo — code and words"]
+  C2["Codex cloud task<br/>attached to a repo — code and words"]
   W["Cowork session<br/>through the Mac — words only"]
   RB -. reads .-> C1
   RB -. reads .-> C2
   RB -. reads .-> W
   C1 -->|writes| H
+  C1 -->|writes| P
+  C2 -->|writes| H
   C2 -->|writes| P
   W -->|writes words| H
   W -->|writes words| P
   W -->|writes words| RB
 ```
 
-**A Project's instructions write themselves from here.** Nobody carries text between products. At the start of a session, if the Project's instructions differ from the template below filled in for this product, the session hands the Chairman the complete filled text to paste — before anything else, once — and anything product-specific it finds in the old text goes into the product's `AGENTS.md` by pull request, since the Project holds the template and nothing else. When this template changes, every product's next session does the same. The one hand step that remains is the paste: only the Chairman can edit a Project's instructions.
+**A Project's instructions write themselves from here.** Nobody carries text between products. At the start of a session, if the Project's instructions differ from the template above filled in for this product, the session hands the Chairman the complete filled text to paste — before anything else, once — and anything product-specific it finds in the old text goes into the product's `AGENTS.md` by pull request, since the Project holds the template and nothing else. When this template changes, every product's next session does the same. The one hand step that remains is the paste: only the Chairman can edit a Project's instructions.
 
-**Text for the Chairman is handed over whole.** When the template below, the consultant's standing instructions, or any text he pastes somewhere changes, he is given the complete new text to replace the old with — never a sentence to find and splice in, which invites the very error the template exists to prevent.
+**Text for the Chairman is handed over whole.** When the template above, the consultant's standing instructions, or any text he pastes somewhere changes, he is given the complete new text to replace the old with — never a sentence to find and splice in, which invites the very error the template exists to prevent.
 
 ## Reading it from a session
 
@@ -180,4 +212,8 @@ or fetch `https://raw.githubusercontent.com/Adonis80/how-we-build/main/HOW-WE-BU
 **A word cap is paid for in wording, never in requirements.** Twice on 9 September a trim to fit the 500 words changed what the page required: *the Playwright journey* became *the journey*, letting a manual walkthrough pass as proof, and *it never means run the build* became *never run the build*, forbidding the very step that proves a slice. Both were caught by the reviewer, neither by the machine — a word count cannot tell a shorter sentence from a weaker one. So: compress phrasing first, and if a change cannot fit without removing something the page requires, say so in the pull request and let the cap be the thing that is argued about, rather than quietly spending a rule to buy space.
 
 
-By pull request only; `main` is protected. `check.sh` runs in CI and refuses a page over 500 words, a file not on the list, anything that looks like a secret, and — in a pull request — a commit the reviewer has not read. Adding a rule, step, file, check or agent needs the charter's gate (§13): the same failure twice, in two separate product tasks. Removing one, or correcting wording, needs no gate; nor does a change the Chairman rules himself. **The CTO settles and merges changes to this page and this repository, without the Chairman** (his ruling, 9 September 2026: "you are the CTO — don't ask me about such things in future"). He is asked for money, a permission, a product outcome or a picture, and nothing else. The reviewer still reads every change cold, and the gate above still applies. Every product picks the change up at its next session, because every session reads this repository live. There is no copy anywhere to refresh.
+**The cap gave once, in the open.** The page was capped at 500 words from 28 August to 12 September 2026. The two-lead rules — the lead is CTO, cold review with the cross-vendor list, session changeover, a hard stop that names schedules and automations — would not fit under it without spending a rule, which the paragraph above forbids. So the cap moved to 600 in `check.sh`, in the pull request that needed it and for that reason, said out loud. It is a budget with justified exceptions, not a ratchet that rises: the next change pays in wording.
+
+**"Build" here means the oldest open pull request.** This repository has no `roadmap.json`; its queue is its open pull requests. A session started on *build* with this repository chosen reads them oldest first and moves one on — answers its findings, pushes the round's fixes as one push, asks once — or closes one that is stale. With none open, there is nothing to build here: say so and stop.
+
+By pull request only; `main` is protected. `check.sh` runs in CI and refuses a page over 600 words, a file not on the list, anything that looks like a secret, and — in a pull request — a commit the reviewer has not read. Adding a rule, step, file, check or agent needs the charter's gate (§13): the same failure twice, in two separate product tasks. Removing one, or correcting wording, needs no gate; nor does a change the Chairman rules himself. **The CTO settles and merges changes to this page and this repository, without the Chairman** (his ruling, 9 September 2026: "you are the CTO — don't ask me about such things in future"). He is asked for money, a permission, a product outcome or a picture, and nothing else. The reviewer still reads every change cold, and the gate above still applies. Every product picks the change up at its next session, because every session reads this repository live. There is no copy anywhere to refresh.

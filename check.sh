@@ -13,12 +13,16 @@ fail=0
 # a session's machine and failed in CI. On 7 September 2026 that cost a build
 # in the Alma repo, whose identical guard was fixed the same way. A cap must
 # mean one thing wherever it is measured.
+# The cap was 500 from 28 August to 12 September 2026, when the two-lead rules
+# could not fit under it without spending a rule the page requires. It moved to
+# 600 in the pull request that needed it, for that stated reason. A budget with
+# justified exceptions, not a ratchet: the next change pays in wording.
 words=$(python3 -c 'import sys; print(len(open(sys.argv[1],encoding="utf-8").read().split()))' HOW-WE-BUILD.md)
-if [ "$words" -gt 500 ]; then
-  echo "FAIL: HOW-WE-BUILD.md is $words words; the cap is 500."
+if [ "$words" -gt 600 ]; then
+  echo "FAIL: HOW-WE-BUILD.md is $words words; the cap is 600."
   fail=1
 else
-  echo "ok: HOW-WE-BUILD.md is $words words (cap 500)"
+  echo "ok: HOW-WE-BUILD.md is $words words (cap 600)"
 fi
 
 # 2. Only these files exist at the root (plus .git and .github).
