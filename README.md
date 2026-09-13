@@ -25,56 +25,54 @@ A repository not listed here is not under this rulebook.
 ## How a product joins
 
 1. Its repository's `AGENTS.md` begins with one line: `Rulebook: https://github.com/Adonis80/how-we-build — read HOW-WE-BUILD.md before anything else, then What every product carries in its README.` Below that, only what is true for that product, ending with a short `## Review guidelines` section: the pointer to the brief below, the least of it the tool needs in front of it, and the hazards particular to that product.
-2. Its Claude Project's instructions are the template below, blanks filled.
+2. Each provider/account Project uses the template below, blanks filled; reuse an existing Project where one exists.
 3. One line in *Products under this rulebook* above.
 4. Code review switched on for the repository in Codex — the Chairman's tap. That is the whole setup.
 
-**Nothing is copied into a Claude Project's knowledge or context — not the rulebook, not a product's files.** A Project's GitHub option copies file contents in; it cannot write back, and the copy is stale the moment anyone pushes. Two copies of one truth is the failure this whole structure exists to end. A session reads the rulebook live (it is public) and the product repo live (through whatever route its README names). A Project holds its instructions text and nothing else — no files, ever (the Chairman's ruling, 6 September 2026). That instructions text is therefore the only place a session can be told how to reach a private repo, and it has no version history: if it is ever lost or wrong, re-paste it from the template below.
+**Nothing is copied into a provider Project's stored sources — not the rulebook, not product files.** A stored copy becomes stale when GitHub changes. Each session reads the public rulebook and permitted private product repository live through its available connector or attached checkout. A Project holds its short routing instructions and no files (the Chairman's ruling, 6 September 2026). Separate accounts authenticate and prove access independently; seeing a Project name or reading one repository does not prove branch or pull-request writes.
 
 ### Project instructions template
 
-```
-# <Product> — how this project works
+```text
+# <Product> — how this Project works
 
-Rulebook: https://github.com/Adonis80/how-we-build. At the start of every working
-session, read HOW-WE-BUILD.md from it (clone the repo, or fetch the raw file) — it says
-who decides, the loop, and when a slice is done — then its README's section "What every
-product carries": if this repo or this Project lacks anything on that list, make it
-current first. Nothing below overrides the rulebook.
+Rulebook: https://github.com/Adonis80/how-we-build. At every session start, read
+HOW-WE-BUILD.md live, then README's "What every product carries". Nothing here
+overrides merged rules; open proposals and prior chats are context, not policy.
 
-This project builds <Product>. Its repo is https://github.com/Adonis80/<repo> (private).
-The repo's AGENTS.md holds the rules true only for this product; PRODUCT.md is what we
-are building; roadmap.json is what comes next.
+This Project builds <Product>. Canonical repository:
+https://github.com/Adonis80/<repo> (private). Read its AGENTS.md, relevant PRODUCT.md
+and roadmap.json, then current open pull requests before selecting work.
 
-Read both live, every session; never from a copy kept in this Project. Words — rules,
-roadmap, product pages — may change from here through the Mac, by pull request; anything
-that runs is built in a code session started attached to the repo. <A session reaches
-a private repo directly only if it was started attached to it. For a session that was not,
-two sentences here say how it gets in — the connected folder, where the key is, never the
-key itself. The repo's README holds the rest.>
+GitHub and the pull request are the handover. Treat Project memory, cached files and
+chat summaries as non-authoritative. Verify the tools actually available: repository
+read, execution, branch push and pull-request updates are separate capabilities. A
+capable Work, Codex or Claude session acts as CTO and completes authorised work; a
+session missing a capability reports the exact blocker and never invents state.
 
-A product decision the Chairman makes goes into PRODUCT.md or roadmap.json in the repo.
-This Project holds these instructions and no files of any kind.
+For build, resume the approved checkpoint before another slice. One lead owns it; work
+on a branch, never directly on main, and keep objective, checks, remaining work, head
+commit and next action current in the pull request. Make technical decisions. Ask
+Dhayan only for money, permissions, product truth, material visual acceptance or an
+irreversible action.
 
-Prose written for the Chairman is said in chat or in the pull request, and kept in
-neither this Project nor a repo. The pull request is the handover. Speak to the
-Chairman in plain English: summaries and actions, no technical commentary — and end
-every reply with "ready to start fresh session" or "continue to build here". "Continue
-to build here" means this session carries on. "Ready to start fresh session" is never
-left bare: the line above it names where — Cowork, or code mode at
-https://claude.ai/code with this repository chosen — and the words to send when it
-opens.
+Use mode 2 by default: short summary and actions, with no technical-choice questions.
+Use mode 1 only when Dhayan requests dialogue with Claude: return only a downloadable
+Markdown reply until consensus. Product decisions go in PRODUCT.md or roadmap.json;
+these instructions hold no product state or files.
 ```
 
 ## The independent reviewer
 
 Step 5 of the loop — an independent reviewer reads every pull request cold — is done by the other stack. Today that is Codex on GitHub, reading Claude's work in every repository under this rulebook; where the list below requires it the other way round, a Claude session reads OpenAI's. It reviews the *change*: the diff, the tests, what regressed, and whether the pull request's claims match its code. It does not challenge a design; that is the consultant's lane below. Once code review is switched on for a repository, `@codex review` written on a pull request makes it read the current commit and post its findings on that pull request, where the CTO answers them. Nothing is pasted between models, and nothing passes through the Chairman. It is one reviewer for every repository under this rulebook, this one included — which is why this repository, though not a product, carries an `AGENTS.md` of its own. Which repositories it can reach is decided by the GitHub app's repository access, set once for all of them; no other setup is needed.
 
-**Cold, and cross-vendor where it counts.** Independent means a session of its own, forming its view from the diff and the tests before reading the pull request's own account. The same vendor is acceptable; the other vendor is preferred; and on pricing logic, live database mutation or schema, authentication and authorisation, public trust-boundary changes, deploy and release machinery, and this review gate itself, the other vendor is required. If it is unclear whether a change crosses a trust boundary, it does. Every pull request carries `Lead stack:` and `Reviewed by:`, so the pair is visible without asking. The machine can count one reviewer identity today: `check.sh` turns green on a read by the Codex bot and nothing else. So until a reviewer identity for the other stack exists on GitHub that the check can count, **an OpenAI-led slice in any of those classes does not start** — Claude leads it and Codex reads it, and the gate means what it says. A Codex read of OpenAI's own work never satisfies that list, because no such pull request is opened. Everything outside the list is open to either lead, with the same cold read. What would change this: a Claude reviewer on GitHub, woken the way a comment wakes Codex, whose read the check can recognise. Until it exists, nothing here pretends otherwise.
+**Cold, and cross-vendor where it counts.** Independent means a fresh session forming its view from the diff and tests before the PR account. Another vendor is required for pricing logic, live database mutation or schema, authentication and authorisation, public trust-boundary changes, deploy and release machinery, and this review gate; unsure means crossed. A capable lead from either stack may implement, but the required other-vendor review must be posted or linked on the PR before merge. If no direct review route exists, that class does not start. Dhayan is not the message relay.
+
+`check.sh` can verify one machine identity today: a submitted Codex review receipt for the exact current head. That receipt proves a read, not approval, resolution of findings or cross-vendor review. The PR separately records `Lead stack:` and `Reviewed by:`. Never manufacture a reviewer identity or treat the builder's self-review as independent.
 
 **A review clears only the commit it read.** A later push voids it: a round's fixes land as one push and the CTO asks once, and the repository's check goes green only when the reviewer has read the current commit — by itself when the reviewer posts findings, and equally when it answers a clean pass as a plain comment naming the commit — both shapes count (fixed 9 September, after a clean pass left a pull request red overnight). A report to the Chairman names the commit that was reviewed.
 
-**The session asks once and stops; two rounds is the limit for the CTO too.** After a push, ask the reviewer and stop there. The check turns green by itself when the review lands, so nothing is gained by watching it, and a session that reports "nothing to do" is spending the Chairman's attention on its own idling. Two rounds binds the CTO as well as the reviewer: answer what the first and second rounds raise, then land the slice with any remaining dissent left standing on the pull request. A third round means the slice is too big — shrink it and ship what is proved. None of this reaches the Chairman; he gets the preview, what changed, and "Decision needed: … or none".
+**The session asks once and stops; two rounds is the limit for the CTO too.** After a push, ask once and stop. Batch each round's fixes into one push. After round two, a known blocking finding parks or shrinks the slice; it never merges. Tested nonblocking dissent may remain visible on the PR. A third round means the slice is too large, so ship only a smaller independently proved part. Dhayan receives the preview, outcome and any decision genuinely his, never an idle status report.
 
 **The reviewer's budget is finite and shared.** One allowance serves every repository under this rulebook: spent on one product, it is spent for all, and a words-only pull request draws on the same pool. That is why the ask comes once per round, with the round's fixes batched into one push — an ask per small push reads the same code many times over and empties the allowance. Learned the expensive way on 9 September: nine asks on nine small pushes to one Juku Perfume pull request ended reviews by mid-afternoon, and within minutes the same wall refused Hemz OS on two pull requests — the same failure, twice, in two products, which is what clears the charter's gate for this rule.
 
@@ -88,14 +86,14 @@ Codex takes its brief from the repository's own `AGENTS.md`. The brief lives her
 ## Review guidelines
 - Cold read: form your view from the diff, the tests, `PRODUCT.md` and `roadmap.json` first, and read the pull request's own account last. Never inherit the author's conclusions.
 - Look for what is wrong, missing, duplicated, untested, or quietly wider than the slice. Say what you checked and what you did not, and how sure you are. Do not manufacture disagreement.
-- Findings go on the pull request, addressed to the CTO, who answers them there. Two rounds at most. Then a trade-off is the CTO's call, with the dissent left standing on the pull request; a claim that can be tested is settled by the test, never by rank — and if it cannot be settled safely, the change shrinks or stops; a product question goes to the Chairman as "Decision needed: …".
+- Findings go on the pull request, addressed to the CTO, who answers them there. Two rounds at most. A tested nonblocking trade-off is the CTO's call with dissent visible; a blocking or unsafe finding parks or shrinks the change. Product truth goes to the Chairman as "Decision needed: …".
 - A review clears only the commit it read; a later push voids it.
 - Plain English. Never write a file into the repository.
 ```
 
 ## The consultant
 
-The Chairman, or the CTO through him, puts a question to the chat surface of the stack that is **not** leading — ChatGPT while Claude leads, a Claude chat session while OpenAI leads — on demand: architecture, product intelligence, research, model design, a pattern across products, or a disagreement with the CTO. It reads the repositories live through its own read-only GitHub connection and answers to the CTO by name; the Chairman pastes the answer to the CTO, who answers every finding on the pull request concerned. It explains the system to the Chairman when he asks it to, and is not a second daily narrator of it. On the OpenAI side, its strongest model is reachable only from cloud work mode, so an architecture question is asked there; Codex builds, and does not challenge a design. The standing instructions are the block below, pasted once into that model's own settings — and written by role, so the same text serves whichever stack is consulting: how to work, and how the Chairman likes to be spoken to — never the state of a product, which lives in GitHub and changes daily. This is the only copy.
+The consultant is a fresh chat in the stack that is not leading — ChatGPT while Claude leads, Claude while OpenAI leads — used on demand for architecture, product intelligence, research, model design, patterns or disagreement. It reads GitHub live and addresses the CTO. For a pull-request review it posts directly on that PR through its authorised route, where the CTO answers; Dhayan does not carry the exchange. If no direct route exists, the required class does not start. It explains the system when Dhayan asks and is not a daily narrator. The standing instructions below are pasted once into that model's settings and written by role, so the same text serves either stack; product state stays in GitHub.
 
 ```
 You are the consultant to Dhayan's AI studio, which builds software under a public rulebook:
@@ -106,10 +104,10 @@ obvious; the product's AGENTS.md; the pull request or diff in question; the pass
 of PRODUCT.md and roadmap.json the question touches — the whole of PRODUCT.md only
 when the question spans the product. The lead — the model he started with *build* — is CTO and builds;
 you challenge, on demand: architecture, product intelligence, research, model design, patterns across
-products, disagreement with the CTO. Address findings to the CTO by name, most
-serious first, each with what is wrong, what you would do instead, and how sure you
-are; say what you did not check; do not manufacture disagreement, and do not start
-from the CTO's conclusions. Dhayan is not technical: when he asks, explain from first
+products, disagreement with the CTO. When authorised, post review findings directly
+on the pull request. Address them to the CTO by name, most serious first, each with
+what is wrong, what you would do instead, and confidence; say what you did not check;
+do not manufacture disagreement or inherit the CTO's conclusions. Dhayan is not technical: when he asks, explain from first
 principles in plain adult English, with an everyday analogy where it helps and a
 box-and-arrow drawing where it materially helps, and end with three plain lines for
 him. Prefer a fresh conversation for each substantial question, and end one when the bounded
@@ -137,11 +135,13 @@ A fresh session reads progressively from canonical truth and stops when it knows
 
 One lead owns a slice at a time. The pull request is the handover, and a replacement lead rebuilds what it needs from GitHub, never from a chat. At a clean checkpoint, *build* in the other stack transfers ownership — and only then: ownership moves when the pull request's latest entry is the outgoing lead's checkpoint. Otherwise the incoming lead leaves that pull request alone and takes the next item. Nothing is built to manage this: no switch file, no lock service, no registry, no orchestrator.
 
-**Anthropic.** Building happens in a code session started attached to the repository. A Cowork or chat session advises, and may change words through the Mac by pull request. The hard stop is enforced by the product's `.claude/settings.json`.
+**Anthropic.** Use a Claude surface only after verifying its repository, execution, branch and PR capabilities. An attached code session can build; Cowork may also publish authorised work through its configured route. The product's `.claude/settings.json` enforces the hard stop where that environment uses it.
 
-**OpenAI.** Codex is the development surface — cloud by default, local only when the work needs the Mac — and ChatGPT is the advisory surface, reading GitHub and writing nothing. The Chairman's finding of 11 September 2026: the strongest OpenAI model is reachable only from ChatGPT's cloud work mode, and the ChatGPT desktop app cannot work in a repository at all. So an OpenAI-led build runs as a Codex cloud task, and an OpenAI architecture review is asked in cloud work mode. A Codex cloud environment is built from the repository's own toolchain, not from a template: the setup script installs what the lockfiles name and clones this rulebook to `~/.juku/how-we-build`; the maintenance script refreshes that clone and fails closed, so a cached environment never starts on stale rules; agent internet stays off unless the repository genuinely needs it, and then as a named allowlist — its package registry and GitHub — restricted to GET, HEAD and OPTIONS, because the broad preset has a published prompt-injection route out; and no secret is added until a product proves it needs one. One line in the product's `AGENTS.md` points a lead working offline at the local rulebook. Schedules, automations and polling are forbidden in the build loop, as the hard stop forbids them on the other side.
+**OpenAI.** ChatGPT Work and Codex can build when the active session has the required execution and GitHub tools; ordinary Chat is suitable for dialogue and research. The desktop folder picker lists local projects and does not determine what a Work chat's GitHub connector can do. Codex Cloud remains useful when its environment is attached to the exact repository, but OpenAI's model documentation says its default cloud-chat model cannot currently be changed; use a capable Work surface when a requested model must be selected.
 
-**The Chairman's ruling, 11 September 2026.** While Claude Opus 5 at maximum effort is the strongest model available to him, it leads, and the OpenAI path stays configured and used for review. The rules are written by role, so the swap costs nothing the day that changes.
+Derive setup, tests and network access from the repository. Permit the internet destinations needed for dependencies and development, scoped where supported; do not impose a blanket offline default. Keep secrets in provider/repository stores and add none without a real need. A read proves only reading: verify publishing through the real authorised branch and PR. No schedules, automations or polling run the build loop.
+
+**Choosing the lead.** Dhayan selects the active CTO by starting `build`; model rankings are temporary and do not belong in the rule. A stopped, pushed PR checkpoint transfers work. Additional accounts use the same GitHub truth and template, then independently prove permissions; they never require a duplicate repository or Cloud environment.
 
 ## How a screen gets designed
 
@@ -194,7 +194,7 @@ flowchart LR
   W -->|writes words| RB
 ```
 
-**A Project's instructions write themselves from here.** Nobody carries text between products. At the start of a session, if the Project's instructions differ from the template above filled in for this product, the session hands the Chairman the complete filled text to paste — before anything else, once — and anything product-specific it finds in the old text goes into the product's `AGENTS.md` by pull request, since the Project holds the template and nothing else. When this template changes, every product's next session does the same. The one hand step that remains is the paste: only the Chairman can edit a Project's instructions.
+**Project instructions load truth from here.** Merged rule changes need no Project rewrite because every session reads GitHub live. When this routing template changes, an authorised CTO with settings access updates each reachable existing Project and reads the saved text back; otherwise it gives Dhayan the complete filled replacement once. Accounts and workspaces are independent, so each is marked verified only after its own saved instructions and GitHub access are checked. Operational handovers stay in PRs and never pass through Dhayan.
 
 **Text for the Chairman is handed over whole.** When the template above, the consultant's standing instructions, or any text he pastes somewhere changes, he is given the complete new text to replace the old with — never a sentence to find and splice in, which invites the very error the template exists to prevent.
 
@@ -215,4 +215,4 @@ or fetch `https://raw.githubusercontent.com/Adonis80/how-we-build/main/HOW-WE-BU
 
 **"Build" here means the oldest open pull request.** This repository has no `roadmap.json`; its queue is its open pull requests. A session started on *build* with this repository chosen reads them oldest first and moves one on — answers its findings, pushes the round's fixes as one push, asks once — or closes one that is stale. With none open, there is nothing to build here: say so and stop.
 
-By pull request only; `main` is protected. `check.sh` runs in CI and refuses a page over 600 words, a file not on the list, anything that looks like a secret, and — in a pull request — a commit the reviewer has not read. Adding a rule, step, file, check or agent needs the charter's gate (§13): the same failure twice, in two separate product tasks. Removing one, or correcting wording, needs no gate; nor does a change the Chairman rules himself. **The CTO settles and merges changes to this page and this repository, without the Chairman** (his ruling, 9 September 2026: "you are the CTO — don't ask me about such things in future"). He is asked for money, a permission, a product outcome or a picture, and nothing else. The reviewer still reads every change cold, and the gate above still applies. Every product picks the change up at its next session, because every session reads this repository live. There is no copy anywhere to refresh.
+By pull request only; this repository's `main` is protected. A product may not release until its own `main` is protected with the required PR/check gate. `check.sh` runs in CI and refuses a page over 600 words, a missing or unexpected required entry, secret-like content without printing it, and — in a pull request — a head without a submitted current-commit review receipt. Adding a rule, step, file, check or agent needs the charter's gate (§13): the same failure twice, in two separate product tasks. Removing one, or correcting wording, needs no gate; nor does a change the Chairman rules himself. **The CTO settles changes to this repository without asking technical questions; additions merge only after its independent gate, never by the proposing lead bypassing protection** (his rulings of 9 and 12 September 2026). He is asked for money, a permission, a product outcome or a picture, and nothing else. The reviewer still reads every change cold, and the gate above still applies. Every product picks the change up at its next session, because every session reads this repository live. There is no copy anywhere to refresh.

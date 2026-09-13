@@ -82,11 +82,11 @@ OpenAI and Anthropic are **adapters**, not separate development systems.
 
 The shared contract is GitHub: current product truth, open PRs, branch state, checks and the roadmap. Provider-specific setup exists only where the products genuinely differ in how they reach and execute that contract.
 
-OpenAI development uses Codex; cloud execution is the default, with local execution only when the task genuinely needs the Mac. ChatGPT is the advisory/thinking surface.
+OpenAI development uses a capable ChatGPT Work or Codex surface after its execution and GitHub permissions are proved. The requested model and actual tools decide the route; README.md owns current provider limitations.
 
-Anthropic development uses Claude/Cowork/Code through the best current route to the same repository.
+Anthropic development uses a capable Claude/Cowork/Code route to the same repository after the same proof.
 
-Only one provider owns a slice at a time. At a clean checkpoint, opening the other provider and sending `build` transfers ownership. The outgoing provider does not prepare a prose explanation for the incoming provider; it prepares the PR and repository.
+Only one lead owns a slice at a time. The outgoing lead stops and pushes a complete PR checkpoint before `build` transfers ownership. A new chat alone does not stop another process. The repository and PR replace a prose handover.
 
 Which model leads is the Chairman's, and changes as the models do; because the rules are written by role, that swap costs nothing. What each stack can actually do, and how its workspace is configured, lives in `README.md`, which changes faster than this Charter.
 
@@ -150,7 +150,7 @@ Independent cold review is required where `HOW-WE-BUILD.md` says so. Review is a
 
 ## 10. PR as handover
 
-The PR carries objective state: objective, acceptance criteria, done, remaining, checks, preview, next action, rollback, active lead and reviewer.
+The PR carries objective state: objective, acceptance criteria, done, remaining, checks, preview, next action, rollback, active lead, ownership state, source/head commits and reviewer.
 
 If a session stops mid-slice, it pushes a coherent checkpoint and leaves the PR sufficient for a fresh session. No necessary continuation state may live only in conversation.
 
@@ -201,13 +201,13 @@ A provider-specific problem should normally change only that provider adapter. A
 
 ## 14. New-product test
 
-A product is integrated only when the shared repository contract and both provider adapters are configured and tested. The exact setup lives in `README.md`, because provider configuration changes faster than this Charter.
+A product can ship when the shared repository contract and its selected provider route are configured and tested. Each additional provider or account is verified independently and must not block a proven route. The exact setup lives in `README.md`, because provider configuration changes faster than this Charter.
 
 The acceptance test is deliberately simple:
 
-> In a completely fresh working session for either provider, with the product selected, Dhayan sends `build` and the CTO finds the correct current work without further technical context from him.
+> In a completely fresh working session for a configured route, with the product selected, Dhayan sends `build` and the CTO finds the correct current work without further technical context from him.
 
-If that fails, the bootstrap is incomplete.
+If that fails, that route is unverified; do not claim readiness for another account from it.
 
 ## 15. Final constraint
 
