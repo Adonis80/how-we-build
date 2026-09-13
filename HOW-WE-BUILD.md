@@ -15,7 +15,7 @@
 2. From latest `main`, read open pull requests — a parked slice is moved on, never rebuilt — run the product, find the smallest seam, branch, open a draft PR.
 3. Build. Replace rather than wrap. One implementation per business rule. No speculative abstraction.
 4. Prove it: build, tests, the Playwright journey on phone and desktop, preview deploy. A screenshot is not proof.
-5. A reviewer reads the PR cold in its own session — the other vendor where it can be, and always on pricing, live database changes, authentication, public trust boundaries, deploy machinery and this gate; unsure means crossed. A slice that cannot get that read is not started. Asked once per round, fixes batched into one push; unavailable, the slice parks and the next begins — the gate never opens unreviewed.
+5. A reviewer reads the PR cold in its own session — the other vendor where possible, always on pricing, live database changes or schema, authentication and authorisation, public trust boundaries, deploy and release machinery, and this gate; unsure means crossed. A slice that cannot get that read is not started. Asked once per round, fixes batched into one push; unavailable, the slice parks and the next begins — the gate never opens unreviewed.
 6. Send the preview, what changed, the journey to try, and "Decision needed: … or none".
 7. Merge to protected `main`, deploy, smoke-test, roll back on failure. Delete residue; leave `roadmap.json` fit to start on *build* alone: `next` lines current and complete, never a prompt carrying what the repo lacks.
 
@@ -23,4 +23,4 @@
 
 **When something goes wrong**: reproduce; repair or delete the cause; add the smallest regression test; shrink the slice; change method after two identical failures; start fresh on a file you keep changing, or a rule restated not applied. Never answer a failure with a new rule or agent; rules live in Git and CI, never in memory.
 
-**Every product has** one private repo — `AGENTS.md` (points here; under 500 words, machine-checked), `PRODUCT.md`, `NAMES.md`, `roadmap.json`, `README.md` — and a Project holding no files.
+**Every product has** one private repo — `AGENTS.md` (points here), `PRODUCT.md`, `NAMES.md`, `roadmap.json`, `README.md` — and a Project holding no files.
