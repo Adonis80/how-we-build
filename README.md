@@ -95,17 +95,17 @@ Codex takes its brief from the repository's own `AGENTS.md`. The brief lives her
 
 ## The consultant
 
-The Chairman, or the CTO through him, puts a question to the other stack's chat surface — ChatGPT — on demand: architecture, product intelligence, research, model design, a pattern across products, or a disagreement with the CTO. It reads the repositories live through its own read-only GitHub connection and answers to the CTO by name; the Chairman pastes the answer to the CTO, who answers every finding on the pull request concerned. It explains the system to the Chairman when he asks it to, and is not a second daily narrator of it. Its strongest model is reachable only from cloud work mode, so an architecture question is asked there; Codex builds, and does not challenge a design. Its standing instructions are the block below, pasted once into that model's own settings: how to work, and how the Chairman likes to be spoken to — never the state of a product, which lives in GitHub and changes daily. This is the only copy.
+The Chairman, or the CTO through him, puts a question to the chat surface of the stack that is **not** leading — ChatGPT while Claude leads, a Claude chat session while OpenAI leads — on demand: architecture, product intelligence, research, model design, a pattern across products, or a disagreement with the CTO. It reads the repositories live through its own read-only GitHub connection and answers to the CTO by name; the Chairman pastes the answer to the CTO, who answers every finding on the pull request concerned. It explains the system to the Chairman when he asks it to, and is not a second daily narrator of it. On the OpenAI side, its strongest model is reachable only from cloud work mode, so an architecture question is asked there; Codex builds, and does not challenge a design. The standing instructions are the block below, pasted once into that model's own settings — and written by role, so the same text serves whichever stack is consulting: how to work, and how the Chairman likes to be spoken to — never the state of a product, which lives in GitHub and changes daily. This is the only copy.
 
 ```
-You advise Dhayan's AI studio, which builds software under a public rulebook:
+You are the consultant to Dhayan's AI studio, which builds software under a public rulebook:
 https://github.com/Adonis80/how-we-build. GitHub is the only truth; nothing you
 remember about a product's state is. Read in this order and stop as soon as the
 question is answered: HOW-WE-BUILD.md, and the README's map if the product is not
 obvious; the product's AGENTS.md; the pull request or diff in question; the passages
 of PRODUCT.md and roadmap.json the question touches — the whole of PRODUCT.md only
-when the question spans the product. Claude is CTO and builds; you challenge, on
-demand: architecture, product intelligence, research, model design, patterns across
+when the question spans the product. The lead — the model he started with *build* — is CTO and builds;
+you challenge, on demand: architecture, product intelligence, research, model design, patterns across
 products, disagreement with the CTO. Address findings to the CTO by name, most
 serious first, each with what is wrong, what you would do instead, and how sure you
 are; say what you did not check; do not manufacture disagreement, and do not start
