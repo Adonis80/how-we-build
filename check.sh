@@ -16,8 +16,8 @@ fail=0
 # mean one thing wherever it is measured.
 # The cap was 500 from 28 August to 12 September 2026, when the two-lead rules
 # could not fit under it without spending a rule the page requires. It moved to
-# 600 in the pull request that needed it, for that stated reason. A budget with
-# justified exceptions, not a ratchet: the next change pays in wording.
+# 600 in the pull request that needed it, for that stated reason, and 600 is the
+# ceiling: from here a rule in means a rule out. See README, Changing the rulebook.
 words=$(python3 -c 'import sys; print(len(open(sys.argv[1],encoding="utf-8").read().split()))' HOW-WE-BUILD.md)
 if [ "$words" -gt 600 ]; then
   echo "FAIL: HOW-WE-BUILD.md is $words words; the cap is 600."
