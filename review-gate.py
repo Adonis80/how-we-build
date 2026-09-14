@@ -181,11 +181,11 @@ def main(argv):
                     "%s/commits/%s" % (api, short),
                     headers={"Authorization": "Bearer " + token, "Accept": "application/vnd.github+json"},
                 )
-                try:
-                    with urllib.request.urlopen(req) as r:
-                        seen[short] = json.load(r).get("sha")
-                except urllib.error.HTTPError:
-                    seen[short] = None
+                # A refusal from GitHub is not an answer: let it reach the
+                # handler below, which says HTTP and why, rather than becoming
+                # "the reviewer has not read this commit".
+                with urllib.request.urlopen(req) as r:
+                    seen[short] = json.load(r).get("sha")
             return seen[short]
 
         for c in _pages("%s/issues/%s/comments" % (api, num), token):

@@ -38,8 +38,13 @@ while IFS= read -r f; do
 done < <(ls -A)
 # Both ways, as the design list already is: an unexpected file fails, and so
 # does a missing one — otherwise deleting CHARTER.md or README.md passes.
+# A directory of the same name is not the file: `-e` would pass a tracked
+# `CHARTER.md/` that holds nothing this repository reads.
 for f in $allowed; do
-  [ -e "$f" ] || { echo "FAIL: '$f' is missing; the root list is a fixed set."; fail=1; }
+  case "$f" in
+    design) [ -d "$f" ] || { echo "FAIL: '$f' is missing, or is not a directory; the root list is a fixed set."; fail=1; } ;;
+    *) [ -f "$f" ] || { echo "FAIL: '$f' is missing, or is not a file; the root list is a fixed set."; fail=1; } ;;
+  esac
 done
 [ "$fail" -eq 0 ] && echo "ok: file list unchanged"
 
