@@ -8,7 +8,7 @@
 
 **Numbers.** Never invent one; unknown is valid. An unrun number is a claim: the machine checks, not the model.
 
-**The hands are never his.** Work done by hand — a console, a setting, a dashboard — goes into CI if it can, otherwise to the Chrome extension's session. Never to him.
+**The hands are never his.** Work by hand — a console, a dashboard — goes into CI if it can, otherwise to the lead's own browser. Never to him.
 
 **The unit of work**: one accepted slice, a user-visible outcome with acceptance criteria, never a screen. **"Build" is a whole instruction**: take the top `roadmap.json` item carrying his word, settling everything technical yourself. It never means run the build, nor is answered with a question.
 
@@ -17,7 +17,7 @@
 2. From latest `main`, read open pull requests — a parked slice is moved on, never rebuilt — run the product, find the smallest seam, branch, open a draft PR.
 3. Build. Replace rather than wrap. One implementation per business rule. No speculative abstraction.
 4. Prove it: build, tests, the Playwright journey on phone and desktop, preview deploy. A screenshot is not proof.
-5. A reviewer reads the PR cold in its own session — the other vendor where possible, required on pricing, live database or schema, authentication, public trust boundaries, deploy machinery and this gate; unsure means crossed. A slice that cannot get that read is not started. Asked once per round, fixes in one push; unavailable, the slice parks and the next begins — the gate never opens unreviewed.
+5. A reviewer reads the PR cold in its own session — the other vendor where possible, required on pricing, live database or schema, authentication and authorisation, public trust boundaries, deploy and release machinery, and this gate; unsure means crossed. A slice that cannot get that read is not started. Asked once per round, fixes in one push; unavailable, the slice parks and the next begins — the gate never opens unreviewed.
 6. Send the preview at its own name, never a hash he cannot recognise; what changed, the journey to try, and "Decision needed: … or none".
 7. Merge to protected `main`, deploy, smoke-test, roll back on failure. Delete residue; leave `roadmap.json` fit to start on *build* alone: `next` lines current and complete.
 
