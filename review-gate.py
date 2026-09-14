@@ -74,6 +74,31 @@ def _dashes(line):
     return line.replace("—", "-").replace("–", "-")
 
 
+def _edited(comment):
+    """Was this comment changed after it was posted?
+
+    The reviewer's P1 on the fifth read of #26: the gate reads a comment's
+    current text, and nothing else, so a stand-in finding edited to say clean
+    erased the finding and opened the gate without the push the rule requires —
+    and an old clean read could be edited to name a commit nobody had read. The
+    workflow wakes on edits, so the new text would be in front of the gate
+    within seconds.
+
+    An edited stand-in therefore counts for nothing, in either direction: post
+    a fresh one. Losing a finding this way costs nothing either, because a head
+    with no verdict left on it is red anyway.
+
+    Not applied to Codex's own comments, and that is a choice rather than an
+    oversight: it edits its summary comment by design, from Running to
+    Completed, so the same rule would throw away the only signal that a review
+    has finished. The owner of a repository can edit anyone's comment, so that
+    leaves the reviewer's own shapes forgeable by editing — the same joint
+    `README.md` already names, and one this gate cannot close by itself.
+    """
+    a, b = comment.get("created_at"), comment.get("updated_at")
+    return bool(a and b and a != b)
+
+
 def _completed_row(head):
     # | 📝 **Code Review** | ✅ **Completed** <relative-time …>…</relative-time> | `090e429` | Manual request |
     return re.compile(
@@ -252,7 +277,8 @@ def verdict(reviews, comments, head, resolve=None, owner=None):
               for c in comments if c.get("user", {}).get("login") == BOT]
     standin = [standin_verdict(c.get("body"), head, resolve)
                for c in comments
-               if owner is not None and c.get("user", {}).get("login") == owner]
+               if owner is not None and c.get("user", {}).get("login") == owner
+               and not _edited(c)]
     # Codex first, all of it, before a stand-in is read at all. The reviewer's
     # P1 on the fourth read of #26: a stand-in finding used to outrank a clean
     # pass of Codex's that arrived after it, so the head stayed red while the
@@ -396,6 +422,15 @@ def _selftest():
         ([], [bot(clean), mine(standin)], CLEAN, "both of them clean — Codex is the one named"),
         ([], [{"user": {"login": "someone"}, "body": standin}], UNREAD,
          "a stand-in verdict typed by somebody who is not the account the CTO holds"),
+        ([], [{"user": {"login": owner}, "body": standin,
+               "created_at": "2026-09-14T18:00:00Z", "updated_at": "2026-09-14T18:09:00Z"}],
+         UNREAD, "a stand-in read edited after it was posted (the reviewer's P1 on the fifth read)"),
+        ([], [{"user": {"login": owner}, "body": standin_findings,
+               "created_at": "2026-09-14T18:00:00Z", "updated_at": "2026-09-14T18:09:00Z"}],
+         UNREAD, "an edited stand-in finding — gone too, and a head with no verdict is red anyway"),
+        ([], [{"user": {"login": owner}, "body": standin,
+               "created_at": "2026-09-14T18:00:00Z", "updated_at": "2026-09-14T18:00:00Z"}],
+         STANDIN_CLEAN, "a stand-in read that was never edited"),
     ]
     twin = "090e429" + "f" * 33  # another commit sharing the short form
     resolved = {"090e429": twin, "090e429a31": head}
