@@ -43,14 +43,25 @@ jobs:
           set -euo pipefail
           sha=$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)
           # Asked of the head commit itself, so a parked pull request is found
-          # however many runs the repository has had since.
-          runs="repos/$REPO/actions/runs?head_sha=$sha&event=pull_request&per_page=100"
+          # however many runs the repository has had since — and of every event,
+          # not just `pull_request`. A protected branch reads the newest run of a
+          # required check, newest by when it started and not by when it last
+          # finished, so a re-run of an older run does not replace a newer red
+          # one. #24 was refused its merge on exactly that: its `pull_request`
+          # run was re-run green on the clean pass at 14:50, while the
+          # `pull_request_review` run that started 36 seconds after it stayed red
+          # from 14:45, and GitHub answered "Required status check check is
+          # failing" with the pull request showing green. The filter was the
+          # fault: it hid that run from this job entirely. `max_by` then picks
+          # the newest by hand rather than trusting the order GitHub happens to
+          # answer in, which is not promised anywhere.
+          runs="repos/$REPO/actions/runs?head_sha=$sha&per_page=100"
           id=""; status=""
           # A review can land while the check is still running, and that run
           # asked GitHub for the comments before this one arrived — so it will
           # finish red on a review that exists. Wait for it, then re-run it.
           for _ in 1 2 3 4 5 6 7 8 9 10; do
-            line=$(gh api "$runs" --jq '[.workflow_runs[] | select(.name=="check")] | first | "\(.id) \(.status)"' || echo "")
+            line=$(gh api "$runs" --jq '[.workflow_runs[] | select(.name=="check")] | max_by(.created_at) | "\(.id) \(.status)"' || echo "")
             id=${line%% *}; status=${line##* }
             case "$id" in ""|null) echo "no check run on $sha yet — the run that starts next will read this review"; exit 0 ;; esac
             [ "$status" = "completed" ] && break
