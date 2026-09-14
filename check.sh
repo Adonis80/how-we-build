@@ -4,7 +4,7 @@
 # root or design file that is not on its list or missing from it, anything that
 # looks like a secret (naming the place, never the value), a review gate that no
 # longer matches the reviewer's answers, and, in a pull request, a commit the
-# reviewer has not read. Nothing else.
+# reviewer has not read clean — unread, or read and left findings on. Nothing else.
 set -euo pipefail
 cd "$(dirname "$0")"
 fail=0
@@ -83,8 +83,11 @@ else
   echo "ok: nothing that looks like a secret"
 fi
 
-# 4. In a pull request, a review clears only the commit it read: green only when the
-# reviewer has read this very commit. A later push turns it red until it has.
+# 4. In a pull request, a review clears only the commit it read, and only if it
+# left nothing on it: green when the reviewer has read this very commit clean.
+# A later push turns it red until it has; so does a finding, until the push that
+# answers it makes a commit the reviewer reads afresh. The CTO's answer to a
+# finding is not clearance — the proposer does not clear its own change.
 # The gate's own rule is machine-checked before anything asks GitHub: one
 # implementation, held against the reviewer's real answers, the states a review
 # can arrive in, and the fakes that once passed a looser test.
@@ -94,7 +97,7 @@ case "${GITHUB_EVENT_NAME:-}" in pull_request|pull_request_review)
   if [ -z "${GH_TOKEN:-}" ] || [ -z "${PR_NUMBER:-}" ] || [ -z "${HEAD_SHA:-}" ]; then
     echo "FAIL: the check cannot ask GitHub which commit the reviewer read — the workflow must set PR_NUMBER, HEAD_SHA and GH_TOKEN."; fail=1
   elif python3 review-gate.py "${GITHUB_REPOSITORY:-Adonis80/how-we-build}" "$PR_NUMBER" "$HEAD_SHA" "$GH_TOKEN"; then
-    echo "ok: the reviewer has read $HEAD_SHA"
+    : # the gate says which read it found; one voice, not two
   else
     echo "FAIL: see the reason above."; fail=1
   fi
