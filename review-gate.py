@@ -56,8 +56,18 @@ NO_VERDICT = "no verdict"
 UNREAD = "unread"
 
 STANDIN = "Fable 5.1"
-# **Fable 5.1 review — in place of Codex.**
-STANDIN_HEADING = re.compile(r"^\*\*" + STANDIN.replace(".", r"\.") + r" review\b")
+# The whole heading and only the heading, matched as a line and not as a prefix.
+# A prefix takes any qualification after it: the reviewer's own example on #26,
+# "**Fable 5.1 review requested; no review was performed**", opened this gate —
+# the same hole the clean verdict is anchored at both ends against, left open at
+# the other end of the same file. A hyphen is allowed where the dash is, because
+# a session types this line by hand and a gate jammed by a punctuation mark is a
+# gate nobody can obey.
+STANDIN_HEADING = "**%s review — in place of Codex.**" % STANDIN
+
+
+def _dashes(line):
+    return line.replace("—", "-").replace("–", "-")
 # **Verdict:** clean
 STANDIN_VERDICT = re.compile(r"^\*\*Verdict:\*\*\s*(?P<verdict>clean|findings)\.?\s*$", re.IGNORECASE)
 
@@ -203,7 +213,7 @@ def standin_verdict(body, head, resolve=None):
     if not body or not body.strip():
         return None
     lines = [ln.strip() for ln in body.splitlines()]
-    if not STANDIN_HEADING.match(lines[0]):
+    if _dashes(lines[0]) != _dashes(STANDIN_HEADING):
         return None
     note = _reviewed_note(head)
     if not any(_names_head(ln, note, head, resolve) for ln in lines):
@@ -307,15 +317,20 @@ def _selftest():
         ({"user": {"login": BOT}, "commit_id": other, "state": "APPROVED"}, None, "an approval of another commit"),
         ({"user": {"login": BOT}, "commit_id": other, "state": "COMMENTED"}, None, "findings on another commit"),
     ]
-    standin = ("**%s review — in place of Codex.**\n\n"
+    standin = (STANDIN_HEADING + "\n\n"
                "**Reviewed commit:** `090e429a31`\n"
                "**Verdict:** clean\n\n"
-               "What I checked: the diff and the pages before the pull request's own account.\n"
-               % STANDIN)
+               "What I checked: the diff and the pages before the pull request's own account.\n")
     standin_findings = standin.replace("**Verdict:** clean", "**Verdict:** findings")
     standin_cases = [
         (standin, head, CLEAN, "a stand-in read that left nothing"),
         (standin_findings, head, FINDINGS, "a stand-in read that left something"),
+        (standin.replace("**Fable 5.1 review — in place of Codex.**",
+                         "**Fable 5.1 review requested; no review was performed**"), head, None,
+         "a heading that carries the name and says the opposite (the reviewer's P1 on #26)"),
+        (standin.replace("Codex.**", "Codex.** Or it would have been."), head, None,
+         "the whole heading, taken back by what follows it on the line"),
+        (_dashes(standin), head, CLEAN, "the heading typed with a hyphen for the dash"),
         (standin.replace("090e429a31", "29d7b543"), head, None, "a stand-in read of another commit"),
         (standin.replace("**Verdict:** clean", "**Verdict:** looks fine"), head, None,
          "a verdict that is neither word"),

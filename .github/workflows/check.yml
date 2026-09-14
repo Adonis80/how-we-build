@@ -16,14 +16,28 @@ permissions:
   pull-requests: read
 jobs:
   wake:
-    # Only the reviewer's own comments, only on a pull request, and nothing else
-    # in this job: it re-runs the check that already exists on that pull request
-    # so the gate can see the review that has just landed. A re-run posts no
-    # comment, so it cannot wake itself.
+    # The reviewer's own comments, and the owner's, only on a pull request, and
+    # nothing else in this job: it re-runs the check that already exists on that
+    # pull request so the gate can see the review that has just landed. A re-run
+    # posts no comment, so it cannot wake itself.
+    #
+    # The owner's are here because the stand-in's verdict arrives as a comment
+    # from the account the CTO holds, not from the reviewer — and the reviewer's
+    # P1 on #26: without this the check job skips every `issue_comment`, this job
+    # declines the only event there is, and a stand-in read leaves the gate red
+    # until a hand re-runs it. That is the hand this whole job exists to replace,
+    # and the page promises the check goes green by itself.
+    #
+    # Deliberately any comment of the owner's, not one matching the stand-in's
+    # heading: that heading is `review-gate.py`'s to define, and a copy of it
+    # here — in a file that cannot read it — is the second copy of one truth this
+    # repository refuses. The cost is a re-run on comments that change nothing,
+    # which is seconds; the gate stays the only thing that decides.
     if: >-
       github.event_name == 'issue_comment' &&
       github.event.issue.pull_request != null &&
-      github.event.comment.user.login == 'chatgpt-codex-connector[bot]'
+      (github.event.comment.user.login == 'chatgpt-codex-connector[bot]' ||
+       github.event.comment.user.login == github.repository_owner)
     runs-on: ubuntu-latest
     # The write is for one call — re-running this pull request's own check — and
     # belongs to this job alone. The check job executes the proposed tree's
