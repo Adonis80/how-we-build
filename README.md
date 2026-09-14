@@ -93,10 +93,8 @@ the connected folder ~/Documents/Claude/Projects, where the key is the file
 that runs — check.sh, review-gate.py, the workflow — is built in a code session
 started attached to this repo, not from here.
 
-Adding a rule, step, file, check or agent needs the charter's gate (§13) or the
-Chairman's own ruling; removing one, or correcting wording, needs neither. The CTO
-never merges an addition of its own here. There is no roadmap: the queue is the open
-pull requests, oldest first.
+Before proposing a change to the rulebook, read its AGENTS.md and its README's
+"Changing the rulebook" — the rules for changing it live there and nowhere else.
 
 This Project holds these instructions and no files of any kind.
 
@@ -238,7 +236,9 @@ flowchart LR
   W -->|writes words| RB
 ```
 
-**A Project's instructions write themselves from here.** Nobody carries text between products. At the start of a session, if the Project's instructions differ from the template above filled in for this product, the session hands the Chairman the complete filled text to paste — before anything else, once — and anything product-specific it finds in the old text goes into the product's `AGENTS.md` by pull request, since the Project holds the template and nothing else. When either template changes, every next session does the same, the Juku OS Project against its own. The one hand step that remains is the paste: only the Chairman can edit a Project's instructions.
+**A Project's instructions write themselves from here.** Nobody carries text between products. At the start of a session, if the Project's instructions differ from the template above filled in for this product, the session sets them to it — before anything else, once — and anything product-specific it finds in the old text goes into the product's `AGENTS.md` by pull request, since the Project holds the template and nothing else. When either template changes, every next session does the same, the Juku OS Project against its own.
+
+**The session sets them; the Chairman is handed no paste (his ruling, 14 September 2026).** It works in his own Chrome, through the browser extension: `claude.ai/projects` → *New project* → the name and one line saying what it is → *Create project* → *Instructions* → *Edit instructions* → the template, whole → *Save instructions*. An existing Project is the same route from its own page. Nothing is ever added to a Project's *Context*: it holds instructions and no files. The session then reads the saved panel back and says what it set — a Project is not reported as done on the strength of having typed into it. The extension needs his Chrome open and signed in; only when it is not is he handed the text whole, and that is the exception, not the route.
 
 **Text for the Chairman is handed over whole.** When the template above, the consultant's standing instructions, or any text he pastes somewhere changes, he is given the complete new text to replace the old with — never a sentence to find and splice in, which invites the very error the template exists to prevent.
 
