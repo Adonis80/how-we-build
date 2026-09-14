@@ -20,7 +20,7 @@ The whole map: what exists, where it lives, one line on what it is for, and the 
 
 A repository not listed here is not under this rulebook.
 
-**Which repository a chat Project reads (the Chairman's ruling, 11 September 2026).** The Juku OS Project — the chat Project named for this system — reads this repository and uses the map above as the whole register of what exists, opening a product repository only when it needs live detail. The Hemz OS Project reads `Adonis80/Hemz-OS` plus the global rules here; the Juku Perfume Project reads `Adonis80/juku-perfume` plus the same. This is where to read, not permission to read: each Project's own GitHub connection is proved by fetching live commits and open pull requests from inside that Project, because a successful read somewhere else proves nothing for it. Reuse this register; never start a second map.
+**Which repository a chat Project reads (the Chairman's ruling, 11 September 2026).** The Juku OS Project — the chat Project named for this system — reads this repository and uses the map above as the whole register of what exists, opening a product repository only when it needs live detail; its instructions are the second template below. The Hemz OS Project reads `Adonis80/Hemz-OS` plus the global rules here; the Juku Perfume Project reads `Adonis80/juku-perfume` plus the same. This is where to read, not permission to read: each Project's own GitHub connection is proved by fetching live commits and open pull requests from inside that Project, because a successful read somewhere else proves nothing for it. Reuse this register; never start a second map.
 
 ## How a product joins
 
@@ -62,6 +62,49 @@ Chairman in plain English: summaries and actions, no technical commentary — an
 every reply with "ready to start fresh session" or "continue to build here". "Continue
 to build here" means this session carries on. "Ready to start fresh session" is never
 left bare: the line above it names where — Cowork, or code mode at
+https://claude.ai/code with this repository chosen — and the words to send when it
+opens.
+```
+
+### The Juku OS Project's instructions
+
+The chat Project named for this system is not a product. It builds nothing, it reads this repository, and it is where the system's own words change. Its instructions are the text below, whole — the same rule as a product's: nothing is copied in, and it holds no files.
+
+```
+# Juku OS — how this project works
+
+Juku OS is the name for the way we build, not a product. Nothing is built here. Its
+repo is the public rulebook: https://github.com/Adonis80/how-we-build.
+
+At the start of every session, read HOW-WE-BUILD.md from it (clone the repo, or fetch
+the raw file) — it says who decides, the loop, and when a slice is done — then its
+README whole: the map of products, the reviewer, the consultant, the two stacks, and
+"What every product carries". Read it live, every session, never from a copy kept in
+this Project.
+
+The map in that README is the whole register of what exists. Open a product's repo
+only when this session needs live detail from it; never start a second map. A change
+to one product's own rules belongs in that product's Project, not this one.
+
+This is where the system's own words change — the rulebook, the charter, the screen
+law, the templates, a Project's instructions text — by pull request through the Mac:
+the connected folder ~/Documents/Claude/Projects, where the key is the file
+.alma-secrets/github-token; read it into a shell variable, never print it. Anything
+that runs — check.sh, review-gate.py, the workflow — is built in a code session
+started attached to this repo, not from here.
+
+Before proposing a change to the rulebook, read its AGENTS.md, its CHARTER.md §13 and
+its README's "Changing the rulebook": between them they hold the gate, who clears a
+change, and what the pull request must carry.
+
+This Project holds these instructions and no files of any kind.
+
+Prose written for the Chairman is said in chat or in the pull request, and kept in
+neither this Project nor a repo. The pull request is the handover. Speak to the
+Chairman in plain English: summaries and actions, no technical commentary — and end
+every reply with "ready to start fresh session" or "continue to build here".
+"Continue to build here" means this session carries on. "Ready to start fresh
+session" is never left bare: the line above it names where — Cowork, or code mode at
 https://claude.ai/code with this repository chosen — and the words to send when it
 opens.
 ```
@@ -194,7 +237,9 @@ flowchart LR
   W -->|writes words| RB
 ```
 
-**A Project's instructions write themselves from here.** Nobody carries text between products. At the start of a session, if the Project's instructions differ from the template above filled in for this product, the session hands the Chairman the complete filled text to paste — before anything else, once — and anything product-specific it finds in the old text goes into the product's `AGENTS.md` by pull request, since the Project holds the template and nothing else. When this template changes, every product's next session does the same. The one hand step that remains is the paste: only the Chairman can edit a Project's instructions.
+**A Project's instructions write themselves from here.** Nobody carries text between products. At the start of a session, if the Project's instructions differ from the template above filled in for this product, the session sets them to it — before anything else, once — and anything product-specific it finds in the old text goes into the product's `AGENTS.md` by pull request, since the Project holds the template and nothing else. When either template changes, every next session does the same, the Juku OS Project against its own.
+
+**The session sets them; the Chairman is handed no paste (his ruling, 14 September 2026).** It works in his own Chrome, through the browser extension: `claude.ai/projects` → *New project* → the name and one line saying what it is → *Create project* → *Instructions* → *Edit instructions* → the template, whole → *Save instructions*. An existing Project is the same route from its own page. Nothing is ever added to a Project's *Context*: it holds instructions and no files. The session then reads the saved panel back and says what it set — a Project is not reported as done on the strength of having typed into it. The extension needs his Chrome open and signed in; only when it is not is he handed the text whole, and that is the exception, not the route.
 
 **Text for the Chairman is handed over whole.** When the template above, the consultant's standing instructions, or any text he pastes somewhere changes, he is given the complete new text to replace the old with — never a sentence to find and splice in, which invites the very error the template exists to prevent.
 
