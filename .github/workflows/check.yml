@@ -5,11 +5,47 @@ on:
   pull_request:
   pull_request_review:
     types: [submitted]
+  # A clean pass arrives as a comment, and a comment starts nothing on the pull
+  # request's head — which is why a green review has needed a hand re-run to be
+  # seen. The reviewer also edits its summary comment when a review finishes, so
+  # both shapes are listened for.
+  issue_comment:
+    types: [created, edited]
 permissions:
   contents: read
   pull-requests: read
+  actions: write
 jobs:
+  wake:
+    # Only the reviewer's own comments, only on a pull request, and nothing else
+    # in this job: it re-runs the check that already exists on that pull request
+    # so the gate can see the review that has just landed. A re-run posts no
+    # comment, so it cannot wake itself.
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request != null &&
+      github.event.comment.user.login == 'chatgpt-codex-connector[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: re-run this pull request's check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          sha=$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)
+          run=$(gh api "repos/$REPO/actions/runs?event=pull_request&per_page=100" \
+                --jq "[.workflow_runs[] | select(.head_sha==\"$sha\" and .name==\"check\" and .status==\"completed\")] | first | .id // empty")
+          if [ -z "$run" ]; then
+            echo "no completed check run on $sha yet — the pull request's own run will read the review when it finishes"
+            exit 0
+          fi
+          echo "re-running check $run on $sha"
+          gh api -X POST "repos/$REPO/actions/runs/$run/rerun" || \
+            echo "the re-run was refused (already running, or too old) — nothing to do"
   check:
+    if: github.event_name != 'issue_comment'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
