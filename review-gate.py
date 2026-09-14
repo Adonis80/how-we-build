@@ -241,11 +241,11 @@ def verdict(reviews, comments, head, resolve=None, owner=None):
     given, so a page read without one answers exactly as it did before there was
     a stand-in at all.
 
-    The order is the rule. A finding — from either of them — outranks
-    everything, because the answer to a finding is a push. Codex decides
-    whenever it has spoken about this head, including when it has only finished
-    and not yet said what it found: a stand-in stands in for silence, never for
-    a verdict that is on its way.
+    The order is the rule, and Codex comes first in all of it. Whatever Codex
+    has said about this head settles it — findings, a clean pass, or a review
+    that has finished with its verdict still coming — and only in its silence is
+    the stand-in read at all. Within that silence a finding outranks a clean
+    read, because the answer to a finding is a push.
     """
     codex = [review_verdict(r, head) for r in reviews]
     codex += [comment_verdict(c.get("body"), head, resolve)
@@ -253,12 +253,20 @@ def verdict(reviews, comments, head, resolve=None, owner=None):
     standin = [standin_verdict(c.get("body"), head, resolve)
                for c in comments
                if owner is not None and c.get("user", {}).get("login") == owner]
-    if FINDINGS in codex or FINDINGS in standin:
+    # Codex first, all of it, before a stand-in is read at all. The reviewer's
+    # P1 on the fourth read of #26: a stand-in finding used to outrank a clean
+    # pass of Codex's that arrived after it, so the head stayed red while the
+    # reviewer of record was content — the page said "Codex decides once it has
+    # spoken" and the code did not. The stand-in stands in for silence; the
+    # moment the silence ends it has nothing left to say.
+    if FINDINGS in codex:
         return FINDINGS
     if CLEAN in codex:
         return CLEAN
     if NO_VERDICT in codex:
         return NO_VERDICT
+    if FINDINGS in standin:
+        return FINDINGS
     if CLEAN in standin:
         return STANDIN_CLEAN
     return UNREAD
@@ -381,8 +389,10 @@ def _selftest():
          "a stand-in clean over findings Codex left — the findings stand"),
         ([], [bot(summary), mine(standin)], NO_VERDICT,
          "Codex has finished on this head; a stand-in may not answer for it"),
-        ([], [bot(clean), mine(standin_findings)], FINDINGS,
-         "the stand-in found what Codex did not"),
+        ([], [bot(clean), mine(standin_findings)], CLEAN,
+         "Codex read it clean after the stand-in found something — Codex decides"),
+        ([], [bot(summary), mine(standin_findings)], NO_VERDICT,
+         "Codex has finished, and its verdict outranks the stand-in's findings too"),
         ([], [bot(clean), mine(standin)], CLEAN, "both of them clean — Codex is the one named"),
         ([], [{"user": {"login": "someone"}, "body": standin}], UNREAD,
          "a stand-in verdict typed by somebody who is not the account the CTO holds"),
