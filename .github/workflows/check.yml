@@ -54,14 +54,20 @@ jobs:
           # failing" with the pull request showing green. The filter was the
           # fault: it hid that run from this job entirely. `max_by` then picks
           # the newest by hand rather than trusting the order GitHub happens to
-          # answer in, which is not promised anywhere.
+          # answer in, which is not promised anywhere — and on `[.created_at,
+          # .id]`, not `.created_at` alone, because two runs started in the same
+          # second carry the same timestamp and jq then keeps whichever came
+          # first in the answer. The reviewer found that on this pull request:
+          # replayed on a newest-first `[id 2, id 1]` pair sharing a second, the
+          # timestamp alone chooses id 1 — the older run, which is #24 again. The
+          # id rises with each run, so it breaks the tie the way the clock would.
           runs="repos/$REPO/actions/runs?head_sha=$sha&per_page=100"
           id=""; status=""
           # A review can land while the check is still running, and that run
           # asked GitHub for the comments before this one arrived — so it will
           # finish red on a review that exists. Wait for it, then re-run it.
           for _ in 1 2 3 4 5 6 7 8 9 10; do
-            line=$(gh api "$runs" --jq '[.workflow_runs[] | select(.name=="check")] | max_by(.created_at) | "\(.id) \(.status)"' || echo "")
+            line=$(gh api "$runs" --jq '[.workflow_runs[] | select(.name=="check")] | max_by([.created_at, .id]) | "\(.id) \(.status)"' || echo "")
             id=${line%% *}; status=${line##* }
             case "$id" in ""|null) echo "no check run on $sha yet — the run that starts next will read this review"; exit 0 ;; esac
             [ "$status" = "completed" ] && break
