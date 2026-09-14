@@ -79,18 +79,30 @@ def _names_head(line, pattern, head, resolve):
     return resolve(m.group("sha")) == head
 
 
-CLEAN_VERDICT = "didn't find any major issues"
+# Codex Review: Didn't find any major issues. Keep them coming!
+CLEAN_VERDICT = re.compile(r"Codex Review:\s*Didn't find any major issues[.!]", re.IGNORECASE)
 
 
 def _says_clean(first):
-    """The reviewer's clean pass, by the whole verdict and not two words in it.
+    """The reviewer's clean pass, as a finished sentence and not a phrase inside one.
 
-    This line is now the only thing that opens the gate, so it is matched
-    whole: "Codex Review: Found major issues; review did not complete" contains
-    "major issues" and means the opposite. The reviewer raised that itself, as a
-    P1 on #21, and this is where it is answered.
+    This line is the only thing that opens the gate, so a phrase test will not
+    do — the reviewer made that case twice. As a P1 on #21: "Codex Review: Found
+    major issues" contains the two words and means the opposite. As a P1 on #24,
+    against the tighter phrase that answered it: "Codex Review: Didn't find any
+    major issues because the review did not complete" carries the whole verdict
+    and still takes it back. Verifying that one turned up its mirror image,
+    "Codex Review: I almost didn't find any major issues", which passed too.
+
+    So the verdict is anchored at both ends: nothing may stand before it, and it
+    must close with its own full stop, which is where every qualification of the
+    sentence has to attach. What is left undefended is a *following* sentence
+    that reverses a finished verdict — "…issues. But the review did not
+    complete." The alternative is enumerating the encouragements the reviewer
+    appends ("Keep it up!", "Keep them coming!"), which jams this gate shut on
+    the day it writes a new one. Named here rather than papered over.
     """
-    return first.startswith("Codex Review:") and CLEAN_VERDICT in first.replace("’", "'").lower()
+    return CLEAN_VERDICT.match(first.replace("\u2019", "'")) is not None
 
 
 def comment_verdict(body, head, resolve=None):
@@ -193,6 +205,13 @@ def _selftest():
         (clean.replace("090e429a31", "29d7b543"), head, None, "a clean pass on another commit"),
         ("Codex Review: Found major issues; review did not complete.\n\n**Reviewed commit:** `090e429a31`\n",
          head, None, "a comment that has the words 'major issues' and means the opposite"),
+        ("Codex Review: Didn't find any major issues because the review did not complete.\n\n"
+         "**Reviewed commit:** `090e429a31`\n", head, None,
+         "the whole verdict, taken back by what follows it (the reviewer's P1 on #24)"),
+        ("Codex Review: I almost didn't find any major issues.\n\n**Reviewed commit:** `090e429a31`\n",
+         head, None, "the same verdict with a qualifier in front of it"),
+        (clean.replace("Keep them coming!", "Keep it up!"), head, CLEAN,
+         "the clean pass with the reviewer's other encouragement"),
         ("Task Completed for `090e429`; no review was performed", head, None, "a status line that says Completed"),
         ("I have not Reviewed commit `090e429a31`", head, None, "a sentence containing the words"),
         ("Codex Review: Something went wrong. Try again later.\n\n**Reviewed commit:** `090e429a31`\n",
