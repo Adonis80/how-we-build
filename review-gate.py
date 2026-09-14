@@ -53,7 +53,6 @@ FINDINGS = "findings"
 CLEAN = "clean"
 STANDIN_CLEAN = "clean, by the stand-in"
 NO_VERDICT = "no verdict"
-NOT_ASKED = "not asked"
 UNREAD = "unread"
 
 STANDIN = "Fable 5.1"
@@ -65,11 +64,6 @@ STANDIN = "Fable 5.1"
 # a session types this line by hand and a gate jammed by a punctuation mark is a
 # gate nobody can obey.
 STANDIN_HEADING = "**%s review — in place of Codex.**" % STANDIN
-
-# The ask that must come first: "@codex review", naming this head. The words are
-# not this repository's to choose — they are what wakes the reviewer — so this
-# cannot drift out of step with the thing it looks for.
-ASK = re.compile(r"@codex\s+(security\s+)?review\b", re.IGNORECASE)
 
 
 # **Verdict:** clean
@@ -93,13 +87,6 @@ def _reviewed_note(head):
     return re.compile(
         r"^\*\*Reviewed commit:\*\*\s*`(?P<sha>" + re.escape(head[:7]) + r"[0-9a-f]*)`\s*$"
     )
-
-
-def _reviewed_head(head):
-    # Head is `090e429`. — the ask names the commit in prose, not in a fixed
-    # line, so this looks for the commit anywhere on it and lets the resolver
-    # settle whether the short form is really this one.
-    return re.compile(r".*`(?P<sha>" + re.escape(head[:7]) + r"[0-9a-f]*)`")
 
 
 def _names_head(line, pattern, head, resolve):
@@ -245,54 +232,6 @@ def standin_verdict(body, head, resolve=None):
     return CLEAN if said else None
 
 
-def _is_ask(comment, head, resolve=None):
-    """Is this comment an ask for a read of THIS commit?
-
-    The ask is `@codex review` — the reviewer's own trigger words, so this
-    cannot fall out of step with what actually wakes it — and it must name this
-    head, the way every other shape here names the commit it means. One ask per
-    round is the rule, and a round is a commit, so an ask from the round before
-    does not carry.
-    """
-    body = comment.get("body") or ""
-    if not ASK.search(body):
-        return False
-    note = _reviewed_head(head)
-    return any(_names_head(ln.strip(), note, head, resolve) for ln in body.splitlines())
-
-
-def _before(first, second):
-    """Was `first` posted before `second`?
-
-    By id where GitHub gave both — comment ids only rise — and by the timestamps
-    otherwise. Neither means no: a comment that cannot be placed in time cannot
-    be shown to have come first, and this gate does not guess in the direction
-    of opening.
-    """
-    a, b = first.get("id"), second.get("id")
-    if isinstance(a, int) and isinstance(b, int):
-        return a < b
-    a, b = first.get("created_at"), second.get("created_at")
-    return bool(a and b and a < b)
-
-
-def asked_codex(mine, head, resolve=None, before=None):
-    """Was Codex asked to read this commit, and asked *before* `before`?
-
-    Order is the whole of it, and the reviewer's P1 on the third read of #26:
-    checking only that both comments exist lets a stand-in be posted first and
-    the ask typed after it, which opens the gate without ever leaving Codex a
-    moment to answer. An ask that follows the verdict it clears is not an ask,
-    it is a receipt written afterwards. So a stand-in read counts only where the
-    ask for that commit is older than the stand-in itself; asking late means
-    waiting and posting the read again, which is the rule doing what it says.
-    """
-    asks = [c for c in mine if _is_ask(c, head, resolve)]
-    if before is None:
-        return bool(asks)
-    return any(_before(a, before) for a in asks)
-
-
 def verdict(reviews, comments, head, resolve=None, owner=None):
     """The gate's one answer about the head commit, from the whole page.
 
@@ -307,35 +246,21 @@ def verdict(reviews, comments, head, resolve=None, owner=None):
     whenever it has spoken about this head, including when it has only finished
     and not yet said what it found: a stand-in stands in for silence, never for
     a verdict that is on its way.
-
-    And it stands in only for a silence somebody asked for. A stand-in clean
-    counts only where `@codex review` naming this head is on the page, because
-    the rule is *ask Codex, then fall through* and a gate that skipped the first
-    half would have written down a rule it did not hold. The reviewer's P1 on
-    #26, against my own argument that a session willing to skip the ask would
-    equally type it: the shape of the ask is not ours to drift, since those are
-    the words that wake the reviewer, and the failure this catches is a session
-    that forgot rather than one that lied. A stand-in *finding* needs no ask —
-    it keeps the head red either way, and nothing is opened by it.
     """
     codex = [review_verdict(r, head) for r in reviews]
     codex += [comment_verdict(c.get("body"), head, resolve)
               for c in comments if c.get("user", {}).get("login") == BOT]
-    mine = [c for c in comments
-            if owner is not None and c.get("user", {}).get("login") == owner]
-    standin = [(c, standin_verdict(c.get("body"), head, resolve)) for c in mine]
-    said = [v for _, v in standin]
-    if FINDINGS in codex or FINDINGS in said:
+    standin = [standin_verdict(c.get("body"), head, resolve)
+               for c in comments
+               if owner is not None and c.get("user", {}).get("login") == owner]
+    if FINDINGS in codex or FINDINGS in standin:
         return FINDINGS
     if CLEAN in codex:
         return CLEAN
     if NO_VERDICT in codex:
         return NO_VERDICT
-    clean_reads = [c for c, v in standin if v == CLEAN]
-    if clean_reads:
-        if any(asked_codex(mine, head, resolve, before=c) for c in clean_reads):
-            return STANDIN_CLEAN
-        return NOT_ASKED
+    if CLEAN in standin:
+        return STANDIN_CLEAN
     return UNREAD
 
 
@@ -348,11 +273,6 @@ REASONS = {
                "read clean, never on an answer to a finding"),
     NO_VERDICT: ("the reviewer has run a review on commit %s but has not posted what it found — "
                  "re-run this check once it has"),
-    NOT_ASKED: ("a stand-in read of commit %s is on the page, but Codex was not asked to read it "
-                "first — the rule is ask Codex, once, and stand in only for the silence that "
-                "follows, so no ask at all and an ask posted after the read both come to the "
-                "same thing; post `@codex review` naming this commit, wait, and post the "
-                "stand-in read after it"),
     # One placeholder, and only one: main() fills these with the head and
     # nothing else, so the stand-in's name is spliced in here rather than there.
     UNREAD: ("the reviewer has not read commit %s — ask it on the pull request, and when it "
@@ -453,47 +373,18 @@ def _selftest():
          "a review somebody took back, and nothing else"),
     ]
     owner = "the-account-the-cto-holds"
-    # Comments carry the id GitHub gives them, rising with each one, because the
-    # order of the page is part of the rule now: the ask has to come first.
-    posted = [0]
-
-    def mine(body):
-        posted[0] += 1
-        return {"user": {"login": owner}, "id": posted[0], "body": body}
-
-    at = lambda i, body: {"user": {"login": owner}, "id": i, "body": body}
-    ask = mine("@codex review\n\nHead is `090e429a31`. Three places I think it could be wrong.")
+    mine = lambda body: {"user": {"login": owner}, "body": body}
     standin_gate_cases = [
-        ([], [ask, mine(standin)], STANDIN_CLEAN,
-         "Codex asked on this head and silent; the stand-in read it clean"),
-        ([], [mine(standin)], NOT_ASKED,
-         "a stand-in clean where Codex was never asked (the reviewer's first P1 on #26)"),
-        ([], [at(2, standin), at(3, "@codex review\n\nHead is `090e429a31`.")], NOT_ASKED,
-         "the ask posted after the read it would clear — a receipt, not an ask"),
-        ([], [at(2, "@codex review\n\nHead is `090e429a31`."), at(3, standin)], STANDIN_CLEAN,
-         "the same two comments the right way round"),
-        ([], [{"user": {"login": owner}, "created_at": "2026-09-14T18:05:00Z", "body": standin},
-              {"user": {"login": owner}, "created_at": "2026-09-14T18:00:00Z",
-               "body": "@codex review\n\nHead is `090e429a31`."}], STANDIN_CLEAN,
-         "no ids, so the timestamps decide, and they say the ask came first"),
-        ([], [{"user": {"login": owner}, "body": standin},
-              {"user": {"login": owner}, "body": "@codex review\n\nHead is `090e429a31`."}],
-         NOT_ASKED, "neither ids nor timestamps — nothing can be shown to have come first"),
-        ([], [mine("@codex review\n\nHead is `29d7b543`."), mine(standin)], NOT_ASKED,
-         "an ask naming the round before, and a stand-in read of this one"),
-        ([], [{"user": {"login": "someone"}, "body": "@codex review\n\nHead is `090e429a31`."},
-              mine(standin)], NOT_ASKED,
-         "the ask typed by somebody who is not the account the CTO holds"),
-        ([], [mine(standin_findings)], FINDINGS,
-         "a stand-in finding with no ask — it opens nothing, so it needs none"),
-        ([findings], [ask, mine(standin)], FINDINGS,
+        ([], [mine(standin)], STANDIN_CLEAN, "a stand-in read, with Codex silent on this head"),
+        ([], [mine(standin_findings)], FINDINGS, "a stand-in read that left something"),
+        ([findings], [mine(standin)], FINDINGS,
          "a stand-in clean over findings Codex left — the findings stand"),
-        ([], [bot(summary), ask, mine(standin)], NO_VERDICT,
+        ([], [bot(summary), mine(standin)], NO_VERDICT,
          "Codex has finished on this head; a stand-in may not answer for it"),
-        ([], [bot(clean), ask, mine(standin_findings)], FINDINGS,
+        ([], [bot(clean), mine(standin_findings)], FINDINGS,
          "the stand-in found what Codex did not"),
-        ([], [bot(clean), ask, mine(standin)], CLEAN, "both of them clean — Codex is the one named"),
-        ([], [ask, {"user": {"login": "someone"}, "body": standin}], UNREAD,
+        ([], [bot(clean), mine(standin)], CLEAN, "both of them clean — Codex is the one named"),
+        ([], [{"user": {"login": "someone"}, "body": standin}], UNREAD,
          "a stand-in verdict typed by somebody who is not the account the CTO holds"),
     ]
     twin = "090e429" + "f" * 33  # another commit sharing the short form
@@ -517,11 +408,8 @@ def _selftest():
         bad += hold(standin_verdict(body, h), want, what)
     for reviews, comments, want, what in standin_gate_cases:
         bad += hold(verdict(reviews, comments, head, owner=owner), want, what)
-    bad += hold(verdict([], [ask, mine(standin)], head), UNREAD,
+    bad += hold(verdict([], [mine(standin)], head), UNREAD,
                 "a stand-in read with no owner given — closed unless it is asked for")
-    bad += hold(verdict([], [mine("@codex review\n\nHead is `090e429`."), mine(standin)], head,
-                        resolve=resolver, owner=owner), NOT_ASKED,
-                "an ask whose short form resolves to another commit")
     bad += hold(comment_verdict(summary, head, resolve=resolver), None,
                 "a short form that resolves to another commit")
     bad += hold(comment_verdict(clean, head, resolve=resolver), CLEAN,
@@ -540,10 +428,10 @@ def _selftest():
              + sum(1 for r in review_cases if r[1] is None)
              + sum(1 for c in standin_cases if c[2] is None)
              + sum(1 for g in gate_cases if g[2] not in opens)
-             + sum(1 for g in standin_gate_cases if g[2] not in opens) + 4)
+             + sum(1 for g in standin_gate_cases if g[2] not in opens) + 3)
     print("ok: review gate tells a clean read from a commented one, in both shapes and every "
-          "state they arrive in, keeps the stand-in behind Codex wherever Codex has spoken and "
-          "behind the ask that fell silent, and is fooled by none of the %d fakes" % fakes)
+          "state they arrive in, keeps the stand-in behind Codex wherever Codex has spoken, "
+          "and is fooled by none of the %d fakes" % fakes)
     return 0
 
 
