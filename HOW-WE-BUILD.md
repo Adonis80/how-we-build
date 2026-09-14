@@ -15,7 +15,7 @@
 2. From latest `main`, read open pull requests — one already open is moved on, never rebuilt — run the product, find the smallest seam, branch, open a draft PR.
 3. Build. Replace rather than wrap. One implementation per business rule. No speculative abstraction.
 4. Prove it: build, tests, the Playwright journey on phone and desktop, preview deploy. A screenshot is not proof.
-5. A reviewer reads the PR cold in its own session — the other vendor where possible, always on pricing, live database changes or schema, authentication and authorisation, public trust boundaries, deploy and release machinery, and this gate; unsure means crossed. Asked once per round, fixes batched into one push; silent, a Fable 5.1 session reads in its place, same vendor and said so — the gate never opens unreviewed.
+5. A reviewer reads the PR cold in its own session — the other vendor where possible, always on pricing, live database changes or schema, authentication and authorisation, public trust boundaries, deploy and release machinery, and this gate; unsure means crossed. Asked once per round naming the head, fixes batched into one push; silent, a Fable 5.1 session reads in its place, same vendor and said so — the gate never opens unreviewed.
 6. Send the preview, what changed, the journey to try, and "Decision needed: … or none".
 7. Merge to protected `main`, deploy, smoke-test, roll back on failure. Delete residue; leave `roadmap.json` fit to start on *build* alone: `next` lines current and complete, never a prompt carrying what the repo lacks.
 

@@ -53,6 +53,7 @@ FINDINGS = "findings"
 CLEAN = "clean"
 STANDIN_CLEAN = "clean, by the stand-in"
 NO_VERDICT = "no verdict"
+NOT_ASKED = "not asked"
 UNREAD = "unread"
 
 STANDIN = "Fable 5.1"
@@ -65,11 +66,18 @@ STANDIN = "Fable 5.1"
 # gate nobody can obey.
 STANDIN_HEADING = "**%s review — in place of Codex.**" % STANDIN
 
+# The ask that must come first: "@codex review", naming this head. The words are
+# not this repository's to choose — they are what wakes the reviewer — so this
+# cannot drift out of step with the thing it looks for.
+ASK = re.compile(r"@codex\s+(security\s+)?review\b", re.IGNORECASE)
+
+
+# **Verdict:** clean
+STANDIN_VERDICT = re.compile(r"^\*\*Verdict:\*\*\s*(?P<verdict>clean|findings)\.?\s*$", re.IGNORECASE)
+
 
 def _dashes(line):
     return line.replace("—", "-").replace("–", "-")
-# **Verdict:** clean
-STANDIN_VERDICT = re.compile(r"^\*\*Verdict:\*\*\s*(?P<verdict>clean|findings)\.?\s*$", re.IGNORECASE)
 
 
 def _completed_row(head):
@@ -85,6 +93,13 @@ def _reviewed_note(head):
     return re.compile(
         r"^\*\*Reviewed commit:\*\*\s*`(?P<sha>" + re.escape(head[:7]) + r"[0-9a-f]*)`\s*$"
     )
+
+
+def _reviewed_head(head):
+    # Head is `090e429`. — the ask names the commit in prose, not in a fixed
+    # line, so this looks for the commit anywhere on it and lets the resolver
+    # settle whether the short form is really this one.
+    return re.compile(r".*`(?P<sha>" + re.escape(head[:7]) + r"[0-9a-f]*)`")
 
 
 def _names_head(line, pattern, head, resolve):
@@ -218,11 +233,35 @@ def standin_verdict(body, head, resolve=None):
     note = _reviewed_note(head)
     if not any(_names_head(ln, note, head, resolve) for ln in lines):
         return None
-    for ln in lines:
-        m = STANDIN_VERDICT.match(ln)
-        if m:
-            return CLEAN if m.group("verdict").lower() == "clean" else FINDINGS
-    return None
+    # Every verdict line in the comment, not the first one: a review that says
+    # both — because it carries an example of the other shape, or kept an
+    # earlier verdict — said findings, and findings are the stronger thing said,
+    # here as everywhere else in this gate. The reviewer's P1 on #26: taking the
+    # first line opened the gate on a clean line with a finding under it.
+    said = [m.group("verdict").lower()
+            for m in (STANDIN_VERDICT.match(ln) for ln in lines) if m]
+    if "findings" in said:
+        return FINDINGS
+    return CLEAN if said else None
+
+
+def asked_codex(mine, head, resolve=None):
+    """Was Codex asked to read THIS commit, before anything stood in for it?
+
+    The ask is `@codex review` — the reviewer's own trigger words, so this
+    cannot fall out of step with what actually wakes it — and it must name this
+    head, the way every other shape here names the commit it means. One ask per
+    round is the rule, and a round is a commit, so an ask from the round before
+    does not carry.
+    """
+    note = _reviewed_head(head)
+    for c in mine:
+        body = c.get("body") or ""
+        if not ASK.search(body):
+            continue
+        if any(_names_head(ln.strip(), note, head, resolve) for ln in body.splitlines()):
+            return True
+    return False
 
 
 def verdict(reviews, comments, head, resolve=None, owner=None):
@@ -239,13 +278,23 @@ def verdict(reviews, comments, head, resolve=None, owner=None):
     whenever it has spoken about this head, including when it has only finished
     and not yet said what it found: a stand-in stands in for silence, never for
     a verdict that is on its way.
+
+    And it stands in only for a silence somebody asked for. A stand-in clean
+    counts only where `@codex review` naming this head is on the page, because
+    the rule is *ask Codex, then fall through* and a gate that skipped the first
+    half would have written down a rule it did not hold. The reviewer's P1 on
+    #26, against my own argument that a session willing to skip the ask would
+    equally type it: the shape of the ask is not ours to drift, since those are
+    the words that wake the reviewer, and the failure this catches is a session
+    that forgot rather than one that lied. A stand-in *finding* needs no ask —
+    it keeps the head red either way, and nothing is opened by it.
     """
     codex = [review_verdict(r, head) for r in reviews]
     codex += [comment_verdict(c.get("body"), head, resolve)
               for c in comments if c.get("user", {}).get("login") == BOT]
-    standin = [standin_verdict(c.get("body"), head, resolve)
-               for c in comments
-               if owner is not None and c.get("user", {}).get("login") == owner]
+    mine = [c for c in comments
+            if owner is not None and c.get("user", {}).get("login") == owner]
+    standin = [standin_verdict(c.get("body"), head, resolve) for c in mine]
     if FINDINGS in codex or FINDINGS in standin:
         return FINDINGS
     if CLEAN in codex:
@@ -253,7 +302,7 @@ def verdict(reviews, comments, head, resolve=None, owner=None):
     if NO_VERDICT in codex:
         return NO_VERDICT
     if CLEAN in standin:
-        return STANDIN_CLEAN
+        return STANDIN_CLEAN if asked_codex(mine, head, resolve) else NOT_ASKED
     return UNREAD
 
 
@@ -266,6 +315,10 @@ REASONS = {
                "read clean, never on an answer to a finding"),
     NO_VERDICT: ("the reviewer has run a review on commit %s but has not posted what it found — "
                  "re-run this check once it has"),
+    NOT_ASKED: ("a stand-in read of commit %s is on the page, but Codex was never asked to read "
+                "it — the rule is ask Codex, once, and stand in only for the silence that "
+                "follows; post `@codex review` naming this commit, and the stand-in counts if "
+                "nothing comes back"),
     # One placeholder, and only one: main() fills these with the head and
     # nothing else, so the stand-in's name is spliced in here rather than there.
     UNREAD: ("the reviewer has not read commit %s — ask it on the pull request, and when it "
@@ -331,6 +384,10 @@ def _selftest():
         (standin.replace("Codex.**", "Codex.** Or it would have been."), head, None,
          "the whole heading, taken back by what follows it on the line"),
         (_dashes(standin), head, CLEAN, "the heading typed with a hyphen for the dash"),
+        (standin + "\nAn example of the other shape:\n**Verdict:** findings\n", head, FINDINGS,
+         "a clean line with a findings line under it (the reviewer's second P1 on #26)"),
+        (standin_findings + "\n**Verdict:** clean\n", head, FINDINGS,
+         "the same the other way round — the stronger thing said still wins"),
         (standin.replace("090e429a31", "29d7b543"), head, None, "a stand-in read of another commit"),
         (standin.replace("**Verdict:** clean", "**Verdict:** looks fine"), head, None,
          "a verdict that is neither word"),
@@ -363,17 +420,27 @@ def _selftest():
     ]
     owner = "the-account-the-cto-holds"
     mine = lambda body: {"user": {"login": owner}, "body": body}
+    ask = mine("@codex review\n\nHead is `090e429a31`. Three places I think it could be wrong.")
     standin_gate_cases = [
-        ([], [mine(standin)], STANDIN_CLEAN, "a stand-in read, with Codex silent on this head"),
-        ([], [mine(standin_findings)], FINDINGS, "a stand-in read that left something"),
-        ([findings], [mine(standin)], FINDINGS,
+        ([], [ask, mine(standin)], STANDIN_CLEAN,
+         "Codex asked on this head and silent; the stand-in read it clean"),
+        ([], [mine(standin)], NOT_ASKED,
+         "a stand-in clean where Codex was never asked (the reviewer's first P1 on #26)"),
+        ([], [mine("@codex review\n\nHead is `29d7b543`."), mine(standin)], NOT_ASKED,
+         "an ask naming the round before, and a stand-in read of this one"),
+        ([], [{"user": {"login": "someone"}, "body": "@codex review\n\nHead is `090e429a31`."},
+              mine(standin)], NOT_ASKED,
+         "the ask typed by somebody who is not the account the CTO holds"),
+        ([], [mine(standin_findings)], FINDINGS,
+         "a stand-in finding with no ask — it opens nothing, so it needs none"),
+        ([findings], [ask, mine(standin)], FINDINGS,
          "a stand-in clean over findings Codex left — the findings stand"),
-        ([], [bot(summary), mine(standin)], NO_VERDICT,
+        ([], [bot(summary), ask, mine(standin)], NO_VERDICT,
          "Codex has finished on this head; a stand-in may not answer for it"),
-        ([], [bot(clean), mine(standin_findings)], FINDINGS,
+        ([], [bot(clean), ask, mine(standin_findings)], FINDINGS,
          "the stand-in found what Codex did not"),
-        ([], [bot(clean), mine(standin)], CLEAN, "both of them clean — Codex is the one named"),
-        ([], [{"user": {"login": "someone"}, "body": standin}], UNREAD,
+        ([], [bot(clean), ask, mine(standin)], CLEAN, "both of them clean — Codex is the one named"),
+        ([], [ask, {"user": {"login": "someone"}, "body": standin}], UNREAD,
          "a stand-in verdict typed by somebody who is not the account the CTO holds"),
     ]
     twin = "090e429" + "f" * 33  # another commit sharing the short form
@@ -397,8 +464,11 @@ def _selftest():
         bad += hold(standin_verdict(body, h), want, what)
     for reviews, comments, want, what in standin_gate_cases:
         bad += hold(verdict(reviews, comments, head, owner=owner), want, what)
-    bad += hold(verdict([], [mine(standin)], head), UNREAD,
+    bad += hold(verdict([], [ask, mine(standin)], head), UNREAD,
                 "a stand-in read with no owner given — closed unless it is asked for")
+    bad += hold(verdict([], [mine("@codex review\n\nHead is `090e429`."), mine(standin)], head,
+                        resolve=resolver, owner=owner), NOT_ASKED,
+                "an ask whose short form resolves to another commit")
     bad += hold(comment_verdict(summary, head, resolve=resolver), None,
                 "a short form that resolves to another commit")
     bad += hold(comment_verdict(clean, head, resolve=resolver), CLEAN,
@@ -410,12 +480,17 @@ def _selftest():
     if bad:
         print("review-gate selftest failed: %d case(s)" % bad)
         return 1
+    # A fake is anything that must not open the gate — counted, not asserted, so
+    # the number cannot drift away from the cases that hold it.
+    opens = (CLEAN, STANDIN_CLEAN)
     fakes = (sum(1 for c in comment_cases if c[2] is None)
              + sum(1 for r in review_cases if r[1] is None)
-             + sum(1 for c in standin_cases if c[2] is None) + 3)
+             + sum(1 for c in standin_cases if c[2] is None)
+             + sum(1 for g in gate_cases if g[2] not in opens)
+             + sum(1 for g in standin_gate_cases if g[2] not in opens) + 4)
     print("ok: review gate tells a clean read from a commented one, in both shapes and every "
-          "state they arrive in, keeps the stand-in behind Codex wherever Codex has spoken, "
-          "and is fooled by none of the %d fakes" % fakes)
+          "state they arrive in, keeps the stand-in behind Codex wherever Codex has spoken and "
+          "behind the ask that fell silent, and is fooled by none of the %d fakes" % fakes)
     return 0
 
 
