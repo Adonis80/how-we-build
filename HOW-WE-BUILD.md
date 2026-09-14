@@ -8,7 +8,7 @@
 
 **Numbers.** Never invent one; unknown is valid. An unrun number is a claim: the machine checks, not the model.
 
-**The hands are never his.** Work by hand goes into CI if it can, otherwise to the lead's own browser. Never to him.
+**The hands are never his.** Work by hand goes into CI, to the lead's own hands, or to a stack with hands. Never to him.
 
 **The unit of work**: one accepted slice, a user-visible outcome with acceptance criteria, never a screen. **"Build" is a whole instruction**: take the top `roadmap.json` item carrying his word, settling everything technical yourself. It never means run the build, nor is answered with a question.
 
