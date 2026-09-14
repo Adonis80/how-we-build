@@ -5,14 +5,72 @@ on:
   pull_request:
   pull_request_review:
     types: [submitted]
+  # A clean pass arrives as a comment, and a comment starts nothing on the pull
+  # request's head — which is why a green review has needed a hand re-run to be
+  # seen. The reviewer also edits its summary comment when a review finishes, so
+  # both shapes are listened for.
+  issue_comment:
+    types: [created, edited]
 permissions:
   contents: read
   pull-requests: read
 jobs:
+  wake:
+    # Only the reviewer's own comments, only on a pull request, and nothing else
+    # in this job: it re-runs the check that already exists on that pull request
+    # so the gate can see the review that has just landed. A re-run posts no
+    # comment, so it cannot wake itself.
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request != null &&
+      github.event.comment.user.login == 'chatgpt-codex-connector[bot]'
+    runs-on: ubuntu-latest
+    # The write is for one call — re-running this pull request's own check — and
+    # belongs to this job alone. The check job executes the proposed tree's
+    # check.sh and must never hold it.
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: write
+    timeout-minutes: 10
+    steps:
+      - name: re-run this pull request's check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          sha=$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)
+          # Asked of the head commit itself, so a parked pull request is found
+          # however many runs the repository has had since.
+          runs="repos/$REPO/actions/runs?head_sha=$sha&event=pull_request&per_page=100"
+          id=""; status=""
+          # A review can land while the check is still running, and that run
+          # asked GitHub for the comments before this one arrived — so it will
+          # finish red on a review that exists. Wait for it, then re-run it.
+          for _ in 1 2 3 4 5 6 7 8 9 10; do
+            line=$(gh api "$runs" --jq '[.workflow_runs[] | select(.name=="check")] | first | "\(.id) \(.status)"' || echo "")
+            id=${line%% *}; status=${line##* }
+            case "$id" in ""|null) echo "no check run on $sha yet — the run that starts next will read this review"; exit 0 ;; esac
+            [ "$status" = "completed" ] && break
+            echo "check run $id is $status — waiting for it to finish"
+            sleep 20
+          done
+          if [ "$status" != "completed" ]; then
+            echo "check run $id is still $status after three minutes — leaving it; if it lands red, ask again"
+            exit 0
+          fi
+          echo "re-running check $id on $sha"
+          gh api -X POST "repos/$REPO/actions/runs/$id/rerun" ||
+            echo "the re-run was refused (already running again, or too old) — nothing to do"
   check:
+    if: github.event_name != 'issue_comment'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - run: bash check.sh
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
