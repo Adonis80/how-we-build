@@ -18,9 +18,16 @@ could see. `AGENTS.md` named that gap. So the gate now gives one of four answers
 about the head commit, and opens on the first alone:
 
     clean       read, and the reviewer left nothing on it
-    findings    read, and the reviewer left something on it
+    findings    read, and whoever read it left something on it
     no verdict  a review ran on it, but what it found is not on the page yet
     unread      no read of this commit at all
+
+A fifth answer arrives with the Chairman's ruling of 14 September 2026: when
+Codex will not answer, a Fable 5.1 session reads in its place rather than the
+slice parking, and `clean, by the stand-in` opens the gate on that read. It
+counts only while Codex has said nothing about the head, and only from the
+owner's own comments — see standin_verdict(), which also names what the machine
+cannot check about it.
 
 A finding outranks every other answer about the same commit. The answer to a
 finding is a push, and a push makes a new commit for the reviewer to read; what
@@ -40,13 +47,19 @@ import urllib.request
 BOT = "chatgpt-codex-connector[bot]"
 SUMMARY_MARKER = "codex-pull-request-review-summary"
 
-# The four answers, worst first: a commit is judged by the strongest thing said
-# about it, and only CLEAN opens the gate.
+# What can be said about a commit. A commit is judged by the strongest of them,
+# and only the two clean answers open the gate.
 FINDINGS = "findings"
 CLEAN = "clean"
+STANDIN_CLEAN = "clean, by the stand-in"
 NO_VERDICT = "no verdict"
 UNREAD = "unread"
-ORDER = (FINDINGS, CLEAN, NO_VERDICT)
+
+STANDIN = "Fable 5.1"
+# **Fable 5.1 review — in place of Codex.**
+STANDIN_HEADING = re.compile(r"^\*\*" + STANDIN.replace(".", r"\.") + r" review\b")
+# **Verdict:** clean
+STANDIN_VERDICT = re.compile(r"^\*\*Verdict:\*\*\s*(?P<verdict>clean|findings)\.?\s*$", re.IGNORECASE)
 
 
 def _completed_row(head):
@@ -160,29 +173,94 @@ def review_verdict(review, head):
     return None
 
 
-def verdict(reviews, comments, head, resolve=None):
+def standin_verdict(body, head, resolve=None):
+    """What a stand-in review says about this commit, when Codex will not answer.
+
+    The Chairman's ruling of 14 September 2026: a slice no longer parks when the
+    reviewer is silent — a Fable 5.1 session reads it instead, in its own
+    context, and its review is posted on the pull request whole. The gate has to
+    be able to count that read or the ruling cannot be obeyed, and this is the
+    shape it counts:
+
+        **Fable 5.1 review — in place of Codex.**
+
+        **Reviewed commit:** `090e429a31`
+        **Verdict:** clean
+
+    Three things are enforced: the heading, so a sentence about a stand-in
+    review is not one; the commit, resolved like any other, because a short form
+    is not a commit; and — in verdict() — that Codex has said nothing about this
+    head, so a stand-in never speaks over the reviewer it stands in for.
+
+    One thing is not, and is named here rather than discovered later: who wrote
+    it. This review is posted by the account the CTO holds, not by an identity
+    of its own, so the machine reads a shape and trusts a session. That is the
+    weakest joint in this gate, and it closes the day a reviewer identity for
+    this stack exists on GitHub — the same day `README.md` is already waiting
+    for. Until then the pull request says which read it got, and a person can
+    see which.
+    """
+    if not body or not body.strip():
+        return None
+    lines = [ln.strip() for ln in body.splitlines()]
+    if not STANDIN_HEADING.match(lines[0]):
+        return None
+    note = _reviewed_note(head)
+    if not any(_names_head(ln, note, head, resolve) for ln in lines):
+        return None
+    for ln in lines:
+        m = STANDIN_VERDICT.match(ln)
+        if m:
+            return CLEAN if m.group("verdict").lower() == "clean" else FINDINGS
+    return None
+
+
+def verdict(reviews, comments, head, resolve=None, owner=None):
     """The gate's one answer about the head commit, from the whole page.
 
     Only the reviewer's own words count: anyone who can comment on a pull
-    request can type a clean pass, so a comment by anybody else is not one.
+    request can type a clean pass, so a comment by anybody else is not one. The
+    stand-in is read from the owner's comments alone, and only when `owner` is
+    given, so a page read without one answers exactly as it did before there was
+    a stand-in at all.
+
+    The order is the rule. A finding — from either of them — outranks
+    everything, because the answer to a finding is a push. Codex decides
+    whenever it has spoken about this head, including when it has only finished
+    and not yet said what it found: a stand-in stands in for silence, never for
+    a verdict that is on its way.
     """
-    said = [review_verdict(r, head) for r in reviews]
-    said += [comment_verdict(c.get("body"), head, resolve)
-             for c in comments if c.get("user", {}).get("login") == BOT]
-    for answer in ORDER:
-        if answer in said:
-            return answer
+    codex = [review_verdict(r, head) for r in reviews]
+    codex += [comment_verdict(c.get("body"), head, resolve)
+              for c in comments if c.get("user", {}).get("login") == BOT]
+    standin = [standin_verdict(c.get("body"), head, resolve)
+               for c in comments
+               if owner is not None and c.get("user", {}).get("login") == owner]
+    if FINDINGS in codex or FINDINGS in standin:
+        return FINDINGS
+    if CLEAN in codex:
+        return CLEAN
+    if NO_VERDICT in codex:
+        return NO_VERDICT
+    if CLEAN in standin:
+        return STANDIN_CLEAN
     return UNREAD
 
 
 REASONS = {
-    FINDINGS: ("the reviewer read commit %s and left findings on it — answer them, land the "
-               "round's fixes as one push, and ask once; the gate opens on a commit the reviewer "
-               "reads clean, never on an answer to a finding"),
+    # Findings are not attributed to Codex by name: since the stand-in, the read
+    # that left them may not have been its own, and a gate that names the wrong
+    # reader sends the next session to the wrong place.
+    FINDINGS: ("commit %s was read, and findings were left on it — answer them, land the "
+               "round's fixes as one push, and ask once; the gate opens on a commit that is "
+               "read clean, never on an answer to a finding"),
     NO_VERDICT: ("the reviewer has run a review on commit %s but has not posted what it found — "
                  "re-run this check once it has"),
+    # One placeholder, and only one: main() fills these with the head and
+    # nothing else, so the stand-in's name is spliced in here rather than there.
     UNREAD: ("the reviewer has not read commit %s — ask it on the pull request, and when it "
-             "has finished, re-run this check"),
+             "has finished, re-run this check; if it will not answer at all, a " + STANDIN +
+             " read posted in the stand-in shape counts instead"),
 }
 
 
@@ -229,6 +307,26 @@ def _selftest():
         ({"user": {"login": BOT}, "commit_id": other, "state": "APPROVED"}, None, "an approval of another commit"),
         ({"user": {"login": BOT}, "commit_id": other, "state": "COMMENTED"}, None, "findings on another commit"),
     ]
+    standin = ("**%s review — in place of Codex.**\n\n"
+               "**Reviewed commit:** `090e429a31`\n"
+               "**Verdict:** clean\n\n"
+               "What I checked: the diff and the pages before the pull request's own account.\n"
+               % STANDIN)
+    standin_findings = standin.replace("**Verdict:** clean", "**Verdict:** findings")
+    standin_cases = [
+        (standin, head, CLEAN, "a stand-in read that left nothing"),
+        (standin_findings, head, FINDINGS, "a stand-in read that left something"),
+        (standin.replace("090e429a31", "29d7b543"), head, None, "a stand-in read of another commit"),
+        (standin.replace("**Verdict:** clean", "**Verdict:** looks fine"), head, None,
+         "a verdict that is neither word"),
+        (standin.split("\n\n", 1)[1], head, None, "a verdict with nothing saying who read it"),
+        (standin.replace("**Verdict:** clean\n", ""), head, None,
+         "a stand-in read that never says what it found"),
+        ("I asked for a **%s review** of this.\n\n**Reviewed commit:** `090e429a31`\n"
+         "**Verdict:** clean\n" % STANDIN, head, None,
+         "a sentence about a stand-in review, carrying the shape below it"),
+        ("", head, None, "an empty comment"),
+    ]
     bot = lambda body: {"user": {"login": BOT}, "body": body}
     findings = {"user": {"login": BOT}, "commit_id": head, "state": "COMMENTED"}
     gate_cases = [
@@ -248,6 +346,21 @@ def _selftest():
         ([{"user": {"login": BOT}, "commit_id": head, "state": "DISMISSED"}], [], UNREAD,
          "a review somebody took back, and nothing else"),
     ]
+    owner = "the-account-the-cto-holds"
+    mine = lambda body: {"user": {"login": owner}, "body": body}
+    standin_gate_cases = [
+        ([], [mine(standin)], STANDIN_CLEAN, "a stand-in read, with Codex silent on this head"),
+        ([], [mine(standin_findings)], FINDINGS, "a stand-in read that left something"),
+        ([findings], [mine(standin)], FINDINGS,
+         "a stand-in clean over findings Codex left — the findings stand"),
+        ([], [bot(summary), mine(standin)], NO_VERDICT,
+         "Codex has finished on this head; a stand-in may not answer for it"),
+        ([], [bot(clean), mine(standin_findings)], FINDINGS,
+         "the stand-in found what Codex did not"),
+        ([], [bot(clean), mine(standin)], CLEAN, "both of them clean — Codex is the one named"),
+        ([], [{"user": {"login": "someone"}, "body": standin}], UNREAD,
+         "a stand-in verdict typed by somebody who is not the account the CTO holds"),
+    ]
     twin = "090e429" + "f" * 33  # another commit sharing the short form
     resolved = {"090e429": twin, "090e429a31": head}
     resolver = lambda sha: resolved.get(sha)
@@ -265,17 +378,29 @@ def _selftest():
         bad += hold(comment_verdict(body, h), want, what)
     for reviews, comments, want, what in gate_cases:
         bad += hold(verdict(reviews, comments, head), want, what)
+    for body, h, want, what in standin_cases:
+        bad += hold(standin_verdict(body, h), want, what)
+    for reviews, comments, want, what in standin_gate_cases:
+        bad += hold(verdict(reviews, comments, head, owner=owner), want, what)
+    bad += hold(verdict([], [mine(standin)], head), UNREAD,
+                "a stand-in read with no owner given — closed unless it is asked for")
     bad += hold(comment_verdict(summary, head, resolve=resolver), None,
                 "a short form that resolves to another commit")
     bad += hold(comment_verdict(clean, head, resolve=resolver), CLEAN,
                 "a clean pass whose short form resolves to this head")
+    bad += hold(standin_verdict(standin.replace("090e429a31", "090e429"), head, resolve=resolver),
+                None, "a stand-in read whose short form resolves to another commit")
+    bad += hold(standin_verdict(standin, head, resolve=resolver), CLEAN,
+                "a stand-in read whose short form resolves to this head")
     if bad:
         print("review-gate selftest failed: %d case(s)" % bad)
         return 1
     fakes = (sum(1 for c in comment_cases if c[2] is None)
-             + sum(1 for r in review_cases if r[1] is None) + 1)
+             + sum(1 for r in review_cases if r[1] is None)
+             + sum(1 for c in standin_cases if c[2] is None) + 3)
     print("ok: review gate tells a clean read from a commented one, in both shapes and every "
-          "state they arrive in, and is fooled by none of the %d fakes" % fakes)
+          "state they arrive in, keeps the stand-in behind Codex wherever Codex has spoken, "
+          "and is fooled by none of the %d fakes" % fakes)
     return 0
 
 
@@ -303,6 +428,9 @@ def main(argv):
         return 2
     repo, num, head, token = argv[1:5]
     api = "https://api.github.com/repos/%s" % repo
+    # The stand-in is read from this account's comments and no other: a shape
+    # anyone who can comment could type would be no gate at all.
+    owner = repo.split("/")[0]
     seen = {}
 
     def resolve(short):
@@ -325,7 +453,7 @@ def main(argv):
         # answer it liked would be the gate this one replaces.
         reviews = list(_pages("%s/pulls/%s/reviews" % (api, num), token))
         comments = list(_pages("%s/issues/%s/comments" % (api, num), token))
-        answer = verdict(reviews, comments, head, resolve=resolve)
+        answer = verdict(reviews, comments, head, resolve=resolve, owner=owner)
     except urllib.error.HTTPError as e:
         if e.code in (401, 403):
             why = "the workflow's token may not read pull requests (it needs pull-requests: read), or GitHub is rate-limiting"
@@ -339,6 +467,10 @@ def main(argv):
         return 2
     if answer == CLEAN:
         print("ok: the reviewer has read %s and left nothing on it" % head)
+        return 0
+    if answer == STANDIN_CLEAN:
+        print("ok: Codex has said nothing about %s, and a %s read in its place left nothing on "
+              "it — the same vendor as the lead, and the pull request says so" % (head, STANDIN))
         return 0
     print("reason: " + REASONS[answer] % head)
     return 1

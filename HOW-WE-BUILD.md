@@ -12,10 +12,10 @@
 
 **The loop.** One builder session per slice, attached to the repo. A turn stays only while the work is the same, staying is cheaper than a fresh start, and the history still helps; otherwise checkpoint and start fresh. When nothing can move it stops hard: no clock, timer, schedule or automation wakes it. Words change from an advisory session by pull request.
 1. State the slice and its non-goals. A new or reworked screen follows *How a screen gets designed*; planning stops.
-2. From latest `main`, read open pull requests — a parked slice is moved on, never rebuilt — run the product, find the smallest seam, branch, open a draft PR.
+2. From latest `main`, read open pull requests — one already open is moved on, never rebuilt — run the product, find the smallest seam, branch, open a draft PR.
 3. Build. Replace rather than wrap. One implementation per business rule. No speculative abstraction.
 4. Prove it: build, tests, the Playwright journey on phone and desktop, preview deploy. A screenshot is not proof.
-5. A reviewer reads the PR cold in its own session — the other vendor where possible, always on pricing, live database changes or schema, authentication and authorisation, public trust boundaries, deploy and release machinery, and this gate; unsure means crossed. A slice that cannot get that read is not started. Asked once per round, fixes batched into one push; unavailable, the slice parks and the next begins — the gate never opens unreviewed.
+5. A reviewer reads the PR cold in its own session — the other vendor where possible, always on pricing, live database changes or schema, authentication and authorisation, public trust boundaries, deploy and release machinery, and this gate; unsure means crossed. Asked once per round, fixes batched into one push; silent, a Fable 5.1 session reads in its place, same vendor and said so — the gate never opens unreviewed.
 6. Send the preview, what changed, the journey to try, and "Decision needed: … or none".
 7. Merge to protected `main`, deploy, smoke-test, roll back on failure. Delete residue; leave `roadmap.json` fit to start on *build* alone: `next` lines current and complete, never a prompt carrying what the repo lacks.
 
