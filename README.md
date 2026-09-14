@@ -93,8 +93,9 @@ the connected folder ~/Documents/Claude/Projects, where the key is the file
 that runs — check.sh, review-gate.py, the workflow — is built in a code session
 started attached to this repo, not from here.
 
-Before proposing a change to the rulebook, read its AGENTS.md and its README's
-"Changing the rulebook" — the rules for changing it live there and nowhere else.
+Before proposing a change to the rulebook, read its AGENTS.md, its CHARTER.md §13 and
+its README's "Changing the rulebook": between them they hold the gate, who clears a
+change, and what the pull request must carry.
 
 This Project holds these instructions and no files of any kind.
 
