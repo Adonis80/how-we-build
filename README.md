@@ -61,9 +61,8 @@ neither this Project nor a repo. The pull request is the handover. Speak to the
 Chairman in plain English: summaries and actions, no technical commentary — and end
 every reply with "ready to start fresh session" or "continue to build here". "Continue
 to build here" means this session carries on. "Ready to start fresh session" is never
-left bare: the line above it names where — Cowork, or code mode at
-https://claude.ai/code with this repository chosen — the words to send when it opens,
-and that the next session has full context: checked against the repo, never assumed.
+left bare: it carries everything `HOW-WE-BUILD.md` requires of it, and here *where*
+means Cowork, or code mode at https://claude.ai/code with this repository chosen.
 ```
 
 ### The Juku OS Project's instructions
@@ -104,10 +103,9 @@ neither this Project nor a repo. The pull request is the handover. Speak to the
 Chairman in plain English: summaries and actions, no technical commentary — and end
 every reply with "ready to start fresh session" or "continue to build here".
 "Continue to build here" means this session carries on. "Ready to start fresh
-session" is never left bare: the line above it names where — Cowork, or code mode at
-https://claude.ai/code with this repository chosen — the words to send when it
-opens, and that the next session has full context: checked against the repo, never
-assumed.
+session" is never left bare: it carries everything `HOW-WE-BUILD.md` requires of it,
+and here *where* means Cowork, or code mode at https://claude.ai/code with this
+repository chosen.
 ```
 
 ## The independent reviewer
@@ -214,7 +212,6 @@ How a change reaches every product: it is made here once and then lands everywhe
 - Open pull requests read before starting: a slice parked only for review is moved on rather than rebuilt or restarted — its findings answered, its fixes pushed, its ask made, and that is the session's work — while a stale or abandoned one is closed or taken over, and anything else is left alone and the next roadmap item taken. An open pull request defers a slice; it never blocks every slice.
 - A session that cannot move says so once on the pull request and stops hard (his ruling, 10 September 2026). No clock wakes it — no check-in, timer, loop, scheduled task or background watch, and no shell left waiting past the work in hand, which still allows the waits a slice needs, such as the deploy's couple of minutes. Something happening may wake it: a review landing, a check failing, the Chairman writing. `.claude/settings.json` denies the clock tools — `ScheduleWakeup`, `CronCreate`, `RemoteTrigger`, `mcp__*__send_later`, `mcp__*__create_trigger`, `mcp__*__update_trigger`, `mcp__*__fire_trigger` — and the check fails if one goes missing; a shell left sleeping is forbidden by the rule, which no file can catch. On the OpenAI side the same rule forbids Codex automations, schedules and polling in the build loop.
 - A `roadmap.json` left fit for a one-word start (his ruling, 9 September 2026: *make sure the session has all the context it needs so all I have to do is say "build"*): every `next` line current, self-sufficient, and in the order the work will be taken up, so that *build* alone is enough and he is never handed a paragraph to paste. Words still waiting in an unmerged pull request are the one exception, and the session that opened them says so and carries the difference meanwhile.
-- **"Ready to start fresh session" states that the next session has full context** (his instruction, 15 September 2026): the repository carries what it needs, and nothing has to be pasted. Saying it is the mechanism — the handover rule under *Session changeover* is invisible until a session states it as a claim that can be wrong, and a claim gets checked before it is made. On 14 September a session ended eight replies that way while `roadmap.json` still pointed at code it had just deleted, said a blocker had gone when it had not, and named no next action at all; the Chairman had to ask whether the slice was finished. Either stack: this list and `HOW-WE-BUILD.md` are the whole boot path a Codex session gets, and a Project template it never reads cannot bind it.
 - `PRODUCT.md` and `NAMES.md`: what the product is, and the words it uses for its own things.
 - A `README.md` route section saying that a session attached to the repo at its start works in it directly, a session started without it goes through the Mac, and the ten-second test tells which.
 - A Project whose instructions are the template above, whole, and nothing else.
