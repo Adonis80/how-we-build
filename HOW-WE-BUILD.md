@@ -17,7 +17,7 @@
 2. From latest `main`, read open pull requests, run the product, find the smallest seam, branch, open a draft PR.
 3. Build. Replace rather than wrap. One implementation per business rule. No speculative abstraction.
 4. Prove it: build, tests, the Playwright journey on phone and desktop, preview deploy. A screenshot is not proof.
-5. A reviewer reads the PR cold in its own session — the other vendor where possible, always on pricing, live database changes or schema, authentication and authorisation, public trust boundaries, deploy and release machinery, and this gate; unsure means crossed. A slice that cannot get that read is not started. Asked once per round, fixes batched into one push; unavailable, the slice parks and the next begins — the gate never opens unreviewed.
+5. A reviewer reads the PR cold in its own session, the other vendor where possible, always on pricing, live database changes or schema, authentication and authorisation, public trust boundaries, deploy and release machinery, and this gate; unsure means crossed. Asked once a round, fixes in one push. Unavailable, Fable 5.1 reads it instead and the slice parks while the next begins — the gate never opens on a read it cannot count.
 6. Send the preview, what changed, the journey to try, and "Decision needed: … or none".
 7. Merge to protected `main`, deploy, smoke-test, roll back on failure. Delete residue; leave `roadmap.json` fit to start on *build* alone: `next` lines current and complete.
 
