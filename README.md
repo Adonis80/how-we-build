@@ -62,8 +62,8 @@ Chairman in plain English: summaries and actions, no technical commentary — an
 every reply with "ready to start fresh session" or "continue to build here". "Continue
 to build here" means this session carries on. "Ready to start fresh session" is never
 left bare: the line above it names where — Cowork, or code mode at
-https://claude.ai/code with this repository chosen — and the words to send when it
-opens.
+https://claude.ai/code with this repository chosen — the words to send when it opens,
+and that the next session has full context: checked against the repo, never assumed.
 ```
 
 ### The Juku OS Project's instructions
