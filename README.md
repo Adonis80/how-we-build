@@ -207,7 +207,7 @@ The screen spec is the durable record — contract, hierarchy, layout tree, stat
 
 ## What every product carries
 
-How a change reaches every product: it is made here once and then lands everywhere — a change to how we build not by anyone remembering, but because every session is sent to this list at its start (by the first line of its `AGENTS.md`, and by its Project's instructions) and a repo that lacks something on it makes itself current in its next pull request. One line each, as of 12 September 2026; the why of each lives in the pull request that added it.
+How a change reaches every product: it is made here once and then lands everywhere — a change to how we build not by anyone remembering, but because every session is sent to this list at its start (by the first line of its `AGENTS.md`, and by its Project's instructions) and a repo that lacks something on it makes itself current in its next pull request. One line each, as of 15 September 2026; the why of each lives in the pull request that added it.
 
 - `AGENTS.md` ending with `## Review guidelines`: the pointer to the brief above, the least of it the tool needs in front of it, and the product's own hazards — under 500 words, machine-checked.
 - A check that goes green in a pull request only when the reviewer has read the current commit, counting both shapes of answer — a submitted review, and a plain comment naming the commit.
