@@ -61,9 +61,8 @@ neither this Project nor a repo. The pull request is the handover. Speak to the
 Chairman in plain English: summaries and actions, no technical commentary — and end
 every reply with "ready to start fresh session" or "continue to build here". "Continue
 to build here" means this session carries on. "Ready to start fresh session" is never
-left bare: the line above it names where — Cowork, or code mode at
-https://claude.ai/code with this repository chosen — and the words to send when it
-opens.
+left bare: it carries everything `HOW-WE-BUILD.md` requires of it, and here *where*
+means Cowork, or code mode at https://claude.ai/code with this repository chosen.
 ```
 
 ### The Juku OS Project's instructions
@@ -104,9 +103,9 @@ neither this Project nor a repo. The pull request is the handover. Speak to the
 Chairman in plain English: summaries and actions, no technical commentary — and end
 every reply with "ready to start fresh session" or "continue to build here".
 "Continue to build here" means this session carries on. "Ready to start fresh
-session" is never left bare: the line above it names where — Cowork, or code mode at
-https://claude.ai/code with this repository chosen — and the words to send when it
-opens.
+session" is never left bare: it carries everything `HOW-WE-BUILD.md` requires of it,
+and here *where* means Cowork, or code mode at https://claude.ai/code with this
+repository chosen.
 ```
 
 ## The independent reviewer
@@ -174,6 +173,8 @@ Otherwise, checkpoint and start fresh. Provider caches and compaction can inform
 
 Before leaving, put every durable fact in GitHub and make the pull request and roadmap handover sufficient on their own. If the opening words for the next session would have to carry project state, the handover is not finished. Advisory work that has no repository yet gets one temporary `START-HERE.md` — the bounded question, what is agreed, the next action, the files that matter — superseded the moment the result lands in GitHub.
 
+**And say so, as a claim that can be wrong.** A turn that ends "ready to start fresh session" also states that the next session has full context: the repository carries what it needs, and nothing has to be pasted. The saying is the mechanism. The obligation above — the handover sufficient on its own — is invisible until somebody checks it, and a session can satisfy the phrase while failing the substance. Stating it turns the phrase into a claim, and a claim gets checked before it is made. On 14 September 2026 a Juku Perfume session ended eight replies "ready to start fresh session" while `roadmap.json` still pointed at code that session had just deleted, still said a blocker had gone when it had not, and named no next action at all. The Chairman had to ask whether the slice was even finished; the check that question forced found six wrong lines. Nothing was concealed — the phrase had become a sign-off rather than a statement about the repository, and a sign-off costs nothing to say.
+
 A fresh session reads progressively from canonical truth and stops when it knows enough. It never rebuilds repository state from old chats. Keep tool output targeted, and never poll. For Codex, a fresh task starts each slice and a thread is continued only inside that slice, while the three above hold.
 
 ## The two stacks
@@ -204,7 +205,7 @@ The screen spec is the durable record — contract, hierarchy, layout tree, stat
 
 ## What every product carries
 
-How a change reaches every product: it is made here once and then lands everywhere — a change to how we build not by anyone remembering, but because every session is sent to this list at its start (by the first line of its `AGENTS.md`, and by its Project's instructions) and a repo that lacks something on it makes itself current in its next pull request. One line each, as of 12 September 2026; the why of each lives in the pull request that added it.
+How a change reaches every product: it is made here once and then lands everywhere — a change to how we build not by anyone remembering, but because every session is sent to this list at its start (by the first line of its `AGENTS.md`, and by its Project's instructions) and a repo that lacks something on it makes itself current in its next pull request. One line each, as of 15 September 2026; the why of each lives in the pull request that added it.
 
 - `AGENTS.md` ending with `## Review guidelines`: the pointer to the brief above, the least of it the tool needs in front of it, and the product's own hazards — under 500 words, machine-checked.
 - A check that goes green in a pull request only when the reviewer has read the current commit, counting both shapes of answer — a submitted review, and a plain comment naming the commit.
@@ -257,6 +258,8 @@ or fetch `https://raw.githubusercontent.com/Adonis80/how-we-build/main/HOW-WE-BU
 
 
 **The cap gave once, in the open, and 600 is the ceiling.** The page was capped at 500 words from 28 August to 12 September 2026. The two-lead rules — the lead is CTO, cold review with the cross-vendor list, session changeover, a hard stop that names schedules and automations — would not fit under it without spending a rule, which the paragraph above forbids. So it moved to 600 in `check.sh`, in the pull request that needed it and for that reason, said out loud. That is the last rise. From here a rule in means a rule out: an addition pays in wording, or by removing a rule that has stopped earning its place — never with another number. A change that genuinely cannot fit argues about the cap in its own pull request and waits there; it does not raise it in passing.
+
+**15 September: an addition was paid for in punctuation, and that slack is now spent.** Putting *and that the next session has full context* into *Asking the Chairman* cost five words on a page already sitting at exactly 600. They came from five standalone em dashes, which the counter treats as words because `split()` does: the parenthetical in *Who decides* took brackets instead, two in the loop took a colon and a full stop, one in *the PR is the handover* took a semicolon. No word was deleted, no requirement changed, and the page is shorter in characters as well as in count. It is written down because the page now holds no standalone em dash at all — there is no punctuation left to sell, so the next addition pays in wording or in a rule out, exactly as the paragraph above says.
 
 **"Build" here means the oldest open pull request.** This repository has no `roadmap.json`; its queue is its open pull requests. A session started on *build* with this repository chosen reads them oldest first and moves one on — answers its findings, pushes the round's fixes as one push, asks once — or closes one that is stale. With none open, there is nothing to build here: say so and stop.
 
