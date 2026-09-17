@@ -750,8 +750,11 @@ def _selftest():
         bad += hold(touches_the_gate(paths_in(files_)), want,
                     "a renamed path reaches the guard: " + what)
 
-    # What counts as the gate. The whole of .github/ is on the list because
-    # adding a workflow is the only way to post as Actions at all.
+    # What counts as the gate. The whole of .github/ is on the list because the
+    # machinery that decides is only the other vendor's to clear — NOT because
+    # adding a workflow is the only way to post a verdict, which it is not: see
+    # BACKUP. That argument was the one the backup's read disproved, and it is
+    # not restated here in the one place a reader would take it for settled.
     for paths, want, what in [
         (["review-gate.py"], ["review-gate.py"], "the gate's own decision"),
         (["check.sh"], ["check.sh"], "the check that runs it"),
