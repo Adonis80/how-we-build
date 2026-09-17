@@ -593,6 +593,37 @@ def _selftest():
     ]:
         bad += hold(verdict(reviews, comments, head, gate_files=files), want, what)
 
+    # What a comparison hands the guard, which is the half the selftest used to
+    # take on trust. A rename names its destination in `filename` and its source
+    # only in `previous_filename`, so reading one of them loses the other.
+    for files_, want, what in [
+        ([{"filename": "README.md", "status": "modified"}], ["README.md"], "an ordinary edit"),
+        ([{"filename": "docs/check.yml", "previous_filename": ".github/workflows/check.yml",
+           "status": "renamed"}],
+         ["docs/check.yml", ".github/workflows/check.yml"],
+         "the gate's own workflow renamed onto an ordinary path"),
+        ([{"filename": "review-gate.py", "status": "modified"}], ["review-gate.py"],
+         "the gate edited in place"),
+        ([{"filename": "notes.md", "previous_filename": "review-gate.py", "status": "renamed"}],
+         ["notes.md", "review-gate.py"], "the gate renamed away"),
+        ([{"filename": ""}, {}], [], "entries naming nothing"),
+        ([], [], "an empty comparison"),
+    ]:
+        bad += hold(paths_in(files_), want, "what a comparison hands the guard: " + what)
+
+    # And the two together: a renamed gate file must still be a gate change.
+    for files_, want, what in [
+        ([{"filename": "docs/check.yml", "previous_filename": ".github/workflows/check.yml"}],
+         [".github/workflows/check.yml"],
+         "renaming the gate workflow away is still touching the gate"),
+        ([{"filename": "notes.md", "previous_filename": "review-gate.py"}],
+         ["review-gate.py"], "so is renaming the gate itself"),
+        ([{"filename": "NAMES.md", "previous_filename": "README.md"}], [],
+         "renaming an ordinary page is not"),
+    ]:
+        bad += hold(touches_the_gate(paths_in(files_)), want,
+                    "a renamed path reaches the guard: " + what)
+
     # What counts as the gate. The whole of .github/ is on the list because
     # adding a workflow is the only way to post as Actions at all.
     for paths, want, what in [
@@ -669,7 +700,31 @@ def changed_paths(api, base, head, token):
             "the comparison between %s and %s names %d files, which is GitHub's cap — "
             "the list may be short, and a short list could hide the file that makes this "
             "pull request ineligible. Refusing rather than guessing." % (base, head, len(files)))
-    return [f.get("filename") for f in files]
+    return paths_in(files)
+
+
+def paths_in(files):
+    """Every path a comparison touches — where each file went AND where it was.
+
+    GitHub names a renamed file by its DESTINATION in `filename`, and its source
+    only in `previous_filename`. Reading the destination alone loses the fact
+    that something was taken away from where it used to be. So a pull request
+    could rename `.github/workflows/check.yml` onto an ordinary path and
+    touches_the_gate() would see an ordinary path — missing that the gate's own
+    workflow had just been carried off, and letting a backup verdict clear it.
+
+    The primary found that on #34, and named why the selftest did not: it held
+    touches_the_gate() against the paths it was handed, and nothing held what
+    was handed to it. This function is the seam that was missing, and it is
+    pure so the selftest can hold it.
+    """
+    out = []
+    for f in files:
+        for key in ("filename", "previous_filename"):
+            name = f.get(key)
+            if name:
+                out.append(name)
+    return out
 
 
 def _pages(url, token):
