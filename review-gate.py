@@ -19,7 +19,7 @@ head commit, and opens on `clean` alone:
 
     clean       read, and the reviewer left nothing on it
     findings    read, and the reviewer left something on it
-    gate        the main reviewer cleared it, but the change is one only the
+    gate        the backup cleared it, but the change is one only the
                 other vendor may clear
     no verdict  a review ran on it, but what it found is not on the page yet
     unread      no read of this commit at all
@@ -29,14 +29,20 @@ finding is a push, and a push makes a new commit for the reviewer to read; what
 the CTO says about the old one never clears it.
 
 From 17 September 2026 there are two reviewers, and the gate reads both. The
-Chairman's ruling that day: *"Astra is out of credit for this week. We have
-updated the rule for you to use Claude Fable 5.1 at Max effort as the main
-reviewer."* The main reviewer runs in .github/workflows/review.yml and posts as
-github-actions[bot]. Codex stays the other vendor, and on the classes where the
-rulebook requires one — here, the review gate itself — only Codex may clear.
+Chairman's ruling that evening: *"we better use GPT sol 5.6 as primary reviewer
+because Fable will hit a wall. and if thats not available then default for Fable
+5.1. this is because although it Claude, its still different to Opus 5 which is
+the default builder for claude code mode."*
 
-Three things make the main reviewer a gate rather than a way round, and the
-first two are why its verdict can be counted at all:
+So Codex is the primary and reads first. The backup runs in
+.github/workflows/review.yml, posts as github-actions[bot], and is counted ONLY
+behind the primary's own refusal on that same pull request — the one half of
+this the lead cannot write for itself. On the classes where the rulebook
+requires the other vendor — here, the review gate itself — only Codex may
+clear, refusal or no refusal.
+
+Four things make the backup a gate rather than a way round, and the first two
+are why its verdict can be counted at all:
 
   it posts as Actions     no personal token can post under that name; a Fable
                           read run inside a session posts as the Chairman, and
@@ -47,10 +53,15 @@ first two are why its verdict can be counted at all:
   it may not clear the    a change to review-gate.py, check.sh or anything under
   gate                    .github/ waits for the other vendor, however long that
                           takes — see touches_the_gate()
+  only behind a refusal   and only the primary's LATEST word on the pull
+                          request. An allowance that reset since is a primary
+                          that can answer, and it answers first
 
 The third is what keeps the second true. To forge a verdict you must post as
 Actions; to post as Actions you must add or change a workflow; and changing
 anything under .github/ is exactly what makes this reviewer ineligible.
+
+The fourth is why the backup never quietly becomes the habit.
 
 Every shape is matched by its exact form, and --selftest holds the match against
 the real ones and the fakes on every run of check.sh — no network, no GitHub, and
@@ -66,11 +77,40 @@ import urllib.request
 BOT = "chatgpt-codex-connector[bot]"
 SUMMARY_MARKER = "codex-pull-request-review-summary"
 
-# The main reviewer, and the one identity no session can type as. GitHub gives
+# The backup reviewer, and the one identity no session can type as. GitHub gives
 # this login to a workflow's own token; a personal access token cannot borrow
 # it. That is the whole reason a Fable read counts here and the same read taken
 # inside a builder session does not.
 ACTIONS = "github-actions[bot]"
+
+# The primary's own refusal, which is what makes the backup eligible at all.
+# Matched from the start of its comment, and anchored: a body that merely
+# mentions a limit is not the primary saying it cannot read.
+QUOTA = re.compile(r"^You have reached your .{0,40}usage limits", re.IGNORECASE)
+
+
+def primary_refused(bodies):
+    """Is the primary's LATEST word on this pull request that it cannot read?
+
+    Not "has it ever refused here". One allowance serves every repository, and
+    it resets: on 17 September 2026 it refused at 11:46 and read again at 15:54
+    on the same pull request, after a banked reset was spent. A gate that
+    counted the older refusal would hand the afternoon's reviews to the backup
+    while the primary sat available — the opposite of the ruling, which is that
+    the other vendor reads first.
+
+    So only the last thing the primary said counts. Anything else it has posted
+    since — a summary, a clean pass, findings — is a primary that can answer,
+    and the answer is to ask it.
+
+    Failing to recognise a refusal shape leaves the backup ineligible and the
+    slice waiting on the primary. That is the safe direction: the unsafe one is
+    a backup that stands in while the primary is fine.
+    """
+    said = [b for b in bodies if b and b.strip()]
+    if not said:
+        return False
+    return QUOTA.match(said[-1].strip()) is not None
 
 # Its two shapes. The workflow writes one of these as the first line and nothing
 # else, and matching is exact and whole-line — not a prefix. A prefix test is
@@ -81,7 +121,7 @@ ACTIONS = "github-actions[bot]"
 FABLE_CLEAN = "Review by Fable at max effort: nothing found."
 FABLE_FINDINGS = "Review by Fable at max effort: findings below."
 
-# What the main reviewer may not clear. It is the same vendor as the lead, and
+# What the backup may not clear. It is the same vendor as the lead, and
 # the rulebook requires the other vendor on the review gate itself — so these
 # wait for Codex however long it takes.
 #
@@ -105,15 +145,16 @@ def touches_the_gate(paths):
 # The answers, worst first: a commit is judged by the strongest thing said about
 # it, and only CLEAN opens the gate.
 #
-# GATE_CHANGE sits below CLEAN on purpose. It is what the main reviewer's clean
+# GATE_CHANGE sits below CLEAN on purpose. It is what the backup's clean
 # pass becomes on a change to the gate, and Codex's own clean pass outranks it —
 # which is exactly right, because Codex is the vendor that may clear one.
 FINDINGS = "findings"
 CLEAN = "clean"
 GATE_CHANGE = "gate"
+PRIMARY_FIRST = "primary first"
 NO_VERDICT = "no verdict"
 UNREAD = "unread"
-ORDER = (FINDINGS, CLEAN, GATE_CHANGE, NO_VERDICT)
+ORDER = (FINDINGS, CLEAN, GATE_CHANGE, PRIMARY_FIRST, NO_VERDICT)
 
 
 def _completed_row(head):
@@ -261,24 +302,36 @@ def verdict(reviews, comments, head, resolve=None, gate_files=()):
     Only a reviewer's own words count: anyone who can comment on a pull request
     can type a clean pass, so a comment by anybody else is not one. There are
     two reviewers and each has its own login — the primary's shapes are never
-    read from the main reviewer's comments, nor the other way round, so neither
+    read from the backup's comments, nor the other way round, so neither
     can be spoken for by the other.
 
+    The backup is counted only behind the primary's latest-word refusal. With
+    no refusal its verdict says nothing either way — not even its findings —
+    because the answer then is to ask the primary, and a backup finding that
+    could hold a pull request red would let an unasked-for run do it.
+
     `gate_files` is what this pull request changes that only the other vendor
-    may clear. It downgrades the main reviewer's clean pass and nothing else:
-    its findings still count as findings, and the primary's clean pass still
-    opens the gate.
+    may clear. It downgrades the backup's clean pass and nothing else: its
+    findings still count as findings, and the primary's clean pass still opens
+    the gate — which is right, because the primary is the vendor that may
+    clear one.
     """
     said = [review_verdict(r, head) for r in reviews]
+    spoke, backup = [], []
     for c in comments:
         who = c.get("user", {}).get("login")
         if who == BOT:
             said.append(comment_verdict(c.get("body"), head, resolve))
+            spoke.append(c.get("body"))
         elif who == ACTIONS:
             answer = fable_verdict(c.get("body"), head, resolve)
-            if answer == CLEAN and gate_files:
-                answer = GATE_CHANGE
-            said.append(answer)
+            if answer is not None:
+                backup.append(answer)
+    if backup:
+        if not primary_refused(spoke):
+            said.append(PRIMARY_FIRST)
+        else:
+            said += [GATE_CHANGE if a == CLEAN and gate_files else a for a in backup]
     for answer in ORDER:
         if answer in said:
             return answer
@@ -286,10 +339,13 @@ def verdict(reviews, comments, head, resolve=None, gate_files=()):
 
 
 REASONS = {
-    GATE_CHANGE: ("the main reviewer read commit %s and left nothing on it, but this pull "
+    GATE_CHANGE: ("the backup reviewer read commit %s and left nothing on it, but this pull "
                   "request changes the gate itself (%s). The rulebook requires the other "
                   "vendor there, and a gate the reviewer it admits can open is not a gate — "
                   "so this one waits for " + BOT + " however long it takes"),
+    PRIMARY_FIRST: ("the backup reviewer read commit %s, but " + BOT + " has not refused here "
+                    "— or has answered since it did. The primary reads first: ask it, and the "
+                    "backup stands in only where it says it cannot"),
     FINDINGS: ("the reviewer read commit %s and left findings on it — answer them, land the "
                "round's fixes as one push, and ask once; the gate opens on a commit the reviewer "
                "reads clean, never on an answer to a finding"),
@@ -362,7 +418,7 @@ def _selftest():
         ([{"user": {"login": BOT}, "commit_id": head, "state": "DISMISSED"}], [], UNREAD,
          "a review somebody took back, and nothing else"),
     ]
-    # The main reviewer's two shapes, and the notice it posts when it did not
+    # The backup's two shapes, and the notice it posts when it did not
     # read. That notice names a commit on purpose — it is the fake most likely
     # to be written by accident, and it must never read as a read.
     fable_clean = ("Review by Fable at max effort: nothing found.\n\n"
@@ -370,10 +426,10 @@ def _selftest():
                    "rulebook and the existing pages.\n")
     fable_found = ("Review by Fable at max effort: findings below.\n\n"
                    "**Reviewed commit:** `090e429a31`\n\n---\n\n1. The cap is spent twice.\n")
-    did_not_read = ("**The main reviewer did not read this commit** — the reviewer could not be "
+    did_not_read = ("**The reviewer did not read this commit** — the reviewer could not be "
                     "reached.\n\n**Reviewed commit:** `090e429a31`\n")
     fable_cases = [
-        (fable_clean, head, CLEAN, "the main reviewer's clean pass naming the commit"),
+        (fable_clean, head, CLEAN, "the backup's clean pass naming the commit"),
         (fable_found, head, FINDINGS, "its findings naming the commit"),
         (fable_clean.replace("090e429a31", "29d7b543"), head, None, "its clean pass on another commit"),
         (fable_found.replace("090e429a31", "29d7b543"), head, None, "its findings on another commit"),
@@ -415,32 +471,60 @@ def _selftest():
     for body, what in ((clean, "the primary's clean pass"),
                        (summary, "the primary's summary table")):
         bad += hold(fable_verdict(body, head), None,
-                    "the MAIN reviewer's matcher on: " + what)
+                    "the BACKUP's matcher on: " + what)
 
-    # The whole decision, and the two that matter most are the person and the
-    # gate change. A Fable read taken inside a builder session posts under the
-    # Chairman's own account — it is a real review, and it is the lead clearing
-    # its own work, which is the one thing this gate exists to refuse.
+    # The primary's refusal, which is the only thing that makes the backup
+    # eligible — and only while it is the primary's latest word here.
+    quota = "You have reached your Codex usage limits for code reviews."
+    for bodies, want, what in [
+        ([quota], True, "the quota message"),
+        ([quota, summary], False, "a refusal the primary has answered since (the 17 Sep reset)"),
+        ([summary, quota], True, "a refusal after an earlier answer"),
+        ([clean], False, "a clean pass"),
+        ([], False, "nothing from the primary at all"),
+        (["", "  "], False, "empty comments"),
+        ([quota, ""], True, "a refusal followed by an empty comment"),
+        (["We could not review; you may be near your usage limits."], False,
+         "a sentence mentioning a limit, which is not the primary refusing"),
+        (["You have reached your GPT usage limits for code reviews."], True,
+         "the same refusal under another product name"),
+    ]:
+        bad += hold(primary_refused(bodies), want, "the primary's refusal: " + what)
+
+    # The whole decision. The three that matter most: the person, the gate
+    # change, and a backup read with no live refusal behind it. A Fable read
+    # taken inside a builder session posts under the Chairman's own account —
+    # it is a real review, and it is the lead clearing its own work, which is
+    # the one thing this gate exists to refuse.
     actions = lambda body: {"user": {"login": ACTIONS}, "body": body}
     person = lambda body: {"user": {"login": "Adonis80"}, "body": body}
     gate = touches_the_gate(["review-gate.py"])
     for reviews, comments, files, want, what in [
-        ([], [actions(fable_clean)], (), CLEAN, "the main reviewer's clean pass"),
-        ([], [actions(fable_found)], (), FINDINGS, "its findings"),
-        ([], [person(fable_clean)], (), UNREAD, "its exact shape posted by a person"),
-        ([], [bot(fable_clean)], (), UNREAD, "its exact shape posted by the primary"),
-        ([], [actions(clean)], (), UNREAD, "the primary's shape posted by Actions"),
-        ([], [actions(fable_clean)], gate, GATE_CHANGE,
-         "its clean pass on a change to the gate itself"),
-        ([], [actions(fable_found)], gate, FINDINGS,
+        ([], [bot(quota), actions(fable_clean)], (), CLEAN, "the backup, behind a real refusal"),
+        ([], [bot(quota), actions(fable_found)], (), FINDINGS, "its findings, behind one"),
+        ([], [actions(fable_clean)], (), PRIMARY_FIRST,
+         "the backup with the primary never refusing — ask the primary"),
+        ([], [actions(fable_found)], (), PRIMARY_FIRST,
+         "even its FINDINGS say nothing with no refusal behind them"),
+        ([], [bot(quota), bot(summary), actions(fable_clean)], (), PRIMARY_FIRST,
+         "a refusal the primary has answered since — the reset case, and the whole point"),
+        ([], [bot(quota), person(fable_clean)], (), UNREAD,
+         "the backup's exact shape posted by a person"),
+        ([], [bot(quota), bot(fable_clean)], (), UNREAD,
+         "the backup's exact shape posted by the primary"),
+        ([], [bot(quota), actions(clean)], (), UNREAD, "the primary's shape posted by Actions"),
+        ([], [bot(quota), actions(fable_clean)], gate, GATE_CHANGE,
+         "the backup clearing a change to the gate itself"),
+        ([], [bot(quota), actions(fable_found)], gate, FINDINGS,
          "its findings on a gate change — still findings, still red"),
         ([], [actions(fable_clean), bot(clean)], gate, CLEAN,
          "the other vendor clearing a gate change, which it alone may"),
-        ([findings], [actions(fable_clean)], (), FINDINGS,
-         "the primary's findings outrank the main reviewer's clean pass"),
-        ([], [actions(fable_clean.replace("090e429a31", "29d7b543"))], (), UNREAD,
+        ([findings], [bot(quota), actions(fable_clean)], (), FINDINGS,
+         "the primary's findings outrank the backup's clean pass"),
+        ([], [bot(quota), actions(fable_clean.replace("090e429a31", "29d7b543"))], (), UNREAD,
          "its clean pass on the commit before this one"),
-        ([], [actions(did_not_read)], (), UNREAD, "a run that did not reach the reviewer"),
+        ([], [bot(quota), actions(did_not_read)], (), UNREAD,
+         "a run that did not reach the reviewer"),
     ]:
         bad += hold(verdict(reviews, comments, head, gate_files=files), want, what)
 
@@ -453,7 +537,7 @@ def _selftest():
         ([".github/workflows/check.yml"], [".github/workflows/check.yml"], "the workflow that gates"),
         ([".github/anything-at-all"], [".github/anything-at-all"], "anything else under .github/"),
         (["README.md", "HOW-WE-BUILD.md", "design/SCREEN-LAW.md", "AGENTS.md"], [],
-         "the pages, which the main reviewer may clear"),
+         "the pages, which the backup may clear"),
         (["design/.github-notes.md"], [], "a path that only looks like it"),
     ]:
         bad += hold(touches_the_gate(paths), want, "what counts as the gate: " + what)
@@ -468,8 +552,8 @@ def _selftest():
              + sum(1 for r in review_cases if r[1] is None)
              + sum(1 for c in fable_cases if c[2] is None) + 1)
     print("ok: review gate tells a clean read from a commented one, tells its two reviewers "
-          "apart, refuses to let the main one clear the gate itself, and is fooled by none of "
-          "the %d fakes" % fakes)
+          "apart, stands the backup down unless the primary has just refused, refuses to let "
+          "it clear the gate itself, and is fooled by none of the %d fakes" % fakes)
     return 0
 
 
@@ -497,11 +581,35 @@ def _pages(url, token):
         page += 1
 
 
+def _eligible(repo, num, token):
+    """Exit 0 if the backup may stand in on this pull request.
+
+    The workflow asks this before it spends a review, so the rule lives in one
+    place: this file, read from the default branch by both callers. A second
+    copy in YAML would be the same truth written twice, and the two would drift
+    the first time one of them was corrected.
+    """
+    api = "https://api.github.com/repos/%s" % repo
+    spoke = [c.get("body") for c in _pages("%s/issues/%s/comments" % (api, num), token)
+             if c.get("user", {}).get("login") == BOT]
+    if primary_refused(spoke):
+        print("the primary has refused here and not answered since — the backup may stand in")
+        return 0
+    print("the primary has not refused on this pull request, or has answered since it did.")
+    print("Ask it first. The backup stands in only where the primary says it cannot — the")
+    print("Chairman's ruling of 17 September 2026, and not a preference.")
+    return 1
+
+
 def main(argv):
     if len(argv) == 2 and argv[1] == "--selftest":
         return _selftest()
+    if len(argv) == 5 and argv[1] == "--eligible":
+        return _eligible(argv[2], argv[3], argv[4])
     if len(argv) != 5:
-        print("usage: review-gate.py <owner/repo> <pr-number> <head-sha> <token> | --selftest")
+        print("usage: review-gate.py <owner/repo> <pr-number> <head-sha> <token>")
+        print("       review-gate.py --eligible <owner/repo> <pr-number> <token>")
+        print("       review-gate.py --selftest")
         return 2
     repo, num, head, token = argv[1:5]
     api = "https://api.github.com/repos/%s" % repo

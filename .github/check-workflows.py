@@ -70,7 +70,22 @@ for want in ("--model claude-fable-5-1", "--effort max", "--tools \"\""):
         print("FAIL: %s no longer passes %s to the reviewer." % (WF, want))
         bad = 1
 
+# The backup is a backup. It asks review-gate.py whether the primary has refused
+# here, rather than deciding for itself — one implementation, so the reviewer and
+# the gate that counts it can never disagree about who reads first. Dropping this
+# step would spend a review every time somebody asked, while the primary sat
+# available, which is the opposite of the ruling of 17 September 2026.
+if "review-gate.py --eligible" not in src:
+    print("FAIL: %s no longer asks whether the primary is unavailable before reviewing." % WF)
+    print("      The backup stands in only behind the primary's own refusal.")
+    bad = 1
+for step in ("The pull request", "Gather what the reviewer reads"):
+    if ("id: eligible" in src) and (src.index("id: eligible") > src.index(step)):
+        print("FAIL: %s runs '%s' before it checks the primary is unavailable." % (WF, step))
+        bad = 1
+
 if not bad:
-    print("ok: the reviewer runs from the default branch on issue_comment alone, "
-          "as Fable at max effort with every tool off, and its %d shell blocks parse" % n_review)
+    print("ok: the backup runs from the default branch on issue_comment alone, only behind "
+          "the primary's refusal, as Fable at max effort with every tool off, and its %d "
+          "shell blocks parse" % n_review)
 sys.exit(bad)
