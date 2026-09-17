@@ -23,7 +23,7 @@ Each product adds a constitution of its own holding only what is true there — 
 9. Secondary or conditional detail appears only when it becomes relevant; prefer expanding in place so nobody loses their spot.
 10. A completed section collapses to a concise, editable summary: what was chosen, and what it changes.
 11. A control that stops applying disappears — one quiet line says why, tap for the story. Never a row of disabled ghosts.
-12. Explanations, instructions and hints live behind the (i), never standing on the working screen: no captions, no coaching placeholders.
+12. Explanations, and any instruction or hint the task can do without, live behind the (i), never standing on the working screen: no coaching captions or placeholders.
 13. Icons cut reading, never meaning; nothing required ever hides inside an optional-looking control.
 
 ## Consistency
