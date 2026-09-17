@@ -14,17 +14,43 @@ performed", so the gate would certify a commit nobody read.
 Counting both shapes as one answer — which this gate did until now — fails in a
 third direction, and #21 is the proof: it merged on a commit carrying a P1 the
 reviewer had posted and nobody had answered, because a read was all the gate
-could see. `AGENTS.md` named that gap. So the gate now gives one of four answers
-about the head commit, and opens on the first alone:
+could see. `AGENTS.md` named that gap. So the gate gives one answer about the
+head commit, and opens on `clean` alone:
 
     clean       read, and the reviewer left nothing on it
     findings    read, and the reviewer left something on it
+    gate        the main reviewer cleared it, but the change is one only the
+                other vendor may clear
     no verdict  a review ran on it, but what it found is not on the page yet
     unread      no read of this commit at all
 
 A finding outranks every other answer about the same commit. The answer to a
 finding is a push, and a push makes a new commit for the reviewer to read; what
 the CTO says about the old one never clears it.
+
+From 17 September 2026 there are two reviewers, and the gate reads both. The
+Chairman's ruling that day: *"Astra is out of credit for this week. We have
+updated the rule for you to use Claude Fable 5.1 at Max effort as the main
+reviewer."* The main reviewer runs in .github/workflows/review.yml and posts as
+github-actions[bot]. Codex stays the other vendor, and on the classes where the
+rulebook requires one — here, the review gate itself — only Codex may clear.
+
+Three things make the main reviewer a gate rather than a way round, and the
+first two are why its verdict can be counted at all:
+
+  it posts as Actions     no personal token can post under that name; a Fable
+                          read run inside a session posts as the Chairman, and
+                          would be the lead clearing its own work
+  issue_comment, never    that trigger runs the workflow file from the DEFAULT
+  pull_request            BRANCH. On pull_request a branch could edit its own
+                          reviewer and write itself a clean pass
+  it may not clear the    a change to review-gate.py, check.sh or anything under
+  gate                    .github/ waits for the other vendor, however long that
+                          takes — see touches_the_gate()
+
+The third is what keeps the second true. To forge a verdict you must post as
+Actions; to post as Actions you must add or change a workflow; and changing
+anything under .github/ is exactly what makes this reviewer ineligible.
 
 Every shape is matched by its exact form, and --selftest holds the match against
 the real ones and the fakes on every run of check.sh — no network, no GitHub, and
@@ -40,13 +66,54 @@ import urllib.request
 BOT = "chatgpt-codex-connector[bot]"
 SUMMARY_MARKER = "codex-pull-request-review-summary"
 
-# The four answers, worst first: a commit is judged by the strongest thing said
-# about it, and only CLEAN opens the gate.
+# The main reviewer, and the one identity no session can type as. GitHub gives
+# this login to a workflow's own token; a personal access token cannot borrow
+# it. That is the whole reason a Fable read counts here and the same read taken
+# inside a builder session does not.
+ACTIONS = "github-actions[bot]"
+
+# Its two shapes. The workflow writes one of these as the first line and nothing
+# else, and matching is exact and whole-line — not a prefix. A prefix test is
+# the hole the primary's matcher was hardened against on #24: "…Didn't find any
+# major issues because the review did not complete" carries the whole verdict
+# and takes it back. The same sentence works against a prefix here, so the whole
+# line must be the verdict and nothing may follow it.
+FABLE_CLEAN = "Review by Fable at max effort: nothing found."
+FABLE_FINDINGS = "Review by Fable at max effort: findings below."
+
+# What the main reviewer may not clear. It is the same vendor as the lead, and
+# the rulebook requires the other vendor on the review gate itself — so these
+# wait for Codex however long it takes.
+#
+# The whole of .github/ is on the list, not merely the two workflow files that
+# exist today, and that breadth is load-bearing rather than caution. A branch
+# that wants to forge a clean pass has to post as github-actions[bot], and the
+# only way to do that is to add a workflow of its own — which, on a same-repo
+# pull request, GitHub would run from the branch. Putting every path under
+# .github/ on this list means the one change that would make forgery possible is
+# also the change this reviewer may not clear. The cost is that an unrelated
+# change to a workflow waits for Codex, which in a repository holding two of
+# them is a price worth paying for a door that shuts on itself.
+GATE_PATHS = ("review-gate.py", "check.sh")
+
+
+def touches_the_gate(paths):
+    """The paths in this pull request that only the other vendor may clear."""
+    return sorted(set(p for p in paths
+                      if p in GATE_PATHS or p.startswith(".github/")))
+
+# The answers, worst first: a commit is judged by the strongest thing said about
+# it, and only CLEAN opens the gate.
+#
+# GATE_CHANGE sits below CLEAN on purpose. It is what the main reviewer's clean
+# pass becomes on a change to the gate, and Codex's own clean pass outranks it —
+# which is exactly right, because Codex is the vendor that may clear one.
 FINDINGS = "findings"
 CLEAN = "clean"
+GATE_CHANGE = "gate"
 NO_VERDICT = "no verdict"
 UNREAD = "unread"
-ORDER = (FINDINGS, CLEAN, NO_VERDICT)
+ORDER = (FINDINGS, CLEAN, GATE_CHANGE, NO_VERDICT)
 
 
 def _completed_row(head):
@@ -136,6 +203,34 @@ def comment_verdict(body, head, resolve=None):
     return None
 
 
+def fable_verdict(body, head, resolve=None):
+    """What a review posted by the workflow says about this commit.
+
+    The first line is the whole verdict and must be one of the two shapes
+    exactly — no prefix, no trailing clause. Everything below it is the review
+    itself and is never parsed. The commit must be named, in the same
+    `**Reviewed commit:**` note the primary uses, so one push voids it the same
+    way.
+
+    The workflow's own did-not-read notice deliberately carries neither shape,
+    so a run that failed to reach the model can never read as a read.
+    """
+    if not body or not body.strip():
+        return None
+    stripped = body.strip().splitlines()
+    first = stripped[0].strip()
+    if first == FABLE_CLEAN:
+        answer = CLEAN
+    elif first == FABLE_FINDINGS:
+        answer = FINDINGS
+    else:
+        return None
+    note = _reviewed_note(head)
+    if any(_names_head(ln.strip(), note, head, resolve) for ln in stripped):
+        return answer
+    return None
+
+
 WITH_FINDINGS = {"COMMENTED", "CHANGES_REQUESTED"}
 
 
@@ -160,15 +255,30 @@ def review_verdict(review, head):
     return None
 
 
-def verdict(reviews, comments, head, resolve=None):
+def verdict(reviews, comments, head, resolve=None, gate_files=()):
     """The gate's one answer about the head commit, from the whole page.
 
-    Only the reviewer's own words count: anyone who can comment on a pull
-    request can type a clean pass, so a comment by anybody else is not one.
+    Only a reviewer's own words count: anyone who can comment on a pull request
+    can type a clean pass, so a comment by anybody else is not one. There are
+    two reviewers and each has its own login — the primary's shapes are never
+    read from the main reviewer's comments, nor the other way round, so neither
+    can be spoken for by the other.
+
+    `gate_files` is what this pull request changes that only the other vendor
+    may clear. It downgrades the main reviewer's clean pass and nothing else:
+    its findings still count as findings, and the primary's clean pass still
+    opens the gate.
     """
     said = [review_verdict(r, head) for r in reviews]
-    said += [comment_verdict(c.get("body"), head, resolve)
-             for c in comments if c.get("user", {}).get("login") == BOT]
+    for c in comments:
+        who = c.get("user", {}).get("login")
+        if who == BOT:
+            said.append(comment_verdict(c.get("body"), head, resolve))
+        elif who == ACTIONS:
+            answer = fable_verdict(c.get("body"), head, resolve)
+            if answer == CLEAN and gate_files:
+                answer = GATE_CHANGE
+            said.append(answer)
     for answer in ORDER:
         if answer in said:
             return answer
@@ -176,6 +286,10 @@ def verdict(reviews, comments, head, resolve=None):
 
 
 REASONS = {
+    GATE_CHANGE: ("the main reviewer read commit %s and left nothing on it, but this pull "
+                  "request changes the gate itself (%s). The rulebook requires the other "
+                  "vendor there, and a gate the reviewer it admits can open is not a gate — "
+                  "so this one waits for " + BOT + " however long it takes"),
     FINDINGS: ("the reviewer read commit %s and left findings on it — answer them, land the "
                "round's fixes as one push, and ask once; the gate opens on a commit the reviewer "
                "reads clean, never on an answer to a finding"),
@@ -248,6 +362,33 @@ def _selftest():
         ([{"user": {"login": BOT}, "commit_id": head, "state": "DISMISSED"}], [], UNREAD,
          "a review somebody took back, and nothing else"),
     ]
+    # The main reviewer's two shapes, and the notice it posts when it did not
+    # read. That notice names a commit on purpose — it is the fake most likely
+    # to be written by accident, and it must never read as a read.
+    fable_clean = ("Review by Fable at max effort: nothing found.\n\n"
+                   "**Reviewed commit:** `090e429a31`\n\n---\n\nI read the diff against the "
+                   "rulebook and the existing pages.\n")
+    fable_found = ("Review by Fable at max effort: findings below.\n\n"
+                   "**Reviewed commit:** `090e429a31`\n\n---\n\n1. The cap is spent twice.\n")
+    did_not_read = ("**The main reviewer did not read this commit** — the reviewer could not be "
+                    "reached.\n\n**Reviewed commit:** `090e429a31`\n")
+    fable_cases = [
+        (fable_clean, head, CLEAN, "the main reviewer's clean pass naming the commit"),
+        (fable_found, head, FINDINGS, "its findings naming the commit"),
+        (fable_clean.replace("090e429a31", "29d7b543"), head, None, "its clean pass on another commit"),
+        (fable_found.replace("090e429a31", "29d7b543"), head, None, "its findings on another commit"),
+        (did_not_read, head, None, "the workflow's own did-not-read notice, which names a commit"),
+        (fable_clean.replace("nothing found.", "nothing found. But the review did not complete."),
+         head, None, "the whole verdict, taken back by what follows it on the same line"),
+        (fable_clean.replace("Review by Fable", "I asked for a Review by Fable"),
+         head, None, "a sentence containing the words"),
+        ("Review by Fable at max effort: nothing found.\n\nnothing else\n", head, None,
+         "the shape naming no commit"),
+        (fable_clean.replace("nothing found.", "nothing found"), head, None,
+         "the verdict without its full stop"),
+        ("", head, None, "an empty comment"),
+    ]
+
     twin = "090e429" + "f" * 33  # another commit sharing the short form
     resolved = {"090e429": twin, "090e429a31": head}
     resolver = lambda sha: resolved.get(sha)
@@ -265,6 +406,57 @@ def _selftest():
         bad += hold(comment_verdict(body, h), want, what)
     for reviews, comments, want, what in gate_cases:
         bad += hold(verdict(reviews, comments, head), want, what)
+    for body, h, want, what in fable_cases:
+        bad += hold(fable_verdict(body, h), want, what)
+        # Neither reviewer's matcher may ever read the other's shape: that is
+        # what keeps two logins two reviewers rather than one.
+        bad += hold(comment_verdict(body, h), None,
+                    "the PRIMARY's matcher on: " + what)
+    for body, what in ((clean, "the primary's clean pass"),
+                       (summary, "the primary's summary table")):
+        bad += hold(fable_verdict(body, head), None,
+                    "the MAIN reviewer's matcher on: " + what)
+
+    # The whole decision, and the two that matter most are the person and the
+    # gate change. A Fable read taken inside a builder session posts under the
+    # Chairman's own account — it is a real review, and it is the lead clearing
+    # its own work, which is the one thing this gate exists to refuse.
+    actions = lambda body: {"user": {"login": ACTIONS}, "body": body}
+    person = lambda body: {"user": {"login": "Adonis80"}, "body": body}
+    gate = touches_the_gate(["review-gate.py"])
+    for reviews, comments, files, want, what in [
+        ([], [actions(fable_clean)], (), CLEAN, "the main reviewer's clean pass"),
+        ([], [actions(fable_found)], (), FINDINGS, "its findings"),
+        ([], [person(fable_clean)], (), UNREAD, "its exact shape posted by a person"),
+        ([], [bot(fable_clean)], (), UNREAD, "its exact shape posted by the primary"),
+        ([], [actions(clean)], (), UNREAD, "the primary's shape posted by Actions"),
+        ([], [actions(fable_clean)], gate, GATE_CHANGE,
+         "its clean pass on a change to the gate itself"),
+        ([], [actions(fable_found)], gate, FINDINGS,
+         "its findings on a gate change — still findings, still red"),
+        ([], [actions(fable_clean), bot(clean)], gate, CLEAN,
+         "the other vendor clearing a gate change, which it alone may"),
+        ([findings], [actions(fable_clean)], (), FINDINGS,
+         "the primary's findings outrank the main reviewer's clean pass"),
+        ([], [actions(fable_clean.replace("090e429a31", "29d7b543"))], (), UNREAD,
+         "its clean pass on the commit before this one"),
+        ([], [actions(did_not_read)], (), UNREAD, "a run that did not reach the reviewer"),
+    ]:
+        bad += hold(verdict(reviews, comments, head, gate_files=files), want, what)
+
+    # What counts as the gate. The whole of .github/ is on the list because
+    # adding a workflow is the only way to post as Actions at all.
+    for paths, want, what in [
+        (["review-gate.py"], ["review-gate.py"], "the gate's own decision"),
+        (["check.sh"], ["check.sh"], "the check that runs it"),
+        ([".github/workflows/review.yml"], [".github/workflows/review.yml"], "the reviewer itself"),
+        ([".github/workflows/check.yml"], [".github/workflows/check.yml"], "the workflow that gates"),
+        ([".github/anything-at-all"], [".github/anything-at-all"], "anything else under .github/"),
+        (["README.md", "HOW-WE-BUILD.md", "design/SCREEN-LAW.md", "AGENTS.md"], [],
+         "the pages, which the main reviewer may clear"),
+        (["design/.github-notes.md"], [], "a path that only looks like it"),
+    ]:
+        bad += hold(touches_the_gate(paths), want, "what counts as the gate: " + what)
     bad += hold(comment_verdict(summary, head, resolve=resolver), None,
                 "a short form that resolves to another commit")
     bad += hold(comment_verdict(clean, head, resolve=resolver), CLEAN,
@@ -273,13 +465,23 @@ def _selftest():
         print("review-gate selftest failed: %d case(s)" % bad)
         return 1
     fakes = (sum(1 for c in comment_cases if c[2] is None)
-             + sum(1 for r in review_cases if r[1] is None) + 1)
-    print("ok: review gate tells a clean read from a commented one, in both shapes and every "
-          "state they arrive in, and is fooled by none of the %d fakes" % fakes)
+             + sum(1 for r in review_cases if r[1] is None)
+             + sum(1 for c in fable_cases if c[2] is None) + 1)
+    print("ok: review gate tells a clean read from a commented one, tells its two reviewers "
+          "apart, refuses to let the main one clear the gate itself, and is fooled by none of "
+          "the %d fakes" % fakes)
     return 0
 
 
+# Which fetch is in flight. There are three now — the reviews, the comments and
+# the pull request's changed files — and the HTTP error below used to say "the
+# reviews" whichever one had failed. A check that misreports which door was shut
+# sends the next session looking in the wrong place.
+_asking = [""]
+
+
 def _pages(url, token):
+    _asking[0] = url.rsplit("/", 1)[-1]
     page = 1
     while True:
         req = urllib.request.Request(
@@ -325,7 +527,12 @@ def main(argv):
         # answer it liked would be the gate this one replaces.
         reviews = list(_pages("%s/pulls/%s/reviews" % (api, num), token))
         comments = list(_pages("%s/issues/%s/comments" % (api, num), token))
-        answer = verdict(reviews, comments, head, resolve=resolve)
+        # Asked of GitHub, not of the checkout: the check runs on the proposed
+        # tree, so a branch that edited its own diff could otherwise hide the
+        # very file that makes it ineligible.
+        changed = [f.get("filename") for f in _pages("%s/pulls/%s/files" % (api, num), token)]
+        gate_files = touches_the_gate(changed)
+        answer = verdict(reviews, comments, head, resolve=resolve, gate_files=gate_files)
     except urllib.error.HTTPError as e:
         if e.code in (401, 403):
             why = "the workflow's token may not read pull requests (it needs pull-requests: read), or GitHub is rate-limiting"
@@ -335,11 +542,14 @@ def main(argv):
             why = "GitHub itself answered with an error — re-run the check"
         else:
             why = "GitHub refused the request"
-        print("reason: HTTP %s when asked for the reviews — %s" % (e.code, why))
+        print("reason: HTTP %s when asked for the %s — %s" % (e.code, _asking[0] or "reviews", why))
         return 2
     if answer == CLEAN:
         print("ok: the reviewer has read %s and left nothing on it" % head)
         return 0
+    if answer == GATE_CHANGE:
+        print("reason: " + REASONS[answer] % (head, ", ".join(gate_files)))
+        return 1
     print("reason: " + REASONS[answer] % head)
     return 1
 

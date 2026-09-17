@@ -3,8 +3,10 @@
 # It refuses: an operating page over its word cap, a screen law over its own, a
 # root or design file that is not on its list or missing from it, anything that
 # looks like a secret (naming the place, never the value), a review gate that no
-# longer matches the reviewer's answers, and, in a pull request, a commit the
-# reviewer has not read clean — unread, or read and left findings on. Nothing else.
+# longer matches its reviewers' answers, a reviewer that has stopped being the
+# one the Chairman named or could be rewritten by the branch it is reading, and,
+# in a pull request, a commit no reviewer has read clean — unread, or read and
+# left findings on. Nothing else.
 set -euo pipefail
 cd "$(dirname "$0")"
 fail=0
@@ -92,7 +94,18 @@ fi
 # implementation, held against the reviewer's real answers, the states a review
 # can arrive in, and the fakes that once passed a looser test.
 python3 review-gate.py --selftest || fail_gate=1
-[ "${fail_gate:-0}" -eq 0 ] || { echo "FAIL: the review gate no longer matches the reviewer's answers — see the cases above."; fail=1; }
+[ "${fail_gate:-0}" -eq 0 ] || { echo "FAIL: the review gate no longer matches its reviewers' answers — see the cases above."; fail=1; }
+
+# 4b. And the reviewer the gate counts. Two of its three guards are invisible in
+# the file that uses them — the trigger that makes GitHub run it from the default
+# branch, and the flags that make it the model the Chairman named — so they are
+# asserted here rather than left as comments. The verdict extractor is held the
+# same way: it is the one place a run that went wrong has to become a red gate
+# rather than a quiet clean pass.
+python3 .github/check-workflows.py || fail_wf=1
+[ "${fail_wf:-0}" -eq 0 ] || { echo "FAIL: the reviewer's own workflow no longer holds — see above."; fail=1; }
+python3 .github/review-verdict.py --selftest || fail_v=1
+[ "${fail_v:-0}" -eq 0 ] || { echo "FAIL: the reviewer's answer is no longer turned into a verdict safely."; fail=1; }
 case "${GITHUB_EVENT_NAME:-}" in pull_request|pull_request_review)
   if [ -z "${GH_TOKEN:-}" ] || [ -z "${PR_NUMBER:-}" ] || [ -z "${HEAD_SHA:-}" ]; then
     echo "FAIL: the check cannot ask GitHub which commit the reviewer read — the workflow must set PR_NUMBER, HEAD_SHA and GH_TOKEN."; fail=1

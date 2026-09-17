@@ -1,0 +1,296 @@
+name: review
+
+# The main reviewer (the Chairman's ruling, 17 September 2026: "Astra is out of
+# credit for this week. We have updated the rule for you to use Claude Fable 5.1
+# at Max effort as the main reviewer.")
+#
+# WHY IT RUNS HERE AND NOT IN A SESSION. The gate's question is whether an
+# independent reader has read THIS commit. A Fable read taken inside a builder
+# session posts under the Chairman's own GitHub account, so its verdict cannot
+# be told from the lead writing "looks fine" about its own work — the one thing
+# the gate exists to refuse, and what it was hardened against on 13 September
+# after a loose match certified a commit nobody had read. The review is real
+# either way. What a session cannot do is SIGN it. A workflow can: GitHub gives
+# it the github-actions[bot] login, and no personal token can borrow that name.
+#
+# THE TRIGGER IS LOAD-BEARING. issue_comment runs this file from the DEFAULT
+# BRANCH, never from the pull request's head. On pull_request a branch could
+# edit its own reviewer and write itself a clean pass. This must never become
+# pull_request — and review-gate.py refuses to count this reviewer at all on a
+# pull request that touches .github/, which is the only way to change it.
+#
+# WHAT IT PROVES. That an independent reader looked at this commit and said
+# which of two things it found. Not that the change is good: a hostile diff
+# could talk this reviewer into a poor review, as it could Codex. What neither
+# can do is post a read that never happened.
+#
+# IT IS THE SAME VENDOR AS THE LEAD, so it does not satisfy the rulebook where
+# the other vendor is required — pricing, live database changes or schema,
+# authentication and authorisation, public trust boundaries, deploy and release
+# machinery, and the review gate itself. Those wait for Codex however long it
+# takes. It also FAILS CLOSED: no credential, no review, and the gate stays red.
+
+on:
+  issue_comment:
+    types: [created]
+
+# Read the code, write one comment, and re-run this pull request's check so the
+# verdict is seen without a hand. Nothing else.
+permissions:
+  contents: read
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: review-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  review:
+    # Three filters, and none is decoration:
+    #   - a pull request, never a plain issue;
+    #   - the ask itself, checked properly in the first step below;
+    #   - somebody who belongs here. THIS REPOSITORY IS PUBLIC, so anyone at all
+    #     can write a comment on a pull request. Without this line a stranger
+    #     could spend the Chairman's allowance in a loop.
+    if: >-
+      github.event.issue.pull_request != null &&
+      contains(github.event.comment.body, '/fable review') &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # The filter above matches the words anywhere in the comment, which would
+      # let a sentence ABOUT the ask spend a review — the mistake made in the
+      # open on #28, where a park note explaining "no further asks" made one
+      # four lines below saying it. The ask is the whole first line or it is not
+      # an ask, and a passing mention leaves quietly.
+      - name: Is this an ask, or a sentence about one?
+        id: ask
+        env:
+          BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          first=$(printf '%s' "$BODY" | tr -d '\r' | head -n 1 | sed 's/[[:space:]]*$//')
+          if [ "$first" = "/fable review" ]; then
+            echo "asked=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "the comment mentions the ask but does not make it — leaving it alone"
+            echo "asked=no" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: The pull request
+        id: pr
+        if: steps.ask.outputs.asked == 'yes'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" > /tmp/pr.json
+          {
+            echo "base_sha=$(jq -r '.base.sha' /tmp/pr.json)"
+            echo "base_ref=$(jq -r '.base.ref' /tmp/pr.json)"
+          } >> "$GITHUB_OUTPUT"
+
+      # No `ref:`, deliberately. This checks out the DEFAULT BRANCH, so the
+      # brief the reviewer is given is the one on main and not one the pull
+      # request has just rewritten for itself. The head is fetched below as
+      # data — a diff to read, never a tree to run.
+      - uses: actions/checkout@v4
+        if: steps.ask.outputs.asked == 'yes'
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Gather what the reviewer reads
+        id: gather
+        if: steps.ask.outputs.asked == 'yes'
+        env:
+          PR: ${{ github.event.issue.number }}
+          BASE_SHA: ${{ steps.pr.outputs.base_sha }}
+          BASE_REF: ${{ steps.pr.outputs.base_ref }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --quiet origin "$BASE_REF" "pull/${PR}/head"
+          # The sha is taken from what was actually fetched, not from the API
+          # answer above: if the branch moved between the two, the comment must
+          # name the commit that was really read. A commit nobody asked about
+          # simply fails to match the head, and the gate stays red — which is
+          # the right way round.
+          sha=$(git rev-parse FETCH_HEAD)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "reviewing $sha against $BASE_SHA"
+          git diff --no-color "$BASE_SHA...$sha" > /tmp/diff.txt
+          bytes=$(wc -c < /tmp/diff.txt)
+          echo "diff bytes: $bytes"
+          # A review of half a diff is worse than no review, so this says so out
+          # loud rather than reading part of a change and calling it read.
+          if [ "$bytes" -gt 600000 ]; then
+            echo "read=too-big" >> "$GITHUB_OUTPUT"
+          elif [ "$bytes" -eq 0 ]; then
+            echo "read=empty" >> "$GITHUB_OUTPUT"
+          else
+            echo "read=yes" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.gather.outputs.read == 'yes'
+        with:
+          node-version: '22'
+
+      - name: Read it
+        id: review
+        if: steps.gather.outputs.read == 'yes'
+        continue-on-error: true
+        env:
+          # A Claude subscription token, not an API key: an API key would mean
+          # new spending, which the Chairman has declined. Anthropic's terms
+          # keep this token for the unmodified Claude Code binary, so it is used
+          # only through that CLI — never a hand-written call to the API — and
+          # never with --bare, which reads ANTHROPIC_API_KEY alone and would
+          # silently not see it.
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          SHA: ${{ steps.gather.outputs.sha }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+            echo "No CLAUDE_CODE_OAUTH_TOKEN secret, so the reviewer cannot run. It fails" >&2
+            echo "closed on purpose: a gate that opens when its reviewer is missing is not" >&2
+            echo "a gate. See the rulebook, The independent reviewer." >&2
+            exit 1
+          fi
+          # Pinned, because the reviewer is a guard and a guard that changes
+          # under you is not one. Raised deliberately, in a pull request that
+          # says why.
+          npm install -g @anthropic-ai/claude-code@2.1.274 >/dev/null 2>&1
+          claude --version
+
+          # AGENTS.md is the brief, exactly as it is for Codex, and both halves
+          # are read from the DEFAULT BRANCH: a brief the pull request could
+          # rewrite is a reviewer the pull request can instruct.
+          cat AGENTS.md .github/review-brief.md > /tmp/brief.txt
+          { printf 'Review this diff. The commit is %s.\n\n<diff>\n' "$SHA"
+            cat /tmp/diff.txt
+            printf '\n</diff>\n'; } > /tmp/prompt.txt
+
+          # Run from an empty directory with every tool off: the reviewer reads
+          # what it is given on stdin and writes one answer. It has no way to
+          # touch this checkout, the network, or the pull request.
+          mkdir -p /tmp/ws
+          cd /tmp/ws
+          set +e
+          claude -p \
+            --model claude-fable-5-1 \
+            --effort max \
+            --tools "" \
+            --strict-mcp-config \
+            --permission-prompts none \
+            --no-session-persistence \
+            --output-format json \
+            --json-schema "$(cat "$GITHUB_WORKSPACE/.github/review-schema.json")" \
+            --system-prompt "$(cat /tmp/brief.txt)" \
+            < /tmp/prompt.txt > /tmp/resp.json
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            echo "claude exited $rc" >&2
+            head -c 800 /tmp/resp.json >&2 || true
+            exit 1
+          fi
+          # Fails closed on every shape it does not recognise; its own selftest
+          # runs in check.sh, so the refusals are held before they are needed.
+          verdict=$(python3 "$GITHUB_WORKSPACE/.github/review-verdict.py" /tmp/review.md < /tmp/resp.json)
+          echo "$verdict" > /tmp/verdict
+          echo "the reviewer's verdict: $verdict"
+
+      - name: Say what it read
+        id: said
+        if: steps.gather.outputs.read == 'yes' && steps.review.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.issue.number }}
+          SHA: ${{ steps.gather.outputs.sha }}
+        run: |
+          set -euo pipefail
+          # The two shapes review-gate.py counts. The first line is written HERE
+          # and never by the model: it is the whole verdict, matched exactly and
+          # whole-line, so nothing the reviewer writes below the rule can change
+          # it. See review-gate.py, fable_verdict(), and its fakes.
+          if [ "$(cat /tmp/verdict)" = "clean" ]; then
+            echo "Review by Fable at max effort: nothing found." > /tmp/comment.md
+          else
+            echo "Review by Fable at max effort: findings below." > /tmp/comment.md
+          fi
+          {
+            echo
+            echo "**Reviewed commit:** \`${SHA}\`"
+            echo
+            echo "---"
+            echo
+            cat /tmp/review.md
+            echo
+            echo "---"
+            echo "_Posted by the review workflow, which runs from the default branch and reads_"
+            echo "_its brief there. Same vendor as the lead, so it does NOT satisfy the rulebook_"
+            echo "_where the other vendor is required — pricing, live database changes, auth,_"
+            echo "_public trust boundaries, deploy machinery, and the review gate itself. Those_"
+            echo "_wait for Codex however long it takes._"
+          } >> /tmp/comment.md
+          gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -F body=@/tmp/comment.md --silent
+
+      # !cancelled() rather than the default success(), so this still speaks when
+      # an earlier step failed outright — resolving the pull request, checking
+      # out, building the diff. Without it a run that fell over before reaching
+      # the reviewer would say nothing at all on the pull request, which is the
+      # silence this step exists to prevent.
+      - name: Say why it did not
+        if: ${{ !cancelled() && steps.ask.outputs.asked == 'yes' && (steps.gather.outputs.read != 'yes' || steps.review.outcome != 'success') }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.issue.number }}
+          READ: ${{ steps.gather.outputs.read }}
+        run: |
+          set -euo pipefail
+          # Never silent. A reviewer that fails quietly is a gate that has
+          # quietly stopped asking.
+          case "$READ" in
+            too-big) why="the diff is over 600 KB. A review of half a diff is worse than none, so this slice wants splitting." ;;
+            empty)   why="there is nothing to review: the diff against the base is empty." ;;
+            *)       why="the reviewer could not be reached, or returned no verdict this gate understands. The run log says which." ;;
+          esac
+          {
+            echo "**The reviewer did not read this commit** — ${why}"
+            echo
+            echo "This comment deliberately carries neither shape \`check.sh\` counts, so the gate"
+            echo "stays red. Nothing here is a read."
+            echo
+            echo "---"
+            echo "_Posted by the review workflow._"
+          } > /tmp/why.md
+          gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -F body=@/tmp/why.md --silent
+          exit 1
+
+      # A comment written with GITHUB_TOKEN starts no workflow — GitHub refuses
+      # that on purpose, so that a workflow cannot wake itself. So the wake job
+      # in check.yml, which turns the check green when Codex answers, will never
+      # see the comment above. This re-runs the check itself instead, and the
+      # verdict is seen without a hand, which is the rule since #20.
+      - name: Let the check see it
+        if: steps.said.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ steps.gather.outputs.sha }}
+        run: |
+          set -euo pipefail
+          # Newest by [created_at, id], as the wake job learned on #24: a
+          # protected branch reads the newest run of a required check, and two
+          # runs starting in the same second share a timestamp, so the id breaks
+          # the tie the way the clock would.
+          line=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$SHA&per_page=100" \
+            --jq '[.workflow_runs[] | select(.name=="check")] | max_by([.created_at, .id]) | "\(.id) \(.status)"' || echo "")
+          id=${line%% *}
+          case "$id" in ""|null) echo "no check run on $SHA yet — the run that starts next will read this review"; exit 0 ;; esac
+          echo "re-running check $id on $SHA"
+          gh api -X POST "repos/$GITHUB_REPOSITORY/actions/runs/$id/rerun" ||
+            echo "the re-run was refused (already running again, or too old) — nothing to do"
