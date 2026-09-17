@@ -3,6 +3,24 @@ on:
   push:
     branches: [main]
   pull_request:
+    # Spelt out because the default set is opened, synchronize and reopened —
+    # and `edited` is not in it. Retargeting a pull request onto another base
+    # fires `edited` and nothing else, so no fresh check started and the green
+    # already attached to the head survived the move. That is half of a route
+    # found on #34: open a head against a base that already carries the change
+    # being judged, get it cleared against that innocent comparison, then
+    # retarget to main and merge on a green nobody re-earned. The gate's own
+    # half — judging against the protected branch's tip rather than the pull
+    # request's base — is in review-gate.py; this is the half that makes the
+    # check run again at all.
+    # `ready_for_review` is here for the same reason and not a new rule: a
+    # draft marked ready is a pull request asking to merge, and the default
+    # set does not start a check on it either.
+    # `edited` also fires on a title or description edit, which re-runs the
+    # gate for nothing. That is the cheap direction: the run takes seconds and
+    # always answers correctly, while the alternative is a state change that
+    # silently keeps a stale green.
+    types: [opened, synchronize, reopened, edited, ready_for_review]
   pull_request_review:
     types: [submitted]
   # A clean pass arrives as a comment, and a comment starts nothing on the pull
@@ -62,25 +80,43 @@ jobs:
           # timestamp alone chooses id 1 — the older run, which is #24 again. The
           # id rises with each run, so it breaks the tie the way the clock would.
           runs="repos/$REPO/actions/runs?head_sha=$sha&per_page=100"
-          id=""; status=""
-          # A review can land while the check is still running, and that run
+          # Every run of this workflow on the head, never one of them. Picking
+          # the newest and re-running only that was #24's fault re-learned: a
+          # head can carry several, one per event that started one, and a
+          # protected branch is not reliably satisfied while any of them is
+          # red. #30 needed a hand re-run to merge with this job having run.
+          # Re-running all of them is safe in both readings — if only the
+          # newest counts, the others cost one API call each and change
+          # nothing — and it removes the need to be right about which GitHub
+          # reads. So the `max_by` that used to pick one is gone, and with it
+          # the tie-break it needed.
+          # `issue_comment` runs are this job's own. Re-running one would
+          # re-run this step, which would re-run it again: excluded, not
+          # guarded against downstream.
+          mine='select(.name=="check") | select(.event!="issue_comment")'
+          # A review can land while a check is still running, and that run
           # asked GitHub for the comments before this one arrived — so it will
-          # finish red on a review that exists. Wait for it, then re-run it.
+          # finish red on a review that exists. Wait for them, then re-run.
           for _ in 1 2 3 4 5 6 7 8 9 10; do
-            line=$(gh api "$runs" --jq '[.workflow_runs[] | select(.name=="check")] | max_by([.created_at, .id]) | "\(.id) \(.status)"' || echo "")
-            id=${line%% *}; status=${line##* }
-            case "$id" in ""|null) echo "no check run on $sha yet — the run that starts next will read this review"; exit 0 ;; esac
-            [ "$status" = "completed" ] && break
-            echo "check run $id is $status — waiting for it to finish"
+            busy=$(gh api "$runs" --jq "[.workflow_runs[] | $mine | select(.status!=\"completed\")] | length" || echo "")
+            case "$busy" in ""|null) echo "could not read the runs on $sha — leaving it"; exit 0 ;; esac
+            [ "$busy" -eq 0 ] && break
+            echo "$busy check run(s) on $sha still going — waiting for them to finish"
             sleep 20
           done
-          if [ "$status" != "completed" ]; then
-            echo "check run $id is still $status after three minutes — leaving it; if it lands red, ask again"
+          # Still going after three minutes: the completed red ones are re-run
+          # anyway. One that is still running will finish on its own, and it
+          # reads the page as it is now, which already carries this review.
+          red=$(gh api "$runs" --jq "[.workflow_runs[] | $mine | select(.status==\"completed\") | select(.conclusion!=\"success\") | .id] | .[]" || echo "")
+          if [ -z "$red" ]; then
+            echo "no red check run on $sha — nothing to re-run"
             exit 0
           fi
-          echo "re-running check $id on $sha"
-          gh api -X POST "repos/$REPO/actions/runs/$id/rerun" ||
-            echo "the re-run was refused (already running again, or too old) — nothing to do"
+          for id in $red; do
+            echo "re-running check $id on $sha"
+            gh api -X POST "repos/$REPO/actions/runs/$id/rerun" ||
+              echo "  the re-run of $id was refused (already running again, or too old)"
+          done
   check:
     if: github.event_name != 'issue_comment'
     runs-on: ubuntu-latest
