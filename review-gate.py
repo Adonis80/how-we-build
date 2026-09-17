@@ -412,7 +412,15 @@ def verdict(reviews, comments, head, resolve=None, gate_files=(),
             said.append(None if answer == CLEAN and edited(c) else answer)
         elif backup and who == backup:
             answer = fable_verdict(c.get("body"), head, resolve)
-            if answer is not None and not edited(c):
+            # An edit voids a CLEAN and never a FINDINGS. Dropping a finding is
+            # the unsafe direction, and the primary showed why: with its own
+            # clean pass already on this head and a refusal after it, discarding
+            # an edited backup finding let that older CLEAN win and the head
+            # merge carrying a finding nobody answered. An edit that invents a
+            # finding only holds the gate shut, which costs a push and nothing
+            # else. So the shape that OPENS the gate is the only one an edit
+            # can take away.
+            if answer is not None and not (answer == CLEAN and edited(c)):
                 backup_said.append(
                     (c.get("updated_at") or c.get("created_at") or "", answer))
     for when, answer in backup_said:
@@ -697,7 +705,15 @@ def _selftest():
         # stays the author's. The shapes the reviewers never edit are void once
         # they differ from what was posted; the summary they do edit is not.
         ([], [bot(quota), reviewer(fable_clean, LAST, edited_at=ENDED)], (), UNREAD,
-         "a backup verdict somebody rewrote after it was posted"),
+         "a backup CLEAN somebody rewrote after it was posted"),
+        # The primary reproduced this one through verdict() directly: with its
+        # own clean pass already on the head and a refusal after it, voiding an
+        # edited backup FINDING let the older CLEAN win, and the head could
+        # merge carrying a finding nobody had answered.
+        ([], [bot(clean, LATER), bot(quota, LAST),
+              reviewer(fable_found, ENDED, edited_at="2026-09-17T20:00:00Z")], (), FINDINGS,
+         "a backup FINDING somebody rewrote — an edit voids a clean pass, never a "
+         "finding, and the primary's earlier clean pass does not outlive it"),
         ([], [bot(clean, LATER, edited_at=LAST)], (), UNREAD,
          "the primary's clean pass, rewritten after it was posted"),
         ([], [bot(summary, LATER, edited_at=LAST)], (), NO_VERDICT,
@@ -869,22 +885,24 @@ def protected_tip(api, token):
     return sha
 
 
-def head_arrived(api, head, token):
-    """When this head reached the pull request, on GitHub's clock.
-
-    A refusal names no commit, so "the primary refused here" says nothing about
-    which commit it could not read. This is what binds one to the other, and it
-    is taken from the earliest check run GitHub recorded against this sha —
-    never from the commit's own author or committer date, which whoever pushes
-    sets to whatever they like.
-
-    An unknown arrival is returned as "", and primary_refused() counts no
-    refusal without one: the backup stands down and the answer is to ask.
-    """
-    runs = _get("%s/commits/%s/check-runs" % (api, head), token,
-                "head's check runs").get("check_runs") or []
-    starts = sorted(r.get("started_at") or "" for r in runs if r.get("started_at"))
-    return starts[0] if starts else ""
+# There is no head_arrived() here, and that is deliberate. primary_refused()
+# takes `since` — when this head reached THIS pull request — and counts no
+# refusal without it, so today it is passed "" and no refusal is ever counted.
+#
+# The one written first asked /commits/{sha}/check-runs, which is
+# repository-wide. The primary caught it: the same sha can pick up a check run
+# in a DIFFERENT pull request first, so a refusal written after that run but
+# before this pull request moved to the sha would satisfy `when >= since` and
+# hand the backup a head the primary was never asked about. A source that can
+# answer about the wrong pull request is not an arrival time.
+#
+# It is deleted rather than replaced because nothing calls it while BACKUP is
+# empty, and a fetch that cannot be exercised is exactly the kind of thing this
+# slice has twice had to take back out. The requirement stands and is held by
+# cases: a refusal counts only if written after the head arrived, and an
+# unknown arrival stands the backup down. The pull request that installs the
+# reviewer supplies the source, and it must be bound to the pull request —
+# its own timeline, not the commit's.
 
 
 def paths_in(files):
@@ -970,11 +988,11 @@ def main(argv):
         base = protected_tip(api, token)
         changed = changed_paths(api, base, head, token)
         gate_files = touches_the_gate(changed)
-        # Only asked when there is a backup login to judge: with none, no
-        # refusal is ever consulted and the fetch would buy nothing.
-        arrived = head_arrived(api, head, token) if BACKUP else ""
+        # "" is an unknown arrival, which counts no refusal at all — see the
+        # note above paths_in(). With BACKUP empty nothing consults it; the
+        # reviewer's own pull request supplies a pull-request-bound source.
         answer = verdict(reviews, comments, head, resolve=resolve,
-                         gate_files=gate_files, head_arrived=arrived)
+                         gate_files=gate_files, head_arrived="")
     except ValueError as e:
         # A comparison too large to be sure of. Red, and says which.
         print("reason: " + str(e))

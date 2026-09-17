@@ -28,20 +28,15 @@ else
   echo "ok: HOW-WE-BUILD.md is $words words (cap 600)"
 fi
 
-# 1b. The reviewer's brief stays brief, and this repository is held to the
-# number it holds every product to. *What every product carries* already says
-# `AGENTS.md` is under 500 words and machine-checked; this repository carried
-# the words and not the check, which is the one gap the carries list exists to
-# close. No new rule: the rule is the carries line, and this is the machine
-# taking it over from prose.
-agentwords=$(python3 -c 'import sys; print(len(open(sys.argv[1],encoding="utf-8").read().split()))' AGENTS.md)
-if [ "$agentwords" -gt 500 ]; then
-  echo "FAIL: AGENTS.md is $agentwords words; the cap is 500 - the brief the tool reads stays brief."
-  fail=1
-else
-  echo "ok: AGENTS.md is $agentwords words (cap 500)"
-fi
-
+# There is no AGENTS.md word cap here, and that is the reviewer's finding
+# rather than an oversight. *What every product carries* holds every product's
+# AGENTS.md under 500 words and machine-checked — and this repository's own
+# brief opens by saying it is the rulebook, NOT a product. So the carries line
+# does not already bind it, and adding the check here is an addition under
+# AGENTS.md's own rule, needing §13 or a ruling. It has neither. The file is
+# trimmed to 499 words in this same change, because trimming words is a
+# correction and costs no gate; enforcing the number is what waits.
+#
 # 2. Only these files exist at the root (plus .git and .github).
 allowed=" AGENTS.md CHARTER.md HOW-WE-BUILD.md README.md check.sh design review-gate.py "
 while IFS= read -r f; do
