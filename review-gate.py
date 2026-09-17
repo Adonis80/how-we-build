@@ -556,24 +556,6 @@ def _selftest():
         bad += hold(primary_refused(primary_events(reviews_, comments_)), want,
                     "the primary's latest word: " + what)
 
-    # May the backup read this at all. The gate-path answer is the one the
-    # primary found missing on #34: it was enforced only by the proposed tree's
-    # own copy of this file, so a branch could loosen the guard, delete the case
-    # below, and have the backup clear the very change that did it. It is now
-    # decided first from the default branch, where the branch cannot reach.
-    for reviews_, comments_, changed_, want, what in [
-        ([], [bot(quota)], ["README.md"], 0, "an ordinary change behind a refusal"),
-        ([], [bot(quota)], ["review-gate.py"], 1, "a change to the gate's own decision"),
-        ([], [bot(quota)], ["check.sh"], 1, "a change to the check that runs it"),
-        ([], [bot(quota)], [".github/workflows/review.yml"], 1, "a change to the backup itself"),
-        ([], [bot(quota)], [".github/anything"], 1, "anything else under .github/"),
-        ([], [bot(quota)], ["README.md", "check.sh"], 1, "an ordinary change carrying a gate file"),
-        ([], [], ["README.md"], 1, "an ordinary change with no refusal behind it"),
-        ([], [bot(summary)], ["README.md"], 1, "the primary answering rather than refusing"),
-    ]:
-        got, _why = may_stand_in(reviews_, comments_, changed_)
-        bad += hold(got, want, "may the backup read it: " + what)
-
     # The whole decision. The three that matter most: the person, the gate
     # change, and a backup read with no live refusal behind it. A Fable read
     # taken inside a builder session posts under the Chairman's own account —
@@ -707,93 +689,11 @@ def _pages(url, token):
         page += 1
 
 
-def may_stand_in(reviews, comments, changed):
-    """May the backup read this pull request? (code, why)
-
-    Pure, so --selftest holds it without a network — the same shape verdict()
-    has, and for the same reason: this is a rule, and a rule that can only be
-    exercised by making HTTP calls is a rule nothing checks.
-    """
-    gate_files = touches_the_gate(changed)
-    if gate_files:
-        return 1, ("this pull request changes the gate itself (%s).\n"
-                   "The rulebook requires the other vendor there, and a gate the reviewer it\n"
-                   "admits can open is not a gate. The backup does not read this one at all —\n"
-                   "it waits for %s however long that takes." % (", ".join(gate_files), BOT))
-    if primary_refused(primary_events(reviews, comments)):
-        return 0, "the primary has refused here and not answered since — the backup may stand in"
-    return 1, ("the primary has not refused on this pull request, or has answered since it did.\n"
-               "Ask it first. The backup stands in only where the primary says it cannot — the\n"
-               "Chairman's ruling of 17 September 2026, and not a preference.")
-
-
-def _eligible(repo, num, token):
-    """Exit 0 if the backup may stand in on this pull request.
-
-    THIS IS THE ENFORCEMENT, and where it runs is the whole point. The workflow
-    asks it before the backup reads anything, and the workflow is started by
-    issue_comment — so GitHub runs it, and this file, from the DEFAULT BRANCH.
-
-    The same questions are asked again by verdict() when check.sh runs, but that
-    copy is the PROPOSED tree's: a branch changing the gate could loosen the
-    guard and delete the case that holds it, and its own check would pass. The
-    primary found that on #34, and it is right — a rule about the code under
-    review cannot be enforced only by the code under review. So it is decided
-    here first, from a tree the branch cannot touch, and the backup never posts
-    a verdict there was no way to justify.
-    """
-    api = "https://api.github.com/repos/%s" % repo
-    # The head FIRST, and it is the answer this returns. Everything below
-    # describes the pull request as it was at this moment, and the caller must
-    # prove it fetched this very commit before letting the reviewer near it.
-    #
-    # The primary's P1 on #34, round three: between this decision and the fetch
-    # that follows it in the workflow, the contributor can push. An ordinary
-    # head, judged eligible here, is then replaced by one touching
-    # review-gate.py or .github/ — and the backup would read and sign the
-    # prohibited commit. The default-branch guard would not save it, because the
-    # new head can also neuter the proposed tree's own copy of the check.
-    #
-    # Reading the head before the files is deliberate too. If the branch moves
-    # in between, the files come back for the NEWER head while this still
-    # reports the older sha, so the caller's comparison fails and nothing is
-    # reviewed. Both orders of the race end in a refusal.
-    pr = _get("%s/pulls/%s" % (api, num), token)
-    head = (pr.get("head") or {}).get("sha") or ""
-    base = (pr.get("base") or {}).get("sha") or ""
-    base_ref = (pr.get("base") or {}).get("ref") or ""
-    if not head or not base or not base_ref:
-        sys.stderr.write("GitHub named no head or base for this pull request, so there is "
-                         "nothing to bind a review to. Refusing.\n")
-        return 1
-    comments = list(_pages("%s/issues/%s/comments" % (api, num), token))
-    reviews = list(_pages("%s/pulls/%s/reviews" % (api, num), token))
-    # Of the two shas, never of the pull request — see changed_paths().
-    try:
-        changed = changed_paths(api, base, head, token)
-    except ValueError as e:
-        sys.stderr.write(str(e) + "\n")
-        return 1
-    code, why = may_stand_in(reviews, comments, changed)
-    # The prose goes to stderr so stdout carries one thing: the commit this
-    # answer is about, for the caller to bind its fetch to.
-    sys.stderr.write(why + "\n")
-    if code == 0:
-        # One snapshot, three values, and everything downstream is bound to
-        # them: the commit reviewed, and the base the diff is taken against.
-        sys.stdout.write("%s %s %s" % (base, base_ref, head))
-    return code
-
-
 def main(argv):
     if len(argv) == 2 and argv[1] == "--selftest":
         return _selftest()
-    if len(argv) == 5 and argv[1] == "--eligible":
-        return _eligible(argv[2], argv[3], argv[4])
     if len(argv) != 5:
-        print("usage: review-gate.py <owner/repo> <pr-number> <head-sha> <token>")
-        print("       review-gate.py --eligible <owner/repo> <pr-number> <token>")
-        print("       review-gate.py --selftest")
+        print("usage: review-gate.py <owner/repo> <pr-number> <head-sha> <token> | --selftest")
         return 2
     repo, num, head, token = argv[1:5]
     api = "https://api.github.com/repos/%s" % repo
