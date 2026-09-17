@@ -13,14 +13,17 @@ on:
     # half — judging against the protected branch's tip rather than the pull
     # request's base — is in review-gate.py; this is the half that makes the
     # check run again at all.
-    # `ready_for_review` is here for the same reason and not a new rule: a
-    # draft marked ready is a pull request asking to merge, and the default
-    # set does not start a check on it either.
+    # `ready_for_review` was here too and is not, because it repaired nothing:
+    # a draft already gets its `opened` run, so marking an unchanged head ready
+    # adds an invocation rather than starting a check that was missing. The
+    # evidence was for `edited` and I extended it by analogy, which is an
+    # addition and needs the gate. Only `edited` is added, and only because a
+    # retarget demonstrably left a stale green standing.
     # `edited` also fires on a title or description edit, which re-runs the
     # gate for nothing. That is the cheap direction: the run takes seconds and
     # always answers correctly, while the alternative is a state change that
     # silently keeps a stale green.
-    types: [opened, synchronize, reopened, edited, ready_for_review]
+    types: [opened, synchronize, reopened, edited]
   pull_request_review:
     types: [submitted]
   # A clean pass arrives as a comment, and a comment starts nothing on the pull
