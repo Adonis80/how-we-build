@@ -139,13 +139,21 @@ jobs:
           BASE_REF: ${{ steps.pr.outputs.base_ref }}
         run: |
           set -euo pipefail
-          git fetch --no-tags --quiet origin "$BASE_REF" "pull/${PR}/head"
-          # The sha is taken from what was actually fetched, not from the API
-          # answer above: if the branch moved between the two, the comment must
-          # name the commit that was really read. A commit nobody asked about
-          # simply fails to match the head, and the gate stays red — which is
-          # the right way round.
-          sha=$(git rev-parse FETCH_HEAD)
+          # Into a NAMED ref, and resolved by that name. FETCH_HEAD holds one
+          # line per ref fetched and `git rev-parse FETCH_HEAD` answers the
+          # FIRST — which, in a two-ref fetch written base-first, is the base.
+          # The reviewer would then have diffed the base against itself, found
+          # nothing, and refused to run: it would never have worked at all.
+          # Found by the primary on #34 and reproduced here before it was
+          # believed — `git fetch --no-tags origin main pull/34/head` then
+          # `git rev-parse FETCH_HEAD` answered main's sha, not the head's.
+          git fetch --no-tags --quiet --force origin \
+            "$BASE_REF" "+refs/pull/${PR}/head:refs/pr/head"
+          # Taken from what was actually fetched, not from the API answer
+          # above: if the branch moved between the two, the comment must name
+          # the commit that was really read. A commit nobody asked about simply
+          # fails to match the head, and the gate stays red — the right way round.
+          sha=$(git rev-parse refs/pr/head)
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "reviewing $sha against $BASE_SHA"
           git diff --no-color "$BASE_SHA...$sha" > /tmp/diff.txt
@@ -201,16 +209,27 @@ jobs:
             cat /tmp/diff.txt
             printf '\n</diff>\n'; } > /tmp/prompt.txt
 
-          # Run from an empty directory with every tool off: the reviewer reads
-          # what it is given on stdin and writes one answer. It has no way to
-          # touch this checkout, the network, or the pull request.
-          mkdir -p /tmp/ws
-          cd /tmp/ws
+          # Run IN the default-branch checkout, with the three read-only tools
+          # and nothing else. The brief tells the reviewer to form its view from
+          # the diff AND the existing pages; until now it was handed the diff in
+          # an empty directory with every tool off, so it could not read a page
+          # it was told to judge against and could call a change clean that
+          # plainly contradicted one. The primary's second P1 on #34.
+          #
+          # What it can see is the DEFAULT BRANCH — the state before this change
+          # — never the proposed tree, which stays in the object store and is
+          # only ever a diff. --restricted removes the tools that run commands
+          # or code and confines the file tools to this directory; --tools names
+          # three that only read; --permission-prompts none denies anything that
+          # would ask. The checkout is made with persist-credentials: false, so
+          # no token is written into .git/config for a Read to find.
+          cd "$GITHUB_WORKSPACE"
           set +e
           claude -p \
             --model claude-fable-5-1 \
             --effort max \
-            --tools "" \
+            --restricted \
+            --tools "Read,Glob,Grep" \
             --strict-mcp-config \
             --permission-prompts none \
             --no-session-persistence \

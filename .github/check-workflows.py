@@ -65,10 +65,49 @@ for wf in (WF, ".github/workflows/check.yml"):
 
 # The model and the effort are the Chairman's ruling written as a flag, not a
 # preference: if either goes, the reviewer is no longer the one he named.
-for want in ("--model claude-fable-5-1", "--effort max", "--tools \"\""):
+#
+# The reviewer reads the default-branch checkout so it can judge the diff
+# against the pages the brief names — the primary's second P1 on #34 — so what
+# bounds it is no longer "no tools" but "only tools that read". --restricted
+# takes away the ones that run commands or code and confines the file tools to
+# the working directory; --permission-prompts none denies anything that would
+# ask; and persist-credentials: false keeps the job's token out of .git/config,
+# where a Read would otherwise reach it.
+for want in ("--model claude-fable-5-1", "--effort max", "--restricted",
+             "--permission-prompts none", "--strict-mcp-config",
+             "persist-credentials: false"):
     if want not in src:
         print("FAIL: %s no longer passes %s to the reviewer." % (WF, want))
         bad = 1
+
+named = re.search(r'--tools "([^"]*)"', src)
+if not named:
+    print("FAIL: %s no longer names the reviewer's tools. It must name only tools that read."
+          % WF)
+    bad = 1
+else:
+    tools = [t.strip() for t in named.group(1).split(",") if t.strip()]
+    allowed = {"Read", "Glob", "Grep"}
+    over = sorted(set(tools) - allowed)
+    if over:
+        print("FAIL: %s gives the reviewer %s. It may have only %s — a reviewer that can run"
+              % (WF, ", ".join(over), ", ".join(sorted(allowed))))
+        print("      code or reach the network is no longer only reading the change.")
+        bad = 1
+
+# The head is fetched as data. Resolving it through FETCH_HEAD is the bug the
+# primary found on #34 and this reproduced: FETCH_HEAD holds a line per ref and
+# rev-parse answers the FIRST, which in a base-first two-ref fetch is the base.
+# The reviewer then diffed the base against itself and refused to run.
+#
+# Read from the code alone. A comment is where that bug is explained, and a
+# check that cannot tell the explanation from the mistake forbids writing the
+# explanation down — which is how the reason for a guard gets deleted.
+code = "\n".join(ln for ln in lines if not ln.lstrip().startswith("#"))
+if "rev-parse FETCH_HEAD" in code:
+    print("FAIL: %s resolves the commit under review through FETCH_HEAD." % WF)
+    print("      In a multi-ref fetch that answers the first ref — the base, not the head.")
+    bad = 1
 
 # The backup is a backup. It asks review-gate.py whether the primary has refused
 # here, rather than deciding for itself — one implementation, so the reviewer and
@@ -86,6 +125,6 @@ for step in ("The pull request", "Gather what the reviewer reads"):
 
 if not bad:
     print("ok: the backup runs from the default branch on issue_comment alone, only behind "
-          "the primary's refusal, as Fable at max effort with every tool off, and its %d "
-          "shell blocks parse" % n_review)
+          "the primary's refusal, as Fable at max effort with only tools that read, on the "
+          "head it actually fetched, and its %d shell blocks parse" % n_review)
 sys.exit(bad)
