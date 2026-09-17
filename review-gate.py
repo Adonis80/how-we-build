@@ -29,39 +29,27 @@ finding is a push, and a push makes a new commit for the reviewer to read; what
 the CTO says about the old one never clears it.
 
 From 17 September 2026 there are two reviewers, and the gate reads both. The
-Chairman's ruling that evening: *"we better use GPT sol 5.6 as primary reviewer
-because Fable will hit a wall. and if thats not available then default for Fable
-5.1. this is because although it Claude, its still different to Opus 5 which is
-the default builder for claude code mode."*
+Chairman's ruling that evening put Codex first and a Fable 5.1 read behind it.
+It is quoted whole in README.md, *The independent reviewer*, which is also where
+the conditions a backup verdict must meet are written out for a reader. This
+file enforces them; it does not keep a second copy of them.
 
-So Codex is the primary and reads first. The backup runs in
-.github/workflows/review.yml, posts as github-actions[bot], and is counted ONLY
-behind the primary's own refusal on that same pull request — the one half of
-this the lead cannot write for itself. On the classes where the rulebook
-requires the other vendor — here, the review gate itself — only Codex may
-clear, refusal or no refusal.
+Codex is the primary and reads first. The backup is counted ONLY behind the
+primary's own refusal on that same pull request — the one half of this the lead
+cannot write for itself — and never on the classes where the rulebook requires
+the other vendor. Here that is the review gate itself: see touches_the_gate().
 
-Four things make the backup a gate rather than a way round, and the first two
-are why its verdict can be counted at all:
+Eligibility is judged as at the moment the backup posted, never as at the moment
+this check runs. Both directions of that matter. A verdict written while the
+primary was able to answer is not made legitimate by a refusal that arrives
+afterwards; and a real read's findings do not evaporate because the primary
+answered later — the answer to a finding is a push, whoever found it.
 
-  it posts as Actions     no personal token can post under that name; a Fable
-                          read run inside a session posts as the Chairman, and
-                          would be the lead clearing its own work
-  issue_comment, never    that trigger runs the workflow file from the DEFAULT
-  pull_request            BRANCH. On pull_request a branch could edit its own
-                          reviewer and write itself a clean pass
-  it may not clear the    a change to review-gate.py, check.sh or anything under
-  gate                    .github/ waits for the other vendor, however long that
-                          takes — see touches_the_gate()
-  only behind a refusal   and only the primary's LATEST word on the pull
-                          request. An allowance that reset since is a primary
-                          that can answer, and it answers first
-
-The third is what keeps the second true. To forge a verdict you must post as
-Actions; to post as Actions you must add or change a workflow; and changing
-anything under .github/ is exactly what makes this reviewer ineligible.
-
-The fourth is why the backup never quietly becomes the habit.
+BACKUP below is the login whose verdicts are counted, and it is empty. The
+reviewer that would post them is not installed in any repository yet, so there
+is no such login and this gate counts no backup at all. That is the correct
+state and not a gap: with nothing posting, the gate stays red, and a gate that
+opened when its reviewer was missing would not be a gate.
 
 Every shape is matched by its exact form, and --selftest holds the match against
 the real ones and the fakes on every run of check.sh — no network, no GitHub, and
@@ -77,11 +65,23 @@ import urllib.request
 BOT = "chatgpt-codex-connector[bot]"
 SUMMARY_MARKER = "codex-pull-request-review-summary"
 
-# The backup reviewer, and the one identity no session can type as. GitHub gives
-# this login to a workflow's own token; a personal access token cannot borrow
-# it. That is the whole reason a Fable read counts here and the same read taken
-# inside a builder session does not.
-ACTIONS = "github-actions[bot]"
+# The backup reviewer's login, and it is empty on purpose.
+#
+# It was github-actions[bot] until the backup's own first cold read said what
+# that name actually is: the login GitHub gives EVERY workflow token in this
+# repository, not an identity belonging to a reviewer. The argument for it was
+# that forging a verdict means adding a workflow, and adding one is what makes a
+# pull request ineligible. The last step is false. The workflow does not have to
+# be in the pull request under review: push a throwaway branch — never opened as
+# a pull request, so touches_the_gate() never sees it — carrying a workflow that
+# runs on push, asks for pull-requests: write, and posts the verdict line on any
+# pull request here. It needs only push access, which every lead session has.
+#
+# So the gate counts a login a pushed branch cannot wear: the reviewer's own, as
+# the primary has its own. Until that identity exists this stays empty and NO
+# backup is counted — the verdict shape, posted by Actions or by anyone else,
+# reads as no read at all. The gate will not borrow a name to stand in for one.
+BACKUP = ""
 
 # The primary's own refusal, which is what makes the backup eligible at all.
 # Matched from the start of its comment, and anchored: a body that merely
@@ -112,22 +112,29 @@ def primary_events(reviews, comments):
     Either one hands the backup a pull request the primary is able to read,
     which is the single thing the ruling of 17 September forbids.
 
+    Each entry is (when it was last written, its body, whether it was edited).
+    The first two decide which word is the latest and whether it came after the
+    head did; the third is read by primary_refused().
+
     Timestamps are ISO-8601 in Z, so they sort as text.
     """
     out = []
     for c in comments:
         if c.get("user", {}).get("login") == BOT:
-            out.append((c.get("updated_at") or c.get("created_at") or "", c.get("body") or ""))
+            created = c.get("created_at") or ""
+            updated = c.get("updated_at") or created
+            out.append((updated or created, c.get("body") or "",
+                        bool(created) and updated != created))
     for r in reviews:
         if r.get("user", {}).get("login") == BOT:
             # A submitted review is the primary answering. It is never a refusal.
-            out.append((r.get("submitted_at") or "", r.get("body") or ""))
+            out.append((r.get("submitted_at") or "", r.get("body") or "", False))
     out.sort(key=lambda e: e[0])
-    return [body for _, body in out]
+    return out
 
 
-def primary_refused(bodies):
-    """Is the primary's LATEST word on this pull request that it cannot read?
+def primary_refused(events, since, at=None):
+    """Is the primary's latest word, as at `at`, that it cannot read THIS head?
 
     Not "has it ever refused here". One allowance serves every repository, and
     it resets: on 17 September 2026 it refused at 11:46 and read again at 15:54
@@ -145,10 +152,45 @@ def primary_refused(bodies):
     a backup that stands in while the primary is fine. An empty last word is
     read the same way — it is not the primary saying it cannot read, so it is
     not a refusal, and the answer is to ask.
+
+    Two things narrow "latest word", and the backup's own cold read found both.
+
+    `since` is when this head reached the pull request, on GitHub's clock. A
+    refusal names no commit, so without this one refusal on Monday's head hands
+    the backup every push after it and the primary is never asked about any of
+    them — the ruling reversed. A refusal written before this head existed is
+    not the primary saying it cannot read this head. An unknown arrival counts
+    no refusal at all, which stands the backup down and asks the primary.
+
+    `at` is when the backup spoke, and eligibility is judged there rather than
+    here. A verdict written while the primary could still answer is not made
+    legitimate by a refusal that lands afterwards, and a read that was
+    legitimate when it was taken does not stop being one because the primary
+    answered since.
+
+    An edited comment is not counted at all. Anyone with write access can edit
+    anyone's comment and the login stays the author's, so the three shapes the
+    reviewers never edit — this refusal, the primary's clean pass, the backup's
+    verdict — are refused the moment they differ from what was posted. The
+    primary's summary, which it edits by design, is untouched by this.
     """
-    if not bodies:
+    if at is not None:
+        events = [e for e in events if e[0] <= at]
+    if not events or not since:
         return False
-    return QUOTA.match((bodies[-1] or "").strip()) is not None
+    when, body, was_edited = events[-1]
+    if was_edited:
+        return False
+    if QUOTA.match((body or "").strip()) is None:
+        return False
+    return when >= since
+
+
+def edited(comment):
+    """Has this comment been rewritten since it was posted?"""
+    created = comment.get("created_at") or ""
+    updated = comment.get("updated_at") or ""
+    return bool(created) and bool(updated) and updated != created
 
 # Its two shapes. The workflow writes one of these as the first line and nothing
 # else, and matching is exact and whole-line — not a prefix. A prefix test is
@@ -163,15 +205,14 @@ FABLE_FINDINGS = "Review by Fable at max effort: findings below."
 # the rulebook requires the other vendor on the review gate itself — so these
 # wait for Codex however long it takes.
 #
-# The whole of .github/ is on the list, not merely the two workflow files that
-# exist today, and that breadth is load-bearing rather than caution. A branch
-# that wants to forge a clean pass has to post as github-actions[bot], and the
-# only way to do that is to add a workflow of its own — which, on a same-repo
-# pull request, GitHub would run from the branch. Putting every path under
-# .github/ on this list means the one change that would make forgery possible is
-# also the change this reviewer may not clear. The cost is that an unrelated
-# change to a workflow waits for Codex, which in a repository holding two of
-# them is a price worth paying for a door that shuts on itself.
+# The whole of .github/ is on the list, not merely the one workflow file that
+# exists today. This breadth was argued as the thing that made forgery
+# impossible: to post as Actions you must add a workflow, and adding one is what
+# makes you ineligible. The backup's own read showed that argument false — the
+# workflow need not be in the pull request under review at all. The breadth
+# stays for the reason that does hold: the machinery that decides is machinery
+# only the other vendor may clear. What shuts the forgery is BACKUP naming a
+# login a pushed branch cannot wear.
 GATE_PATHS = ("review-gate.py", "check.sh")
 
 
@@ -334,19 +375,25 @@ def review_verdict(review, head):
     return None
 
 
-def verdict(reviews, comments, head, resolve=None, gate_files=()):
+def verdict(reviews, comments, head, resolve=None, gate_files=(),
+            backup=BACKUP, head_arrived=""):
     """The gate's one answer about the head commit, from the whole page.
 
     Only a reviewer's own words count: anyone who can comment on a pull request
     can type a clean pass, so a comment by anybody else is not one. There are
     two reviewers and each has its own login — the primary's shapes are never
-    read from the backup's comments, nor the other way round, so neither
-    can be spoken for by the other.
+    read from the backup's comments, nor the other way round, so neither can be
+    spoken for by the other. `backup` is that second login, and it is empty
+    until the reviewer exists: with no login to match, no backup is counted, and
+    the name shared by every workflow in the repository buys nothing.
 
-    The backup is counted only behind the primary's latest-word refusal. With
-    no refusal its verdict says nothing either way — not even its findings —
-    because the answer then is to ask the primary, and a backup finding that
-    could hold a pull request red would let an unasked-for run do it.
+    Each backup verdict is judged as at the moment it was written. With no
+    refusal standing behind it then, it says nothing either way — not even its
+    findings — because the answer is to ask the primary, and an unasked-for run
+    should not be able to hold a pull request red. With one, it counts, and goes
+    on counting: a read that was legitimate when it was taken is not undone by
+    the primary answering afterwards, which is why a real read's findings stay
+    red under a later clean pass rather than evaporating beneath it.
 
     `gate_files` is what this pull request changes that only the other vendor
     may clear. It downgrades the backup's clean pass and nothing else: its
@@ -355,20 +402,24 @@ def verdict(reviews, comments, head, resolve=None, gate_files=()):
     clear one.
     """
     said = [review_verdict(r, head) for r in reviews]
-    spoke, backup = primary_events(reviews, comments), []
+    spoke, backup_said = primary_events(reviews, comments), []
     for c in comments:
         who = c.get("user", {}).get("login")
         if who == BOT:
-            said.append(comment_verdict(c.get("body"), head, resolve))
-        elif who == ACTIONS:
+            answer = comment_verdict(c.get("body"), head, resolve)
+            # Its clean pass is a shape it never edits; its summary is one it
+            # edits by design. Only the verdict is void for being rewritten.
+            said.append(None if answer == CLEAN and edited(c) else answer)
+        elif backup and who == backup:
             answer = fable_verdict(c.get("body"), head, resolve)
-            if answer is not None:
-                backup.append(answer)
-    if backup:
-        if not primary_refused(spoke):
+            if answer is not None and not edited(c):
+                backup_said.append(
+                    (c.get("updated_at") or c.get("created_at") or "", answer))
+    for when, answer in backup_said:
+        if not primary_refused(spoke, head_arrived, at=when):
             said.append(PRIMARY_FIRST)
         else:
-            said += [GATE_CHANGE if a == CLEAN and gate_files else a for a in backup]
+            said.append(GATE_CHANGE if answer == CLEAN and gate_files else answer)
     for answer in ORDER:
         if answer in said:
             return answer
@@ -380,9 +431,11 @@ REASONS = {
                   "request changes the gate itself (%s). The rulebook requires the other "
                   "vendor there, and a gate the reviewer it admits can open is not a gate — "
                   "so this one waits for " + BOT + " however long it takes"),
-    PRIMARY_FIRST: ("the backup reviewer read commit %s, but " + BOT + " has not refused here "
-                    "— or has answered since it did. The primary reads first: ask it, and the "
-                    "backup stands in only where it says it cannot"),
+    PRIMARY_FIRST: ("the backup reviewer read commit %s, but no refusal by " + BOT + " stands "
+                    "behind that read: it has not refused here, or it answered before the read "
+                    "was taken, or it refused before this commit arrived and has not been asked "
+                    "about this one. The primary reads first: ask it, and the backup stands in "
+                    "only where it says it cannot"),
     FINDINGS: ("the reviewer read commit %s and left findings on it — answer them, land the "
                "round's fixes as one push, and ask once; the gate opens on a commit the reviewer "
                "reads clean, never on an answer to a finding"),
@@ -436,7 +489,17 @@ def _selftest():
         ({"user": {"login": BOT}, "commit_id": other, "state": "APPROVED"}, None, "an approval of another commit"),
         ({"user": {"login": BOT}, "commit_id": other, "state": "COMMENTED"}, None, "findings on another commit"),
     ]
-    bot = lambda body: {"user": {"login": BOT}, "body": body}
+    # When this head reached the pull request, and three moments around it. A
+    # refusal is only the primary refusing THIS head if it was written after it.
+    ARRIVED = "2026-09-17T16:00:00Z"
+    STALE = "2026-09-17T15:00:00Z"   # said about the commit before this one
+    LATER = "2026-09-17T17:00:00Z"   # said since this head arrived
+    LAST = "2026-09-17T18:00:00Z"
+    ENDED = "2026-09-17T19:00:00Z"
+
+    def bot(body, at=LATER, edited_at=None):
+        return {"user": {"login": BOT}, "body": body,
+                "created_at": at, "updated_at": edited_at or at}
     findings = {"user": {"login": BOT}, "commit_id": head, "state": "COMMENTED"}
     gate_cases = [
         ([], [bot(clean)], CLEAN, "a clean pass and nothing else"),
@@ -513,21 +576,33 @@ def _selftest():
     # The primary's refusal, which is the only thing that makes the backup
     # eligible — and only while it is the primary's latest word here.
     quota = "You have reached your Codex usage limits for code reviews."
-    for bodies, want, what in [
-        ([quota], True, "the quota message"),
-        ([quota, summary], False, "a refusal the primary has answered since (the 17 Sep reset)"),
-        ([summary, quota], True, "a refusal after an earlier answer"),
-        ([clean], False, "a clean pass"),
+    # (when it was written, its body, whether somebody edited it)
+    ev = lambda body, at=LATER, was_edited=False: (at, body, was_edited)
+    for events, want, what in [
+        ([ev(quota)], True, "the quota message"),
+        ([ev(quota), ev(summary)], False, "a refusal the primary has answered since (the 17 Sep reset)"),
+        ([ev(summary), ev(quota)], True, "a refusal after an earlier answer"),
+        ([ev(clean)], False, "a clean pass"),
         ([], False, "nothing from the primary at all"),
-        (["", "  "], False, "empty comments"),
-        ([quota, ""], False, "a refusal followed by an empty comment — an empty last word "
-                             "is not the primary saying it cannot read, so the answer is to ask"),
-        (["We could not review; you may be near your usage limits."], False,
+        ([ev(""), ev("  ")], False, "empty comments"),
+        ([ev(quota), ev("")], False, "a refusal followed by an empty comment — an empty last word "
+                                     "is not the primary saying it cannot read, so the answer is to ask"),
+        ([ev("We could not review; you may be near your usage limits.")], False,
          "a sentence mentioning a limit, which is not the primary refusing"),
-        (["You have reached your GPT usage limits for code reviews."], True,
+        ([ev("You have reached your GPT usage limits for code reviews.")], True,
          "the same refusal under another product name"),
+        # Bound to the head it was written about, which is the whole of finding 4.
+        ([ev(quota, STALE)], False,
+         "a refusal written before this head arrived — it refused the commit before, "
+         "and nobody has asked the primary about this one"),
+        ([ev(quota, ARRIVED)], True, "a refusal written as this head arrived"),
+        # And void if somebody rewrote it: the login stays the bot's after an edit.
+        ([ev(quota, LATER, True)], False, "a refusal somebody has edited since it was posted"),
     ]:
-        bad += hold(primary_refused(bodies), want, "the primary's refusal: " + what)
+        bad += hold(primary_refused(events, ARRIVED), want, "the primary's refusal: " + what)
+    bad += hold(primary_refused([ev(quota)], ""), False,
+                "the primary's refusal: one with no arrival known for the head — "
+                "unknown means the backup stands down, never that it stands in")
 
     # And the ORDER those bodies arrive in, which is where the primary found
     # this gate wrong on #34. Its summary comment is created when a review
@@ -553,45 +628,96 @@ def _selftest():
          "findings BEFORE the refusal, which do not answer it"),
         ([], [], False, "silence"),
     ]:
-        bad += hold(primary_refused(primary_events(reviews_, comments_)), want,
+        bad += hold(primary_refused(primary_events(reviews_, comments_), "16:00"), want,
                     "the primary's latest word: " + what)
 
-    # The whole decision. The three that matter most: the person, the gate
-    # change, and a backup read with no live refusal behind it. A Fable read
-    # taken inside a builder session posts under the Chairman's own account —
-    # it is a real review, and it is the lead clearing its own work, which is
-    # the one thing this gate exists to refuse.
-    actions = lambda body: {"user": {"login": ACTIONS}, "body": body}
-    person = lambda body: {"user": {"login": "Adonis80"}, "body": body}
+    # The whole decision. A Fable read taken inside a builder session posts
+    # under the Chairman's own account — it is a real review, and it is the lead
+    # clearing its own work, which is the one thing this gate exists to refuse.
+    #
+    # REVIEWER stands in for the login the backup will hold. The shipped BACKUP
+    # is empty, so these cases pass it explicitly; the two holds after the loop
+    # are the gate exactly as it ships.
+    REVIEWER = "juku-reviewer[bot]"
+
+    def reviewer(body, at=LAST, edited_at=None):
+        return {"user": {"login": REVIEWER}, "body": body,
+                "created_at": at, "updated_at": edited_at or at}
+
+    def other(login, body, at=LAST):
+        return {"user": {"login": login}, "body": body,
+                "created_at": at, "updated_at": at}
+
+    actions = lambda body: other("github-actions[bot]", body)
+    person = lambda body: other("Adonis80", body)
     gate = touches_the_gate(["review-gate.py"])
     for reviews, comments, files, want, what in [
-        ([], [bot(quota), actions(fable_clean)], (), CLEAN, "the backup, behind a real refusal"),
-        ([], [bot(quota), actions(fable_found)], (), FINDINGS, "its findings, behind one"),
-        ([], [actions(fable_clean)], (), PRIMARY_FIRST,
+        ([], [bot(quota), reviewer(fable_clean)], (), CLEAN, "the backup, behind a real refusal"),
+        ([], [bot(quota), reviewer(fable_found)], (), FINDINGS, "its findings, behind one"),
+        ([], [reviewer(fable_clean)], (), PRIMARY_FIRST,
          "the backup with the primary never refusing — ask the primary"),
-        ([], [actions(fable_found)], (), PRIMARY_FIRST,
+        ([], [reviewer(fable_found)], (), PRIMARY_FIRST,
          "even its FINDINGS say nothing with no refusal behind them"),
-        ([], [bot(quota), bot(summary), actions(fable_clean)], (), PRIMARY_FIRST,
+        ([], [bot(quota, LATER), bot(summary, LAST), reviewer(fable_clean, ENDED)], (), PRIMARY_FIRST,
          "a refusal the primary has answered since — the reset case, and the whole point"),
         ([], [bot(quota), person(fable_clean)], (), UNREAD,
          "the backup's exact shape posted by a person"),
         ([], [bot(quota), bot(fable_clean)], (), UNREAD,
          "the backup's exact shape posted by the primary"),
-        ([], [bot(quota), actions(clean)], (), UNREAD, "the primary's shape posted by Actions"),
-        ([], [bot(quota), actions(fable_clean)], gate, GATE_CHANGE,
+        ([], [bot(quota), reviewer(clean)], (), UNREAD, "the primary's shape posted by the backup"),
+        # The login the gate used to count, and what the backup's own read said
+        # it is: every workflow in the repository, reachable from any pushed
+        # branch. It is not the reviewer, so it is not a reviewer.
+        ([], [bot(quota), actions(fable_clean)], (), UNREAD,
+         "the verdict shape posted as github-actions[bot] — the name every workflow "
+         "here wears, and no reviewer's own"),
+        ([], [bot(quota), reviewer(fable_clean)], gate, GATE_CHANGE,
          "the backup clearing a change to the gate itself"),
-        ([], [bot(quota), actions(fable_found)], gate, FINDINGS,
+        ([], [bot(quota), reviewer(fable_found)], gate, FINDINGS,
          "its findings on a gate change — still findings, still red"),
-        ([], [actions(fable_clean), bot(clean)], gate, CLEAN,
+        ([], [reviewer(fable_clean), bot(clean)], gate, CLEAN,
          "the other vendor clearing a gate change, which it alone may"),
-        ([findings], [bot(quota), actions(fable_clean)], (), FINDINGS,
+        ([], [bot(clean, LATER), bot(quota, LAST), reviewer(fable_clean, ENDED)], gate, CLEAN,
+         "the primary's own clean pass outranks the backup's on a gate change — CLEAN "
+         "sits above GATE_CHANGE in ORDER, and this is the page that shows both"),
+        ([findings], [bot(quota), reviewer(fable_clean)], (), FINDINGS,
          "the primary's findings outrank the backup's clean pass"),
-        ([], [bot(quota), actions(fable_clean.replace("090e429a31", "29d7b543"))], (), UNREAD,
+        # A refusal names no commit. Both directions of binding it: to the head
+        # it was written about, and to the moment the backup spoke.
+        ([], [bot(quota, STALE), reviewer(fable_clean)], (), PRIMARY_FIRST,
+         "a refusal written before this head arrived — it refused the commit before, "
+         "and nobody has asked the primary about this one"),
+        ([], [reviewer(fable_clean, LATER), bot(quota, LAST)], (), PRIMARY_FIRST,
+         "a verdict written while the primary could still answer, with a refusal landing "
+         "after it — a later refusal does not reach back and legitimise a read"),
+        ([], [bot(quota, LATER), reviewer(fable_found, LAST), bot(clean, ENDED)], (), FINDINGS,
+         "a real read's findings, and the primary reading the same commit clean after "
+         "them — findings do not evaporate; the answer to one is a push"),
+        # Anyone with write access can edit anyone's comment, and the login
+        # stays the author's. The shapes the reviewers never edit are void once
+        # they differ from what was posted; the summary they do edit is not.
+        ([], [bot(quota), reviewer(fable_clean, LAST, edited_at=ENDED)], (), UNREAD,
+         "a backup verdict somebody rewrote after it was posted"),
+        ([], [bot(clean, LATER, edited_at=LAST)], (), UNREAD,
+         "the primary's clean pass, rewritten after it was posted"),
+        ([], [bot(summary, LATER, edited_at=LAST)], (), NO_VERDICT,
+         "its summary, which it edits by design, which that must not touch"),
+        ([], [bot(quota), reviewer(fable_clean.replace("090e429a31", "29d7b543"))], (), UNREAD,
          "its clean pass on the commit before this one"),
-        ([], [bot(quota), actions(did_not_read)], (), UNREAD,
+        ([], [bot(quota), reviewer(did_not_read)], (), UNREAD,
          "a run that did not reach the reviewer"),
     ]:
-        bad += hold(verdict(reviews, comments, head, gate_files=files), want, what)
+        bad += hold(verdict(reviews, comments, head, gate_files=files,
+                            backup=REVIEWER, head_arrived=ARRIVED), want, what)
+
+    # And the gate exactly as it ships: BACKUP is empty, so there is no login a
+    # backup verdict could be posted under, and none is counted.
+    for comments_, what in [
+        ([bot(quota), reviewer(fable_clean)], "the reviewer's own login, which does not exist yet"),
+        ([bot(quota), actions(fable_clean)], "the shared Actions name it used to count"),
+    ]:
+        bad += hold(verdict([], comments_, head, head_arrived=ARRIVED), UNREAD,
+                    "as the gate SHIPS it, no backup is counted: " + what)
 
     # What a comparison hands the guard, which is the half the selftest used to
     # take on trust. A rename names its destination in `filename` and its source
@@ -629,7 +755,8 @@ def _selftest():
     for paths, want, what in [
         (["review-gate.py"], ["review-gate.py"], "the gate's own decision"),
         (["check.sh"], ["check.sh"], "the check that runs it"),
-        ([".github/workflows/review.yml"], [".github/workflows/review.yml"], "the reviewer itself"),
+        ([".github/workflows/review.yml"], [".github/workflows/review.yml"],
+         "the reviewer's own workflow, for when it lands — the path, not a file that is here"),
         ([".github/workflows/check.yml"], [".github/workflows/check.yml"], "the workflow that gates"),
         ([".github/anything-at-all"], [".github/anything-at-all"], "anything else under .github/"),
         (["README.md", "HOW-WE-BUILD.md", "design/SCREEN-LAW.md", "AGENTS.md"], [],
@@ -641,6 +768,11 @@ def _selftest():
                 "a short form that resolves to another commit")
     bad += hold(comment_verdict(clean, head, resolve=resolver), CLEAN,
                 "a clean pass whose short form resolves to this head")
+    bad += hold(fable_verdict(fable_clean.replace("090e429a31", "090e429"), head,
+                              resolve=resolver), None,
+                "the BACKUP's clean pass on a short form that resolves to another commit")
+    bad += hold(fable_verdict(fable_clean, head, resolve=resolver), CLEAN,
+                "the BACKUP's clean pass whose short form resolves to this head")
     if bad:
         print("review-gate selftest failed: %d case(s)" % bad)
         return 1
@@ -660,8 +792,11 @@ def _selftest():
 _asking = [""]
 
 
-def _get(url, token):
-    _asking[0] = url.rsplit("/", 1)[-1]
+def _get(url, token, asking=None):
+    # `asking` names the thing in plain words where the URL's last segment does
+    # not: /repos/owner/name ends in the repository's name, and "asked for the
+    # how-we-build" sends the next session looking in the wrong place.
+    _asking[0] = asking or url.rsplit("/", 1)[-1]
     req = urllib.request.Request(
         url,
         headers={"Authorization": "Bearer " + token, "Accept": "application/vnd.github+json"},
@@ -701,6 +836,52 @@ def changed_paths(api, base, head, token):
             "the list may be short, and a short list could hide the file that makes this "
             "pull request ineligible. Refusing rather than guessing." % (base, head, len(files)))
     return paths_in(files)
+
+
+def protected_tip(api, token):
+    """The tip of the branch this repository merges to, asked of GitHub.
+
+    Never pulls/N.base.sha. The base is whoever opened the pull request's to
+    change, and retargeting fires `pull_request: edited`, which check.yml does
+    not subscribe to — so no fresh check runs and the green already attached to
+    the head survives the move. Open a head against a branch that already
+    carries the gate edit, let the comparison look innocent, have it cleared,
+    then retarget to the protected branch and merge.
+
+    It is also the right question rather than merely the safe one: this
+    repository merges only to its default branch, so what a pull request
+    changes is what it changes against that branch's tip now.
+
+    Raises ValueError when GitHub names no tip, which is red rather than an
+    empty comparison that would hide every gate file in it.
+    """
+    default = _get(api, token, "repository").get("default_branch") or "main"
+    sha = (_get("%s/branches/%s" % (api, default), token,
+                "protected branch").get("commit") or {}).get("sha")
+    if not sha:
+        raise ValueError(
+            "GitHub named no tip for the protected branch (%s), so what this pull "
+            "request changes cannot be established. Refusing rather than guessing."
+            % default)
+    return sha
+
+
+def head_arrived(api, head, token):
+    """When this head reached the pull request, on GitHub's clock.
+
+    A refusal names no commit, so "the primary refused here" says nothing about
+    which commit it could not read. This is what binds one to the other, and it
+    is taken from the earliest check run GitHub recorded against this sha —
+    never from the commit's own author or committer date, which whoever pushes
+    sets to whatever they like.
+
+    An unknown arrival is returned as "", and primary_refused() counts no
+    refusal without one: the backup stands down and the answer is to ask.
+    """
+    runs = _get("%s/commits/%s/check-runs" % (api, head), token,
+                "head's check runs").get("check_runs") or []
+    starts = sorted(r.get("started_at") or "" for r in runs if r.get("started_at"))
+    return starts[0] if starts else ""
 
 
 def paths_in(files):
@@ -777,15 +958,20 @@ def main(argv):
         # Asked of GitHub, not of the checkout: the check runs on the proposed
         # tree, so a branch that edited its own diff could otherwise hide the
         # very file that makes it ineligible.
-        # Of the commit under review and its base, not of the pull request:
-        # the same reason as changed_paths()'s docstring. This check is handed a
-        # HEAD_SHA, and asking the pull request what changed would answer about
-        # whatever the branch points at now instead — which on a moved branch is
-        # a different set of files from the ones being judged.
-        base = ((_get("%s/pulls/%s" % (api, num), token).get("base") or {}).get("sha") or "")
-        changed = changed_paths(api, base, head, token) if base else []
+        # Of the commit under review and the protected branch's tip, not of the
+        # pull request: the same reason as changed_paths()'s docstring, and
+        # protected_tip()'s. This check is handed a HEAD_SHA, and asking the
+        # pull request for either end would answer about whatever the branch
+        # and the base point at now — both of which move without starting a
+        # check, and neither of which is what is being judged.
+        base = protected_tip(api, token)
+        changed = changed_paths(api, base, head, token)
         gate_files = touches_the_gate(changed)
-        answer = verdict(reviews, comments, head, resolve=resolve, gate_files=gate_files)
+        # Only asked when there is a backup login to judge: with none, no
+        # refusal is ever consulted and the fetch would buy nothing.
+        arrived = head_arrived(api, head, token) if BACKUP else ""
+        answer = verdict(reviews, comments, head, resolve=resolve,
+                         gate_files=gate_files, head_arrived=arrived)
     except ValueError as e:
         # A comparison too large to be sure of. Red, and says which.
         print("reason: " + str(e))

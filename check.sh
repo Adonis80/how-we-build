@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # The rulebook's own guard. CI runs it on every push and pull request.
 # It refuses: an operating page over its word cap, a screen law over its own, a
+# reviewer's brief over the number every product is held to, a
 # root or design file that is not on its list or missing from it, anything that
 # looks like a secret (naming the place, never the value), a review gate that no
 # longer matches its reviewers' answers, and, in a pull request, a commit no
@@ -25,6 +26,20 @@ if [ "$words" -gt 600 ]; then
   fail=1
 else
   echo "ok: HOW-WE-BUILD.md is $words words (cap 600)"
+fi
+
+# 1b. The reviewer's brief stays brief, and this repository is held to the
+# number it holds every product to. *What every product carries* already says
+# `AGENTS.md` is under 500 words and machine-checked; this repository carried
+# the words and not the check, which is the one gap the carries list exists to
+# close. No new rule: the rule is the carries line, and this is the machine
+# taking it over from prose.
+agentwords=$(python3 -c 'import sys; print(len(open(sys.argv[1],encoding="utf-8").read().split()))' AGENTS.md)
+if [ "$agentwords" -gt 500 ]; then
+  echo "FAIL: AGENTS.md is $agentwords words; the cap is 500 - the brief the tool reads stays brief."
+  fail=1
+else
+  echo "ok: AGENTS.md is $agentwords words (cap 500)"
 fi
 
 # 2. Only these files exist at the root (plus .git and .github).
