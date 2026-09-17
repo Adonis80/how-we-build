@@ -657,6 +657,39 @@ def _get(url, token):
         return json.load(r)
 
 
+# GitHub caps a comparison at 300 files and does not page them, so a larger one
+# comes back quietly short. A short list could omit the very file that makes a
+# pull request ineligible, so it is refused rather than trusted.
+COMPARE_CAP = 300
+
+
+def changed_paths(api, base, head, token):
+    """What changed between two commits, asked of the COMMITS.
+
+    Never of the pull request. `/pulls/N/files` answers about whatever the
+    branch points at now, and the branch is the contributor's to move — so a
+    decision taken from it is a decision about a moving target, whatever is
+    done afterwards to bind the result.
+
+    That is the cause behind every race found on #34: eligibility asked the
+    mutable pull request for a fact and acted on it later. Round three bound the
+    head; the primary then showed the same hole reached by A → B → A, because
+    the paths were still read from the pull request while the sha was captured
+    from a different moment. Two immutable shas have no such moment: the answer
+    is the same whenever it is asked, and whoever asks it.
+
+    Raises ValueError when the comparison is too large to be sure of.
+    """
+    data = _get("%s/compare/%s...%s" % (api, base, head), token)
+    files = data.get("files") or []
+    if len(files) >= COMPARE_CAP:
+        raise ValueError(
+            "the comparison between %s and %s names %d files, which is GitHub's cap — "
+            "the list may be short, and a short list could hide the file that makes this "
+            "pull request ineligible. Refusing rather than guessing." % (base, head, len(files)))
+    return [f.get("filename") for f in files]
+
+
 def _pages(url, token):
     _asking[0] = url.rsplit("/", 1)[-1]
     page = 1
@@ -725,20 +758,30 @@ def _eligible(repo, num, token):
     # in between, the files come back for the NEWER head while this still
     # reports the older sha, so the caller's comparison fails and nothing is
     # reviewed. Both orders of the race end in a refusal.
-    head = (_get("%s/pulls/%s" % (api, num), token).get("head") or {}).get("sha") or ""
+    pr = _get("%s/pulls/%s" % (api, num), token)
+    head = (pr.get("head") or {}).get("sha") or ""
+    base = (pr.get("base") or {}).get("sha") or ""
+    base_ref = (pr.get("base") or {}).get("ref") or ""
+    if not head or not base or not base_ref:
+        sys.stderr.write("GitHub named no head or base for this pull request, so there is "
+                         "nothing to bind a review to. Refusing.\n")
+        return 1
     comments = list(_pages("%s/issues/%s/comments" % (api, num), token))
     reviews = list(_pages("%s/pulls/%s/reviews" % (api, num), token))
-    changed = [f.get("filename") for f in _pages("%s/pulls/%s/files" % (api, num), token)]
+    # Of the two shas, never of the pull request — see changed_paths().
+    try:
+        changed = changed_paths(api, base, head, token)
+    except ValueError as e:
+        sys.stderr.write(str(e) + "\n")
+        return 1
     code, why = may_stand_in(reviews, comments, changed)
     # The prose goes to stderr so stdout carries one thing: the commit this
     # answer is about, for the caller to bind its fetch to.
     sys.stderr.write(why + "\n")
     if code == 0:
-        if not head:
-            sys.stderr.write("but GitHub named no head commit for it, so there is nothing to "
-                             "bind the review to. Refusing.\n")
-            return 1
-        sys.stdout.write(head)
+        # One snapshot, three values, and everything downstream is bound to
+        # them: the commit reviewed, and the base the diff is taken against.
+        sys.stdout.write("%s %s %s" % (base, base_ref, head))
     return code
 
 
@@ -779,9 +822,19 @@ def main(argv):
         # Asked of GitHub, not of the checkout: the check runs on the proposed
         # tree, so a branch that edited its own diff could otherwise hide the
         # very file that makes it ineligible.
-        changed = [f.get("filename") for f in _pages("%s/pulls/%s/files" % (api, num), token)]
+        # Of the commit under review and its base, not of the pull request:
+        # the same reason as changed_paths()'s docstring. This check is handed a
+        # HEAD_SHA, and asking the pull request what changed would answer about
+        # whatever the branch points at now instead — which on a moved branch is
+        # a different set of files from the ones being judged.
+        base = ((_get("%s/pulls/%s" % (api, num), token).get("base") or {}).get("sha") or "")
+        changed = changed_paths(api, base, head, token) if base else []
         gate_files = touches_the_gate(changed)
         answer = verdict(reviews, comments, head, resolve=resolve, gate_files=gate_files)
+    except ValueError as e:
+        # A comparison too large to be sure of. Red, and says which.
+        print("reason: " + str(e))
+        return 2
     except urllib.error.HTTPError as e:
         if e.code in (401, 403):
             why = "the workflow's token may not read pull requests (it needs pull-requests: read), or GitHub is rate-limiting"

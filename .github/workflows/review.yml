@@ -114,35 +114,31 @@ jobs:
           # bound to that commit. A push between here and the fetch would
           # otherwise hand the reviewer a different head from the one judged
           # eligible — the primary's P1 on #34, round three.
-          if head=$(python3 review-gate.py --eligible "$GITHUB_REPOSITORY" "$PR" "$GH_TOKEN"); then
-            echo "ok=yes" >> "$GITHUB_OUTPUT"
-            echo "head=$head" >> "$GITHUB_OUTPUT"
-            echo "eligible on $head"
+          # It answers with ONE snapshot of the pull request — base sha, base
+          # ref, head sha — taken in a single read, and every step below is
+          # bound to it. Nothing here asks GitHub a second time what this pull
+          # request is, because the branch is the contributor's to move between
+          # two questions and that is the cause behind every race found on #34.
+          if snap=$(python3 review-gate.py --eligible "$GITHUB_REPOSITORY" "$PR" "$GH_TOKEN"); then
+            set -- $snap
+            {
+              echo "ok=yes"
+              echo "base_sha=$1"
+              echo "base_ref=$2"
+              echo "head=$3"
+            } >> "$GITHUB_OUTPUT"
+            echo "eligible on $3, against $1 ($2)"
           else
             echo "ok=no" >> "$GITHUB_OUTPUT"
           fi
-
-      - name: The pull request
-        id: pr
-        if: steps.eligible.outputs.ok == 'yes'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR: ${{ github.event.issue.number }}
-        run: |
-          set -euo pipefail
-          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" > /tmp/pr.json
-          {
-            echo "base_sha=$(jq -r '.base.sha' /tmp/pr.json)"
-            echo "base_ref=$(jq -r '.base.ref' /tmp/pr.json)"
-          } >> "$GITHUB_OUTPUT"
 
       - name: Gather what the reviewer reads
         id: gather
         if: steps.eligible.outputs.ok == 'yes'
         env:
           PR: ${{ github.event.issue.number }}
-          BASE_SHA: ${{ steps.pr.outputs.base_sha }}
-          BASE_REF: ${{ steps.pr.outputs.base_ref }}
+          BASE_SHA: ${{ steps.eligible.outputs.base_sha }}
+          BASE_REF: ${{ steps.eligible.outputs.base_ref }}
           ELIGIBLE_HEAD: ${{ steps.eligible.outputs.head }}
         run: |
           set -euo pipefail

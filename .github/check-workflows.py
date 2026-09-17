@@ -108,7 +108,17 @@ code = "\n".join(ln for ln in lines if not ln.lstrip().startswith("#"))
 # Without the binding, a push between the two hands the reviewer a head nobody
 # judged — including one touching the gate, which can then neuter the proposed
 # tree's own copy of the check. The primary's P1 on #34, round three.
-for want in ("--eligible", "ELIGIBLE_HEAD", 'if [ "$sha" != "$ELIGIBLE_HEAD" ]'):
+# And it is ONE snapshot: nothing may ask GitHub a second time what this pull
+# request is. The branch is the contributor's to move between two questions —
+# the cause behind every race the primary found on #34, most sharply the A -> B
+# -> A force-push that defeated binding the head alone.
+if "gh api \"repos/$GITHUB_REPOSITORY/pulls/$PR\"" in code:
+    print("FAIL: %s reads the pull request's own state again instead of using the" % WF)
+    print("      snapshot eligibility returned. A branch can move between two questions.")
+    bad = 1
+
+for want in ("--eligible", "ELIGIBLE_HEAD", 'if [ "$sha" != "$ELIGIBLE_HEAD" ]',
+             "steps.eligible.outputs.base_sha"):
     if want not in code:
         print("FAIL: %s no longer binds the review to the commit eligibility judged (%s)." % (WF, want))
         bad = 1
@@ -127,10 +137,24 @@ if "review-gate.py --eligible" not in src:
     print("FAIL: %s no longer asks whether the primary is unavailable before reviewing." % WF)
     print("      The backup stands in only behind the primary's own refusal.")
     bad = 1
-for step in ("The pull request", "Gather what the reviewer reads"):
-    if ("id: eligible" in src) and (src.index("id: eligible") > src.index(step)):
-        print("FAIL: %s runs '%s' before it checks the primary is unavailable." % (WF, step))
-        bad = 1
+# Nothing that reads the change may run before eligibility has answered. Named
+# steps only, and a name this no longer finds is itself a failure: a check that
+# quietly skips the step it was meant to order has stopped checking. (It threw
+# instead, the first time a step was renamed — a guard that crashes is at least
+# loud, but it should say what it wanted.)
+if "id: eligible" not in src:
+    print("FAIL: %s has no eligibility step." % WF)
+    bad = 1
+else:
+    for step in ("Gather what the reviewer reads", "Read it"):
+        at = src.find("name: " + step)
+        if at < 0:
+            print("FAIL: %s no longer has a step named '%s', so this check cannot order it."
+                  % (WF, step))
+            bad = 1
+        elif src.index("id: eligible") > at:
+            print("FAIL: %s runs '%s' before it checks the primary is unavailable." % (WF, step))
+            bad = 1
 
 if not bad:
     print("ok: the backup runs from the default branch on issue_comment alone, only behind "
