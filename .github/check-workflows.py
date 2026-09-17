@@ -104,6 +104,15 @@ else:
 # check that cannot tell the explanation from the mistake forbids writing the
 # explanation down — which is how the reason for a guard gets deleted.
 code = "\n".join(ln for ln in lines if not ln.lstrip().startswith("#"))
+# Eligibility decides about ONE commit, and the review must be of that commit.
+# Without the binding, a push between the two hands the reviewer a head nobody
+# judged — including one touching the gate, which can then neuter the proposed
+# tree's own copy of the check. The primary's P1 on #34, round three.
+for want in ("--eligible", "ELIGIBLE_HEAD", 'if [ "$sha" != "$ELIGIBLE_HEAD" ]'):
+    if want not in code:
+        print("FAIL: %s no longer binds the review to the commit eligibility judged (%s)." % (WF, want))
+        bad = 1
+
 if "rev-parse FETCH_HEAD" in code:
     print("FAIL: %s resolves the commit under review through FETCH_HEAD." % WF)
     print("      In a multi-ref fetch that answers the first ref — the base, not the head.")

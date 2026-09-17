@@ -647,6 +647,16 @@ def _selftest():
 _asking = [""]
 
 
+def _get(url, token):
+    _asking[0] = url.rsplit("/", 1)[-1]
+    req = urllib.request.Request(
+        url,
+        headers={"Authorization": "Bearer " + token, "Accept": "application/vnd.github+json"},
+    )
+    with urllib.request.urlopen(req) as r:
+        return json.load(r)
+
+
 def _pages(url, token):
     _asking[0] = url.rsplit("/", 1)[-1]
     page = 1
@@ -700,11 +710,35 @@ def _eligible(repo, num, token):
     a verdict there was no way to justify.
     """
     api = "https://api.github.com/repos/%s" % repo
+    # The head FIRST, and it is the answer this returns. Everything below
+    # describes the pull request as it was at this moment, and the caller must
+    # prove it fetched this very commit before letting the reviewer near it.
+    #
+    # The primary's P1 on #34, round three: between this decision and the fetch
+    # that follows it in the workflow, the contributor can push. An ordinary
+    # head, judged eligible here, is then replaced by one touching
+    # review-gate.py or .github/ — and the backup would read and sign the
+    # prohibited commit. The default-branch guard would not save it, because the
+    # new head can also neuter the proposed tree's own copy of the check.
+    #
+    # Reading the head before the files is deliberate too. If the branch moves
+    # in between, the files come back for the NEWER head while this still
+    # reports the older sha, so the caller's comparison fails and nothing is
+    # reviewed. Both orders of the race end in a refusal.
+    head = (_get("%s/pulls/%s" % (api, num), token).get("head") or {}).get("sha") or ""
     comments = list(_pages("%s/issues/%s/comments" % (api, num), token))
     reviews = list(_pages("%s/pulls/%s/reviews" % (api, num), token))
     changed = [f.get("filename") for f in _pages("%s/pulls/%s/files" % (api, num), token)]
     code, why = may_stand_in(reviews, comments, changed)
-    print(why)
+    # The prose goes to stderr so stdout carries one thing: the commit this
+    # answer is about, for the caller to bind its fetch to.
+    sys.stderr.write(why + "\n")
+    if code == 0:
+        if not head:
+            sys.stderr.write("but GitHub named no head commit for it, so there is nothing to "
+                             "bind the review to. Refusing.\n")
+            return 1
+        sys.stdout.write(head)
     return code
 
 
