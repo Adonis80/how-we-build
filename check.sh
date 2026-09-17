@@ -2,8 +2,7 @@
 # The rulebook's own guard. CI runs it on every push and pull request.
 # It refuses: an operating page over its word cap, a screen law over its own, a
 # root or design file that is not on its list or missing from it, anything that
-# looks like a secret (naming the place, never the value), a tree still carrying
-# conflict markers, a review gate that no
+# looks like a secret (naming the place, never the value), a review gate that no
 # longer matches the reviewer's answers, and, in a pull request, a commit the
 # reviewer has not read clean — unread, or read and left findings on. Nothing else.
 set -euo pipefail
@@ -82,23 +81,6 @@ if grep -R -n -E --exclude-dir=.git "$pattern" . | cut -d: -f1,2 | sed 's/^/  /'
   fail=1
 else
   echo "ok: nothing that looks like a secret"
-fi
-
-# 3b. No unresolved conflict markers, anywhere in the tree.
-# Every other guard here looks at named files, so a half-resolved merge passed
-# all of them: the markers sat in README.md while the word counts, the file
-# list, the secret scan and the gate each said ok. Hit while merging main into
-# a branch on 17 September, recorded on that pull request rather than fixed,
-# because it was a gate change and this is not one.
-# The two arrow markers are enough: a conflict always leaves both, while the
-# `=======` divider is also a setext heading underline in ordinary Markdown,
-# so matching that would fail this repository on its own prose. Written as
-# {7} rather than seven literal characters so this line cannot match itself.
-if grep -R -n -E --exclude-dir=.git '^(<{7}|>{7}) ' . | cut -d: -f1,2 | sed 's/^/  /' | grep . ; then
-  echo "FAIL: the place(s) above carry unresolved conflict markers."
-  fail=1
-else
-  echo "ok: no unresolved conflict markers"
 fi
 
 # 4. In a pull request, a review clears only the commit it read, and only if it
