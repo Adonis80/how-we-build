@@ -89,6 +89,43 @@ ACTIONS = "github-actions[bot]"
 QUOTA = re.compile(r"^You have reached your .{0,40}usage limits", re.IGNORECASE)
 
 
+def primary_events(reviews, comments):
+    """Everything the primary has said on this pull request, oldest first.
+
+    Ordered by when each was last WRITTEN, and drawn from both halves of the
+    page. Neither is fussiness — the primary's own habits defeat the obvious
+    reading, and the primary found this on #34:
+
+      it EDITS its summary comment   That comment is created when a review
+                                     starts and edited when it finishes, so a
+                                     summary created BEFORE a refusal is still
+                                     the primary answering AFTER it. Ordering by
+                                     creation puts the answer before the refusal
+                                     and the refusal reads as the latest word.
+                                     On #34 that comment was created at 16:07
+                                     and edited at 16:13, 16:17 and 16:22.
+      its findings are a REVIEW      Not a comment at all. A list of issue
+                                     comments never sees them, so the primary
+                                     could post findings after refusing and the
+                                     refusal would still read as its last word.
+
+    Either one hands the backup a pull request the primary is able to read,
+    which is the single thing the ruling of 17 September forbids.
+
+    Timestamps are ISO-8601 in Z, so they sort as text.
+    """
+    out = []
+    for c in comments:
+        if c.get("user", {}).get("login") == BOT:
+            out.append((c.get("updated_at") or c.get("created_at") or "", c.get("body") or ""))
+    for r in reviews:
+        if r.get("user", {}).get("login") == BOT:
+            # A submitted review is the primary answering. It is never a refusal.
+            out.append((r.get("submitted_at") or "", r.get("body") or ""))
+    out.sort(key=lambda e: e[0])
+    return [body for _, body in out]
+
+
 def primary_refused(bodies):
     """Is the primary's LATEST word on this pull request that it cannot read?
 
@@ -105,12 +142,13 @@ def primary_refused(bodies):
 
     Failing to recognise a refusal shape leaves the backup ineligible and the
     slice waiting on the primary. That is the safe direction: the unsafe one is
-    a backup that stands in while the primary is fine.
+    a backup that stands in while the primary is fine. An empty last word is
+    read the same way — it is not the primary saying it cannot read, so it is
+    not a refusal, and the answer is to ask.
     """
-    said = [b for b in bodies if b and b.strip()]
-    if not said:
+    if not bodies:
         return False
-    return QUOTA.match(said[-1].strip()) is not None
+    return QUOTA.match((bodies[-1] or "").strip()) is not None
 
 # Its two shapes. The workflow writes one of these as the first line and nothing
 # else, and matching is exact and whole-line — not a prefix. A prefix test is
@@ -317,12 +355,11 @@ def verdict(reviews, comments, head, resolve=None, gate_files=()):
     clear one.
     """
     said = [review_verdict(r, head) for r in reviews]
-    spoke, backup = [], []
+    spoke, backup = primary_events(reviews, comments), []
     for c in comments:
         who = c.get("user", {}).get("login")
         if who == BOT:
             said.append(comment_verdict(c.get("body"), head, resolve))
-            spoke.append(c.get("body"))
         elif who == ACTIONS:
             answer = fable_verdict(c.get("body"), head, resolve)
             if answer is not None:
@@ -483,13 +520,59 @@ def _selftest():
         ([clean], False, "a clean pass"),
         ([], False, "nothing from the primary at all"),
         (["", "  "], False, "empty comments"),
-        ([quota, ""], True, "a refusal followed by an empty comment"),
+        ([quota, ""], False, "a refusal followed by an empty comment — an empty last word "
+                             "is not the primary saying it cannot read, so the answer is to ask"),
         (["We could not review; you may be near your usage limits."], False,
          "a sentence mentioning a limit, which is not the primary refusing"),
         (["You have reached your GPT usage limits for code reviews."], True,
          "the same refusal under another product name"),
     ]:
         bad += hold(primary_refused(bodies), want, "the primary's refusal: " + what)
+
+    # And the ORDER those bodies arrive in, which is where the primary found
+    # this gate wrong on #34. Its summary comment is created when a review
+    # starts and edited when it finishes, and its findings are a submitted
+    # review rather than a comment at all — so a list of comments in creation
+    # order can show a refusal as the last word long after it has answered.
+    def _c(created, updated, body):
+        return {"user": {"login": BOT}, "created_at": created,
+                "updated_at": updated, "body": body}
+
+    def _r(at, body):
+        return {"user": {"login": BOT}, "submitted_at": at, "body": body}
+
+    for reviews_, comments_, want, what in [
+        ([], [_c("16:07", "16:22", summary), _c("16:10", "16:10", quota)], False,
+         "a summary CREATED before a refusal and EDITED after it — the edit is the last word"),
+        ([_r("16:15", "### Codex Review")], [_c("16:10", "16:10", quota)], False,
+         "findings submitted as a REVIEW after a refusal, which a comment list never sees"),
+        ([], [_c("16:07", "16:10", summary), _c("16:20", "16:20", quota)], True,
+         "a refusal that really is the latest thing the primary wrote"),
+        ([], [_c("16:10", "16:10", quota)], True, "a refusal and nothing else"),
+        ([_r("16:05", "### Codex Review")], [_c("16:10", "16:10", quota)], True,
+         "findings BEFORE the refusal, which do not answer it"),
+        ([], [], False, "silence"),
+    ]:
+        bad += hold(primary_refused(primary_events(reviews_, comments_)), want,
+                    "the primary's latest word: " + what)
+
+    # May the backup read this at all. The gate-path answer is the one the
+    # primary found missing on #34: it was enforced only by the proposed tree's
+    # own copy of this file, so a branch could loosen the guard, delete the case
+    # below, and have the backup clear the very change that did it. It is now
+    # decided first from the default branch, where the branch cannot reach.
+    for reviews_, comments_, changed_, want, what in [
+        ([], [bot(quota)], ["README.md"], 0, "an ordinary change behind a refusal"),
+        ([], [bot(quota)], ["review-gate.py"], 1, "a change to the gate's own decision"),
+        ([], [bot(quota)], ["check.sh"], 1, "a change to the check that runs it"),
+        ([], [bot(quota)], [".github/workflows/review.yml"], 1, "a change to the backup itself"),
+        ([], [bot(quota)], [".github/anything"], 1, "anything else under .github/"),
+        ([], [bot(quota)], ["README.md", "check.sh"], 1, "an ordinary change carrying a gate file"),
+        ([], [], ["README.md"], 1, "an ordinary change with no refusal behind it"),
+        ([], [bot(summary)], ["README.md"], 1, "the primary answering rather than refusing"),
+    ]:
+        got, _why = may_stand_in(reviews_, comments_, changed_)
+        bad += hold(got, want, "may the backup read it: " + what)
 
     # The whole decision. The three that matter most: the person, the gate
     # change, and a backup read with no live refusal behind it. A Fable read
@@ -581,24 +664,48 @@ def _pages(url, token):
         page += 1
 
 
+def may_stand_in(reviews, comments, changed):
+    """May the backup read this pull request? (code, why)
+
+    Pure, so --selftest holds it without a network — the same shape verdict()
+    has, and for the same reason: this is a rule, and a rule that can only be
+    exercised by making HTTP calls is a rule nothing checks.
+    """
+    gate_files = touches_the_gate(changed)
+    if gate_files:
+        return 1, ("this pull request changes the gate itself (%s).\n"
+                   "The rulebook requires the other vendor there, and a gate the reviewer it\n"
+                   "admits can open is not a gate. The backup does not read this one at all —\n"
+                   "it waits for %s however long that takes." % (", ".join(gate_files), BOT))
+    if primary_refused(primary_events(reviews, comments)):
+        return 0, "the primary has refused here and not answered since — the backup may stand in"
+    return 1, ("the primary has not refused on this pull request, or has answered since it did.\n"
+               "Ask it first. The backup stands in only where the primary says it cannot — the\n"
+               "Chairman's ruling of 17 September 2026, and not a preference.")
+
+
 def _eligible(repo, num, token):
     """Exit 0 if the backup may stand in on this pull request.
 
-    The workflow asks this before it spends a review, so the rule lives in one
-    place: this file, read from the default branch by both callers. A second
-    copy in YAML would be the same truth written twice, and the two would drift
-    the first time one of them was corrected.
+    THIS IS THE ENFORCEMENT, and where it runs is the whole point. The workflow
+    asks it before the backup reads anything, and the workflow is started by
+    issue_comment — so GitHub runs it, and this file, from the DEFAULT BRANCH.
+
+    The same questions are asked again by verdict() when check.sh runs, but that
+    copy is the PROPOSED tree's: a branch changing the gate could loosen the
+    guard and delete the case that holds it, and its own check would pass. The
+    primary found that on #34, and it is right — a rule about the code under
+    review cannot be enforced only by the code under review. So it is decided
+    here first, from a tree the branch cannot touch, and the backup never posts
+    a verdict there was no way to justify.
     """
     api = "https://api.github.com/repos/%s" % repo
-    spoke = [c.get("body") for c in _pages("%s/issues/%s/comments" % (api, num), token)
-             if c.get("user", {}).get("login") == BOT]
-    if primary_refused(spoke):
-        print("the primary has refused here and not answered since — the backup may stand in")
-        return 0
-    print("the primary has not refused on this pull request, or has answered since it did.")
-    print("Ask it first. The backup stands in only where the primary says it cannot — the")
-    print("Chairman's ruling of 17 September 2026, and not a preference.")
-    return 1
+    comments = list(_pages("%s/issues/%s/comments" % (api, num), token))
+    reviews = list(_pages("%s/pulls/%s/reviews" % (api, num), token))
+    changed = [f.get("filename") for f in _pages("%s/pulls/%s/files" % (api, num), token)]
+    code, why = may_stand_in(reviews, comments, changed)
+    print(why)
+    return code
 
 
 def main(argv):
