@@ -150,7 +150,7 @@ Independent cold review is required where `HOW-WE-BUILD.md` says so. Review is a
 
 ## 10. PR as handover
 
-The PR carries objective state: objective, acceptance criteria, done, remaining, checks, preview, next action, rollback, active lead and reviewer.
+The PR carries objective state: the handover fields `HOW-WE-BUILD.md` names. The list lives there once — this page says why it exists, not what is on it, so the two cannot drift.
 
 If a session stops mid-slice, it pushes a coherent checkpoint and leaves the PR sufficient for a fresh session. No necessary continuation state may live only in conversation.
 
