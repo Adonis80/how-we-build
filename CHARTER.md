@@ -214,3 +214,7 @@ If that fails, the bootstrap is incomplete.
 The development system is scaffolding, not the product.
 
 If maintaining Juku OS begins consuming attention comparable to building the products, simplify it. The strongest system is the smallest one that reliably lets interchangeable agents ship correct software and lets Dhayan remain focused on product judgement.
+
+## 16. Rich data (September 2026)
+
+On 17 September 2026 the Chairman set two standing goals: Juku OS builds world-class software and always looks to identify and capture rich data for training and improving AIs over time; and every product is optimised for collecting rich data that raises the intelligence of that product's own AI in its domain. He defined rich as granularity, not coverage. That ruling meets the gate in §13. The method that follows from it was tested against an outside consultant over four rounds and closed on 18 September 2026; the honest-measurement half (sealed predictions, protected outcomes, a stated baseline) and the data-shape half (records kept as permitted and never edited, understanding recomputed from them, the product's own acts recorded as evidence) both live in `RICH-DATA.md`, which a session reads only when its slice changes what a product learns from. Nothing in it is a machine gate; each product proves its own behaviour in its own tests. Three decisions stayed the Chairman's: Hemz retention beyond the documentation clearing, commercial reuse of staff expertise, and reuse of Myst contributions.
