@@ -117,7 +117,7 @@ Seven properties, roughly in order of power.
 
 **Three roles, fixed when an item is chosen, recorded, never signalled per item, and explained in general terms in the notice**, which is never permission to hide processing or refuse lawful access.
 
-- *Evaluation*: drawn at random from a pool defined by declared eligibility constraints, never by the model's scores or a score-based shortlist; the draw rule and its probability recorded. Its outcome is **protected for life**: it never enters learning inputs, the profile, the examples or context fed to the language model, or any adjustment of the picking rule, whatever later happens to it. Holding back a slice of the model's own top picks does not qualify.
+- *Evaluation*: drawn at random from a pool defined by declared eligibility constraints, never by the model's scores or a score-based shortlist; the draw rule and its probability recorded. Its outcome is **protected for life**: it never enters learning inputs, the profile, the examples or context fed to the language model, or any ungated adjustment of the picking rule, whatever later happens to it. Holding back a slice of the model's own top picks does not qualify.
 - *Learning*: random or belief-directed exploration, chance logged where random, never in the evaluation denominator. Without it the evidence only confirms itself, so the nudge is structural, not occasional.
 - *Service*: picked for the person.
 
