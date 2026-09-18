@@ -6,7 +6,7 @@ The rulebook for every product Dhayan's AI studio builds. This repository says *
 
 - `HOW-WE-BUILD.md` — the operating page, short and machine-checked; the cap lives in `check.sh`. The first thing a working session loads, with *What every product carries* below.
 - `CHARTER.md` — the Systems Blueprint, the reasoning behind the page. Read once, never loaded into a working session.
-- `RICH-DATA.md` — the method for what a product learns from and how we know its AI got smarter. Read only by a session whose slice changes what a product learns from, shows about a person, or claims about its own accuracy.
+- `RICH-DATA.md` — the method for what a product learns from and how we know its AI got smarter. Read on the trigger in *What every product carries*, and not otherwise.
 
 A fourth, `AGENTS.md`, is not for sessions at all: it carries the reviewer's brief for changes to this repository, because the reviewing tool loads only a file of that name.
 
@@ -220,7 +220,7 @@ How a change reaches every product: it is made here once and then lands everywhe
 - Evidence recorded with its origin (his ruling, 17 September 2026): for anything the product learns from, whether it is a person's statement, a recorded observation or a derived result, along with where it came from, who recorded it and when, and under which notice. Kept only for a permitted purpose and period, with personal records and anything identifiable derived from them provably deletable, and any justified exception written down. The proof is the product's own test in the slice that changes the behaviour; a line in this list is not a machine gate.
 - The handover's `evidence` field, which `HOW-WE-BUILD.md` names with the rest: what evidence this slice captures, or deliberately does not capture; which decision it can improve; and what cost or retention obligation it adds. "None, because ..." is a valid answer, which is what stops it becoming a box everyone ticks.
 - `PRODUCT.md` and `NAMES.md`: what the product is, and the words it uses for its own things.
-- `PRODUCT.md` carries the five-heading section that `RICH-DATA.md` §10 names and says how to fill. The headings are written there, once. "Unknown" and "deliberately not captured" are valid answers.
+- `RICH-DATA.md` read whole, and first, by any slice that changes what the product learns from, shows about a person, or claims about its own accuracy — and not otherwise. `PRODUCT.md` carries the five-heading section that page's §10 names and says how to fill; the headings are written there, once. "Unknown" and "deliberately not captured" are valid answers.
 - A `README.md` route section saying that a session attached to the repo at its start works in it directly, a session started without it goes through the Mac, and the ten-second test tells which.
 - A Project whose instructions are the template above, whole, and nothing else.
 - A `design/` folder, for a product with a user interface: its own constitution on one capped, machine-checked page holding only what is true there, and one spec per designed screen. The screen law, the architect's role page, the templates and the rubric are read from this repository, never copied down; whoever draws a screen, or a prototype or picture of one for the Chairman, reads the screen law and the constitution first. Its check holds the shape: one constitution page, one brief at a time, one spec per screen, no two specs sharing an id.
