@@ -1,0 +1,95 @@
+name: Wake
+
+# One implementation of "a review has landed, so ask the gate again", called by
+# both the workflows that need it. It was a job inside check.yml until
+# 18 September 2026, when a second reviewer arrived and needed the same thing;
+# copying it would have put the lessons of #24, #25, #30 and #37 in two places,
+# to be re-learned separately the next time one of them bit.
+#
+# WHY THE CALLER MATTERS. A clean pass arrives as a comment, and a comment starts
+# nothing on the pull request's head, which is why a green review used to need a
+# hand re-run. Codex comments under its own identity, so its comment raises an
+# `issue_comment` event and check.yml listens for it. The Sonnet reviewer answers
+# through the repository's own token, and GitHub starts no workflow run for an
+# event that token caused — so no listener can ever hear it, and review.yml calls
+# this workflow itself instead. Listening for github-actions[bot] would be a dead
+# line that looked like a guarantee; review-gate.py refuses one.
+
+on:
+  workflow_call:
+    inputs:
+      pr:
+        description: The pull request whose check should be asked again.
+        required: true
+        type: number
+
+jobs:
+  wake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: re-run this pull request's check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          sha=$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)
+          # Asked of the head commit itself, so a parked pull request is found
+          # however many runs the repository has had since — and of every event,
+          # not just `pull_request`. A protected branch reads the newest run of a
+          # required check, newest by when it started and not by when it last
+          # finished, so a re-run of an older run does not replace a newer red
+          # one. #24 was refused its merge on exactly that: its `pull_request`
+          # run was re-run green on the clean pass at 14:50, while the
+          # `pull_request_review` run that started 36 seconds after it stayed red
+          # from 14:45, and GitHub answered "Required status check check is
+          # failing" with the pull request showing green. The filter was the
+          # fault: it hid that run from this job entirely. `max_by` then picks
+          # the newest by hand rather than trusting the order GitHub happens to
+          # answer in, which is not promised anywhere — and on `[.created_at,
+          # .id]`, not `.created_at` alone, because two runs started in the same
+          # second carry the same timestamp and jq then keeps whichever came
+          # first in the answer. The reviewer found that on this pull request:
+          # replayed on a newest-first `[id 2, id 1]` pair sharing a second, the
+          # timestamp alone chooses id 1 — the older run, which is #24 again. The
+          # id rises with each run, so it breaks the tie the way the clock would.
+          runs="repos/$REPO/actions/runs?head_sha=$sha&per_page=100"
+          # Every run of this workflow on the head, never one of them. Picking
+          # the newest and re-running only that was #24's fault re-learned: a
+          # head can carry several, one per event that started one, and a
+          # protected branch is not reliably satisfied while any of them is
+          # red. #30 needed a hand re-run to merge with this job having run.
+          # Re-running all of them is safe in both readings — if only the
+          # newest counts, the others cost one API call each and change
+          # nothing — and it removes the need to be right about which GitHub
+          # reads. So the `max_by` that used to pick one is gone, and with it
+          # the tie-break it needed.
+          # `issue_comment` runs are this job's own. Re-running one would
+          # re-run this step, which would re-run it again: excluded, not
+          # guarded against downstream.
+          mine='select(.name=="check") | select(.event!="issue_comment")'
+          # A review can land while a check is still running, and that run
+          # asked GitHub for the comments before this one arrived — so it will
+          # finish red on a review that exists. Wait for them, then re-run.
+          for _ in 1 2 3 4 5 6 7 8 9 10; do
+            busy=$(gh api "$runs" --jq "[.workflow_runs[] | $mine | select(.status!=\"completed\")] | length" || echo "")
+            case "$busy" in ""|null) echo "could not read the runs on $sha — leaving it"; exit 0 ;; esac
+            [ "$busy" -eq 0 ] && break
+            echo "$busy check run(s) on $sha still going — waiting for them to finish"
+            sleep 20
+          done
+          # Still going after three minutes: the completed red ones are re-run
+          # anyway. One that is still running will finish on its own, and it
+          # reads the page as it is now, which already carries this review.
+          red=$(gh api "$runs" --jq "[.workflow_runs[] | $mine | select(.status==\"completed\") | select(.conclusion!=\"success\") | .id] | .[]" || echo "")
+          if [ -z "$red" ]; then
+            echo "no red check run on $sha — nothing to re-run"
+            exit 0
+          fi
+          for id in $red; do
+            echo "re-running check $id on $sha"
+            gh api -X POST "repos/$REPO/actions/runs/$id/rerun" ||
+              echo "  the re-run of $id was refused (already running again, or too old)"
+          done

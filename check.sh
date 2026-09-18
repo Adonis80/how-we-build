@@ -3,8 +3,11 @@
 # It refuses: an operating page over its word cap, a screen law over its own, a
 # root or design file that is not on its list or missing from it, anything that
 # looks like a secret (naming the place, never the value), a review gate that no
-# longer matches the reviewer's answers, and, in a pull request, a commit the
-# reviewer has not read clean — unread, or read and left findings on. Nothing else.
+# longer matches the reviewers' answers or has drifted from the wake that fetches
+# them, a reviewer workflow a branch could run from its own head, and, in a pull
+# request, a commit no reviewer has read clean — unread, read and left findings
+# on, or, where the change is to the review machinery itself, read clean by a
+# reviewer the rulebook does not allow to clear it. Nothing else.
 set -euo pipefail
 cd "$(dirname "$0")"
 fail=0
