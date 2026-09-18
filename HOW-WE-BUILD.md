@@ -8,7 +8,7 @@
 
 **Numbers.** Never invent one; unknown is valid. An unrun number is a claim: the machine checks, not the model.
 
-**The hands are never his.** Work by hand goes into CI, to the lead's hands (README, *The two stacks*), or the slice passes to a stack with hands. Never to him.
+**The hands are never his.** Work by hand goes into CI, to the lead's hands (*The two stacks*), or the slice passes to a stack with hands. Never to him.
 
 **The unit of work**: one accepted slice, a user-visible outcome with acceptance criteria, never a screen. **"Build" is a whole instruction**: take the top `roadmap.json` item carrying his word, settling everything technical yourself. It never means run the build, nor is answered with a question.
 
@@ -21,7 +21,7 @@
 6. Send the preview, what changed, the journey to try, and "Decision needed: … or none".
 7. Merge to protected `main`, deploy, smoke-test, roll back on failure. Delete residue; leave `roadmap.json` fit to start on *build* alone: `next` lines current and complete.
 
-**The PR is the handover**: `Lead stack`, `Reviewed by`, objective, acceptance criteria, done, remaining, checks, preview, next action, rollback; kept current when work stops. Truth: the repo and product, not conversation or memory.
+**The PR is the handover**: `Lead stack`, `Reviewed by`, objective, acceptance criteria, done, remaining, checks, evidence, preview, next action, rollback; kept current when work stops. Truth: the repo and product, not conversation or memory.
 
 **When something goes wrong**: reproduce; repair or delete the cause; add the smallest regression test; shrink the slice; change method after two identical failures; start fresh on a file you keep changing, or a rule restated not applied. Never answer a failure with a new rule or agent; rules live in Git and CI, never in memory.
 
