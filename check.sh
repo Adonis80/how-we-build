@@ -3,8 +3,11 @@
 # It refuses: an operating page over its word cap, a screen law over its own, a
 # root or design file that is not on its list or missing from it, anything that
 # looks like a secret (naming the place, never the value), a review gate that no
-# longer matches the reviewer's answers, and, in a pull request, a commit the
-# reviewer has not read clean — unread, or read and left findings on. Nothing else.
+# longer matches the reviewers' answers or has drifted from the workflows that
+# fetch them, and, in a pull request, a commit no reviewer has read clean —
+# unread, read and left findings on, or, where the change is to the review
+# machinery itself, read clean by a reviewer the rulebook does not allow to clear
+# it. Nothing else.
 set -euo pipefail
 cd "$(dirname "$0")"
 fail=0
@@ -84,15 +87,19 @@ else
 fi
 
 # 4. In a pull request, a review clears only the commit it read, and only if it
-# left nothing on it: green when the reviewer has read this very commit clean.
+# left nothing on it: green when a reviewer has read this very commit clean.
 # A later push turns it red until it has; so does a finding, until the push that
 # answers it makes a commit the reviewer reads afresh. The CTO's answer to a
-# finding is not clearance — the proposer does not clear its own change.
+# finding is not clearance — the proposer does not clear its own change. And a
+# change to the review machinery opens on the other vendor's read alone, whoever
+# else has read it clean.
 # The gate's own rule is machine-checked before anything asks GitHub: one
-# implementation, held against the reviewer's real answers, the states a review
-# can arrive in, and the fakes that once passed a looser test.
+# implementation, held against the reviewers' real answers, the states a review
+# can arrive in, the fakes that once passed a looser test, and the four workflow
+# files — the check, the reviewer, the wake it calls and the door's standing
+# proof — which must still agree with the register and with each other.
 python3 review-gate.py --selftest || fail_gate=1
-[ "${fail_gate:-0}" -eq 0 ] || { echo "FAIL: the review gate no longer matches the reviewer's answers — see the cases above."; fail=1; }
+[ "${fail_gate:-0}" -eq 0 ] || { echo "FAIL: the review gate no longer matches the reviewers' answers, or has drifted from the workflows — see the cases above."; fail=1; }
 case "${GITHUB_EVENT_NAME:-}" in pull_request|pull_request_review)
   if [ -z "${GH_TOKEN:-}" ] || [ -z "${PR_NUMBER:-}" ] || [ -z "${HEAD_SHA:-}" ]; then
     echo "FAIL: the check cannot ask GitHub which commit the reviewer read — the workflow must set PR_NUMBER, HEAD_SHA and GH_TOKEN."; fail=1
