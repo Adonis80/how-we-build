@@ -1,0 +1,70 @@
+name: Door
+
+# THE STANDING PROOF THAT THE BADGE CANNOT BE FORGED.
+#
+# The reviewer's independence rests on one claim: the `reviewer` environment
+# holds the App's private key, and a workflow run whose ref is a branch cannot
+# read it. If that is false, any branch mints an installation token, writes
+# itself a clean check run, and the whole gate is decoration.
+#
+# GitHub documents the rule — a job referencing an environment must satisfy its
+# protection rules before it runs or reads its secrets — but documentation is not
+# this repository's standard. #38 put eleven loosenings through CI and proved each
+# one red before trusting the rule it protected. This is that, for the one claim
+# everything else stands on.
+#
+# HOW TO RUN IT. Push a branch named `proof/door-<anything>`, or dispatch this
+# workflow against a branch. Two outcomes, and only these two are the proof:
+#
+#   on a branch   the `door` job is REFUSED BEFORE IT STARTS, with "Branch … is
+#                 not allowed to deploy to reviewer due to environment
+#                 protection rules". The run is red. This is the door holding.
+#   on main       the job runs, reads REVIEWER_APP_ID out of the environment, and
+#                 says how many characters it read — never the value. Green.
+#
+# A green run on a branch means the door is open and the badge is worthless: the
+# environment's deployment branch policy has been widened or removed, and nothing
+# should be merged until it is back. Record the run id on the pull request that
+# claims the door works, because a claim about a protection rule that nobody has
+# watched fail is exactly the kind of claim #34 spent ten rounds refusing.
+#
+# It fires on nothing else on purpose. `pull_request` would make it red on every
+# pull request from a branch, which is the correct result presented as a
+# permanent failure, and review-gate.py refuses that trigger here.
+
+on:
+  workflow_dispatch:
+  push:
+    # A branch prefix nothing else uses, so the proof is a deliberate act and
+    # never a side effect of ordinary work.
+    branches: ['proof/door-*']
+
+permissions:
+  contents: read
+
+jobs:
+  door:
+    runs-on: ubuntu-latest
+    # The line under test. On any ref but main, GitHub refuses this job here,
+    # before a step runs and before a secret is decrypted.
+    environment: reviewer
+    timeout-minutes: 5
+    steps:
+      - name: reach for the key
+        env:
+          APP_ID: ${{ secrets.REVIEWER_APP_ID }}
+        run: |
+          set -euo pipefail
+          echo "ref: $GITHUB_REF   sha: $GITHUB_SHA"
+          if [ -z "${APP_ID:-}" ]; then
+            echo "This job ran, so the door admitted this ref — but the environment"
+            echo "held no REVIEWER_APP_ID. That is a wiring fault, not a proof."
+            exit 1
+          fi
+          # Never the value. This repository's logs are public, and a guard that
+          # echoes what it holds leaks it on the one day it fires.
+          echo "read ${#APP_ID} characters from the '$GITHUB_REF_NAME' ref."
+          case "$GITHUB_REF" in
+            refs/heads/main) echo "main may read it. The door is where it should be." ;;
+            *) echo "DOOR OPEN: a branch read the environment. The badge can be forged."; exit 1 ;;
+          esac
