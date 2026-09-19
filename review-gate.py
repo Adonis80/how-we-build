@@ -72,6 +72,7 @@ import json
 import re
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 
 # ---------------------------------------------------------------------------
@@ -638,6 +639,29 @@ def _run(conclusion=None, status="completed", app=REVIEWER_APP_ID, name=REVIEWER
             "head_sha": sha, "status": status, "conclusion": conclusion}
 
 
+def _url_cases():
+    """The URLs the gate asks GitHub for, and the one that was wrong.
+
+    Codex's P1 on `a706799`: every verdict case in the selftest passed while the
+    live fetch asked a different question, because nothing here had ever built a
+    URL. A rule proved only against hand-made dictionaries is proved against the
+    wrong thing.
+    """
+    runs = "https://api.github.com/repos/o/r/commits/abc/check-runs"
+    return [
+        (runs, 1, {"filter": "all"},
+         {"filter": ["all"], "per_page": ["100"], "page": ["1"]},
+         "the check runs, with the filter passed as a parameter"),
+        (runs + "?filter=all", 2, None,
+         {"filter": ["all"], "per_page": ["100"], "page": ["2"]},
+         "the same filter arriving in the URL — the shape that gave "
+         "filter='all?per_page=100' and silently fell back to `latest`"),
+        ("https://api.github.com/repos/o/r/pulls/7/reviews", 3, None,
+         {"per_page": ["100"], "page": ["3"]},
+         "a plain endpoint with no query of its own"),
+    ]
+
+
 def _selftest():
     head = "090e429a31cd5f0b2e4d7a1c9b8e6f4d2a1c3b5e"
     other = "29d7b5435bf968d75ac7451c5457d440fcba5a0c"
@@ -799,6 +823,14 @@ def _selftest():
     bad += hold(touches_the_gate(["README.md", "check.sh", ".github/workflows/x.yml"]),
                 [".github/workflows/x.yml", "check.sh"], "which files are the gate")
     bad += hold(touches_the_gate(["design/ARCHITECT.md", "AGENTS.md"]), [], "and which are not")
+    for url, page, params, want, what in _url_cases():
+        built = _page_url(url, page, params)
+        bad += hold(urllib.parse.parse_qs(urllib.parse.urlsplit(built).query), want, what)
+        # One query string, and the path untouched: a second `?` is how the
+        # parameters got swallowed in the first place.
+        bad += hold(built.count("?"), 1, what + " — exactly one query string")
+        bad += hold(urllib.parse.urlsplit(built).path, urllib.parse.urlsplit(url).path,
+                    what + " — the path unchanged")
     if bad:
         print("review-gate selftest failed: %d case(s)" % bad)
         return 1
@@ -809,8 +841,9 @@ def _selftest():
              + sum(1 for g in gate_file_cases if g[3][0] == CROSS_VENDOR) + 1)
     print("ok: review gate tells a clean read from a commented one, for each reviewer on the "
           "register, in every shape and state they arrive in; it refuses a gate change cleared "
-          "by anyone but %s; and it is fooled by none of the %d fakes"
-          % (REVIEWERS[GATE_REVIEWER]["name"], fakes))
+          "by anyone but %s; it asks GitHub for %d URL(s) that carry the parameters they say "
+          "they do; and it is fooled by none of the %d fakes"
+          % (REVIEWERS[GATE_REVIEWER]["name"], len(_url_cases()), fakes))
     return 1 if _check_wiring() else 0
 
 
@@ -820,13 +853,38 @@ def _selftest():
 _asking = [""]
 
 
-def _pages(url, token, key=None):
+def _page_url(url, page, params=None):
+    """`url`, keeping any query it already carries, plus `params` and this page.
+
+    Codex's P1 on `a706799`, and it was live rather than theoretical. The old
+    form pasted `?per_page=…` onto a URL that already carried `?filter=all`,
+    giving `?filter=all?per_page=100&page=1`. That parses as
+    `filter="all?per_page=100"` with no `per_page` at all — and GitHub does not
+    refuse it, it ignores the unrecognised filter and falls back to the default,
+    `latest`. So the live fetch quietly asked for only the newest check run per
+    name while this file documented, and its selftest proved, a worst-wins rule
+    over every run on the commit. A findings verdict could have been retired by
+    asking again until the answer came out differently: the exact hole the
+    caller's comment says it closes. Nothing in the selftest could see it,
+    because the selftest never built a URL.
+
+    So the query is assembled rather than concatenated, and a URL that arrives
+    with a query of its own keeps it. Both are held by _url_cases() below.
+    """
+    parts = urllib.parse.urlsplit(url)
+    query = urllib.parse.parse_qsl(parts.query, keep_blank_values=True)
+    query += sorted((params or {}).items())
+    query += [("per_page", "100"), ("page", str(page))]
+    return urllib.parse.urlunsplit(parts._replace(query=urllib.parse.urlencode(query)))
+
+
+def _pages(url, token, key=None, params=None):
     """Every page of a GitHub list, whether it answers bare or in a wrapper."""
-    _asking[0] = url.rsplit("/", 1)[-1]
+    _asking[0] = urllib.parse.urlsplit(url).path.rsplit("/", 1)[-1]
     page = 1
     while True:
         req = urllib.request.Request(
-            "%s?per_page=100&page=%d" % (url, page),
+            _page_url(url, page, params),
             headers={"Authorization": "Bearer " + token, "Accept": "application/vnd.github+json"},
         )
         with urllib.request.urlopen(req) as r:
@@ -876,8 +934,8 @@ def main(argv):
         # this commit counts, worst first. On `latest` a findings verdict could be
         # retired by asking again until the answer came out differently, and the
         # gate's own rule is that the answer to a finding is a push.
-        runs = list(_pages("%s/commits/%s/check-runs?filter=all" % (api, head), token,
-                           key="check_runs"))
+        runs = list(_pages("%s/commits/%s/check-runs" % (api, head), token,
+                           key="check_runs", params={"filter": "all"}))
         gate_files = touches_the_gate(files)
         answer, who = verdict(reviews, comments, runs, head, resolve=resolve, gate_files=gate_files)
     except urllib.error.HTTPError as e:

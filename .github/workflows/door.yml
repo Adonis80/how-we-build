@@ -32,6 +32,14 @@ name: Door
 # the deployment branch policy has been widened or removed, and nothing should
 # be merged until it is back.
 #
+# GIVE THE PROOF BRANCH A COMMIT OF ITS OWN. Check runs attach to a SHA, so a
+# proof branch pushed at the same commit as a pull request's head hangs its red
+# `door` row on that pull request, where it looks like a broken build for ever.
+# `check.sh` is the only required check so nothing is blocked, but a permanently
+# red row is how a real one comes to be scrolled past. One extra commit on the
+# branch — a line in this comment will do — keeps the proof's runs on their own
+# SHA. Learned on #42, which did exactly this to itself.
+#
 # Record the run id on the pull request that claims the door works, because a
 # claim about a protection rule that nobody has watched refuse anything is
 # exactly the kind of claim #34 spent ten rounds refusing.
