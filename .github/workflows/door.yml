@@ -14,19 +14,27 @@ name: Door
 # everything else stands on.
 #
 # HOW TO RUN IT. Push a branch named `proof/door-<anything>`, or dispatch this
-# workflow against a branch. Two outcomes, and only these two are the proof:
+# workflow against a branch. It runs two jobs, and the PAIR is the proof — one
+# job alone proves nothing, because a job can fail for a dozen dull reasons.
 #
-#   on a branch   the `door` job is REFUSED BEFORE IT STARTS, with "Branch … is
-#                 not allowed to deploy to reviewer due to environment
-#                 protection rules". The run is red. This is the door holding.
-#   on main       the job runs, reads REVIEWER_APP_ID out of the environment, and
-#                 says how many characters it read — never the value. Green.
+#   control   no environment. It must RUN, and must find no REVIEWER_APP_ID,
+#             because environment secrets are not ambient. This is what says the
+#             branch could run a job at all, and that the key is not simply
+#             lying around outside the door.
+#   door      the same job behind `environment: reviewer`. On a branch it is
+#             REFUSED BEFORE IT STARTS — no steps, no log, a job that completes
+#             in about a second — because the environment admits `main` alone.
+#             On main it runs and reads the key.
 #
-# A green run on a branch means the door is open and the badge is worthless: the
-# environment's deployment branch policy has been widened or removed, and nothing
-# should be merged until it is back. Record the run id on the pull request that
-# claims the door works, because a claim about a protection rule that nobody has
-# watched fail is exactly the kind of claim #34 spent ten rounds refusing.
+# So on a branch the run is red, and red in exactly one place. A control that
+# fails means something unrelated is broken and the run proves nothing. A door
+# job that RUNS on a branch means the door is open and the badge is worthless:
+# the deployment branch policy has been widened or removed, and nothing should
+# be merged until it is back.
+#
+# Record the run id on the pull request that claims the door works, because a
+# claim about a protection rule that nobody has watched refuse anything is
+# exactly the kind of claim #34 spent ten rounds refusing.
 #
 # It fires on nothing else on purpose. `pull_request` would make it red on every
 # pull request from a branch, which is the correct result presented as a
@@ -43,6 +51,28 @@ permissions:
   contents: read
 
 jobs:
+  # The control. Same runner, same ref, same reach for the same secret — and no
+  # environment. Without it a red `door` job says only "something went wrong".
+  control:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: reach for the key with no environment
+        env:
+          APP_ID: ${{ secrets.REVIEWER_APP_ID }}
+        run: |
+          set -euo pipefail
+          echo "ref: $GITHUB_REF   sha: $GITHUB_SHA"
+          echo "this job ran, so this ref can run jobs and reach secrets it is entitled to."
+          if [ -n "${APP_ID:-}" ]; then
+            echo "LEAK: REVIEWER_APP_ID is readable with no environment named."
+            echo "It is supposed to be an environment secret, reachable only from a job"
+            echo "that names the environment and satisfies its branch policy."
+            exit 1
+          fi
+          echo "and it found no REVIEWER_APP_ID, which is right: environment secrets are"
+          echo "not ambient. Whatever the door job does next is about the door alone."
+
   door:
     runs-on: ubuntu-latest
     # The line under test. On any ref but main, GitHub refuses this job here,
