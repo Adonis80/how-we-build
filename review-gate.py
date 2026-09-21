@@ -499,7 +499,8 @@ def _check_wiring():
         check = _read(CHECK_WORKFLOW)
         review = _read(REVIEW_WORKFLOW)
         door = _read(DOOR_WORKFLOW)
-        wake_on = triggers(_read(WAKE_WORKFLOW))
+        wake = _read(WAKE_WORKFLOW)
+        wake_on = triggers(wake)
     except OSError as e:
         print("  wiring: %s" % e)
         return 1
@@ -540,6 +541,22 @@ def _check_wiring():
               % (WAKE_WORKFLOW, wake_on))
         bad += 1
 
+    # THE WAKE MUST ASK AGAIN WHATEVER THE CHECK CURRENTLY SAYS. With one
+    # reviewer a verdict could only move the gate from red to green, so the wake
+    # re-ran the red runs and that was enough. Counting a second reviewer made
+    # the other direction reachable — one reads a commit clean, the other leaves
+    # findings on it, and the check must go from green to RED. On 21 September
+    # that happened on #43 and the wake answered "no red check run — nothing to
+    # re-run", leaving a stale green under a findings verdict, which is #24, #30
+    # and #37's failure from the other side. A filter on the conclusion here is
+    # that bug, so the build refuses one.
+    if re.search(r'conclusion\s*!=\s*\\?"success\\?"', wake):
+        print("  wiring: %s re-runs only a check that is already failing. Two reviewers can "
+              "disagree about one commit, so a verdict can take the gate from green to red, "
+              "and that re-run would never happen — the green would stand under the findings"
+              % WAKE_WORKFLOW)
+        bad += 1
+
     # The badge's check run is not something this repository has watched GitHub
     # deliver an event for, so nothing is built on the assumption that it does.
     # The reviewer asks the gate again itself, the way #38 proved works.
@@ -548,6 +565,21 @@ def _check_wiring():
               "has ever been shown to hear one — so it must ask the gate again itself, or its "
               "read sits unseen and the check stays red until a hand re-runs it"
               % (REVIEW_WORKFLOW, WAKE_WORKFLOW))
+        bad += 1
+
+    # NOTHING MAY CANCEL A REVIEW IN FLIGHT. GitHub puts a run in its concurrency
+    # group before the job's `if:` is evaluated, so with cancel-in-progress set
+    # every comment on the pull request — including the ones that carry no ask
+    # and skip immediately — kills the read that is running. It destroyed one on
+    # #43 on 21 September (run 35587070648, cancelled forty seconds in by a
+    # stand-down note) and it fails silently: the ask is on the thread, the
+    # reviewer never speaks, the gate says `unread`, and the allowance is spent
+    # again on the retry. On a public repository it is also a griefing route,
+    # because the cancellation happens before any author gate is read.
+    if re.search(r'^\s*cancel-in-progress:\s*true\s*$', review, re.M):
+        print("  wiring: %s sets cancel-in-progress. Every comment enters the concurrency group "
+              "before the job's `if:` is read, so a passing remark cancels a review in flight "
+              "and the gate just says unread" % REVIEW_WORKFLOW)
         bad += 1
 
     # THE DOOR. Without this line the App's private key is readable by any run on

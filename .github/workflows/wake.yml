@@ -78,15 +78,28 @@ jobs:
             echo "$busy check run(s) on $sha still going — waiting for them to finish"
             sleep 20
           done
-          # Still going after three minutes: the completed red ones are re-run
+          # Still going after three minutes: the completed ones are re-run
           # anyway. One that is still running will finish on its own, and it
           # reads the page as it is now, which already carries this verdict.
-          red=$(gh api "$runs" --jq "[.workflow_runs[] | $mine | select(.status==\"completed\") | select(.conclusion!=\"success\") | .id] | .[]" || echo "")
-          if [ -z "$red" ]; then
-            echo "no red check run on $sha — nothing to re-run"
+          #
+          # EVERY completed run, whatever it currently says — not only the red
+          # ones. A verdict used to move the gate one way, red to green, so
+          # re-running the red ones was enough. With two reviewers a commit can
+          # be read clean by one and left findings on by the other, and then the
+          # gate must go green to RED. Proved live on #43, 21 September: Codex
+          # had read the head clean so the check was green, the badge posted
+          # findings on that same commit, and this job answered "no red check
+          # run — nothing to re-run" and left a stale green standing under a
+          # findings verdict. That is the failure of #24, #30 and #37 arriving
+          # from the other side, and it was introduced by counting a second
+          # reviewer. Re-running a green run that is still correct simply goes
+          # green again, so being wrong in this direction costs one job.
+          ran=$(gh api "$runs" --jq "[.workflow_runs[] | $mine | select(.status==\"completed\") | .id] | .[]" || echo "")
+          if [ -z "$ran" ]; then
+            echo "no completed check run on $sha — nothing to re-run"
             exit 0
           fi
-          for id in $red; do
+          for id in $ran; do
             echo "re-running check $id on $sha"
             gh api -X POST "repos/$REPO/actions/runs/$id/rerun" ||
               echo "  the re-run of $id was refused (already running again, or too old)"

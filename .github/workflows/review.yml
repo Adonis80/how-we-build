@@ -59,9 +59,33 @@ permissions:
   contents: read
   pull-requests: write
 
+# One review at a time per pull request, and NOTHING MAY CANCEL ONE.
+#
+# `cancel-in-progress: true` was here and destroyed a real read on 21 September,
+# on #43. GitHub puts a run in its concurrency group before the job's `if:` is
+# evaluated, so every comment on the pull request enters this group — including
+# the ones that carry no ask and skip a second later — and each one cancelled
+# the review in flight. Run 35587070648 died forty seconds in, killed by a
+# stand-down note; run 8 had already proved the reviewer works, so the machinery
+# was fine and the read was simply thrown away.
+#
+# It fails in the worst way available: the ask is on the thread, the reviewer
+# never speaks, and the gate says `unread`. Nobody is told a read was discarded,
+# and the natural response is to ask again — spending the allowance twice, and
+# dying the same way if anyone comments meanwhile. It is 8 September's unseen
+# read, except the read is destroyed rather than merely unnoticed, and it bites
+# hardest on a busy pull request, which is where reads matter most.
+#
+# It is also a griefing route on a public repository: anyone who can comment
+# could cancel a review at will, and no author gate helps, because the
+# cancellation happens before the gate is read.
+#
+# So runs queue here and never cancel. Two asks in a row cost two reads rather
+# than one, which is a bounded and visible cost; a discarded read is neither.
+# review-gate.py refuses a build that sets this true.
 concurrency:
   group: review-${{ github.event.issue.number }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   review:
