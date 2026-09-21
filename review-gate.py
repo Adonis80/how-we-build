@@ -468,23 +468,41 @@ WAKE_RUNS = {"workflow_runs": [
 WAKE_PICKS = [1, 2]
 
 
-def wake_program(text):
-    """The jq program wake.yml really runs, assembled the way the shell does.
+# The only query parameters the wake's API call may carry. GitHub's list-runs
+# endpoint also takes `status`, which filters by status OR conclusion server
+# side — so a `status=failure` here removes the successful runs before jq ever
+# sees them, and no test of the jq program can notice. Codex's P2 on 2e2758d,
+# found by mutation. A whitelist rather than a ban on `status`, because the next
+# parameter that narrows the answer will have a different name.
+WAKE_QUERY = {"head_sha", "per_page"}
 
-    `mine` is a shell variable interpolated into the --jq argument, so the
-    program that runs is neither line on its own. Reading it back out and
-    executing it is the only way to test what the wake selects rather than how
-    it is spelt.
+
+def wake_request(text):
+    """What the wake asks GitHub for, and the jq it runs on the answer.
+
+    Returns (query parameter names, jq program), or None if either cannot be
+    found — in which case the build fails rather than passing untested.
+
+    `mine` and `runs` are shell variables interpolated into the call, so the
+    thing that actually runs is none of these lines on its own. Each is taken
+    with findall()[-1], the LAST assignment, because that is the one bash uses:
+    Codex's P2 on 2e2758d again, which slipped a second, narrower `mine=` in
+    after the canonical one and passed a guard reading the first.
     """
-    mine = re.search(r"^\s*mine='([^']*)'\s*$", text, re.M)
+    def last(pattern):
+        found = re.findall(pattern, text, re.M)
+        return found[-1] if found else None
+
+    mine = last(r"^\s*mine='([^']*)'\s*$")
+    runs = last(r'^\s*runs="([^"]*)"\s*$')
     # Anchored on the re-run selection itself, not on any --jq in the file: the
     # busy-wait loop above it has one too, and testing that one would prove
-    # nothing about what gets re-run. If this line is renamed the guard stops
-    # finding it and the build fails, which is the right way round.
-    prog = re.search(r'^\s*ran=\$\(gh api "\$runs" --jq "((?:[^"\\]|\\.)*)"', text, re.M)
-    if not mine or not prog:
+    # nothing about what gets re-run.
+    prog = last(r'^\s*ran=\$\(gh api "\$runs" --jq "((?:[^"\\]|\\.)*)"')
+    if mine is None or runs is None or prog is None:
         return None
-    return prog.group(1).replace('\\"', '"').replace("$mine", mine.group(1))
+    query = set(re.findall(r'[?&]([^=&]+)=', runs))
+    return query, prog.replace('\\"', '"').replace("$mine", mine)
 
 
 USES_ENVIRONMENT = re.compile(r"^\s*environment:\s*" + re.escape(KEY_ENVIRONMENT) + r"\s*$", re.M)
@@ -580,28 +598,38 @@ def _check_wiring():
     # the other direction reachable — one reads a commit clean, the other leaves
     # findings on it, and the check must go from green to RED. On 21 September
     # that happened on #43 and the wake answered "no red check run — nothing to
-    # re-run", leaving a stale green under a findings verdict, which is #24, #30
-    # and #37's failure from the other side.
+    # re-run", leaving a stale green under a findings verdict.
     #
-    # THIS RUNS THE SELECTOR RATHER THAN READING IT. Two text guards were
-    # written here first and Codex walked through both, each time by rephrasing
-    # rather than arguing: `select(.conclusion=="failure")` when the guard
-    # blacklisted `conclusion != "success"`, then `select(.["conclusion"]!=
-    # "success")` tucked into `$mine` when the guard asserted a substring of the
-    # pipeline and banned the literal `.conclusion`. Both restored the defect
-    # with check.sh green. A guard that reads source will always be one spelling
-    # behind somebody's next edit, so this one assembles the jq program the
-    # shell really runs, feeds it runs whose right answer is known, and compares
-    # what comes out. Run 1 in WAKE_RUNS is the whole point: completed, and
-    # SUCCEEDED. Any filter anywhere in that pipeline that drops it fails here,
-    # however it is written.
-    program = wake_program(wake)
-    if program is None:
-        print("  wiring: cannot find the selection the wake re-runs in %s. It is the `ran=` line "
-              "and the `mine=` it interpolates; if either was renamed, say what the new "
-              "selection is here so it can be tested" % WAKE_WORKFLOW)
+    # WHAT THIS GUARD IS FOR, AND WHAT IT IS NOT. It catches drift: a later
+    # session narrowing the selection while tidying, which is how the defect
+    # arrived. It is not tamper-proof and is not trying to be — `wake.yml` is a
+    # gate file, so any edit to it already needs the other vendor's cold read
+    # before it can merge, and that read is what stands against a deliberate
+    # obfuscation. Codex walked through three versions of this guard by
+    # rephrasing (a blacklisted operator, then bracket syntax inside `$mine`,
+    # then a server-side `status=` filter and a shadowing second assignment),
+    # and each pass made it better; the honest limit is written here rather
+    # than left for the next reader to discover.
+    #
+    # It runs the selector instead of reading it: the jq program is assembled
+    # the way the shell assembles it, fed runs whose right answer is known, and
+    # the output compared. Run 1 is the point — completed, and SUCCEEDED.
+    request = wake_request(wake)
+    if request is None:
+        print("  wiring: cannot find what %s asks GitHub for. It is the last `runs=`, `mine=` "
+              "and `ran=` assignments; if any was renamed, say what the new request is here so "
+              "it can be tested" % WAKE_WORKFLOW)
         bad += 1
     else:
+        query, program = request
+        # Checked before the jq test, because a parameter that narrows the
+        # answer server side is invisible to any test of the jq that follows it.
+        if query != WAKE_QUERY:
+            print("  wiring: %s asks GitHub for %s; it may ask only for %s. `status` in "
+                  "particular filters by conclusion server side, so the successful runs never "
+                  "reach the jq below and a verdict turning the gate red never reaches the check"
+                  % (WAKE_WORKFLOW, sorted(query), sorted(WAKE_QUERY)))
+            bad += 1
         try:
             out = subprocess.run(["jq", "-r", program], input=json.dumps(WAKE_RUNS),
                                  capture_output=True, text=True)
