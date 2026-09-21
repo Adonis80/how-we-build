@@ -69,8 +69,11 @@ it fails the build before a loose rule can pass a commit.
 """
 
 import json
+import os
 import re
+import subprocess
 import sys
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -454,6 +457,189 @@ WAKE_WORKFLOW = ".github/workflows/wake.yml"
 DOOR_WORKFLOW = ".github/workflows/door.yml"
 CALLS_WAKE = "uses: ./" + WAKE_WORKFLOW
 DOOR_BRANCHES = "proof/door-*"
+# The runs the wake is shown in the selftest below, and what it must pick out of
+# them. Run 1 is the whole point: a completed run that SUCCEEDED. Every version
+# of this selector that dropped it lost a verdict.
+WAKE_RUNS = {"workflow_runs": [
+    {"id": 1, "name": "check", "event": "pull_request", "status": "completed", "conclusion": "success"},
+    {"id": 2, "name": "check", "event": "pull_request_review", "status": "completed", "conclusion": "failure"},
+    {"id": 3, "name": "check", "event": "issue_comment", "status": "completed", "conclusion": "failure"},
+    {"id": 4, "name": "Review", "event": "issue_comment", "status": "completed", "conclusion": "failure"},
+    {"id": 5, "name": "check", "event": "pull_request", "status": "in_progress", "conclusion": None},
+]}
+WAKE_PICKS = [1, 2]
+
+
+# The wake's API call, whole — names AND values. GitHub's list-runs endpoint
+# takes `status`, which filters by conclusion server side, so a `status=failure`
+# here removes the successful runs before jq ever sees them (Codex's P2 on
+# 2e2758d). And `per_page` decides how many runs come back at all: at 1, the one
+# result can easily be a `Review` or issue_comment run, `$mine` then matches
+# nothing, and the stale green stands again (its P2 on 313f20d). That second one
+# is ordinary configuration drift, not obfuscation — exactly what this guard is
+# for — so checking the names and shrugging at the values was not good enough.
+# `per_page=100` is the page size; the selection is fetched with --paginate, so
+# no page size truncates it. The extractor requires that flag: it is the one
+# assertion here that is textual rather than behavioural, because paging is a
+# property of the HTTP client and cannot be reached by running the jq.
+WAKE_QUERY = {"head_sha": "$sha", "per_page": "100"}
+# And the endpoint itself. Codex's P2 on 3621303: the extractor threw away
+# everything before the `?`, so `actions/runz` passed — and in the workflow a
+# failed call used to be swallowed into "nothing to re-run", so a typo in a path
+# silently stopped the gate ever being asked again. The swallow is gone too; this
+# catches the typo before it can be the thing that has to fail loudly.
+WAKE_ENDPOINT = "repos/$REPO/actions/runs"
+
+
+# THE SHELL THE WAKE REALLY RUNS, and a `gh` that fails in one chosen place.
+#
+# Written after a claim of mine was wrong. On 21 September I told Codex that the
+# swallow class — an error suppressed so the script carries on with a wrong
+# answer — could not be guarded, because every check I could think of was a grep
+# for `|| echo`, which `|| true`, `; true` or `set +e` walks straight past. That
+# is the spelling mistake this file has already made four times. The answer is
+# the same one that fixed the selector: stop reading the text and run the thing.
+# A stub `gh` fails at exactly one call, the step's own shell runs against it,
+# and the step must come out red. No spelling of a suppression survives that,
+# because the suppression is the thing being measured rather than described.
+#
+# Three swallows of this shape have been live here in one day — both reads on
+# b81f13d, the re-run POST on 61f4ea5 — and each one turned a wake that could
+# not do its job into a wake that reported success, leaving a stale green
+# mergeable under a findings verdict.
+SWALLOW_GH = r"""#!/usr/bin/env bash
+# Stands in for `gh`. Each call the wake makes can be made to fail on its own,
+# because a failure shared between two of them proves nothing about the second:
+# the first draft failed both reads at once, the wait read died first, and the
+# list read's swallow went unnoticed with the test reporting green.
+say() { printf '%s\n' "$1"; }
+args="$*"
+case "$args" in
+  *" -X POST "*rerun*)
+    [ "${SWALLOW_POST:-ok}" = ok ] && exit 0
+    say "HTTP 403: rerun refused" >&2; exit 1 ;;
+  *pulls/*)
+    [ "${SWALLOW_HEAD:-ok}" = ok ] || { say "HTTP 500" >&2; exit 1; }
+    say "deadbeef" ;;
+  *actions/runs/[0-9]*)
+    [ "${SWALLOW_STATE:-ok}" = ok ] || { say "HTTP 500" >&2; exit 1; }
+    say "${SWALLOW_AFTER:-completed}" ;;
+  *--paginate*actions/runs*|*actions/runs*--paginate*)
+    [ "${SWALLOW_LIST:-ok}" = ok ] || { say "HTTP 500" >&2; exit 1; }
+    say 1; say 2 ;;
+  *actions/runs*)
+    [ "${SWALLOW_BUSY:-ok}" = ok ] || { say "HTTP 500" >&2; exit 1; }
+    say 0 ;;
+  *)
+    # Fail closed, loudly. A call the stub does not know is a wake that has
+    # changed shape, and answering it with a cheerful exit 0 would be this very
+    # bug committed inside its own guard.
+    say "the stub does not recognise: gh $args" >&2; exit 97 ;;
+esac
+"""
+
+# What must happen when each call fails. The two passing cases carry as much
+# weight as the failing ones: without them a step that simply always exits 1
+# would satisfy every other line here.
+SWALLOW_CASES = (
+    ("every call succeeds",                        {},                        False),
+    ("the head sha cannot be read",                {"SWALLOW_HEAD": "no"},    True),
+    ("the wait loop's read fails",                 {"SWALLOW_BUSY": "no"},    True),
+    ("the list of runs to re-run cannot be read",  {"SWALLOW_LIST": "no"},    True),
+    ("a re-run is refused and the run has not moved",
+     {"SWALLOW_POST": "no"},                                                  True),
+    ("a re-run is refused and its state cannot be read",
+     {"SWALLOW_POST": "no", "SWALLOW_STATE": "no"},                           True),
+    # And the benign refusal must still pass, or "fail loudly" collapses into
+    # "fail always" and the wake goes red every time something else re-ran first.
+    ("a re-run is refused because it is already queued",
+     {"SWALLOW_POST": "no", "SWALLOW_AFTER": "queued"},                       False),
+    ("a re-run is refused because it is already running",
+     {"SWALLOW_POST": "no", "SWALLOW_AFTER": "in_progress"},                  False),
+)
+
+
+def wake_script(text):
+    """The shell `wake.yml`'s step really runs, dedented, or None.
+
+    None whenever what would be run is not faithfully the step — no block, more
+    than one, or a `${{ }}` the runner would have substituted and this cannot.
+    Testing an approximation of the step and reporting green is the failure the
+    whole guard exists to prevent, so it fails closed instead.
+    """
+    lines = text.splitlines()
+    starts = [i for i, l in enumerate(lines) if re.match(r"^\s*run:\s*\|\s*$", l)]
+    if len(starts) != 1:
+        return None
+    i = starts[0]
+    indent = len(lines[i]) - len(lines[i].lstrip())
+    body = []
+    for l in lines[i + 1:]:
+        if l.strip() and (len(l) - len(l.lstrip())) <= indent:
+            break
+        body.append(l[indent + 2:] if l.strip() else "")
+    script = "\n".join(body)
+    if not script.strip() or "${{" in script:
+        return None
+    return script
+
+
+def swallow_verdict(script, env):
+    """Run the step against the stub. (exit status, what went wrong or None)."""
+    with tempfile.TemporaryDirectory() as d:
+        binned = os.path.join(d, "bin")
+        os.mkdir(binned)
+        for name, body in (("gh", SWALLOW_GH),
+                           # So a wait loop cannot hold the build for minutes.
+                           ("sleep", "#!/usr/bin/env bash\nexit 0\n")):
+            path = os.path.join(binned, name)
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(body)
+            os.chmod(path, 0o755)
+        e = dict(os.environ)
+        e.update({"PATH": binned + os.pathsep + os.environ.get("PATH", ""),
+                  "GH_TOKEN": "not-a-token", "PR": "1", "REPO": "owner/repo"})
+        e.update(env)
+        try:
+            p = subprocess.run(["bash", "-c", script], env=e, capture_output=True,
+                               text=True, timeout=120)
+        except (OSError, subprocess.SubprocessError) as exc:
+            return None, "could not be run (%s)" % exc
+        if p.returncode == 97 or "does not recognise" in p.stderr:
+            return None, "asked GitHub for something the test does not know: %s" % (
+                p.stderr.strip().splitlines()[-1:] or "?")
+        return p.returncode, None
+
+
+def wake_request(text):
+    """What the wake asks GitHub for, and the jq it runs on the answer.
+
+    Returns (endpoint, query parameters, jq program), or None if any cannot be
+    found — in which case the build fails rather than passing untested.
+
+    `mine` and `runs` are shell variables interpolated into the call, so the
+    thing that actually runs is none of these lines on its own. Each is taken
+    with findall()[-1], the LAST assignment, because that is the one bash uses:
+    Codex's P2 on 2e2758d again, which slipped a second, narrower `mine=` in
+    after the canonical one and passed a guard reading the first.
+    """
+    def last(pattern):
+        found = re.findall(pattern, text, re.M)
+        return found[-1] if found else None
+
+    mine = last(r"^\s*mine='([^']*)'\s*$")
+    runs = last(r'^\s*runs="([^"]*)"\s*$')
+    # Anchored on the re-run selection itself, not on any --jq in the file: the
+    # busy-wait loop above it has one too, and testing that one would prove
+    # nothing about what gets re-run.
+    prog = last(r'^\s*(?:if ! )?ran=\$\(gh api --paginate "\$runs" --jq "((?:[^"\\]|\\.)*)"')
+    if mine is None or runs is None or prog is None:
+        return None
+    endpoint, _, _ = runs.partition("?")
+    query = dict(re.findall(r'[?&]([^=&]+)=([^&]*)', runs))
+    return endpoint, query, prog.replace('\\"', '"').replace("$mine", mine)
+
+
 USES_ENVIRONMENT = re.compile(r"^\s*environment:\s*" + re.escape(KEY_ENVIRONMENT) + r"\s*$", re.M)
 
 
@@ -499,7 +685,8 @@ def _check_wiring():
         check = _read(CHECK_WORKFLOW)
         review = _read(REVIEW_WORKFLOW)
         door = _read(DOOR_WORKFLOW)
-        wake_on = triggers(_read(WAKE_WORKFLOW))
+        wake = _read(WAKE_WORKFLOW)
+        wake_on = triggers(wake)
     except OSError as e:
         print("  wiring: %s" % e)
         return 1
@@ -540,6 +727,112 @@ def _check_wiring():
               % (WAKE_WORKFLOW, wake_on))
         bad += 1
 
+    # THE WAKE MUST ASK AGAIN WHATEVER THE CHECK CURRENTLY SAYS. With one
+    # reviewer a verdict could only move the gate from red to green, so the wake
+    # re-ran the red runs and that was enough. Counting a second reviewer made
+    # the other direction reachable — one reads a commit clean, the other leaves
+    # findings on it, and the check must go from green to RED. On 21 September
+    # that happened on #43 and the wake answered "no red check run — nothing to
+    # re-run", leaving a stale green under a findings verdict.
+    #
+    # WHAT THIS GUARD IS FOR, AND WHAT IT IS NOT. It catches drift: a later
+    # session narrowing the selection while tidying, which is how the defect
+    # arrived. It is not tamper-proof and is not trying to be — `wake.yml` is a
+    # gate file, so any edit to it already needs the other vendor's cold read
+    # before it can merge, and that read is what stands against a deliberate
+    # obfuscation. Codex walked through three versions of this guard by
+    # rephrasing (a blacklisted operator, then bracket syntax inside `$mine`,
+    # then a server-side `status=` filter and a shadowing second assignment),
+    # and each pass made it better; the honest limit is written here rather
+    # than left for the next reader to discover.
+    #
+    # It runs the selector instead of reading it: the jq program is assembled
+    # the way the shell assembles it, fed runs whose right answer is known, and
+    # the output compared. Run 1 is the point — completed, and SUCCEEDED.
+    request = wake_request(wake)
+    if request is None:
+        print("  wiring: cannot find what %s asks GitHub for. It is the last `runs=`, `mine=` "
+              "and `ran=` assignments; if any was renamed, say what the new request is here so "
+              "it can be tested" % WAKE_WORKFLOW)
+        bad += 1
+    else:
+        endpoint, query, program = request
+        if endpoint != WAKE_ENDPOINT:
+            print("  wiring: %s asks GitHub at `%s`; it must ask at `%s`. A path that answers "
+                  "nothing leaves the check never asked again" % (WAKE_WORKFLOW, endpoint,
+                                                                  WAKE_ENDPOINT))
+            bad += 1
+        # Checked before the jq test, because a parameter that narrows the
+        # answer server side is invisible to any test of the jq that follows it.
+        if query != WAKE_QUERY:
+            print("  wiring: %s asks GitHub for %s; it must ask for exactly %s. A `status` here "
+                  "filters by conclusion server side, and a smaller `per_page` returns too few "
+                  "runs to find the check among them — either way the successful runs never "
+                  "reach the jq below, and a verdict turning the gate red never reaches the "
+                  "check" % (WAKE_WORKFLOW, dict(sorted(query.items())),
+                             dict(sorted(WAKE_QUERY.items()))))
+            bad += 1
+        try:
+            out = subprocess.run(["jq", "-r", program], input=json.dumps(WAKE_RUNS),
+                                 capture_output=True, text=True)
+        except OSError as e:
+            # Fail closed. An untested selector is the thing being guarded against.
+            print("  wiring: jq is needed to test what %s re-runs, and could not be run (%s)"
+                  % (WAKE_WORKFLOW, e))
+            bad += 1
+        else:
+            picked = [int(x) for x in out.stdout.split()] if out.returncode == 0 else None
+            if picked is None:
+                print("  wiring: the selection in %s is not valid jq — %s"
+                      % (WAKE_WORKFLOW, out.stderr.strip().splitlines()[:1]))
+                bad += 1
+            elif sorted(picked) != WAKE_PICKS:
+                missing = [r for r in WAKE_PICKS if r not in picked]
+                print("  wiring: the selection in %s picks %s, and must pick %s. Missing %s. "
+                      "Run 1 is a completed check run that SUCCEEDED: drop it and a verdict "
+                      "turning the gate red never reaches the check, which is the stale green "
+                      "of #43" % (WAKE_WORKFLOW, sorted(picked), WAKE_PICKS, missing or "nothing"))
+                bad += 1
+
+    # A WAKE THAT COULD NOT DO ITS JOB MUST SAY SO. The selector above decides
+    # WHICH runs are re-run; this decides what happens when GitHub will not
+    # answer at all. Both reads and the re-run POST have each been written here
+    # with their failure suppressed, and each time the step exited 0 having done
+    # nothing: the check was never asked again, no one was told, and a green
+    # that a verdict should have turned red stayed mergeable.
+    #
+    # This one runs the step. A stub `gh` on PATH fails at one chosen call, the
+    # step's own shell executes against it, and its exit status is the whole
+    # assertion — so `|| echo ""`, `|| true`, `; true` and `set +e` are all the
+    # same event and none of them has a spelling to hide behind. That is the
+    # answer to a claim made on #44 and wrong: that this class could only ever
+    # be grepped for. It could not be grepped for. It can be run.
+    script = wake_script(wake)
+    if script is None:
+        print("  wiring: cannot take the shell out of %s to test it. It must be one `run: |` "
+              "block with no `${{ }}` left in it, because anything else means running something "
+              "other than what the runner runs" % WAKE_WORKFLOW)
+        bad += 1
+    else:
+        for what, env, must_fail in SWALLOW_CASES:
+            status, broke = swallow_verdict(script, env)
+            if broke is not None:
+                print("  wiring: the step in %s %s" % (WAKE_WORKFLOW, broke))
+                bad += 1
+                break
+            if (status != 0) != must_fail:
+                if must_fail:
+                    print("  wiring: in %s, when %s, the step exits 0. A wake that could not ask "
+                          "the check again must be RED where someone sees it — exiting 0 here is "
+                          "the stale green this whole file exists to prevent, reached through the "
+                          "error handler" % (WAKE_WORKFLOW, what))
+                else:
+                    print("  wiring: in %s, when %s, the step exits %s. It must pass: failing on "
+                          "this turns every ordinary re-run race into a red wake, and a guard "
+                          "that only ever demands failure proves nothing about the others"
+                          % (WAKE_WORKFLOW, what, status))
+                bad += 1
+
     # The badge's check run is not something this repository has watched GitHub
     # deliver an event for, so nothing is built on the assumption that it does.
     # The reviewer asks the gate again itself, the way #38 proved works.
@@ -549,6 +842,28 @@ def _check_wiring():
               "read sits unseen and the check stays red until a hand re-runs it"
               % (REVIEW_WORKFLOW, WAKE_WORKFLOW))
         bad += 1
+
+    # NOTHING MAY GROUP OR CANCEL A REVIEW. GitHub puts a run in its concurrency
+    # group before the job's `if:` is evaluated, so any grouping here catches
+    # every comment on the pull request, including the ones carrying no ask that
+    # skip a second later. With cancel-in-progress those comments killed the read
+    # that was running — #43, run 35587070648, cancelled forty seconds in by a
+    # stand-down note. Without it they still displace a queued ask, because
+    # GitHub keeps one pending run per group and replaces it with the newest:
+    # Codex's P2 on 0c3df8a. Either way a visible ask yields no verdict and the
+    # gate says `unread` without telling anyone a read was lost.
+    #
+    # So the setting is refused outright rather than one value of it. Codex's
+    # other P2 on that head: a guard rejecting `cancel-in-progress: true` still
+    # passes `cancel-in-progress: ${{ true }}`, which behaves identically. There
+    # is no safe value, so there is no permitted line.
+    for pattern, what in ((r'^\s*concurrency:', "a concurrency block"),
+                          (r'^\s*cancel-in-progress:', "a cancel-in-progress setting")):
+        if re.search(pattern, review, re.M):
+            print("  wiring: %s has %s. Every comment enters the group before the job's `if:` "
+                  "is read, so a passing remark cancels a review in flight or displaces a "
+                  "queued ask, and the gate just says unread" % (REVIEW_WORKFLOW, what))
+            bad += 1
 
     # THE DOOR. Without this line the App's private key is readable by any run on
     # any branch, and the badge is worth nothing: a branch mints an installation
@@ -628,9 +943,10 @@ def _check_wiring():
     if not bad:
         print("ok: the gate counts %d reviewer(s) by %d route(s), each read reaches the check by "
               "a route that can actually fire, the reviewer runs only from the default branch, "
-              "and its key sits behind the `%s` door"
+              "its key sits behind the `%s` door, and the wake's own shell was run against a "
+              "failing GitHub in %d case(s) and went red in every one that must"
               % (len(REVIEWERS), len(set(r["app_id"] is None for r in REVIEWERS.values())),
-                 KEY_ENVIRONMENT))
+                 KEY_ENVIRONMENT, len(SWALLOW_CASES)))
     return bad
 
 

@@ -41,6 +41,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ inputs.pr }}
           REPO: ${{ github.repository }}
+        # This shell is not only read by review-gate.py, it is RUN by it: the
+        # block is lifted out whole and executed against a stub `gh` that fails
+        # at one call at a time, and it must come out red whenever the wake
+        # could not do its job. So an error suppressed anywhere below — `||
+        # echo`, `|| true`, `set +e`, any spelling — fails the build rather
+        # than waiting for GitHub to have a bad day. Keep it one `run: |` block
+        # with no `${{ }}` inside, or the test cannot faithfully run it and
+        # refuses instead.
         run: |
           set -euo pipefail
           sha=$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)
@@ -72,22 +80,87 @@ jobs:
           # GitHub for the answers before this one arrived — so it will finish
           # red on a review that exists. Wait for them, then re-run.
           for _ in 1 2 3 4 5 6 7 8 9 10; do
-            busy=$(gh api "$runs" --jq "[.workflow_runs[] | $mine | select(.status!=\"completed\")] | length" || echo "")
-            case "$busy" in ""|null) echo "could not read the runs on $sha — leaving it"; exit 0 ;; esac
+            # A failed read is NOT "nothing is running". Codex's P2 on 3621303:
+            # `|| echo ""` turned every error — a wrong path, a rate limit, a
+            # network blip — into an empty answer and a quiet exit, so the check
+            # was never asked again and nobody was told. That is the stale gate
+            # this whole file exists to prevent, reached through the error
+            # handler. It fails loudly now: a wake that could not read is a wake
+            # that did not happen, and it should be red where someone sees it.
+            if ! busy=$(gh api "$runs" --jq "[.workflow_runs[] | $mine | select(.status!=\"completed\")] | length"); then
+              echo "::error::could not read the runs on $sha — the check has NOT been asked again"
+              exit 1
+            fi
+            case "$busy" in ""|null) echo "::error::GitHub answered with no count for $sha — the check has NOT been asked again"; exit 1 ;; esac
             [ "$busy" -eq 0 ] && break
             echo "$busy check run(s) on $sha still going — waiting for them to finish"
             sleep 20
           done
-          # Still going after three minutes: the completed red ones are re-run
+          # Still going after three minutes: the completed ones are re-run
           # anyway. One that is still running will finish on its own, and it
           # reads the page as it is now, which already carries this verdict.
-          red=$(gh api "$runs" --jq "[.workflow_runs[] | $mine | select(.status==\"completed\") | select(.conclusion!=\"success\") | .id] | .[]" || echo "")
-          if [ -z "$red" ]; then
-            echo "no red check run on $sha — nothing to re-run"
+          #
+          # EVERY completed run, whatever it currently says — not only the red
+          # ones. A verdict used to move the gate one way, red to green, so
+          # re-running the red ones was enough. With two reviewers a commit can
+          # be read clean by one and left findings on by the other, and then the
+          # gate must go green to RED. Proved live on #43, 21 September: Codex
+          # had read the head clean so the check was green, the badge posted
+          # findings on that same commit, and this job answered "no red check
+          # run — nothing to re-run" and left a stale green standing under a
+          # findings verdict. That is the failure of #24, #30 and #37 arriving
+          # from the other side, and it was introduced by counting a second
+          # reviewer. Re-running a green run that is still correct simply goes
+          # green again, so being wrong in this direction costs one job.
+          # --paginate, so no page size can truncate this. Codex's P2 on bf36391
+          # argued the 100-run first page is reachable; its mechanism was wrong
+          # — issue_comment runs are filed against the DEFAULT branch's sha, not
+          # the pull request's head, so they never appear in this query at all
+          # (checked: every such run here carries head_branch main). But the
+          # principle holds, a truncation in the one path that decides whether a
+          # verdict is seen is not worth defending, and the flag costs nothing.
+          # The wait loop above is deliberately left unpaginated: missing an
+          # in-flight run on a later page only means re-running a little early,
+          # which the comment below already allows for, and `length` per page
+          # would need restructuring to survive --paginate.
+          if ! ran=$(gh api --paginate "$runs" --jq "[.workflow_runs[] | $mine | select(.status==\"completed\") | .id] | .[]"); then
+            echo "::error::could not read the runs on $sha — the check has NOT been asked again"
+            exit 1
+          fi
+          if [ -z "$ran" ]; then
+            echo "no completed check run on $sha — nothing to re-run"
             exit 0
           fi
-          for id in $red; do
-            echo "re-running check $id on $sha"
-            gh api -X POST "repos/$REPO/actions/runs/$id/rerun" ||
-              echo "  the re-run of $id was refused (already running again, or too old)"
+          # The POST is the only thing here that can replace an already-green
+          # required check, so a failure of it is the whole job failing. It used
+          # to be swallowed by `|| echo`, which turned a rate limit, a
+          # permissions error or a transient fault into a cheerful log line and
+          # a green wake, leaving the stale green mergeable — Codex's P2 on
+          # b81f13d, and the third swallow of this shape in this file. The two
+          # reads were fixed a commit earlier and the write, the one that
+          # actually changes anything, was left.
+          #
+          # A refusal is NOT read from its message. GitHub refuses a re-run for
+          # benign reasons (something already re-ran it) and real ones (too old,
+          # forbidden, rate-limited), and matching those strings is the same
+          # mistake as matching a spelling — it passes the day the wording
+          # changes. So the outcome is checked instead: if the run is no longer
+          # sitting `completed`, it is being re-run and the refusal was benign;
+          # if it is still completed, the check has not been asked again and
+          # this job is red.
+          failed=0
+          for id in $ran; do
+            if gh api -X POST "repos/$REPO/actions/runs/$id/rerun" >/dev/null 2>&1; then
+              echo "re-running check $id on $sha"
+              continue
+            fi
+            state=$(gh api "repos/$REPO/actions/runs/$id" --jq .status 2>/dev/null || echo "unknown")
+            case "$state" in
+              completed|unknown)
+                echo "::error::the re-run of $id was refused and it is still '$state' — the check has NOT been asked again"
+                failed=1 ;;
+              *)
+                echo "  $id is already being re-run ($state)" ;;
+            esac
           done
+          [ "$failed" -eq 0 ] || exit 1

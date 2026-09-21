@@ -59,9 +59,32 @@ permissions:
   contents: read
   pull-requests: write
 
-concurrency:
-  group: review-${{ github.event.issue.number }}
-  cancel-in-progress: true
+# THERE IS DELIBERATELY NO `concurrency:` BLOCK HERE, AND THE BUILD REFUSES ONE.
+#
+# It had one, and the one it had destroyed a real read on 21 September on #43.
+# `cancel-in-progress: true` looked like "do not review the same pull request
+# twice at once". GitHub puts a run in its concurrency group BEFORE the job's
+# `if:` is evaluated, so every comment on the pull request entered the group —
+# including the ones carrying no ask, which skip a second later — and each one
+# killed the read that was running. Run 35587070648 died forty seconds in,
+# cancelled by a stand-down note, and the read that replaced it cost the
+# allowance twice.
+#
+# `cancel-in-progress: false` was the first fix and was not enough: Codex's P2
+# on 0c3df8a. GitHub keeps at most one PENDING run per group and replaces it
+# when a newer one arrives, so with a read running and a genuine ask queued
+# behind it, the next passing comment displaces the ask and it never runs. The
+# failure shape is unchanged — a visible ask, no verdict, a gate that says
+# `unread` and tells nobody a read was lost.
+#
+# Keying the group on whether the comment is a real ask would work, and it was
+# the tempting fix. It also means writing this job's `if:` twice, in two
+# languages, where the copies can drift — and every attempt so far at being
+# clever about when a run belongs to a group has cost a read. So: no grouping.
+# Every ask runs. Two asks in a row cost two reads, which is bounded, visible,
+# and paid by a collaborator who chose to ask twice; a discarded read is none of
+# those things. The rulebook already asks once per round in prose, and that is
+# the right place for it.
 
 jobs:
   review:
@@ -263,6 +286,7 @@ jobs:
           TOO_BIG: ${{ steps.gather.outputs.too_big }}
           OUTCOME: ${{ steps.read.outcome }}
           VERDICT: ${{ steps.read.outputs.verdict }}
+          REVIEWER_APP_ID: ${{ secrets.REVIEWER_APP_ID }}
         run: |
           set -euo pipefail
           # The three conclusions, and review-gate.py is held against this list:
@@ -305,10 +329,25 @@ jobs:
           # on 18 September by a session that trusted a redirect, and the list
           # showed nothing: a thing exists when the page that lists it shows it.
           [ -n "$id" ] || { echo "::error::the check run was not created"; jq -r '.message // "no message"' /tmp/created.json; exit 1; }
+          # And the read-back is CHECKED, not printed. It was `echo "read back:
+          # $back"` and nothing else — decoration in the shape of a proof, which
+          # is worse than no proof, because it reads like one. Found while
+          # auditing this file for the swallow Codex caught in wake.yml on
+          # b81f13d; it is the same family and nobody had raised it.
+          #
+          # What it holds is what the gate reads: the app that owns the run, its
+          # name, the commit it is attached to, and the verdict. If any of those
+          # came back other than as posted, the verdict on the page is not the
+          # verdict this job decided, and the job is red.
           back=$(curl -sS -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/$GITHUB_REPOSITORY/check-runs/$id" \
-            | jq -r '[.app.id, .name, .head_sha, .conclusion] | @tsv')
-          echo "read back: $back"
+            | jq -r '[(.app.id|tostring), .name, .head_sha, .conclusion] | @tsv')
+          want=$(printf '%s\t%s\t%s\t%s' "$REVIEWER_APP_ID" "juku-reviewer" "$SHA" "$conclusion")
+          if [ "$back" != "$want" ]; then
+            echo "::error::the check run read back as [$back] and was posted as [$want] — the verdict on the page is not the one this job decided"
+            exit 1
+          fi
+          echo "read back and confirmed: $back"
 
       - name: Say it where people read
         if: steps.sign.outcome == 'success'
