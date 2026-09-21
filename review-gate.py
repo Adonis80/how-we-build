@@ -1502,7 +1502,8 @@ def main(argv):
         # Every side of the page, every time: a reviewer's verdict is in one and
         # its findings in the other, and a gate that stopped at the first answer
         # it liked would be the gate this one replaces. The changed files decide
-        # which reviewer is allowed to clear it.
+        # HOW MANY reviewers are required, not which: one for an ordinary
+        # change, every one on the register for a change to the gate itself.
         reviews = list(_pages("%s/pulls/%s/reviews" % (api, num), token))
         comments = list(_pages("%s/issues/%s/comments" % (api, num), token))
         files = [f.get("filename") for f in _pages("%s/pulls/%s/files" % (api, num), token)]
