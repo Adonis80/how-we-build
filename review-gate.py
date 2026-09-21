@@ -476,9 +476,10 @@ WAKE_PICKS = [1, 2]
 # nothing, and the stale green stands again (its P2 on 313f20d). That second one
 # is ordinary configuration drift, not obfuscation — exactly what this guard is
 # for — so checking the names and shrugging at the values was not good enough.
-# 100 is GitHub's maximum page size and the wake does not paginate; a head
-# carrying more than 100 runs would still be read short, which is written down
-# here rather than guarded, because no head has come close.
+# `per_page=100` is the page size; the selection is fetched with --paginate, so
+# no page size truncates it. The extractor requires that flag: it is the one
+# assertion here that is textual rather than behavioural, because paging is a
+# property of the HTTP client and cannot be reached by running the jq.
 WAKE_QUERY = {"head_sha": "$sha", "per_page": "100"}
 
 
@@ -503,7 +504,7 @@ def wake_request(text):
     # Anchored on the re-run selection itself, not on any --jq in the file: the
     # busy-wait loop above it has one too, and testing that one would prove
     # nothing about what gets re-run.
-    prog = last(r'^\s*ran=\$\(gh api "\$runs" --jq "((?:[^"\\]|\\.)*)"')
+    prog = last(r'^\s*ran=\$\(gh api --paginate "\$runs" --jq "((?:[^"\\]|\\.)*)"')
     if mine is None or runs is None or prog is None:
         return None
     query = dict(re.findall(r'[?&]([^=&]+)=([^&]*)', runs))

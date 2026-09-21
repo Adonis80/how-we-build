@@ -94,7 +94,18 @@ jobs:
           # from the other side, and it was introduced by counting a second
           # reviewer. Re-running a green run that is still correct simply goes
           # green again, so being wrong in this direction costs one job.
-          ran=$(gh api "$runs" --jq "[.workflow_runs[] | $mine | select(.status==\"completed\") | .id] | .[]" || echo "")
+          # --paginate, so no page size can truncate this. Codex's P2 on bf36391
+          # argued the 100-run first page is reachable; its mechanism was wrong
+          # — issue_comment runs are filed against the DEFAULT branch's sha, not
+          # the pull request's head, so they never appear in this query at all
+          # (checked: every such run here carries head_branch main). But the
+          # principle holds, a truncation in the one path that decides whether a
+          # verdict is seen is not worth defending, and the flag costs nothing.
+          # The wait loop above is deliberately left unpaginated: missing an
+          # in-flight run on a later page only means re-running a little early,
+          # which the comment below already allows for, and `length` per page
+          # would need restructuring to survive --paginate.
+          ran=$(gh api --paginate "$runs" --jq "[.workflow_runs[] | $mine | select(.status==\"completed\") | .id] | .[]" || echo "")
           if [ -z "$ran" ]; then
             echo "no completed check run on $sha — nothing to re-run"
             exit 0
