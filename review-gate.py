@@ -16,9 +16,9 @@ a P1 the reviewer had posted and nobody had answered, because a read was all the
 gate could see. So the gate gives one of five answers about the head commit, and
 opens on the first alone:
 
-    clean         read clean by a reviewer this change may be cleared by
-    findings      read, and the reviewer left something on it
-    cross-vendor  read clean, but by the reviewer this change may NOT use
+    clean         read clean by every reviewer this change requires
+    findings      read, and a reviewer left something on it
+    cross-vendor  read clean, but not yet by every reviewer it requires
     no verdict    a review is running on it, and has not said what it found
     unread        no finished read of this commit at all
 
@@ -59,9 +59,14 @@ The rulebook requires the other vendor on pricing, live database changes or
 schema, authentication and authorisation, public trust boundaries, deploy and
 release machinery, and this review gate itself. Of that list this repository only
 ever holds the last, so here the rule has one door: a pull request that touches
-the gate opens on `GATE_REVIEWER` alone. Until a second reviewer existed that was
-true by accident — Codex was the only identity the gate could count — and an
-accident is not a door.
+the gate opens when EVERY reviewer on the register has read it clean. Until a
+second reviewer existed, "the other vendor" was true by accident — Codex was the
+only identity the gate could count — and an accident is not a door. The first
+attempt at a real one named `GATE_REVIEWER` as the only reviewer who could clear
+a gate change, which is the other vendor only while the lead is Claude; Codex's
+P1 on #45 showed it enforcing the rule backwards on OpenAI-led work. Requiring
+all of them is the door that does not depend on knowing who led, and nothing
+here has to trust a `Lead stack:` line the proposer writes.
 
 Every shape is matched by its exact form, and --selftest holds the match against
 the real ones and the fakes on every run of check.sh — no network, no GitHub, and
@@ -341,16 +346,32 @@ def verdict(reviews, comments, check_runs, head, resolve=None, gate_files=()):
     """The gate's one answer about the head commit, and who gave it.
 
     `gate_files` is what this pull request changes of the gate, empty for an
-    ordinary change. When it is not empty only GATE_REVIEWER may clear the
-    commit; a clean read by anyone else is CROSS_VENDOR, which is red, and says
-    who has to read it instead.
+    ordinary change. When it is not empty EVERY reviewer on the register must
+    have read the commit clean; one clean read and one still out is
+    CROSS_VENDOR, which is red, and names the reviewer still owed.
 
-    A finding binds only from a reviewer that may clear this change. Codex's P1
-    on #38, accepted in part: with the findings test running first, a reviewer
-    with no standing on a gate change could hold the gate shut against the clean
-    read of the one required — a reviewer that cannot open a door should not be
-    able to bolt it either. Its findings are still on the page for the CTO to
-    answer; they are simply not what the gate is waiting on.
+    WHY EVERY REVIEWER, RATHER THAN THE ONE OPPOSITE THE LEAD. The rulebook
+    requires the other vendor on a change to the review gate itself. This used
+    to be held as "GATE_REVIEWER alone may clear it", which is the other vendor
+    only while the lead is Claude. Codex's P1 on #45 showed the inverse: on an
+    OpenAI-led gate change the rule was enforced backwards — the Claude badge's
+    clean read answered CROSS_VENDOR and stayed red, while a Codex read of its
+    own vendor's work opened the gate. Proved by running it, both ways.
+
+    Selecting by the declared lead was the obvious repair and is the wrong one:
+    `Lead stack:` is a line the proposer writes, so a branch could claim the
+    lead it wanted and be handed the reviewer of its own vendor. Requiring both
+    needs no such trust. Cross-vendor becomes true by construction, whoever led
+    and whatever the pull request says about it. It costs a second read on gate
+    changes alone — the smallest and highest-stakes class of change here.
+    The Chairman's ruling, 21 September 2026, asked for the gate fixed before
+    the paragraph in #45 that exposed this could land.
+
+    A finding binds from any reviewer on the register. Codex's P1 on #38 was
+    that a reviewer with no standing on a gate change should not be able to bolt
+    a door it cannot open. That concern is answered by construction now rather
+    than by a rule: on a gate change nobody is without standing, because both
+    are required.
     """
     said = {}
 
@@ -371,17 +392,23 @@ def verdict(reviews, comments, check_runs, head, resolve=None, gate_files=()):
     for run in check_runs:
         note(check_run_verdict(run, head), DEFAULT_REVIEWER)
 
-    may_clear = (GATE_REVIEWER,) if gate_files else tuple(REVIEWERS)
-    for key in may_clear:
+    for key in REVIEWERS:
         if said.get(key) == FINDINGS:
             return FINDINGS, key
-    for key in may_clear:
-        if said.get(key) == CLEAN:
-            return CLEAN, key
-    if FINDINGS in said.values():
-        return FINDINGS, _who(said, FINDINGS)
-    if CLEAN in said.values():
-        return CROSS_VENDOR, _who(said, CLEAN)
+    if gate_files:
+        # Every reviewer, or none of them. `who` is a reviewer still owed, not
+        # one that has read: the useful half of a red answer is what is missing.
+        owed = [k for k in REVIEWERS if said.get(k) != CLEAN]
+        if not owed:
+            # No single reviewer cleared this, so none is named. The caller
+            # prints the whole register rather than crediting one of them.
+            return CLEAN, None
+        if any(said.get(k) == CLEAN for k in REVIEWERS):
+            return CROSS_VENDOR, owed[0]
+    else:
+        for key in REVIEWERS:
+            if said.get(key) == CLEAN:
+                return CLEAN, key
     if NO_VERDICT in said.values():
         return NO_VERDICT, _who(said, NO_VERDICT)
     return UNREAD, None
@@ -400,16 +427,20 @@ def reason(answer, who, head, gate_files=()):
     It names the ask rather than the bot, because the next thing a session does
     with this line is act on it.
     """
-    needed = REVIEWERS[GATE_REVIEWER] if gate_files else REVIEWERS[DEFAULT_REVIEWER]
+    # On a gate change `who` is the reviewer still owed, so the ask to write is
+    # its own. Everywhere else it is whoever spoke, and the default reviewer is
+    # the one to ask next.
+    needed = REVIEWERS[who] if (gate_files and who) else REVIEWERS[DEFAULT_REVIEWER]
     if answer == FINDINGS:
         return ("%s read commit %s and left findings on it — answer them, land the round's "
                 "fixes as one push, and ask once; the gate opens on a commit a reviewer reads "
                 "clean, never on an answer to a finding" % (REVIEWERS[who]["name"], head))
     if answer == CROSS_VENDOR:
-        return ("%s read commit %s clean, but this pull request changes the review machinery "
-                "(%s), where the rulebook requires the other vendor — write '%s' on this pull "
-                "request, and it waits for that read however long it takes"
-                % (REVIEWERS[who]["name"], head, ", ".join(gate_files), needed["ask"]))
+        return ("commit %s has been read clean, but not by %s, and this pull request changes "
+                "the review machinery (%s) — there every reviewer must read it, so that the "
+                "other vendor has read it whoever led. Write '%s' on this pull request, and it "
+                "waits for that read however long it takes"
+                % (head, needed["name"], ", ".join(gate_files), needed["ask"]))
     if answer == NO_VERDICT:
         return ("%s is reading commit %s and has not said what it found — re-run this check "
                 "once it has" % (REVIEWERS[who]["name"], head))
@@ -1080,31 +1111,44 @@ def _selftest():
         ([{"user": {"login": CODEX}, "commit_id": head, "state": "DISMISSED"}], [], [], (UNREAD, None),
          "a review somebody took back, and nothing else"),
     ]
-    # The door in the gate: a change to the review machinery opens on the other
-    # vendor's read alone.
+    # The door in the gate: a change to the review machinery opens only when
+    # EVERY reviewer has read it clean, so the other vendor has read it whoever
+    # led. `who` on a red answer is the reviewer still owed, not one that spoke.
     gate_file_cases = [
-        (["review-gate.py"], [], [_run("success", sha=head)], (CROSS_VENDOR, "claude"),
-         "the default reviewer may not clear a change to the gate"),
-        (["check.sh"], [], [_run("success", sha=head)], (CROSS_VENDOR, "claude"), "nor to the check that runs it"),
-        ([".github/workflows/review.yml"], [], [_run("success", sha=head)], (CROSS_VENDOR, "claude"),
+        (["review-gate.py"], [], [], [_run("success", sha=head)], (CROSS_VENDOR, "codex"),
+         "one clean read does not clear a change to the gate"),
+        (["check.sh"], [], [], [_run("success", sha=head)], (CROSS_VENDOR, "codex"), "nor to the check that runs it"),
+        ([".github/workflows/review.yml"], [], [], [_run("success", sha=head)], (CROSS_VENDOR, "codex"),
          "nor to the reviewer it is"),
-        ([".github/workflows/check.yml"], [], [_run("success", sha=head)], (CROSS_VENDOR, "claude"),
+        ([".github/workflows/check.yml"], [], [], [_run("success", sha=head)], (CROSS_VENDOR, "codex"),
          "nor to the wake that fetches it"),
-        ([".github/workflows/door.yml"], [], [_run("success", sha=head)], (CROSS_VENDOR, "claude"),
+        ([".github/workflows/door.yml"], [], [], [_run("success", sha=head)], (CROSS_VENDOR, "codex"),
          "nor to the proof that the key is out of reach"),
-        ([".github/workflows/anything-new.yml"], [], [_run("success", sha=head)], (CROSS_VENDOR, "claude"),
+        ([".github/workflows/anything-new.yml"], [], [], [_run("success", sha=head)], (CROSS_VENDOR, "codex"),
          "nor to a workflow a branch adds"),
-        (["review-gate.py"], [codex(clean)], [], (CLEAN, "codex"), "the other vendor clears it"),
-        (["review-gate.py"], [codex(clean)], [_run("success", sha=head)], (CLEAN, "codex"),
-         "both read it clean — the required one is what counts"),
-        (["review-gate.py"], [codex(clean)], [_run("failure", sha=head)], (CLEAN, "codex"),
-         "findings by a reviewer with no standing here do not bolt a door it cannot open "
-         "(Codex's P1 on #38, accepted in part)"),
-        (["review-gate.py"], [], [_run("failure", sha=head)], (FINDINGS, "claude"),
-         "but with no read by the required one they are still the most useful thing to say — "
-         "real work first, then the scarce ask"),
-        (["README.md"], [], [_run("success", sha=head)], (CLEAN, "claude"), "an ordinary change still clears"),
-        (["design/SCREEN-LAW.md", "README.md"], [], [_run("success", sha=head)], (CLEAN, "claude"),
+        # THE CASE #45 EXISTS FOR, AND THE ONE THE OLD RULE GOT BACKWARDS. On an
+        # OpenAI-led gate change the other vendor is the badge; under "Codex
+        # alone may clear it" the badge's clean read stayed red and Codex's read
+        # of its own vendor's work opened the door. Neither can happen now: one
+        # read is never enough, and the pair is always cross-vendor.
+        (["review-gate.py"], [], [codex(clean)], [], (CROSS_VENDOR, "claude"),
+         "and neither does the other one on its own — whichever vendor led, this is "
+         "same-vendor clearance until the second read lands (Codex's P1 on #45)"),
+        (["review-gate.py"], [], [codex(clean)], [_run("success", sha=head)], (CLEAN, None),
+         "both read it clean, and no single reviewer is credited with having cleared it"),
+        (["review-gate.py"], [], [codex(clean)], [_run("failure", sha=head)], (FINDINGS, "claude"),
+         "findings from either one hold it shut — on a gate change both are required, so "
+         "both have standing, which answers Codex's P1 on #38 by construction"),
+        (["review-gate.py"], [findings], [], [_run("success", sha=head)], (FINDINGS, "codex"),
+         "and that holds in the other direction too"),
+        (["review-gate.py"], [], [], [_run("failure", sha=head)], (FINDINGS, "claude"),
+         "findings outrank a read nobody has done yet — real work first, then the scarce ask"),
+        (["review-gate.py"], [], [], [], (UNREAD, None), "a gate change nobody has read"),
+        (["review-gate.py"], [], [], [_run(status="in_progress", sha=head)], (NO_VERDICT, "claude"),
+         "one still reading, the other not asked"),
+        (["README.md"], [], [], [_run("success", sha=head)], (CLEAN, "claude"), "an ordinary change still clears"),
+        (["README.md"], [], [codex(clean)], [], (CLEAN, "codex"), "on one read, by either of them"),
+        (["design/SCREEN-LAW.md", "README.md"], [], [], [_run("success", sha=head)], (CLEAN, "claude"),
          "and so does one touching several ordinary files"),
     ]
     twin = "090e429" + "f" * 33  # another commit sharing the short form
@@ -1128,8 +1172,9 @@ def _selftest():
         bad += hold(check_run_verdict(run, head), want, what)
     for reviews, comments, runs, want, what in gate_cases:
         bad += hold(verdict(reviews, comments, runs, head), want, what)
-    for paths, comments, runs, want, what in gate_file_cases:
-        bad += hold(verdict([], comments, runs, head, gate_files=touches_the_gate(paths)), want, what)
+    for paths, reviews, comments, runs, want, what in gate_file_cases:
+        bad += hold(verdict(reviews, comments, runs, head, gate_files=touches_the_gate(paths)),
+                    want, what)
     bad += hold(comment_verdict(summary, head, CODEX, resolve=resolver), None,
                 "a short form that resolves to another commit")
     bad += hold(comment_verdict(clean, head, CODEX, resolve=resolver), CLEAN,
@@ -1154,12 +1199,13 @@ def _selftest():
              + sum(1 for b in badge_cases if b[1] is None)
              + sum(1 for r in review_cases if r[1] == (None, None))
              + sum(1 for g in gate_cases if g[3] == (UNREAD, None))
-             + sum(1 for g in gate_file_cases if g[3][0] == CROSS_VENDOR) + 1)
+             + sum(1 for g in gate_file_cases if g[4][0] == CROSS_VENDOR) + 1)
     print("ok: review gate tells a clean read from a commented one, for each reviewer on the "
-          "register, in every shape and state they arrive in; it refuses a gate change cleared "
-          "by anyone but %s; it asks GitHub for %d URL(s) that carry the parameters they say "
-          "they do; and it is fooled by none of the %d fakes"
-          % (REVIEWERS[GATE_REVIEWER]["name"], len(_url_cases()), fakes))
+          "register, in every shape and state they arrive in; it holds a gate change shut until "
+          "all %d of them have read it clean, so the other vendor has whoever led; it asks "
+          "GitHub for %d URL(s) that carry the parameters they say they do; and it is fooled by "
+          "none of the %d fakes"
+          % (len(REVIEWERS), len(_url_cases()), fakes))
     return 1 if _check_wiring() else 0
 
 
@@ -1267,7 +1313,12 @@ def main(argv):
         print("reason: HTTP %s when asked for the %s — %s" % (e.code, _asking[0] or "reviews", why))
         return 2
     if answer == CLEAN:
-        print("ok: %s has read %s and left nothing on it" % (REVIEWERS[who]["name"], head))
+        # A gate change is cleared by the whole register, not by one of them, so
+        # the line says so — crediting a single reviewer would read as though one
+        # clean read had been enough.
+        cleared = REVIEWERS[who]["name"] if who else " and ".join(
+            REVIEWERS[k]["name"] for k in REVIEWERS)
+        print("ok: %s has read %s and left nothing on it" % (cleared, head))
         return 0
     print("reason: " + reason(answer, who, head, gate_files))
     return 1
