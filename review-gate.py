@@ -140,10 +140,27 @@ ORDER = (FINDINGS, CLEAN, CROSS_VENDOR, NO_VERDICT)
 # changed when the badge arrived; it is the reviewer this repository has had
 # since the beginning and the one the gate door requires.
 
-def _completed_row(head):
-    # | 📝 **Code Review** | ✅ **Completed** <relative-time …>…</relative-time> | `090e429` | Manual request |
+def _summary_row(head):
+    """Codex's summary table, for this commit, whether it has finished or not.
+
+    | 📝 **Code Review** | ✅ **Completed** <relative-time …>…</relative-time> | `090e429` | … |
+    | 📝 **Code Review** | 🔄 **Running** since <relative-time …>…</relative-time> | `090e429` | … |
+
+    RUNNING COUNTS TOO, and it did not until 21 September. `check_run_verdict`
+    has always answered NO_VERDICT for a badge run that is queued or running,
+    for a reason written beside it: saying "unread" sends a session off to ask
+    a second time for a review already in flight, and spends the allowance
+    twice. That reasoning was never carried across to Codex's side, so a review
+    Codex had announced and not finished read as nobody having looked — and the
+    gate said "write '@codex review'" at a reviewer already reading.
+
+    Third instance of one class in a day, after the badge's own mid-read state
+    and Codex's completed-with-no-verdict. The selftest asserted the wrong
+    answer for this one, which is why neither earlier fix caught it.
+    Codex raised it on dae543e.
+    """
     return re.compile(
-        r"^\|.*\*\*Code Review\*\*.*\|.*\*\*Completed\*\*.*\|\s*`"
+        r"^\|.*\*\*Code Review\*\*.*\|.*\*\*(?:Completed|Running)\*\*.*\|\s*`"
         + r"(?P<sha>" + re.escape(head[:7]) + r"[0-9a-f]*)`\s*\|"
     )
 
@@ -218,7 +235,7 @@ def _codex_comment_verdict(body, head, resolve=None):
         if any(_names_head(ln, note, head, resolve) for ln in lines):
             return CLEAN
     if SUMMARY_MARKER in body:
-        row = _completed_row(head)
+        row = _summary_row(head)
         if any(_names_head(ln, row, head, resolve) for ln in lines):
             return NO_VERDICT
     return None
@@ -1200,7 +1217,9 @@ def _selftest():
         (clean.replace("Didn't", "Didn’t"), head, CLEAN, "the same, with a curly apostrophe"),
         (summary, head, NO_VERDICT, "the summary's completed row — a read, not a verdict"),
         (summary, other, None, "the summary row for another commit"),
-        (running, head, None, "a review still running"),
+        (running, head, NO_VERDICT, "a review still running — in flight, not unread, so "
+         "nobody is told to ask again for a read already coming (Codex on dae543e)"),
+        (running, other, None, "a review running on a different commit says nothing about this one"),
         (clean.replace("090e429a31", "29d7b543"), head, None, "a clean pass on another commit"),
         ("Codex Review: Found major issues; review did not complete.\n\n**Reviewed commit:** `090e429a31`\n",
          head, None, "a comment that has the words 'major issues' and means the opposite"),
