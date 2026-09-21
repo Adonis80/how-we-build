@@ -72,8 +72,18 @@ jobs:
           # GitHub for the answers before this one arrived — so it will finish
           # red on a review that exists. Wait for them, then re-run.
           for _ in 1 2 3 4 5 6 7 8 9 10; do
-            busy=$(gh api "$runs" --jq "[.workflow_runs[] | $mine | select(.status!=\"completed\")] | length" || echo "")
-            case "$busy" in ""|null) echo "could not read the runs on $sha — leaving it"; exit 0 ;; esac
+            # A failed read is NOT "nothing is running". Codex's P2 on 3621303:
+            # `|| echo ""` turned every error — a wrong path, a rate limit, a
+            # network blip — into an empty answer and a quiet exit, so the check
+            # was never asked again and nobody was told. That is the stale gate
+            # this whole file exists to prevent, reached through the error
+            # handler. It fails loudly now: a wake that could not read is a wake
+            # that did not happen, and it should be red where someone sees it.
+            if ! busy=$(gh api "$runs" --jq "[.workflow_runs[] | $mine | select(.status!=\"completed\")] | length"); then
+              echo "::error::could not read the runs on $sha — the check has NOT been asked again"
+              exit 1
+            fi
+            case "$busy" in ""|null) echo "::error::GitHub answered with no count for $sha — the check has NOT been asked again"; exit 1 ;; esac
             [ "$busy" -eq 0 ] && break
             echo "$busy check run(s) on $sha still going — waiting for them to finish"
             sleep 20
@@ -105,7 +115,10 @@ jobs:
           # in-flight run on a later page only means re-running a little early,
           # which the comment below already allows for, and `length` per page
           # would need restructuring to survive --paginate.
-          ran=$(gh api --paginate "$runs" --jq "[.workflow_runs[] | $mine | select(.status==\"completed\") | .id] | .[]" || echo "")
+          if ! ran=$(gh api --paginate "$runs" --jq "[.workflow_runs[] | $mine | select(.status==\"completed\") | .id] | .[]"); then
+            echo "::error::could not read the runs on $sha — the check has NOT been asked again"
+            exit 1
+          fi
           if [ -z "$ran" ]; then
             echo "no completed check run on $sha — nothing to re-run"
             exit 0

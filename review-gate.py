@@ -481,12 +481,18 @@ WAKE_PICKS = [1, 2]
 # assertion here that is textual rather than behavioural, because paging is a
 # property of the HTTP client and cannot be reached by running the jq.
 WAKE_QUERY = {"head_sha": "$sha", "per_page": "100"}
+# And the endpoint itself. Codex's P2 on 3621303: the extractor threw away
+# everything before the `?`, so `actions/runz` passed — and in the workflow a
+# failed call used to be swallowed into "nothing to re-run", so a typo in a path
+# silently stopped the gate ever being asked again. The swallow is gone too; this
+# catches the typo before it can be the thing that has to fail loudly.
+WAKE_ENDPOINT = "repos/$REPO/actions/runs"
 
 
 def wake_request(text):
     """What the wake asks GitHub for, and the jq it runs on the answer.
 
-    Returns (query parameter names, jq program), or None if either cannot be
+    Returns (endpoint, query parameters, jq program), or None if any cannot be
     found — in which case the build fails rather than passing untested.
 
     `mine` and `runs` are shell variables interpolated into the call, so the
@@ -504,11 +510,12 @@ def wake_request(text):
     # Anchored on the re-run selection itself, not on any --jq in the file: the
     # busy-wait loop above it has one too, and testing that one would prove
     # nothing about what gets re-run.
-    prog = last(r'^\s*ran=\$\(gh api --paginate "\$runs" --jq "((?:[^"\\]|\\.)*)"')
+    prog = last(r'^\s*(?:if ! )?ran=\$\(gh api --paginate "\$runs" --jq "((?:[^"\\]|\\.)*)"')
     if mine is None or runs is None or prog is None:
         return None
+    endpoint, _, _ = runs.partition("?")
     query = dict(re.findall(r'[?&]([^=&]+)=([^&]*)', runs))
-    return query, prog.replace('\\"', '"').replace("$mine", mine)
+    return endpoint, query, prog.replace('\\"', '"').replace("$mine", mine)
 
 
 USES_ENVIRONMENT = re.compile(r"^\s*environment:\s*" + re.escape(KEY_ENVIRONMENT) + r"\s*$", re.M)
@@ -627,7 +634,12 @@ def _check_wiring():
               "it can be tested" % WAKE_WORKFLOW)
         bad += 1
     else:
-        query, program = request
+        endpoint, query, program = request
+        if endpoint != WAKE_ENDPOINT:
+            print("  wiring: %s asks GitHub at `%s`; it must ask at `%s`. A path that answers "
+                  "nothing leaves the check never asked again" % (WAKE_WORKFLOW, endpoint,
+                                                                  WAKE_ENDPOINT))
+            bad += 1
         # Checked before the jq test, because a parameter that narrows the
         # answer server side is invisible to any test of the jq that follows it.
         if query != WAKE_QUERY:
