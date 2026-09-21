@@ -6,8 +6,9 @@
 # longer matches the reviewers' answers or has drifted from the workflows that
 # fetch them, and, in a pull request, a commit no reviewer has read clean —
 # unread, read and left findings on, or, where the change is to the review
-# machinery itself, read clean by a reviewer the rulebook does not allow to clear
-# it. Nothing else.
+# machinery itself, read clean by only some of the reviewers when every one of
+# them is required. Nothing else. (No reviewer is disallowed: what a gate change
+# needs is all of them, so that the other vendor has read it whoever led.)
 set -euo pipefail
 cd "$(dirname "$0")"
 fail=0
