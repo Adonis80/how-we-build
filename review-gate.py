@@ -466,6 +466,20 @@ def reason(answer, who, head, gate_files=()):
                 "than being slow, and waiting will not fix it: ask again with '%s', and that "
                 "verdict replaces this one"
                 % (REVIEWERS[who]["name"], head, REVIEWERS[who]["ask"]))
+    if gate_files:
+        # BOTH ASKS, on a change nobody has read yet. The line used to name the
+        # default reviewer alone, because `who` is None here so `needed` fell
+        # back to it — so a fresh gate-touching pull request was told to ask one
+        # reviewer, and learned about the second only after that read came back
+        # CROSS_VENDOR. One avoidable round on the one class of change this
+        # repository is most careful not to waste reads on. The badge's own
+        # finding on 82b7dd6, and the first thing it caught as a required
+        # reviewer rather than a second opinion.
+        return ("no reviewer has read commit %s, and this pull request changes the review "
+                "machinery (%s), where every reviewer must read it — write %s on the pull "
+                "request, and re-run this check when they have both finished"
+                % (head, ", ".join(gate_files),
+                   " and ".join("'%s'" % REVIEWERS[k]["ask"] for k in REVIEWERS)))
     return ("no reviewer has read commit %s — write '%s' on the pull request, and when it has "
             "finished, re-run this check" % (head, needed["ask"]))
 
@@ -693,6 +707,75 @@ def wake_request(text):
     return endpoint, query, prog.replace('\\"', '"').replace("$mine", mine)
 
 
+# WHAT THE BADGE SENDS, AND TO WHICH ENDPOINT. The reviewer opens its check run
+# `in_progress` before it reads and updates that run when the verdict lands, so
+# the gate can tell a reviewer that is reading from one nobody asked. Two things
+# have to hold and neither was guarded when the step was added — the badge's own
+# finding on f93ea90, the first it made as a required reviewer:
+#
+#   the run is opened BEFORE the read, or there is nothing to update and the
+#   reviewer is invisible again for the length of a read;
+#   the UPDATE carries no `head_sha`, which is create-only. Send it and the
+#   update is refused, the id comes back empty, and the opened run stays
+#   `in_progress` for good — which under the both-reviewers rule blocks every
+#   gate change including its own repair (Codex's P1 on f93ea90).
+#
+# Read off the file each curl actually sends rather than off the prose around
+# it: the bodies are built by jq into named files, so the question "does the
+# PATCH carry head_sha" is answerable, and it is the one that matters.
+def shell_commands(text):
+    """The shell's logical commands, one per element.
+
+    A line continues the one before it while it ends in a backslash OR while a
+    single quote is still open — the badge's jq programs use both, and the first
+    two drafts of this reader each handled one and silently mis-attributed the
+    other. Getting this wrong is not a harmless miss: it reported the update body
+    as carrying a commit it does not carry.
+    """
+    out, cur = [], []
+    for line in text.splitlines():
+        cur.append(line)
+        joined = "\n".join(cur)
+        if line.rstrip().endswith("\\") or joined.count("'") % 2:
+            continue
+        out.append(joined)
+        cur = []
+    if cur:
+        out.append("\n".join(cur))
+    return out
+
+
+def badge_bodies(text):
+    """(PATCH carries head_sha, POST carries head_sha, opened before the read).
+
+    None whenever the shape cannot be read, so the build fails rather than
+    passing untested.
+    """
+    built, sent = {}, {}
+    for cmd in shell_commands(text):
+        made = re.search(r">\s*(/tmp/\S+\.json)\s*$", cmd.strip())
+        if made and re.search(r"\bjq\b", cmd):
+            built[made.group(1)] = cmd
+        if "check-runs" in cmd:
+            verb = re.search(r"-X\s+(POST|PATCH)\b", cmd)
+            body = re.search(r"-d\s+@(/tmp/\S+\.json)", cmd)
+            if verb and body:
+                sent.setdefault(verb.group(1), []).append(body.group(1))
+    if sorted(sent) != ["PATCH", "POST"] or len(sent["PATCH"]) != 1:
+        return None
+    patch = sent["PATCH"][0]
+    # Two POSTs: the one that opens the run, and the one that creates a verdict
+    # outright when no run was opened. The verdict one is what to compare.
+    post = [p for p in sent["POST"] if p in built and "in_progress" not in built[p]]
+    if patch not in built or len(post) != 1:
+        return None
+    opened = text.find('status:"in_progress"')
+    read = text.find("- name: Read it")
+    if opened < 0 or read < 0:
+        return None
+    return ("head_sha" in built[patch], "head_sha" in built[post[0]], opened < read)
+
+
 USES_ENVIRONMENT = re.compile(r"^\s*environment:\s*" + re.escape(KEY_ENVIRONMENT) + r"\s*$", re.M)
 
 
@@ -895,6 +978,41 @@ def _check_wiring():
               "read sits unseen and the check stays red until a hand re-runs it"
               % (REVIEW_WORKFLOW, WAKE_WORKFLOW))
         bad += 1
+
+    # THE BADGE HAS TO BE VISIBLE WHILE IT READS, AND ITS UPDATE HAS TO LAND.
+    # Every other load-bearing property of that workflow is held here; the step
+    # that opens the run was added without one, which the badge itself raised on
+    # f93ea90 — the first finding it made as a required reviewer rather than a
+    # second opinion. What is asserted is not that the step exists but what it
+    # sends, because that is where the failure was: `head_sha` is create-only,
+    # and an update carrying it is refused, leaving the opened run `in_progress`
+    # for good — which under the both-reviewers rule blocks every gate change,
+    # including the one that would repair it (Codex's P1 on the same commit).
+    bodies = badge_bodies(review)
+    if bodies is None:
+        print("  wiring: cannot read what %s sends to GitHub's check-runs API. It must build each "
+              "body with jq into a named file and send it with `-d @<file>`, one PATCH and one "
+              "POST; if that changed, say what the new shape is here so it can be tested"
+              % REVIEW_WORKFLOW)
+        bad += 1
+    else:
+        patch_sha, post_sha, opened_first = bodies
+        if patch_sha:
+            print("  wiring: the check-run UPDATE in %s carries `head_sha`, which is create-only. "
+                  "GitHub refuses the update, the id comes back empty, and the run opened before "
+                  "the read stays `in_progress` for good — which holds every gate change shut, "
+                  "including the one that would fix it" % REVIEW_WORKFLOW)
+            bad += 1
+        if not post_sha:
+            print("  wiring: the check-run CREATE in %s carries no `head_sha`, so the verdict is "
+                  "attached to no commit and the gate can never count it" % REVIEW_WORKFLOW)
+            bad += 1
+        if not opened_first:
+            print("  wiring: %s does not open its check run before it reads. For the length of a "
+                  "read the gate then sees this reviewer as unasked rather than reading, and tells "
+                  "the next session to ask it again — a second read out of a shared allowance for "
+                  "a verdict already coming" % REVIEW_WORKFLOW)
+            bad += 1
 
     # NOTHING MAY GROUP OR CANCEL A REVIEW. GitHub puts a run in its concurrency
     # group before the job's `if:` is evaluated, so any grouping here catches

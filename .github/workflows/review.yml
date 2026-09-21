@@ -355,10 +355,21 @@ jobs:
           # A check run summary is capped at 65535 characters; the whole review
           # goes in the comment below.
           head -c 60000 /tmp/verdict.md > /tmp/short.md
-          jq -n --arg name "juku-reviewer" --arg sha "$SHA" --arg c "$conclusion" \
+          # TWO BODIES, because the two endpoints take different fields.
+          # `head_sha` is create-only: GitHub's Update a check run does not list
+          # it, so sending it on the PATCH is undefined at best, and if it is
+          # rejected the update fails, the id comes back empty, and the run this
+          # job opened stays `in_progress` for good — which under the both-
+          # reviewers rule blocks EVERY gate change, including the one that would
+          # repair it. Codex's P1 on f93ea90, and the worst shape a bug can take
+          # here: fail-closed machinery jammed shut by its own fix path.
+          # The update body carries only what an update may carry; the create
+          # body is that plus the commit.
+          jq -n --arg name "juku-reviewer" --arg c "$conclusion" \
                 --arg t "$title" --rawfile s /tmp/short.md \
-             '{name:$name, head_sha:$sha, status:"completed", conclusion:$c,
-               output:{title:$t, summary:$s}}' > /tmp/checkrun.json
+             '{name:$name, status:"completed", conclusion:$c,
+               output:{title:$t, summary:$s}}' > /tmp/update.json
+          jq --arg sha "$SHA" '. + {head_sha:$sha}' /tmp/update.json > /tmp/checkrun.json
           # The run opened before the read is UPDATED, never duplicated: two runs
           # of one name on one commit are two verdicts where there was one read,
           # and the gate would have to pick. PATCH when one was opened, POST only
@@ -368,7 +379,7 @@ jobs:
               -H "Authorization: Bearer $TOKEN" \
               -H "Accept: application/vnd.github+json" \
               "https://api.github.com/repos/$GITHUB_REPOSITORY/check-runs/$OPENED" \
-              -d @/tmp/checkrun.json > /tmp/created.json
+              -d @/tmp/update.json > /tmp/created.json
           else
             curl -sS -X POST \
               -H "Authorization: Bearer $TOKEN" \
