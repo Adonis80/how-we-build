@@ -286,6 +286,7 @@ jobs:
           TOO_BIG: ${{ steps.gather.outputs.too_big }}
           OUTCOME: ${{ steps.read.outcome }}
           VERDICT: ${{ steps.read.outputs.verdict }}
+          REVIEWER_APP_ID: ${{ secrets.REVIEWER_APP_ID }}
         run: |
           set -euo pipefail
           # The three conclusions, and review-gate.py is held against this list:
@@ -328,10 +329,25 @@ jobs:
           # on 18 September by a session that trusted a redirect, and the list
           # showed nothing: a thing exists when the page that lists it shows it.
           [ -n "$id" ] || { echo "::error::the check run was not created"; jq -r '.message // "no message"' /tmp/created.json; exit 1; }
+          # And the read-back is CHECKED, not printed. It was `echo "read back:
+          # $back"` and nothing else — decoration in the shape of a proof, which
+          # is worse than no proof, because it reads like one. Found while
+          # auditing this file for the swallow Codex caught in wake.yml on
+          # b81f13d; it is the same family and nobody had raised it.
+          #
+          # What it holds is what the gate reads: the app that owns the run, its
+          # name, the commit it is attached to, and the verdict. If any of those
+          # came back other than as posted, the verdict on the page is not the
+          # verdict this job decided, and the job is red.
           back=$(curl -sS -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/$GITHUB_REPOSITORY/check-runs/$id" \
-            | jq -r '[.app.id, .name, .head_sha, .conclusion] | @tsv')
-          echo "read back: $back"
+            | jq -r '[(.app.id|tostring), .name, .head_sha, .conclusion] | @tsv')
+          want=$(printf '%s\t%s\t%s\t%s' "$REVIEWER_APP_ID" "juku-reviewer" "$SHA" "$conclusion")
+          if [ "$back" != "$want" ]; then
+            echo "::error::the check run read back as [$back] and was posted as [$want] — the verdict on the page is not the one this job decided"
+            exit 1
+          fi
+          echo "read back and confirmed: $back"
 
       - name: Say it where people read
         if: steps.sign.outcome == 'success'

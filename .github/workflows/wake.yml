@@ -123,8 +123,36 @@ jobs:
             echo "no completed check run on $sha — nothing to re-run"
             exit 0
           fi
+          # The POST is the only thing here that can replace an already-green
+          # required check, so a failure of it is the whole job failing. It used
+          # to be swallowed by `|| echo`, which turned a rate limit, a
+          # permissions error or a transient fault into a cheerful log line and
+          # a green wake, leaving the stale green mergeable — Codex's P2 on
+          # b81f13d, and the third swallow of this shape in this file. The two
+          # reads were fixed a commit earlier and the write, the one that
+          # actually changes anything, was left.
+          #
+          # A refusal is NOT read from its message. GitHub refuses a re-run for
+          # benign reasons (something already re-ran it) and real ones (too old,
+          # forbidden, rate-limited), and matching those strings is the same
+          # mistake as matching a spelling — it passes the day the wording
+          # changes. So the outcome is checked instead: if the run is no longer
+          # sitting `completed`, it is being re-run and the refusal was benign;
+          # if it is still completed, the check has not been asked again and
+          # this job is red.
+          failed=0
           for id in $ran; do
-            echo "re-running check $id on $sha"
-            gh api -X POST "repos/$REPO/actions/runs/$id/rerun" ||
-              echo "  the re-run of $id was refused (already running again, or too old)"
+            if gh api -X POST "repos/$REPO/actions/runs/$id/rerun" >/dev/null 2>&1; then
+              echo "re-running check $id on $sha"
+              continue
+            fi
+            state=$(gh api "repos/$REPO/actions/runs/$id" --jq .status 2>/dev/null || echo "unknown")
+            case "$state" in
+              completed|unknown)
+                echo "::error::the re-run of $id was refused and it is still '$state' — the check has NOT been asked again"
+                failed=1 ;;
+              *)
+                echo "  $id is already being re-run ($state)" ;;
+            esac
           done
+          [ "$failed" -eq 0 ] || exit 1
