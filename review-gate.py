@@ -70,6 +70,7 @@ it fails the build before a loose rule can pass a commit.
 
 import json
 import re
+import subprocess
 import sys
 import urllib.error
 import urllib.parse
@@ -454,10 +455,38 @@ WAKE_WORKFLOW = ".github/workflows/wake.yml"
 DOOR_WORKFLOW = ".github/workflows/door.yml"
 CALLS_WAKE = "uses: ./" + WAKE_WORKFLOW
 DOOR_BRANCHES = "proof/door-*"
-# What the wake must select: every completed run on the head, and nothing
-# about what any of them concluded. Named here so the guard asserts the
-# requirement rather than blacklisting one way of breaking it.
-WAKE_SELECTOR = 'select(.status==\\"completed\\") | .id'
+# The runs the wake is shown in the selftest below, and what it must pick out of
+# them. Run 1 is the whole point: a completed run that SUCCEEDED. Every version
+# of this selector that dropped it lost a verdict.
+WAKE_RUNS = {"workflow_runs": [
+    {"id": 1, "name": "check", "event": "pull_request", "status": "completed", "conclusion": "success"},
+    {"id": 2, "name": "check", "event": "pull_request_review", "status": "completed", "conclusion": "failure"},
+    {"id": 3, "name": "check", "event": "issue_comment", "status": "completed", "conclusion": "failure"},
+    {"id": 4, "name": "Review", "event": "issue_comment", "status": "completed", "conclusion": "failure"},
+    {"id": 5, "name": "check", "event": "pull_request", "status": "in_progress", "conclusion": None},
+]}
+WAKE_PICKS = [1, 2]
+
+
+def wake_program(text):
+    """The jq program wake.yml really runs, assembled the way the shell does.
+
+    `mine` is a shell variable interpolated into the --jq argument, so the
+    program that runs is neither line on its own. Reading it back out and
+    executing it is the only way to test what the wake selects rather than how
+    it is spelt.
+    """
+    mine = re.search(r"^\s*mine='([^']*)'\s*$", text, re.M)
+    # Anchored on the re-run selection itself, not on any --jq in the file: the
+    # busy-wait loop above it has one too, and testing that one would prove
+    # nothing about what gets re-run. If this line is renamed the guard stops
+    # finding it and the build fails, which is the right way round.
+    prog = re.search(r'^\s*ran=\$\(gh api "\$runs" --jq "((?:[^"\\]|\\.)*)"', text, re.M)
+    if not mine or not prog:
+        return None
+    return prog.group(1).replace('\\"', '"').replace("$mine", mine.group(1))
+
+
 USES_ENVIRONMENT = re.compile(r"^\s*environment:\s*" + re.escape(KEY_ENVIRONMENT) + r"\s*$", re.M)
 
 
@@ -554,22 +583,46 @@ def _check_wiring():
     # re-run", leaving a stale green under a findings verdict, which is #24, #30
     # and #37's failure from the other side.
     #
-    # This names the selector the wake MUST use, and refuses any mention of a
-    # conclusion at all. Codex's P2 on 0c3df8a: the first version of this guard
-    # blacklisted `conclusion != "success"`, which forbids one spelling of the
-    # bug rather than the bug — `select(.conclusion=="failure")` rebuilds it and
-    # passes, as it showed by mutation. A guard that says what is required
-    # cannot be walked around by rephrasing what is forbidden.
-    if WAKE_SELECTOR not in wake:
-        print("  wiring: %s does not choose what to re-run with `%s`. It must re-run every "
-              "completed run on the head, whatever that run currently says, or a verdict that "
-              "turns the gate red never reaches it" % (WAKE_WORKFLOW, WAKE_SELECTOR))
+    # THIS RUNS THE SELECTOR RATHER THAN READING IT. Two text guards were
+    # written here first and Codex walked through both, each time by rephrasing
+    # rather than arguing: `select(.conclusion=="failure")` when the guard
+    # blacklisted `conclusion != "success"`, then `select(.["conclusion"]!=
+    # "success")` tucked into `$mine` when the guard asserted a substring of the
+    # pipeline and banned the literal `.conclusion`. Both restored the defect
+    # with check.sh green. A guard that reads source will always be one spelling
+    # behind somebody's next edit, so this one assembles the jq program the
+    # shell really runs, feeds it runs whose right answer is known, and compares
+    # what comes out. Run 1 in WAKE_RUNS is the whole point: completed, and
+    # SUCCEEDED. Any filter anywhere in that pipeline that drops it fails here,
+    # however it is written.
+    program = wake_program(wake)
+    if program is None:
+        print("  wiring: cannot find the selection the wake re-runs in %s. It is the `ran=` line "
+              "and the `mine=` it interpolates; if either was renamed, say what the new "
+              "selection is here so it can be tested" % WAKE_WORKFLOW)
         bad += 1
-    if ".conclusion" in wake:
-        print("  wiring: %s reads a run's conclusion. It must not — what the check said last "
-              "time has no bearing on whether to ask it again, and every version of this that "
-              "looked at a conclusion has lost a verdict" % WAKE_WORKFLOW)
-        bad += 1
+    else:
+        try:
+            out = subprocess.run(["jq", "-r", program], input=json.dumps(WAKE_RUNS),
+                                 capture_output=True, text=True)
+        except OSError as e:
+            # Fail closed. An untested selector is the thing being guarded against.
+            print("  wiring: jq is needed to test what %s re-runs, and could not be run (%s)"
+                  % (WAKE_WORKFLOW, e))
+            bad += 1
+        else:
+            picked = [int(x) for x in out.stdout.split()] if out.returncode == 0 else None
+            if picked is None:
+                print("  wiring: the selection in %s is not valid jq — %s"
+                      % (WAKE_WORKFLOW, out.stderr.strip().splitlines()[:1]))
+                bad += 1
+            elif sorted(picked) != WAKE_PICKS:
+                missing = [r for r in WAKE_PICKS if r not in picked]
+                print("  wiring: the selection in %s picks %s, and must pick %s. Missing %s. "
+                      "Run 1 is a completed check run that SUCCEEDED: drop it and a verdict "
+                      "turning the gate red never reaches the check, which is the stale green "
+                      "of #43" % (WAKE_WORKFLOW, sorted(picked), WAKE_PICKS, missing or "nothing"))
+                bad += 1
 
     # The badge's check run is not something this repository has watched GitHub
     # deliver an event for, so nothing is built on the assumption that it does.
