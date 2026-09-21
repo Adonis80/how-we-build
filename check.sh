@@ -91,8 +91,14 @@ fi
 # A later push turns it red until it has; so does a finding, until the push that
 # answers it makes a commit the reviewer reads afresh. The CTO's answer to a
 # finding is not clearance — the proposer does not clear its own change. And a
-# change to the review machinery opens on the other vendor's read alone, whoever
-# else has read it clean.
+# change to the review machinery opens only when EVERY reviewer has read it
+# clean, so the other vendor has read it whoever led.
+# This line said "the other vendor's read alone" until 21 September, which was
+# the rule until that morning and then was not. Third copy of it to go stale in
+# one day (Codex's P2s on 82b7dd6 and 83e3dd8): the others were in review.yml,
+# where the wrong one was being published on every verdict. A rule restated in
+# prose beside the code that holds it is a copy waiting to diverge, and nothing
+# can check prose against prose.
 # The gate's own rule is machine-checked before anything asks GitHub: one
 # implementation, held against the reviewers' real answers, the states a review
 # can arrive in, the fakes that once passed a looser test, and the four workflow

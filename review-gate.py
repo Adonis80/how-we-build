@@ -452,8 +452,20 @@ def reason(answer, who, head, gate_files=()):
                 "waits for that read however long it takes"
                 % (head, needed["name"], ", ".join(gate_files), needed["ask"]))
     if answer == NO_VERDICT:
-        return ("%s is reading commit %s and has not said what it found — re-run this check "
-                "once it has" % (REVIEWERS[who]["name"], head))
+        # NAMING THE ESCAPE, because this state is durable and the old line had
+        # no way out of it. A reviewer that says it has started and never
+        # finishes — Codex's summary edited to Completed with no verdict behind
+        # it, or a badge run killed mid-read — leaves this answer standing for
+        # good, and the line used to say only "re-run this check", which a
+        # session can obey forever without anything changing (Codex's P2 on
+        # 83e3dd8). Asking again is the way out and is safe: note() ranks a real
+        # verdict above NO_VERDICT, so the fresh read replaces the stale state
+        # rather than queueing behind it. Held by a case in the selftest.
+        return ("%s has started on commit %s and has not said what it found — re-run this check "
+                "once it has. If its run has already ended without a verdict the read died rather "
+                "than being slow, and waiting will not fix it: ask again with '%s', and that "
+                "verdict replaces this one"
+                % (REVIEWERS[who]["name"], head, REVIEWERS[who]["ask"]))
     return ("no reviewer has read commit %s — write '%s' on the pull request, and when it has "
             "finished, re-run this check" % (head, needed["ask"]))
 
@@ -1166,6 +1178,14 @@ def _selftest():
          (NO_VERDICT, "claude"), "and the same the other way round"),
         (["review-gate.py"], [], [codex(summary)], [], (NO_VERDICT, "codex"),
          "one mid-read, nobody clean — still no ask to make"),
+        # THE ESCAPE FROM A DEAD READ. The reason line above tells a session to
+        # ask again when a read has died; this is the assertion that doing so
+        # works. A stale "started and never finished" must not outrank the
+        # verdict that answers it, or the advice is a loop.
+        (["review-gate.py"], [], [codex(summary), codex(clean)], [_run("success", sha=head)],
+         (CLEAN, None), "a stale started-never-finished, then a real read — the read wins"),
+        (["review-gate.py"], [], [codex(summary), codex(clean)], [], (CROSS_VENDOR, "claude"),
+         "and it wins on its own account, not by the other reviewer covering for it"),
         (["README.md"], [], [], [_run("success", sha=head)], (CLEAN, "claude"), "an ordinary change still clears"),
         (["README.md"], [], [codex(clean)], [], (CLEAN, "codex"), "on one read, by either of them"),
         (["design/SCREEN-LAW.md", "README.md"], [], [], [_run("success", sha=head)], (CLEAN, "claude"),
