@@ -86,8 +86,16 @@ import urllib.request
 # ---------------------------------------------------------------------------
 # Who reviews, and as what. The Chairman changes any of these in one line.
 #
-# DEFAULT_REVIEWER reads every pull request. GATE_REVIEWER is the other vendor,
-# required on the classes the rulebook lists — here, the review machinery itself.
+# DEFAULT_REVIEWER reads every pull request. GATE_REVIEWER is the second reviewer
+# identity, and the two names are all the register holds. NEITHER is "the" required
+# one on a gate change: there EVERY reviewer must read it clean, which is what makes
+# the read cross-vendor whoever led.
+# This comment said the opposite until 21 September, and it is the fifth copy of that
+# rule to go stale in a day — the others were two in review.yml, one in check.sh, one
+# in this file's own module docstring. The badge found this one, in the place
+# _check_wiring() can never reach: it holds the WORKFLOWS against the register, not
+# the register's comments against its own logic. Nothing checks prose against prose,
+# which is the argument for keeping as little of it as possible near a rule.
 DEFAULT_REVIEWER = "claude"
 GATE_REVIEWER = "codex"
 
@@ -745,6 +753,33 @@ def shell_commands(text):
     return out
 
 
+def run_blocks(text):
+    """Every `run: |` block's shell, dedented — and nothing else.
+
+    The prose stays out. `shell_commands` continues a command while a single
+    quote is open, and this file's comments are full of possessives — Codex's,
+    GitHub's, the App's — each an odd quote that can glue unrelated lines into
+    one apparent command. The badge raised that on 837dd17 as a fragility it
+    could not fully trace, having hand-checked that today's false groupings are
+    inert. Inert today is not a property worth relying on, and the fix is not a
+    cleverer tokeniser: it is to stop handing the tokeniser prose at all.
+    """
+    lines = text.splitlines()
+    out = []
+    for i, line in enumerate(lines):
+        m = re.match(r"^(\s*)run:\s*\|\s*$", line)
+        if not m:
+            continue
+        indent = len(m.group(1))
+        body = []
+        for nxt in lines[i + 1:]:
+            if nxt.strip() and (len(nxt) - len(nxt.lstrip())) <= indent:
+                break
+            body.append(nxt[indent + 2:] if nxt.strip() else "")
+        out.append("\n".join(body))
+    return out
+
+
 def badge_bodies(text):
     """(PATCH carries head_sha, POST carries head_sha, opened before the read).
 
@@ -752,7 +787,8 @@ def badge_bodies(text):
     passing untested.
     """
     built, sent = {}, {}
-    for cmd in shell_commands(text):
+    commands = [c for block in run_blocks(text) for c in shell_commands(block)]
+    for cmd in commands:
         made = re.search(r">\s*(/tmp/\S+\.json)\s*$", cmd.strip())
         if made and re.search(r"\bjq\b", cmd):
             built[made.group(1)] = cmd
@@ -1360,7 +1396,8 @@ def _selftest():
              + sum(1 for g in gate_file_cases if g[4][0] == CROSS_VENDOR) + 1)
     print("ok: review gate tells a clean read from a commented one, for each reviewer on the "
           "register, in every shape and state they arrive in; it holds a gate change shut until "
-          "all %d of them have read it clean, so the other vendor has whoever led; it asks "
+          "all %d of them have read it clean, so the other vendor has read it whoever led; "
+          "it asks "
           "GitHub for %d URL(s) that carry the parameters they say they do; and it is fooled by "
           "none of the %d fakes"
           % (len(REVIEWERS), len(_url_cases()), fakes))
