@@ -36,13 +36,14 @@ name: Review
 # blind) is what they are there for.
 #
 # WHAT IT PROVES, AND WHAT IT DOES NOT. That an independent reader looked at this
-# commit and said which of two things it found. It is the same vendor as the
-# lead, so it does NOT satisfy the rulebook where the other vendor is required —
-# pricing, live database changes or schema, authentication and authorisation,
-# public trust boundaries, deploy and release machinery, and the review gate
-# itself. Here only the last of those can arise, and review-gate.py holds it: a
-# pull request touching check.sh, review-gate.py or anything under
-# .github/workflows/ opens on Codex's read alone, never on this one.
+# commit and said which of two things it found. Whether that read is ENOUGH is
+# not this file's to say, and it no longer tries: review-gate.py decides, and
+# check.sh prints the answer. This paragraph used to restate the rule — "the same
+# vendor as the lead", "opens on Codex's read alone" — and both halves went stale
+# the day the gate stopped assuming the lead was Claude, because "the other
+# vendor" depends on who led and this file cannot know. Codex's P2 on 82b7dd6
+# caught the copy still saying the old thing while the gate said the new one.
+# Two copies of one rule, and the wrong one was the copy being published.
 #
 # The diff reaches the model inside tags, told to treat it as data. That is not a
 # real boundary and is not claimed as one: a hostile diff could argue this
@@ -373,10 +374,12 @@ jobs:
             cat /tmp/verdict.md
             echo
             echo "---"
+            # Provenance only. What this read satisfies is the gate's to state,
+            # and check.sh prints it on the pull request's own check — saying it
+            # a second time here is how it came to be published backwards.
             echo "_Read by the model named in \`review-gate.py\`, at the effort named beside it, from_"
-            echo "_\`.github/workflows/review.yml\`. Same vendor as the lead, so it does NOT satisfy_"
-            echo "_the rulebook where the other vendor is required. A pull request touching the_"
-            echo "_review machinery waits for Codex._"
+            echo "_\`.github/workflows/review.yml\`. Whether this read is enough on its own is_"
+            echo "_decided by the gate, and the \`check\` on this pull request says so._"
           } > /tmp/comment.md
           gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -F body=@/tmp/comment.md --silent
 

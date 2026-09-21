@@ -404,7 +404,17 @@ def verdict(reviews, comments, check_runs, head, resolve=None, gate_files=()):
             # prints the whole register rather than crediting one of them.
             return CLEAN, None
         if any(said.get(k) == CLEAN for k in REVIEWERS):
-            return CROSS_VENDOR, owed[0]
+            # A reviewer already reading is owed, but must NOT be asked again:
+            # the ask would spend a second read out of a shared allowance on a
+            # verdict that is already coming, and the round that goes with it.
+            # Codex's P2 on 82b7dd6 — reachable the moment the two reviewers
+            # answer at different speeds, which on a gate change is every time.
+            # So name one that actually has to be asked, and if they are all
+            # mid-read, say that instead of asking.
+            idle = [k for k in owed if said.get(k) != NO_VERDICT]
+            if idle:
+                return CROSS_VENDOR, idle[0]
+            return NO_VERDICT, owed[0]
     else:
         for key in REVIEWERS:
             if said.get(key) == CLEAN:
@@ -1146,6 +1156,16 @@ def _selftest():
         (["review-gate.py"], [], [], [], (UNREAD, None), "a gate change nobody has read"),
         (["review-gate.py"], [], [], [_run(status="in_progress", sha=head)], (NO_VERDICT, "claude"),
          "one still reading, the other not asked"),
+        # THE MIXED STATES. None of these existed, which is exactly why the
+        # selftest stayed green over the bug: one clean and one mid-read is the
+        # ordinary shape of a gate change, because the two never answer together.
+        (["review-gate.py"], [], [codex(summary)], [_run("success", sha=head)], (NO_VERDICT, "codex"),
+         "the badge clean and Codex mid-read — wait for it, never ask it again "
+         "(Codex's P2 on 82b7dd6)"),
+        (["review-gate.py"], [], [codex(clean)], [_run(status="in_progress", sha=head)],
+         (NO_VERDICT, "claude"), "and the same the other way round"),
+        (["review-gate.py"], [], [codex(summary)], [], (NO_VERDICT, "codex"),
+         "one mid-read, nobody clean — still no ask to make"),
         (["README.md"], [], [], [_run("success", sha=head)], (CLEAN, "claude"), "an ordinary change still clears"),
         (["README.md"], [], [codex(clean)], [], (CLEAN, "codex"), "on one read, by either of them"),
         (["design/SCREEN-LAW.md", "README.md"], [], [], [_run("success", sha=head)], (CLEAN, "claude"),
