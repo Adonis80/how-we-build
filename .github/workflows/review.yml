@@ -187,6 +187,44 @@ jobs:
           echo "token=$tok" >> "$GITHUB_OUTPUT"
           echo "wearing installation $inst"
 
+      # THE BADGE HAS TO BE VISIBLE WHILE IT READS, not only once it is done.
+      # It used to post one check run at the end, already `completed`, so for the
+      # whole of a read — twenty minutes on 21 September — the gate could see
+      # nothing from this reviewer and reported it simply unasked. On a change to
+      # the gate, where BOTH reviewers are required, that means the gate tells
+      # the CTO to write `/claude review` at a reviewer already reading, and the
+      # second ask spends a read out of a shared allowance for nothing. Codex
+      # caught the same fault from Codex's side on 82b7dd6; this is the half its
+      # finding did not reach, because from the gate's side the two look nothing
+      # alike: Codex says it is running in a comment, and the badge said nothing
+      # at all.
+      #
+      # So the run is created here, `in_progress`, and the verdict below updates
+      # THIS run rather than posting a second one. A read that dies leaves it
+      # in_progress, which the gate reads as "still reading" — and any later real
+      # verdict outranks it, so a stale one cannot poison a re-read.
+      - name: Say it is reading
+        id: opened
+        if: steps.gather.outputs.too_big == 'no'
+        env:
+          TOKEN: ${{ steps.badge.outputs.token }}
+          SHA: ${{ steps.head.outputs.sha }}
+        run: |
+          set -euo pipefail
+          jq -n --arg name "juku-reviewer" --arg sha "$SHA" \
+             '{name:$name, head_sha:$sha, status:"in_progress",
+               output:{title:"Reading this commit", summary:"The reviewer is reading this commit. This run is updated in place when it has a verdict."}}' \
+             > /tmp/opened.json
+          curl -sS -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/check-runs" \
+            -d @/tmp/opened.json > /tmp/opened-created.json
+          id=$(jq -r '.id // empty' /tmp/opened-created.json)
+          [ -n "$id" ] || { echo "::error::could not open the check run"; jq -r '.message // "no message"' /tmp/opened-created.json; exit 1; }
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          echo "reading, as check run $id"
+
       - name: Read it
         id: read
         if: steps.gather.outputs.too_big == 'no'
@@ -283,6 +321,7 @@ jobs:
         id: sign
         env:
           TOKEN: ${{ steps.badge.outputs.token }}
+          OPENED: ${{ steps.opened.outputs.id }}
           SHA: ${{ steps.head.outputs.sha }}
           TOO_BIG: ${{ steps.gather.outputs.too_big }}
           OUTCOME: ${{ steps.read.outcome }}
@@ -320,11 +359,23 @@ jobs:
                 --arg t "$title" --rawfile s /tmp/short.md \
              '{name:$name, head_sha:$sha, status:"completed", conclusion:$c,
                output:{title:$t, summary:$s}}' > /tmp/checkrun.json
-          curl -sS -X POST \
-            -H "Authorization: Bearer $TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/$GITHUB_REPOSITORY/check-runs" \
-            -d @/tmp/checkrun.json > /tmp/created.json
+          # The run opened before the read is UPDATED, never duplicated: two runs
+          # of one name on one commit are two verdicts where there was one read,
+          # and the gate would have to pick. PATCH when one was opened, POST only
+          # when the read was skipped and there is none.
+          if [ -n "${OPENED:-}" ]; then
+            curl -sS -X PATCH \
+              -H "Authorization: Bearer $TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/check-runs/$OPENED" \
+              -d @/tmp/checkrun.json > /tmp/created.json
+          else
+            curl -sS -X POST \
+              -H "Authorization: Bearer $TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/check-runs" \
+              -d @/tmp/checkrun.json > /tmp/created.json
+          fi
           id=$(jq -r '.id // empty' /tmp/created.json)
           # A POST that answered is not a check run. The badge was created twice
           # on 18 September by a session that trusted a redirect, and the list
