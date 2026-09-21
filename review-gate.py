@@ -468,13 +468,18 @@ WAKE_RUNS = {"workflow_runs": [
 WAKE_PICKS = [1, 2]
 
 
-# The only query parameters the wake's API call may carry. GitHub's list-runs
-# endpoint also takes `status`, which filters by status OR conclusion server
-# side — so a `status=failure` here removes the successful runs before jq ever
-# sees them, and no test of the jq program can notice. Codex's P2 on 2e2758d,
-# found by mutation. A whitelist rather than a ban on `status`, because the next
-# parameter that narrows the answer will have a different name.
-WAKE_QUERY = {"head_sha", "per_page"}
+# The wake's API call, whole — names AND values. GitHub's list-runs endpoint
+# takes `status`, which filters by conclusion server side, so a `status=failure`
+# here removes the successful runs before jq ever sees them (Codex's P2 on
+# 2e2758d). And `per_page` decides how many runs come back at all: at 1, the one
+# result can easily be a `Review` or issue_comment run, `$mine` then matches
+# nothing, and the stale green stands again (its P2 on 313f20d). That second one
+# is ordinary configuration drift, not obfuscation — exactly what this guard is
+# for — so checking the names and shrugging at the values was not good enough.
+# 100 is GitHub's maximum page size and the wake does not paginate; a head
+# carrying more than 100 runs would still be read short, which is written down
+# here rather than guarded, because no head has come close.
+WAKE_QUERY = {"head_sha": "$sha", "per_page": "100"}
 
 
 def wake_request(text):
@@ -501,7 +506,7 @@ def wake_request(text):
     prog = last(r'^\s*ran=\$\(gh api "\$runs" --jq "((?:[^"\\]|\\.)*)"')
     if mine is None or runs is None or prog is None:
         return None
-    query = set(re.findall(r'[?&]([^=&]+)=', runs))
+    query = dict(re.findall(r'[?&]([^=&]+)=([^&]*)', runs))
     return query, prog.replace('\\"', '"').replace("$mine", mine)
 
 
@@ -625,10 +630,12 @@ def _check_wiring():
         # Checked before the jq test, because a parameter that narrows the
         # answer server side is invisible to any test of the jq that follows it.
         if query != WAKE_QUERY:
-            print("  wiring: %s asks GitHub for %s; it may ask only for %s. `status` in "
-                  "particular filters by conclusion server side, so the successful runs never "
-                  "reach the jq below and a verdict turning the gate red never reaches the check"
-                  % (WAKE_WORKFLOW, sorted(query), sorted(WAKE_QUERY)))
+            print("  wiring: %s asks GitHub for %s; it must ask for exactly %s. A `status` here "
+                  "filters by conclusion server side, and a smaller `per_page` returns too few "
+                  "runs to find the check among them — either way the successful runs never "
+                  "reach the jq below, and a verdict turning the gate red never reaches the "
+                  "check" % (WAKE_WORKFLOW, dict(sorted(query.items())),
+                             dict(sorted(WAKE_QUERY.items()))))
             bad += 1
         try:
             out = subprocess.run(["jq", "-r", program], input=json.dumps(WAKE_RUNS),
