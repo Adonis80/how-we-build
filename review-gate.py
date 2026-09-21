@@ -454,6 +454,10 @@ WAKE_WORKFLOW = ".github/workflows/wake.yml"
 DOOR_WORKFLOW = ".github/workflows/door.yml"
 CALLS_WAKE = "uses: ./" + WAKE_WORKFLOW
 DOOR_BRANCHES = "proof/door-*"
+# What the wake must select: every completed run on the head, and nothing
+# about what any of them concluded. Named here so the guard asserts the
+# requirement rather than blacklisting one way of breaking it.
+WAKE_SELECTOR = 'select(.status==\\"completed\\") | .id'
 USES_ENVIRONMENT = re.compile(r"^\s*environment:\s*" + re.escape(KEY_ENVIRONMENT) + r"\s*$", re.M)
 
 
@@ -548,13 +552,23 @@ def _check_wiring():
     # findings on it, and the check must go from green to RED. On 21 September
     # that happened on #43 and the wake answered "no red check run — nothing to
     # re-run", leaving a stale green under a findings verdict, which is #24, #30
-    # and #37's failure from the other side. A filter on the conclusion here is
-    # that bug, so the build refuses one.
-    if re.search(r'conclusion\s*!=\s*\\?"success\\?"', wake):
-        print("  wiring: %s re-runs only a check that is already failing. Two reviewers can "
-              "disagree about one commit, so a verdict can take the gate from green to red, "
-              "and that re-run would never happen — the green would stand under the findings"
-              % WAKE_WORKFLOW)
+    # and #37's failure from the other side.
+    #
+    # This names the selector the wake MUST use, and refuses any mention of a
+    # conclusion at all. Codex's P2 on 0c3df8a: the first version of this guard
+    # blacklisted `conclusion != "success"`, which forbids one spelling of the
+    # bug rather than the bug — `select(.conclusion=="failure")` rebuilds it and
+    # passes, as it showed by mutation. A guard that says what is required
+    # cannot be walked around by rephrasing what is forbidden.
+    if WAKE_SELECTOR not in wake:
+        print("  wiring: %s does not choose what to re-run with `%s`. It must re-run every "
+              "completed run on the head, whatever that run currently says, or a verdict that "
+              "turns the gate red never reaches it" % (WAKE_WORKFLOW, WAKE_SELECTOR))
+        bad += 1
+    if ".conclusion" in wake:
+        print("  wiring: %s reads a run's conclusion. It must not — what the check said last "
+              "time has no bearing on whether to ask it again, and every version of this that "
+              "looked at a conclusion has lost a verdict" % WAKE_WORKFLOW)
         bad += 1
 
     # The badge's check run is not something this repository has watched GitHub
@@ -567,20 +581,27 @@ def _check_wiring():
               % (REVIEW_WORKFLOW, WAKE_WORKFLOW))
         bad += 1
 
-    # NOTHING MAY CANCEL A REVIEW IN FLIGHT. GitHub puts a run in its concurrency
-    # group before the job's `if:` is evaluated, so with cancel-in-progress set
-    # every comment on the pull request — including the ones that carry no ask
-    # and skip immediately — kills the read that is running. It destroyed one on
-    # #43 on 21 September (run 35587070648, cancelled forty seconds in by a
-    # stand-down note) and it fails silently: the ask is on the thread, the
-    # reviewer never speaks, the gate says `unread`, and the allowance is spent
-    # again on the retry. On a public repository it is also a griefing route,
-    # because the cancellation happens before any author gate is read.
-    if re.search(r'^\s*cancel-in-progress:\s*true\s*$', review, re.M):
-        print("  wiring: %s sets cancel-in-progress. Every comment enters the concurrency group "
-              "before the job's `if:` is read, so a passing remark cancels a review in flight "
-              "and the gate just says unread" % REVIEW_WORKFLOW)
-        bad += 1
+    # NOTHING MAY GROUP OR CANCEL A REVIEW. GitHub puts a run in its concurrency
+    # group before the job's `if:` is evaluated, so any grouping here catches
+    # every comment on the pull request, including the ones carrying no ask that
+    # skip a second later. With cancel-in-progress those comments killed the read
+    # that was running — #43, run 35587070648, cancelled forty seconds in by a
+    # stand-down note. Without it they still displace a queued ask, because
+    # GitHub keeps one pending run per group and replaces it with the newest:
+    # Codex's P2 on 0c3df8a. Either way a visible ask yields no verdict and the
+    # gate says `unread` without telling anyone a read was lost.
+    #
+    # So the setting is refused outright rather than one value of it. Codex's
+    # other P2 on that head: a guard rejecting `cancel-in-progress: true` still
+    # passes `cancel-in-progress: ${{ true }}`, which behaves identically. There
+    # is no safe value, so there is no permitted line.
+    for pattern, what in ((r'^\s*concurrency:', "a concurrency block"),
+                          (r'^\s*cancel-in-progress:', "a cancel-in-progress setting")):
+        if re.search(pattern, review, re.M):
+            print("  wiring: %s has %s. Every comment enters the group before the job's `if:` "
+                  "is read, so a passing remark cancels a review in flight or displaces a "
+                  "queued ask, and the gate just says unread" % (REVIEW_WORKFLOW, what))
+            bad += 1
 
     # THE DOOR. Without this line the App's private key is readable by any run on
     # any branch, and the badge is worth nothing: a branch mints an installation

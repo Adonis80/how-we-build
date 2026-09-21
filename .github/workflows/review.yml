@@ -59,33 +59,32 @@ permissions:
   contents: read
   pull-requests: write
 
-# One review at a time per pull request, and NOTHING MAY CANCEL ONE.
+# THERE IS DELIBERATELY NO `concurrency:` BLOCK HERE, AND THE BUILD REFUSES ONE.
 #
-# `cancel-in-progress: true` was here and destroyed a real read on 21 September,
-# on #43. GitHub puts a run in its concurrency group before the job's `if:` is
-# evaluated, so every comment on the pull request enters this group — including
-# the ones that carry no ask and skip a second later — and each one cancelled
-# the review in flight. Run 35587070648 died forty seconds in, killed by a
-# stand-down note; run 8 had already proved the reviewer works, so the machinery
-# was fine and the read was simply thrown away.
+# It had one, and the one it had destroyed a real read on 21 September on #43.
+# `cancel-in-progress: true` looked like "do not review the same pull request
+# twice at once". GitHub puts a run in its concurrency group BEFORE the job's
+# `if:` is evaluated, so every comment on the pull request entered the group —
+# including the ones carrying no ask, which skip a second later — and each one
+# killed the read that was running. Run 35587070648 died forty seconds in,
+# cancelled by a stand-down note, and the read that replaced it cost the
+# allowance twice.
 #
-# It fails in the worst way available: the ask is on the thread, the reviewer
-# never speaks, and the gate says `unread`. Nobody is told a read was discarded,
-# and the natural response is to ask again — spending the allowance twice, and
-# dying the same way if anyone comments meanwhile. It is 8 September's unseen
-# read, except the read is destroyed rather than merely unnoticed, and it bites
-# hardest on a busy pull request, which is where reads matter most.
+# `cancel-in-progress: false` was the first fix and was not enough: Codex's P2
+# on 0c3df8a. GitHub keeps at most one PENDING run per group and replaces it
+# when a newer one arrives, so with a read running and a genuine ask queued
+# behind it, the next passing comment displaces the ask and it never runs. The
+# failure shape is unchanged — a visible ask, no verdict, a gate that says
+# `unread` and tells nobody a read was lost.
 #
-# It is also a griefing route on a public repository: anyone who can comment
-# could cancel a review at will, and no author gate helps, because the
-# cancellation happens before the gate is read.
-#
-# So runs queue here and never cancel. Two asks in a row cost two reads rather
-# than one, which is a bounded and visible cost; a discarded read is neither.
-# review-gate.py refuses a build that sets this true.
-concurrency:
-  group: review-${{ github.event.issue.number }}
-  cancel-in-progress: false
+# Keying the group on whether the comment is a real ask would work, and it was
+# the tempting fix. It also means writing this job's `if:` twice, in two
+# languages, where the copies can drift — and every attempt so far at being
+# clever about when a run belongs to a group has cost a read. So: no grouping.
+# Every ask runs. Two asks in a row cost two reads, which is bounded, visible,
+# and paid by a collaborator who chose to ask twice; a discarded read is none of
+# those things. The rulebook already asks once per round in prose, and that is
+# the right place for it.
 
 jobs:
   review:
