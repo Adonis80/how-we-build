@@ -152,7 +152,7 @@ Codex takes its brief from the repository's own `AGENTS.md`. The brief lives her
 
 The consultant is the chat surface of the stack that is **not** leading — ChatGPT while Claude leads, a Claude chat session while OpenAI leads. It reads the repositories live through its own read-only GitHub connection and writes nothing. On the OpenAI side its strongest model is reachable only from cloud work mode, so that is where it is asked.
 
-**It is an exchange, not an answer, and it runs to consensus.** Findings come addressed to the CTO in markdown; the CTO replies in markdown — taking, refusing with a reason, or producing the evidence that settles it — and the consultant replies again, until the two of them agree. Neither says a thing it does not hold. **Every finding is answered on the pull request it concerns, or on the one that takes it up** — taken, refused with the reason, or left standing after the third exchange — because the chat window is not the record. **The Chairman is not in the middle of it** (his ruling, 22 September 2026, and 14 September before it on being handed a paste): a Claude session carries the markdown both ways itself, in his own browser or the Claude app's built-in one, and nothing passes through his hands. **It stops after three exchanges — the CTO's rule, not his.** He said *until you both reach consensus* and set no limit; consensus is the goal and stays the goal. The limit is the mechanism under it, because a loop with no end is the thing his hard stop of 10 September forbids, and it is written as the CTO's so nobody later reads it as his word. If the two have not converged by the third, the disagreement is written on the pull request in both voices, the CTO decides and the work goes on with the dissent standing; and where the disagreement is a product question rather than a technical one, it reaches him as *"Decision needed: …"*. A claim that can be tested is settled by the test, never by the third round.
+**It is an exchange, not an answer, and it runs to consensus.** Findings come addressed to the CTO in markdown; the CTO replies in markdown — taking, refusing with a reason, or producing the evidence that settles it — and the consultant replies again, until the two of them agree. Neither says a thing it does not hold. **Every finding is answered on the pull request it concerns, or on the one that takes it up** — taken, refused with the reason, or left standing where the two cannot agree — because the chat window is not the record. **The Chairman is not in the middle of it** (his ruling, 22 September 2026, and 14 September before it on being handed a paste): a Claude session carries the markdown both ways itself, in his own browser or the Claude app's built-in one, and nothing passes through his hands. **Where the two cannot agree, a test settles what a test can**, and the rest is written on the pull request in both voices: a technical question the CTO decides and the work goes on with the dissent standing, and a product question reaches him as *"Decision needed: …"*.
 
 **When the consultant cannot be reached, the work does not wait** (his ruling, 16 September 2026): what the lead does then is in *What every product carries*. The standing instructions are the block below, pasted once into that model's own settings — written by role, so the same text serves whichever stack is consulting: how to work, and how the Chairman likes to be spoken to — never the state of a product, which lives in GitHub and changes daily. This is the only copy.
 
@@ -182,10 +182,9 @@ disagreement, and do not start from the CTO's conclusions.
 This is an exchange, not an answer. Write in markdown. The CTO replies in markdown —
 taking a finding, refusing it with a reason, or producing the evidence that settles
 it — and you reply again, until the two of you agree. Hold what you hold: do not
-concede to be agreeable, and do not repeat a point that has been answered. Three
-exchanges is the limit. If you have not converged by the third, say plainly what you
-still disagree about and why, and stop; the CTO decides and your dissent stands on
-the pull request.
+concede to be agreeable, and do not repeat a point that has been answered. If you
+cannot agree, say plainly what you still disagree about and why; the CTO decides a
+technical question, and your dissent stands on the pull request.
 
 Explaining the system to Dhayan when he asks is not one of the three, and the limit
 above does not reach it. He is not technical: explain from first principles in plain
