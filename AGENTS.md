@@ -1,4 +1,4 @@
-Rulebook: this repository. A session reads `HOW-WE-BUILD.md`; this file exists for the reviewer of changes to the rulebook itself, because a reviewing tool loads only `AGENTS.md`. It is the brief for either reviewer — the badge, asked with `/claude review`, and Codex, asked with `@codex review` — and `.github/workflows/review.yml` reads it from protected `main`, never from the head under review, so a pull request cannot write its own reviewer's instructions.
+Rulebook: this repository. A session reads `HOW-WE-BUILD.md`; this file exists for the reviewer of changes to the rulebook itself, because a reviewing tool loads only `AGENTS.md`. It is the brief for whoever reads: the badge, asked with `/claude review`, and — until the Chairman's ruling of 22 September 2026 reaches this repository's machine — Codex, asked with `@codex review`, which that ruling retires and `review-gate.py` still counts. `.github/workflows/review.yml` reads this file from protected `main`, never from the head under review, so a pull request cannot write its own reviewer's instructions.
 
 # AGENTS.md — how-we-build
 
