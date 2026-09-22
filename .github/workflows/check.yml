@@ -24,15 +24,25 @@ on:
     # always answers correctly, while the alternative is a state change that
     # silently keeps a stale green.
     types: [opened, synchronize, reopened, edited]
-  pull_request_review:
-    types: [submitted]
-  # Codex's clean pass arrives as a comment, and a comment starts nothing on the
-  # pull request's head — which is why a green review has needed a hand re-run to
-  # be seen. It also edits its summary comment when a review finishes, so both
-  # shapes are listened for. The badge's verdict is a check run and does not come
-  # through here at all: review.yml calls the wake itself.
-  issue_comment:
-    types: [created, edited]
+  # THE WAKE AND TWO TRIGGERS WENT WITH CODEX, on his ruling of 22 September 2026.
+  #
+  # `issue_comment` was here because Codex's clean pass arrived as a comment and a
+  # comment starts nothing on the pull request's head, so a green review needed a
+  # hand re-run to be seen. The job under it listened for that one login, and
+  # review-gate.py refuses a line here that listens for a login the gate does not
+  # count — which, with Codex off the register, is every login. Both are gone
+  # rather than pointed at somebody else.
+  #
+  # `pull_request_review` was here for the other half of Codex's voice: findings
+  # arrived as a submitted review. review-gate.py no longer reads a submitted
+  # review at all, so that trigger could only start a run that re-reads the same
+  # check runs and reaches the same answer — the "re-run that can never change the
+  # answer" the wiring check calls a fault when it is a login. It is the same
+  # fault as a trigger, so it goes the same way.
+  #
+  # NOTHING IS LEFT UNWOKEN BY THIS. The badge's verdict is a check run, and
+  # review.yml calls wake.yml itself the moment after it posts — which is not a
+  # habit but a line review-gate.py refuses a build without (`CALLS_WAKE`).
 permissions:
   contents: read
   pull-requests: read
@@ -41,26 +51,7 @@ permissions:
   # wiring check refuses a build that drops it.
   checks: read
 jobs:
-  wake:
-    # Only Codex's own comments, only on a pull request. The badge does not
-    # arrive this way, and review-gate.py refuses a line here that listens for a
-    # login the gate does not count.
-    if: >-
-      github.event_name == 'issue_comment' &&
-      github.event.issue.pull_request != null &&
-      github.event.comment.user.login == 'chatgpt-codex-connector[bot]'
-    # The write is for one call — re-running this pull request's own check — and
-    # belongs to this job alone. The check job executes the proposed tree's
-    # check.sh and must never hold it.
-    permissions:
-      contents: read
-      pull-requests: read
-      actions: write
-    uses: ./.github/workflows/wake.yml
-    with:
-      pr: ${{ github.event.issue.number }}
   check:
-    if: github.event_name != 'issue_comment'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
