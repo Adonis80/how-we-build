@@ -1154,7 +1154,11 @@ def _selftest():
           "than idle; it asks GitHub for %d URL(s) that carry the parameters they say they do; "
           "and it is fooled by none of the %d fakes"
           % (len(REVIEWERS), len(_url_cases()), fakes))
-    return 1 if (_check_main() or _check_wiring()) else 0
+    # Both run, always: `or` stopped at the first failure and hid the second
+    # until the next push.
+    failed = _check_main()
+    failed += _check_wiring()
+    return 1 if failed else 0
 
 
 # Which fetch is in flight. There are two — the changed files and the check runs
