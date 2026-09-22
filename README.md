@@ -12,6 +12,25 @@ A fourth, `AGENTS.md`, is not for sessions at all: it carries the reviewer's bri
 
 **Why it is public.** It holds no secrets, prices or customer data — only the way we work — and a public repository is the one thing every session, in either stack, can read directly, with no extra setup. Product repositories stay private.
 
+## What he has said, newest first
+
+**Why this exists.** On 22 September 2026 the Chairman asked why work he had agreed to kept getting buried. The answer was in the machinery, not in anyone's attention: his words arrive in chat, the only truth is GitHub, and nothing carried one to the other. Two instructions of his went missing in four days — a route and a model named on 18 September that reached no repository at all, and a reviewer ruling given on 22 September to two sessions within ninety seconds, neither able to see the other. Meanwhile *"build" here means the oldest open pull request*, so his newest word queued behind everything older than it. A system whose queue is sorted oldest-first buries the newest thing the Chairman said, every time, by design.
+
+**So his word is the queue, and this is it.** A session that hears a ruling writes it here **before it does anything else with it** — the date, his words, and what it changes. A session starting on *build* reads this list first and takes **the newest ruling not yet started**; the open pull requests are the queue only when this list is clear. That inverts the sort, which is the whole fix.
+
+**A ruling is not the work.** A line here records what he said and when. It is carried out by the ordinary loop — branch, pull request, review, merge — and struck out here when it has landed, with the pull request named. A line that has sat unstarted for a week is a question for the CTO to answer on its own.
+
+| date | his word | what it changes | state |
+|---|---|---|---|
+| 22 Sep 2026 | *"at any given day a new model release would require us to switch the main coder, the reviewer, and specialists like frontend"* | roles are named everywhere, models live in one registry; switching a model is one edit and `check.sh` fails on a model identifier found outside it | in [#53](https://github.com/Adonis80/how-we-build/pull/53) |
+| 22 Sep 2026 | *"I do want GLM to be the main reviewer"* | `reviewer-main` is GLM, reached through OpenRouter behind a provider-neutral router; needs a runner that is not Anthropic's CLI | in [#53](https://github.com/Adonis80/how-we-build/pull/53) |
+| 22 Sep 2026 | *"I only want GPT Astra used to sweep, fix bugs, and suggest smarter operating procedures… send each other replies in markdown until you both reach consensus"* | the consultant's three jobs, and an exchange to consensus with no hand of his in it | in [#54](https://github.com/Adonis80/how-we-build/pull/54) |
+| 22 Sep 2026 | *"Do not use Codex as a reviewer. Only use Sonnet 5 and Fable 5.1 as the main reviewer"* | Codex leaves the reviewer register everywhere; the six classes lose their second vendor and the page says so | in [#51](https://github.com/Adonis80/how-we-build/pull/51) |
+| 22 Sep 2026 | *"we should not be sending money until we are generating revenue"* | no session proposes a paid plan, tool or service while a product earns nothing | landed, [#48](https://github.com/Adonis80/how-we-build/pull/48) |
+| 18 Sep 2026 | set up OpenRouter so an open-weight model can be the main backup | the registry and router above; his adviser's brief of the same day is carried on [#53](https://github.com/Adonis80/how-we-build/pull/53) | **four days unstarted before it reached this repository at all** |
+
+**The last row is the reason for the table.** It is left standing, struck out only when the registry lands, because a system that loses an instruction should keep the evidence where the next session reads it.
+
 ## Products under this rulebook
 
 The whole map: what exists, where it lives, one line on what it is for, and the file to open first. It is a directory board, not a summary — nothing here says more about a product than its one line.
