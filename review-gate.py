@@ -12,16 +12,17 @@ so the gate would certify a commit nobody read.
 Counting read and clean as one answer — which this gate did until 14 September —
 fails in a third direction, and #21 is the proof: it merged on a commit carrying
 a P1 the reviewer had posted and nobody had answered, because a read was all the
-gate could see. So the gate gives one of four answers about the head commit, and
+gate could see. So the gate gives one of three answers about the head commit, and
 opens on the first alone:
 
     clean         read clean by a reviewer on the register
     findings      read, and the reviewer left something on it
-    no verdict    a review is running on it, and has not said what it found
     unread        no finished read of this commit at all
 
 There were five until 22 September 2026. `cross-vendor` — read clean, but by the
 reviewer this change may NOT use — went with the second vendor; see below.
+`no verdict` — a review running and not yet said — went because nothing can
+produce it; see `check_run_verdict`.
 
 A finding outranks every other answer about the same commit. The answer to a
 finding is a push, and a push makes a new commit for the reviewer to read; what
@@ -115,8 +116,8 @@ DEFAULT_REVIEWER = "claude"
 REVIEWER_MODEL = "claude-sonnet-5"
 REVIEWER_EFFORT = "max"
 
-# The badge. `juku-reviewer`, created on the Chairman's account 19 September 2026
-# and installed on this repository alone; installation 162987297. The id is the
+# The badge. `juku-reviewer`, created on the Chairman's account 19 September 2026;
+# installation 162987297. The id is the
 # identity — a slug can be renamed by its owner, an id cannot — and the check
 # run's name keeps a later, unrelated use of the same App from reading as a
 # review.
@@ -141,9 +142,8 @@ KEY_ENVIRONMENT = "reviewer"
 # repeating to hold a word.
 FINDINGS = "findings"
 CLEAN = "clean"
-NO_VERDICT = "no verdict"
 UNREAD = "unread"
-ORDER = (FINDINGS, CLEAN, NO_VERDICT)
+ORDER = (FINDINGS, CLEAN)
 
 
 # ---------------------------------------------------------------------------
@@ -204,10 +204,15 @@ def check_run_verdict(run, head):
     if run.get("head_sha") != head:
         return None
     if run.get("status") != "completed":
-        # Queued or running: the reviewer is reading it now. Saying "unread"
-        # here would send a session off to ask a second time for a review
-        # already in flight, and spend the allowance twice.
-        return NO_VERDICT
+        # A run not yet finished says nothing, whatever its conclusion field
+        # holds. Nor can it be the badge mid-read: review.yml creates its run
+        # once, already completed, when it has a verdict — so a "reading now"
+        # answer is one no input reaches, and keeping it with cases asserting
+        # it would be the guard over nothing #46 was caught by. The day
+        # review.yml opens its run before the read (#46's `Say it is reading`
+        # did), a "reading" answer comes back with it, in the same pull request,
+        # so a session is told to wait rather than to ask twice.
+        return None
     return CONCLUSIONS.get(run.get("conclusion"))
 
 
@@ -304,16 +309,7 @@ def verdict(check_runs, head):
     for key in REVIEWERS:
         if said.get(key) == CLEAN:
             return CLEAN, key
-    if NO_VERDICT in said.values():
-        return NO_VERDICT, _who(said, NO_VERDICT)
     return UNREAD, None
-
-
-def _who(said, answer):
-    for key in sorted(said):
-        if said[key] == answer:
-            return key
-    return None
 
 
 def gate_note(gate_files):
@@ -351,9 +347,6 @@ def reason(answer, who, head):
         return ("%s read commit %s and left findings on it — answer them, land the round's "
                 "fixes as one push, and ask once; the gate opens on a commit a reviewer reads "
                 "clean, never on an answer to a finding" % (REVIEWERS[who]["name"], head))
-    if answer == NO_VERDICT:
-        return ("%s is reading commit %s and has not said what it found — re-run this check "
-                "once it has" % (REVIEWERS[who]["name"], head))
     return ("no reviewer has read commit %s — write '%s' on the pull request, and when it has "
             "finished, re-run this check" % (head, needed["ask"]))
 
@@ -949,7 +942,9 @@ def _check_main():
          "no reviewer has read",
          "and so is a clean run from the App every workflow token here holds"),
         ([{"filename": "README.md"}], [_run(status="in_progress", sha=head)], 1,
-         "is reading commit", "a read in flight is red and says so"),
+         "no reviewer has read", "a run that has not finished is not a read, and is red"),
+        ([{"filename": "review-gate.py"}], [], 1, "note:",
+         "an unread change to the gate is red, and still announced as one"),
     ]
     want_asked = ["/repos/o/r/commits/%s/check-runs" % head, "/repos/o/r/pulls/7/files"]
     bad = 0
@@ -1036,8 +1031,9 @@ def _selftest():
         (_run("success", sha=head), CLEAN, "the badge's clean verdict on this commit"),
         (_run("failure", sha=head), FINDINGS, "its findings on this commit"),
         (_run("success", sha=other), None, "its clean verdict on another commit"),
-        (_run("success", status="queued", sha=head), NO_VERDICT, "a review queued on this commit"),
-        (_run("success", status="in_progress", sha=head), NO_VERDICT, "one running on it"),
+        (_run("success", status="queued", sha=head), None,
+         "a run queued on this commit, whatever its conclusion field says"),
+        (_run("success", status="in_progress", sha=head), None, "or one still running"),
         (_run("neutral", sha=head), None, "the shape it writes when it ran and could not read"),
         (_run("cancelled", sha=head), None, "a run somebody cancelled"),
         (_run("timed_out", sha=head), None, "one GitHub timed out"),
@@ -1062,7 +1058,7 @@ def _selftest():
          "asked twice on one commit, the findings stand — the answer to a finding is a push"),
         ([_run("success", sha=head), _run("failure", sha=head)], (FINDINGS, "claude"),
          "and in either order, because worst wins per reviewer rather than last"),
-        ([_run(status="in_progress", sha=head)], (NO_VERDICT, "claude"), "the badge still reading"),
+        ([_run(status="in_progress", sha=head)], (UNREAD, None), "a run not yet finished is no read"),
         ([_run("failure", sha=head), _run(status="in_progress", sha=head)], (FINDINGS, "claude"),
          "a fresh read in flight does not retire the findings already on the commit"),
         ([_run("success", sha=other)], (UNREAD, None), "a clean verdict on another commit"),
@@ -1126,7 +1122,9 @@ def _selftest():
     # THE RETIRED ROUTES ARE HELD SHUT, not merely deleted. A later session
     # restoring a prose reader would have to get past these: the gate reads check
     # runs, so nothing a person or a bot can type is an answer.
-    for name in ("comment_verdict", "review_verdict", "_codex_comment_verdict", "_key_for"):
+    for name in ("comment_verdict", "review_verdict", "_codex_comment_verdict", "_key_for",
+                 "_says_clean", "CLEAN_VERDICT", "SUMMARY_MARKER", "GATE_REVIEWER", "CODEX",
+                 "CODEX_ASK"):
         bad += hold(hasattr(sys.modules[__name__], name), False,
                     "%s is gone — the gate reads no prose" % name)
     bad += hold([k for k, w in REVIEWERS.items() if w["login"] or w["comment"]], [],
