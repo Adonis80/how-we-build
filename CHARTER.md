@@ -74,7 +74,7 @@ protected merge -> deploy -> smoke -> rollback if needed
 
 `Adonis80/how-we-build` contains only global development rules and shared design method. Each product has its own private repository. Products do not depend on one another for project truth.
 
-Do not introduce a general orchestrator, memory database, model registry, scheduler, context compiler, policy engine or autonomous-company layer merely because several providers or products exist.
+Do not introduce a general orchestrator, memory database, model registry, scheduler, context compiler, policy engine or autonomous-company layer merely because several providers or products exist. A registry naming which model fills each role is the one exception, and it is his (his ruling, 22 September 2026: switching a model must be easy): no larger than [decision 0004](https://github.com/Adonis80/how-we-build/issues/60) names — role, adapter and exact model id, for roles something consumes.
 
 ## 5. Interchangeable providers
 
@@ -88,7 +88,7 @@ Anthropic development uses Claude/Cowork/Code through the best current route to 
 
 Only one provider owns a slice at a time. At a clean checkpoint, opening the other provider and sending `build` transfers ownership. The outgoing provider does not prepare a prose explanation for the incoming provider; it prepares the PR and repository.
 
-Which model leads is the Chairman's, and changes as the models do; because the rules are written by role, that swap costs nothing. What each stack can actually do, and how its workspace is configured, lives in `README.md`, which changes faster than this Charter.
+Which model leads is the Chairman's, and changes as the models do; because the rules are written by role, that swap costs nothing — the lead is a role no machine here runs. A model a machine runs, such as the reviewer, is another matter, and `README.md` says what it costs today. What each stack can actually do, and how its workspace is configured, lives in `README.md`, which changes faster than this Charter.
 
 A new provider in future earns one adapter. It does not justify another roadmap, state store, handover format or copy of the global rules.
 
