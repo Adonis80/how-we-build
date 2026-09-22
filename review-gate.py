@@ -899,12 +899,17 @@ def _check_wiring():
         bad += 1
 
     if not bad:
-        print("ok: the gate counts %d reviewer(s) by %d route(s), each read reaches the check by "
-              "a route that can actually fire, the reviewer runs only from the default branch, "
-              "its key sits behind the `%s` door, and the wake's own shell was run against a "
-              "failing GitHub in %d case(s) and went red in every one that must"
-              % (len(REVIEWERS), len(set(r["app_id"] is None for r in REVIEWERS.values())),
-                 KEY_ENVIRONMENT, len(SWALLOW_CASES)))
+        # The route count that stood here was `len(set(app_id is None for ...))` —
+        # a leftover from when a reviewer could answer by a login or by an App,
+        # and an opaque way of saying "1" once only one of those is allowed.
+        # `_check_routes` now refuses any entry without an app_id, so the route
+        # is one by construction and is named rather than counted.
+        print("ok: the gate counts %d reviewer(s), each answering only as a check run it signed, "
+              "each read reaching the check by a route that can actually fire; the reviewer runs "
+              "only from the default branch, its key sits behind the `%s` door, and the wake's "
+              "own shell was run against a failing GitHub in %d case(s) and went red in every "
+              "one that must"
+              % (len(REVIEWERS), KEY_ENVIRONMENT, len(SWALLOW_CASES)))
     return bad
 
 

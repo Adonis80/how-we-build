@@ -106,8 +106,18 @@ fi
 # the wake it calls and the door's standing proof — which must still agree with
 # the register and with each other.
 python3 review-gate.py --selftest || fail_gate=1
-[ "${fail_gate:-0}" -eq 0 ] || { echo "FAIL: the review gate no longer matches the reviewers' answers, or has drifted from the workflows — see the cases above."; fail=1; }
-case "${GITHUB_EVENT_NAME:-}" in pull_request|pull_request_review)
+[ "${fail_gate:-0}" -eq 0 ] || { echo "FAIL: the review gate no longer matches the reviewer's answers, or has drifted from the workflows — see the cases above."; fail=1; }
+# WHICH EVENTS THE GATE RUNS ON, WRITTEN AS WHAT IT SKIPS RATHER THAN WHAT IT
+# CATCHES. This read `pull_request|pull_request_review`, and this change removed
+# the second of those triggers from check.yml, leaving that arm unreachable.
+# Deleting the dead arm is the obvious tidy and it is the wrong fix: a list of
+# events the gate RUNS on means any trigger added later and not added here is a
+# check that goes green having asked no reviewer anything — fail-open, silently,
+# in the file whose whole job is to fail closed. Inverted, an unknown event runs
+# the gate and fails loudly for want of a pull request number instead. `push` is
+# main's own, which carries no pull request to judge; an empty name is a run by
+# hand on somebody's machine.
+case "${GITHUB_EVENT_NAME:-}" in push|"") : ;; *)
   if [ -z "${GH_TOKEN:-}" ] || [ -z "${PR_NUMBER:-}" ] || [ -z "${HEAD_SHA:-}" ]; then
     echo "FAIL: the check cannot ask GitHub which commit the reviewer read — the workflow must set PR_NUMBER, HEAD_SHA and GH_TOKEN."; fail=1
   elif python3 review-gate.py "${GITHUB_REPOSITORY:-Adonis80/how-we-build}" "$PR_NUMBER" "$HEAD_SHA" "$GH_TOKEN"; then
