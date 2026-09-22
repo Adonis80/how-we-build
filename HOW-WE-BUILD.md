@@ -17,7 +17,7 @@
 2. From latest `main`, read open PRs, run the product, find the smallest seam, branch, open a draft PR.
 3. Build. Replace rather than wrap. One implementation per business rule. No speculative abstraction.
 4. Prove it: build, tests, the Playwright journey on phone and desktop, preview deploy. A screenshot is not proof.
-5. A named reviewer reads the PR cold in its own session; all are asked on pricing, live database changes or schema, authentication and authorisation, public trust boundaries, deploy and release machinery, and this gate; unsure means crossed. One is wired today. Asked once per round, fixes batched into one push; with no read the gate can count, the slice parks and the next begins. The gate never opens unreviewed.
+5. A named reviewer reads the PR cold in its own session; all must read clean on pricing, live database changes or schema, authentication and authorisation, public trust boundaries, deploy and release machinery, and this gate; unsure means crossed. One is wired today. Asked once per round, fixes batched into one push; with no read the gate can count, the slice parks and the next begins. The gate never opens unreviewed.
 6. Send the preview, what changed, the journey to try, and "Decision needed: … or none".
 7. Merge to protected `main`, deploy, smoke-test, roll back on failure. Delete residue; leave `roadmap.json` fit to start on *build* alone: `next` lines current and complete.
 
