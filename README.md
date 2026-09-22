@@ -8,28 +8,11 @@ The rulebook for every product Dhayan's AI studio builds. This repository says *
 - `CHARTER.md` — the Systems Blueprint, the reasoning behind the page. Read once, never loaded into a working session.
 - `RICH-DATA.md` — the method for what a product learns from and how we know its AI got smarter. Read on the trigger in *What every product carries*, and not otherwise.
 
+**And the `decision` issues in this repository** — why each rule is what it is rather than the obvious alternative. Each one is a consensus between two capable models that genuinely disagreed, and carries the question, what was rejected, who was overruled on what evidence, and what is still unproved. **A session reads the open and closed `decision` issues at its start, newest first.** They are the only thing kept from a conversation, and nothing executable depends on them: delete them all and the system behaves identically — only the reasoning is lost, which is the expensive part to rebuild. A record is never edited to stay current; a later one supersedes it and the earlier stands as history.
+
 A fourth, `AGENTS.md`, is not for sessions at all: it carries the reviewer's brief for changes to this repository, because the reviewing tool loads only a file of that name.
 
 **Why it is public.** It holds no secrets, prices or customer data — only the way we work — and a public repository is the one thing every session, in either stack, can read directly, with no extra setup. Product repositories stay private.
-
-## What he has said, newest first
-
-**Why this exists.** On 22 September 2026 the Chairman asked why work he had agreed to kept getting buried. The answer was in the machinery, not in anyone's attention: his words arrive in chat, the only truth is GitHub, and nothing carried one to the other. Two instructions of his went missing in four days — a route and a model named on 18 September that reached no repository at all, and a reviewer ruling given on 22 September to two sessions within ninety seconds, neither able to see the other. Meanwhile *"build" here means the oldest open pull request*, so his newest word queued behind everything older than it. A system whose queue is sorted oldest-first buries the newest thing the Chairman said, every time, by design.
-
-**So his word is the queue, and this is it.** A session that hears a ruling writes it here **before it does anything else with it** — the date, his words, and what it changes. A session starting on *build* reads this list first and takes **the newest ruling not yet started**; the open pull requests are the queue only when this list is clear. That inverts the sort, which is the whole fix.
-
-**A ruling is not the work.** A line here records what he said and when. It is carried out by the ordinary loop — branch, pull request, review, merge — and struck out here when it has landed, with the pull request named. A line that has sat unstarted for a week is a question for the CTO to answer on its own.
-
-| date | his word | what it changes | state |
-|---|---|---|---|
-| 22 Sep 2026 | *"at any given day a new model release would require us to switch the main coder, the reviewer, and specialists like frontend"* | roles are named everywhere, models live in one registry; switching a model is one edit and `check.sh` fails on a model identifier found outside it | in [#53](https://github.com/Adonis80/how-we-build/pull/53) |
-| 22 Sep 2026 | *"I do want GLM to be the main reviewer"* | `reviewer-main` is GLM, reached through OpenRouter behind a provider-neutral router; needs a runner that is not Anthropic's CLI | in [#53](https://github.com/Adonis80/how-we-build/pull/53) |
-| 22 Sep 2026 | *"I only want GPT Astra used to sweep, fix bugs, and suggest smarter operating procedures… send each other replies in markdown until you both reach consensus"* | the consultant's three jobs, and an exchange to consensus with no hand of his in it | in [#54](https://github.com/Adonis80/how-we-build/pull/54) |
-| 22 Sep 2026 | *"Do not use Codex as a reviewer. Only use Sonnet 5 and Fable 5.1 as the main reviewer"* | Codex leaves the reviewer register everywhere; the six classes lose their second vendor and the page says so | in [#51](https://github.com/Adonis80/how-we-build/pull/51) |
-| 22 Sep 2026 | *"we should not be sending money until we are generating revenue"* | no session proposes a paid plan, tool or service while a product earns nothing | landed, [#48](https://github.com/Adonis80/how-we-build/pull/48) |
-| 18 Sep 2026 | set up OpenRouter so an open-weight model can be the main backup | the registry and router above; his adviser's brief of the same day is carried on [#53](https://github.com/Adonis80/how-we-build/pull/53) | **four days unstarted before it reached this repository at all** |
-
-**The last row is the reason for the table.** It is left standing, struck out only when the registry lands, because a system that loses an instruction should keep the evidence where the next session reads it.
 
 ## Products under this rulebook
 
@@ -247,6 +230,7 @@ How a change reaches every product: it is made here once and then lands everywhe
 - Money milestones in `roadmap.json` (his ruling, 17 September 2026): each revenue figure he gives, and what he is reminded of when it is reached — at least *revenue passes £1,000 a month: a real business, so move the host to its paid plan*. Never build work. The slice that first counts a product's revenue shows it where he can see it and checks the milestones every time it counts, so a reminder fires on its own.
 - Evidence recorded with its origin (his ruling, 17 September 2026): for anything the product learns from, whether it is a person's statement, a recorded observation or a derived result, along with where it came from, who recorded it and when, and under which notice. Kept only for a permitted purpose and period, with personal records and anything identifiable derived from them provably deletable, and any justified exception written down. The proof is the product's own test in the slice that changes the behaviour; a line in this list is not a machine gate.
 - The handover's `evidence` field, which `HOW-WE-BUILD.md` names with the rest: what evidence this slice captures, or deliberately does not capture; which decision it can improve; and what cost or retention obligation it adds. "None, because ..." is a valid answer, which is what stops it becoming a box everyone ticks.
+- The rulebook's `decision` issues read at the start of a session, newest first: why each rule is what it is. Not copied down, not summarised, and nothing in the product depends on them.
 - `PRODUCT.md` and `NAMES.md`: what the product is, and the words it uses for its own things.
 - `RICH-DATA.md` read whole by any slice that changes what the product learns from, shows about a person, or claims about its own accuracy — and not otherwise. `PRODUCT.md` carries the five-heading section that page's §10 names and says how to fill; the headings are written there, once. "Unknown" and "deliberately not captured" are valid answers.
 - A `README.md` route section saying that a session attached to the repo at its start works in it directly, a session started without it goes through the Mac, and the ten-second test tells which.
