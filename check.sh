@@ -3,11 +3,15 @@
 # It refuses: an operating page over its word cap, a screen law over its own, a
 # root or design file that is not on its list or missing from it, anything that
 # looks like a secret (naming the place, never the value), a review gate that no
-# longer matches the reviewers' answers or has drifted from the workflows that
+# longer matches the reviewer's answers or has drifted from the workflows that
 # fetch them, and, in a pull request, a commit no reviewer has read clean —
-# unread, read and left findings on, or, where the change is to the review
-# machinery itself, read clean by a reviewer the rulebook does not allow to clear
-# it. Nothing else.
+# unread, read and left findings on, or read by nobody the gate counts. Nothing
+# else.
+# The fourth shape, "read clean by a reviewer the rulebook does not allow to
+# clear this change", was real while two vendors were on the register and is
+# gone with the second: see review-gate.py on CROSS_VENDOR. A header describing
+# a state the file can no longer reach is the drift this guard exists to catch,
+# so it is corrected here rather than left for the next reader to discover.
 set -euo pipefail
 cd "$(dirname "$0")"
 fail=0

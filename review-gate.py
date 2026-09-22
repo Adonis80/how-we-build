@@ -237,7 +237,10 @@ REVIEWERS = {
 
 
 # The gate's own files. A pull request touching any of them is the class the
-# rulebook calls "this review gate itself", where the other vendor is required.
+# rulebook calls "this review gate itself" — where the other vendor was required
+# until 22 September 2026, and where nothing is required beyond the ordinary read
+# now, because there is no other vendor. What the list still buys is `gate_note()`
+# saying so on the run.
 #
 # The whole of .github/workflows/ stays on the list, and the reason has changed
 # rather than gone. #38 had it there because a branch could add a workflow that
@@ -271,8 +274,8 @@ def verdict(check_runs, head):
     reviewer on the register there is no second one to hand a gate change to, so
     the argument had exactly one possible answer and pretending otherwise would
     be the inversion of #46 in a new coat. What the gate can still say about a
-    gate change it says in `reason()` and in the check's output, where it is read
-    by a person; it is no longer something the gate can act on alone.
+    gate change it says in `gate_note()`, printed beside the answer and read by
+    a person; it is no longer something the gate can act on alone.
     """
     said = {}
 
@@ -332,11 +335,16 @@ def gate_note(gate_files):
             % ", ".join(gate_files))
 
 
-def reason(answer, who, head, gate_files=()):
+def reason(answer, who, head):
     """One line saying why the gate is shut, in the gate's own voice.
 
     It names the ask rather than the bot, because the next thing a session does
     with this line is act on it.
+
+    It took a `gate_files` argument until the CROSS_VENDOR branch that read it
+    was deleted, and kept taking it for a moment after — a parameter no body
+    reads is a reader's promise that the answer depends on it. What a gate
+    change is owed is said by `gate_note()`, beside this line and not inside it.
     """
     needed = REVIEWERS[DEFAULT_REVIEWER]
     if answer == FINDINGS:
@@ -361,10 +369,14 @@ def reason(answer, who, head, gate_files=()):
 # these on 17 September and named the rule that catches both: check the set, not
 # the count, and say which half is missing.
 WAKE_LOGIN = re.compile(r"github\.event\.comment\.user\.login\s*==\s*'([^']+)'")
-ACTIONS = "github-actions[bot]"
-# The App behind that login. Every workflow token in this repository can create
-# a check run under it, so a run carrying this id is the nearest thing to a
-# forgery the gate will ever be shown, and it is a fake in both suites below.
+# The App behind `github-actions[bot]`, the login every workflow token in this
+# repository can wear. The login itself is no longer named here: it was used by
+# the register check that refused it and by the comment cases that tried it as a
+# fake, and both went with the prose reading. The id remains, and does more
+# work than the login ever did — a run carrying it is the nearest thing to a
+# forgery this gate will ever be shown, and it is a fake in both suites below.
+# #34 is why: a workflow on a branch nobody opened as a pull request can wear
+# that login, which is the hole a register entry carrying it would hand back.
 ACTIONS_APP = 15368
 
 
@@ -678,10 +690,15 @@ def _check_wiring():
     #
     # WHAT THIS GUARD IS FOR, AND WHAT IT IS NOT. It catches drift: a later
     # session narrowing the selection while tidying, which is how the defect
-    # arrived. It is not tamper-proof and is not trying to be — `wake.yml` is a
-    # gate file, so any edit to it already needs the other vendor's cold read
-    # before it can merge, and that read is what stands against a deliberate
-    # obfuscation. Codex walked through three versions of this guard by
+    # arrived. It is not tamper-proof and is not trying to be, AND THE THING IT
+    # LEANED ON IS WEAKER THAN IT WAS: this said that `wake.yml` is a gate file,
+    # so any edit to it needed the other vendor's cold read before it could
+    # merge, and that read was what stood against a deliberate obfuscation.
+    # Since 22 September 2026 there is no other vendor, so what stands there is
+    # one reviewer of the same vendor as the lead, reading a diff that proposes
+    # the gate judging it. That is a real weakening of this guard's backstop and
+    # it is written here rather than left implied by a comment that stopped
+    # being true. Codex walked through three versions of this guard by
     # rephrasing (a blacklisted operator, then bracket syntax inside `$mine`,
     # then a server-side `status=` filter and a shadowing second assignment),
     # and each pass made it better; the honest limit is written here rather
@@ -1231,7 +1248,7 @@ def main(argv):
     if answer == CLEAN:
         print("ok: %s has read %s and left nothing on it" % (REVIEWERS[who]["name"], head))
         return 0
-    print("reason: " + reason(answer, who, head, gate_files))
+    print("reason: " + reason(answer, who, head))
     return 1
 
 
