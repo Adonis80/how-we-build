@@ -5,9 +5,9 @@
 # looks like a secret (naming the place, never the value), a review gate that no
 # longer matches the reviewer's answers or has drifted from the workflows that
 # fetch them, and, in a pull request, a commit no reviewer has read clean —
-# unread, read and left findings on, or read by nobody the gate counts. Nothing
-# else.
-# The fourth shape, "read clean by a reviewer the rulebook does not allow to
+# unread, or read and left findings on. Nothing else. A read by anybody the
+# gate does not count is unread, not a shape of its own.
+# A third shape, "read clean by a reviewer the rulebook does not allow to
 # clear this change", was real while two vendors were on the register and is
 # gone with the second: see review-gate.py on CROSS_VENDOR. A header describing
 # a state the file can no longer reach is the drift this guard exists to catch,
