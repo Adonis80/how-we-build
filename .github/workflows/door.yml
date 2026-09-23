@@ -117,7 +117,7 @@ jobs:
             *) echo "DOOR OPEN: a branch read the environment. The badge can be forged."; exit 1 ;;
           esac
 
-      # THE REVIEWER'S TOKEN, SCOPED: A REHEARSAL, AND NOT YET RUN.
+      # THE REVIEWER'S TOKEN, SCOPED: A REHEARSAL, RUN GREEN ON MAIN.
       #
       # THE RULE IS THE CHARTER'S ALREADY: "Use least-privilege repository access
       # and protected `main`" (CHARTER.md §12). review.yml breaks it. It mints
@@ -146,12 +146,14 @@ jobs:
       # signing helper to the installation lookup, and the env lines that feed
       # it.
       #
-      # NOTHING HERE IS PROVED YET, AND NOTHING DEPENDS ON IT. Its first run is a
-      # dispatch on main straight after it lands; until the repair, review.yml
-      # mints unscoped, as it always has. It never runs on a branch: the door
-      # refuses the whole job there, and the step above stops it if not. The
-      # token it mints is revoked before the step ends, whatever goes wrong on
-      # the way, and nothing is printed but names.
+      # PROVED ON MAIN: run 35870516404, 23 September 2026, dispatched straight
+      # after the step landed. It asked for this repository with checks: write,
+      # was granted checks: write alone, reached Adonis80/how-we-build alone,
+      # and was revoked (204). Until the repair, review.yml mints unscoped, as
+      # it always has. It never runs on a branch: the door refuses the whole job
+      # there, and the step above stops it if not. The token it mints is revoked
+      # before the step ends, whatever goes wrong on the way, and nothing is
+      # printed but names.
       - name: rehearse the reviewer's scoped token, as review.yml will ask for it
         env:
           APP_ID: ${{ secrets.REVIEWER_APP_ID }}
