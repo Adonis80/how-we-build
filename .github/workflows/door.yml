@@ -136,19 +136,15 @@ jobs:
       # there would stop every read, the revert's included. So the proof lands
       # first, here, where a failure stops nothing. The pull request that makes
       # review.yml ask for the scoped token cites this step's run, holds that
-      # request in review-gate.py as its regression test, and deletes this step:
-      # once every read mints scoped, every read proves the request, and a
-      # rehearsal beside it would be a second copy.
+      # request in review-gate.py as its regression test, and deletes this step
+      # and the check that holds it: once every read mints scoped, every read
+      # proves the request, and a rehearsal beside it would be a second copy.
       #
-      # IT LANDS ALONE, ON HIS RULING (23 September 2026): "Split #66: land the
-      # proved rehearsal only, move the wiring check and this round's finding
-      # to a new pull request." Proved there means its own script, run against
-      # a pretend GitHub, did what it should in every case; on a runner it is
-      # not proved yet. The rehearsal is only worth anything while it signs and
-      # finds the installation exactly as review.yml does, with the same key.
-      # Today the two match line for line. The check that keeps them so was
-      # split into its own pull request, which lands before step two leans on
-      # this step's run.
+      # THE COPY IS HELD. The rehearsal is only worth anything while it signs
+      # and finds the installation exactly as review.yml does, with the same
+      # key. review-gate.py holds both, line for line: the script from the
+      # signing helper to the installation lookup, and the env lines that feed
+      # it.
       #
       # NOTHING HERE IS PROVED YET, AND NOTHING DEPENDS ON IT. Its first run is a
       # dispatch on main straight after it lands; until the repair, review.yml
