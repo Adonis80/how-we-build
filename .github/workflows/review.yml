@@ -381,8 +381,8 @@ jobs:
             echo "---"
             echo "_Read by the model named in \`review-gate.py\`, at the effort named beside it, from_"
             echo "_\`.github/workflows/review.yml\`. Since 22 September 2026 this is the only read the_"
-            echo "_gate counts, on every class of change including this machinery itself — so where_"
-            echo "_the rulebook asks for a second pair of eyes, there is none behind this one._"
+            echo "_gate counts, on every class of change including this machinery itself, and there_"
+            echo "_is no second reviewer behind this one._"
           } > /tmp/comment.md
           gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -F body=@/tmp/comment.md --silent
 

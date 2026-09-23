@@ -336,8 +336,8 @@ def gate_note(gate_files):
     shown = [re.sub(r"[\x00-\x1f\x7f]", lambda m: "\\x%02x" % ord(m.group()), f)
              for f in gate_files]
     return ("this pull request changes the review machinery (%s), so the gate that judged it is "
-            "the one it proposes — the rulebook wants a second reader on this class and there is "
-            "no second reviewer on the register to be one; read the diff, not the green"
+            "the one it proposes, and there is no second reviewer on the register to read it as "
+            "well; read the diff, not the green"
             % ", ".join(shown))
 
 
@@ -1102,8 +1102,8 @@ def _selftest():
     # are here to say so rather than to prove a door. The door was
     # `GATE_REVIEWER`, its only value was Codex, and it went with him; what is
     # left is `gate_note()`, which shuts nothing and is held on its own below.
-    # Before the ruling every one of these answered CROSS_VENDOR — red — and the
-    # only thing that opened them was a Codex read, which is why the change that
+    # Before the ruling the first four of these answered CROSS_VENDOR — red — and
+    # the only thing that opened them was a Codex read, which is why the change that
     # retires Codex could not merge until this rule went.
     gate_file_cases = [
         (["review-gate.py"], [_run("success", sha=head)], (CLEAN, "claude"),
