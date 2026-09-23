@@ -130,10 +130,11 @@ REVIEWER_ASK = "/claude review"
 # a build where the workflow has stopped naming either.
 KEY_ENVIRONMENT = "reviewer"
 
-# The four answers, worst first: a commit is judged by the strongest thing said
-# about it, and only CLEAN opens the gate.
+# The three answers: FINDINGS and CLEAN, worst first, are what a read can say,
+# and UNREAD is what the gate says when no read has. A commit is judged by the
+# strongest thing said about it, and only CLEAN opens the gate.
 #
-# CROSS_VENDOR was a fifth, and it is deleted rather than kept for a day it might
+# CROSS_VENDOR was another, and it is deleted rather than kept for a day it might
 # mean something again. It said "a reviewer read this clean, but not the one this
 # class of change requires" — and with one reviewer on the register there is no
 # such reviewer, so every route to it was dead. A state no input can reach, with
@@ -228,8 +229,11 @@ def check_run_verdict(run, head):
 # (#34). An App id cannot be worn by a branch at all, so the route and the
 # identity are the same fact.
 #
-# ADDING FABLE 5.1 IS THIS DICTIONARY, A WORKFLOW, AND A RULE — AND IT IS NOT
-# DONE HERE. His ruling names it beside Sonnet 5. It has no App, no check-run
+# ADDING FABLE 5.1 IS THIS DICTIONARY, THE MATCH IN `check_run_verdict()`, A
+# WORKFLOW, AND A RULE — AND IT IS NOT DONE HERE. The match reads one App id and
+# one check-run name, and `_check_routes` refuses an entry it could not match,
+# so a second name here alone fails the build rather than never being counted.
+# His ruling names it beside Sonnet 5. It has no App, no check-run
 # name and no workflow, so it is not written down as though it had: a register
 # entry that never answers holds every commit shut, which is the deadlock this
 # change exists to end. And a second entry alone would not restore the two reads
@@ -325,10 +329,16 @@ def gate_note(gate_files):
     """
     if not gate_files:
         return None
+    # The names are the pull request's own writing, and the runner reads a log
+    # line starting `::` as a command: a name carrying a line break could start
+    # one, and `::stop-commands::` would silence the annotation printed after
+    # it. So every control character is written out, never printed.
+    shown = [re.sub(r"[\x00-\x1f\x7f]", lambda m: "\\x%02x" % ord(m.group()), f)
+             for f in gate_files]
     return ("this pull request changes the review machinery (%s), so the gate that judged it is "
             "the one it proposes — the rulebook wants a second reader on this class and there is "
             "no second reviewer on the register to be one; read the diff, not the green"
-            % ", ".join(gate_files))
+            % ", ".join(shown))
 
 
 def reason(answer, who, head):
@@ -618,6 +628,14 @@ def _check_routes():
             print("  wiring: reviewer '%s' carries a login or a comment matcher — a route through "
                   "prose, which this gate stopped reading when Codex was retired. Its answers "
                   "would never be counted and the gate would read as unread for ever" % key)
+            bad += 1
+        # The same fault by another road: `check_run_verdict()` matches one App id
+        # and one check-run name, so an entry naming any other is never counted.
+        if who["app_id"] != REVIEWER_APP_ID or who["name"] != REVIEWER_CHECK:
+            print("  wiring: reviewer '%s' is on the register as App %s, check run '%s', but "
+                  "check_run_verdict() matches App %s, check run '%s' alone — its answers would "
+                  "never be counted" % (key, who["app_id"], who["name"], REVIEWER_APP_ID,
+                                        REVIEWER_CHECK))
             bad += 1
     return bad
 
@@ -942,6 +960,8 @@ def _check_main():
          "no reviewer has read", "a run that has not finished is not a read, and is red"),
         ([{"filename": "review-gate.py"}], [], 1, "note:",
          "an unread change to the gate is red, and still announced as one"),
+        ([{"filename": ".github/workflows/a\n::stop-commands::x.yml"}], [ok], 0, "note:",
+         "a workflow whose name carries a line break is announced, and starts no command"),
     ]
     want_asked = ["/repos/o/r/commits/%s/check-runs" % head, "/repos/o/r/pulls/7/files"]
     bad = 0
@@ -990,6 +1010,13 @@ def _check_main():
         if noticed != (must == "note:"):
             print("  main: %s — %s" % (what, "announced in the log but not on the check"
                                        if must == "note:" else "annotated, and it is not a gate change"))
+            bad += 1
+        # And nothing else it prints is a runner command: the file names are the
+        # pull request's writing, and one could otherwise start its own.
+        stray = [l for l in said.splitlines()
+                 if l.startswith("::") and not l.startswith("::notice title=")]
+        if stray:
+            print("  main: %s — a line the runner would obey: %r" % (what, stray[0]))
             bad += 1
         if sorted(set(asked)) != want_asked:
             print("  main: %s — asked GitHub for %s; it must ask for exactly %s"
