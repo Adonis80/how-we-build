@@ -986,6 +986,14 @@ def _check_main():
         if must not in said:
             print("  main: %s — expected %r in the output, got %r" % (what, must, said.strip()))
             bad += 1
+        # A gate change is announced on the check as well as in its log, and
+        # nothing else is: an annotation on every change would teach the same
+        # blindness a green tick does.
+        noticed = any(l.startswith("::notice ") for l in said.splitlines())
+        if noticed != (must == "note:"):
+            print("  main: %s — %s" % (what, "announced in the log but not on the check"
+                                       if must == "note:" else "annotated, and it is not a gate change"))
+            bad += 1
         if sorted(set(asked)) != want_asked:
             print("  main: %s — asked GitHub for %s; it must ask for exactly %s"
                   % (what, sorted(set(asked)), want_asked))
@@ -1252,6 +1260,12 @@ def main(argv):
     note = gate_note(gate_files)
     if note:
         print("note: " + note)
+        # And as an annotation, so it sits on the check itself rather than only
+        # in a log that a green tick gives nobody a reason to open (round eight
+        # on #56). A workflow command's data escapes %, CR and LF and nothing
+        # else, and the note carries file names, which the pull request writes.
+        print("::notice title=A change to the review machinery::"
+              + note.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A"))
     if answer == CLEAN:
         print("ok: %s has read %s and left nothing on it" % (REVIEWERS[who]["name"], head))
         return 0
