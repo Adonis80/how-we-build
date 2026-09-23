@@ -357,8 +357,8 @@ def reason(answer, who, head):
         return ("%s read commit %s and left findings on it — answer them, land the round's "
                 "fixes as one push, and ask once; the gate opens on a commit a reviewer reads "
                 "clean, never on an answer to a finding" % (REVIEWERS[who]["name"], head))
-    return ("no reviewer has read commit %s — write '%s' on the pull request, and when it has "
-            "finished, re-run this check" % (head, needed["ask"]))
+    return ("no reviewer has read commit %s — open a comment on the pull request with '%s', once; "
+            "this check re-runs itself when the verdict lands" % (head, needed["ask"]))
 
 
 # ---------------------------------------------------------------------------
@@ -681,6 +681,19 @@ def _check_wiring():
     if triggers(review) != ["issue_comment"]:
         print("  wiring: %s triggers on %s; it must be issue_comment and nothing else, or a "
               "branch can run a reviewer of its own writing" % (REVIEW_WORKFLOW, triggers(review)))
+        bad += 1
+
+    # The ask opens the comment, and nothing else starts a read. Matched as a
+    # substring it spent reads on #51 and #56 — both times a comment that only
+    # quoted the ask, once in the gate's own reason line pasted as evidence.
+    # Held on both halves, because adding the anchor beside a loose match
+    # would read as fixed and change nothing.
+    anchored = "startsWith(github.event.comment.body, '%s')" % REVIEWER_ASK
+    loose = "contains(github.event.comment.body, '%s')" % REVIEWER_ASK
+    if anchored not in review or loose in review:
+        print("  wiring: %s must start a read only on a comment that opens with '%s' — "
+              "`%s`, and no `%s` beside it — or a comment quoting the ask spends a read"
+              % (REVIEW_WORKFLOW, REVIEWER_ASK, anchored, loose))
         bad += 1
     if wake_on != ["workflow_call"]:
         print("  wiring: %s triggers on %s; it must be workflow_call and nothing else"

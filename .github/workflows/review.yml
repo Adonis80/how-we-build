@@ -95,9 +95,16 @@ jobs:
   review:
     # Pull requests only; on the explicit ask; and only from somebody who can
     # already write here. A passing remark must never spend the allowance.
+    #
+    # THE ASK OPENS THE COMMENT. Matched anywhere, a comment that merely QUOTED
+    # it spent a read: on #51, a sentence warning about exactly that, and on
+    # #56, a session pasting the check's own reason line — whose whole job is
+    # to name the ask, so the commonest way of showing why a check is red was a
+    # way of paying for a second review. review-gate.py refuses a build where
+    # the match stops being anchored.
     if: >-
       github.event.issue.pull_request != null &&
-      contains(github.event.comment.body, '/claude review') &&
+      startsWith(github.event.comment.body, '/claude review') &&
       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
     runs-on: ubuntu-latest
     # THE DOOR. Without this line the key is readable from any branch and the
