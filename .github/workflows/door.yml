@@ -142,9 +142,8 @@ jobs:
       #
       # THE COPY IS HELD. The rehearsal is only worth anything while it signs
       # and finds the installation exactly as review.yml does, with the same
-      # key. review-gate.py holds both, line for line: the script from the
-      # signing helper to the installation lookup, and the env lines that feed
-      # it.
+      # key. review-gate.py holds both, line for line: the script from writing
+      # the key to the installation lookup, and the env lines that feed it.
       #
       # PROVED ON MAIN: run 35870516404, 23 September 2026, dispatched straight
       # after the step landed. It asked for this repository with checks: write,
