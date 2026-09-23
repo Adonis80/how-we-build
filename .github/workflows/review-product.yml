@@ -41,7 +41,10 @@ run-name: Review ${{ inputs.repo }}#${{ inputs.pr }} at ${{ inputs.sha }}
 #
 # THE CHECK RUN OPENS BEFORE THE READ AND CLOSES WITH THE VERDICT. A session
 # looking at the pull request sees the reviewer at work and does not ask twice,
-# and the product's gate is woken by the one `completed` event its verdict makes.
+# and its verdict makes one `completed` event, which the product's own wake is
+# built to hear and answer by re-running its gate. That is an assumption, not a
+# settled property, until the port's first run shows it (#68's third read; this
+# repository's own wake exists because a verdict alone woke nothing, #24-#37).
 # A run that stops before it can sign is closed as `neutral` — a read that did
 # not happen — so nothing is left looking like a read in flight. One case is
 # beyond any step: a runner lost outright between the two leaves the run in
