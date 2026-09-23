@@ -9,12 +9,13 @@ on:
     # already attached to the head survived the move. That is half of a route
     # found on #34: open a head against a base that already carries the change
     # being judged, get it cleared against that innocent comparison, then
-    # retarget to main and merge on a green nobody re-earned. The other half is
-    # review.yml's: it diffs against main's tip, never the pull request's base,
-    # so everything that would land on main was in front of the reviewer
-    # whatever base the pull request named when it was read. review-gate.py
-    # refuses a build where it stops doing so. This trigger re-runs the check
-    # on the retarget, so its note reads the files the pull request now carries.
+    # retarget to main and merge on a green nobody re-earned. That route is
+    # closed in review.yml, which diffs against main's tip and never the pull
+    # request's base, so everything that would land on main was in front of the
+    # reviewer whatever base the pull request named when it was read.
+    # review-gate.py refuses a build where it stops doing so. This trigger
+    # re-runs the check on the retarget, so its note reads the files the pull
+    # request now carries.
     # `ready_for_review` was here too and is not, because it repaired nothing:
     # a draft already gets its `opened` run, so marking an unchanged head ready
     # adds an invocation rather than starting a check that was missing. The
