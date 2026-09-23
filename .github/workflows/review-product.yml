@@ -32,6 +32,11 @@ run-name: Review ${{ inputs.repo }}#${{ inputs.pr }} at ${{ inputs.sha }}
 # before a step runs. The commit is never inferred: it must be the pull
 # request's head when the read starts, or nothing is read and nothing is signed.
 # Signing the wrong work is this route's one dangerous failure (decision 0004).
+# That only a writer can dispatch is GitHub's documented rule, not a refusal
+# this repository has watched, as door.yml watches the door (#68's eighth
+# read). Were it ever not so, a stranger would still need an open pull
+# request's number and its full head commit from a private product, and the
+# run refuses anything else.
 #
 # THIS LOG IS PUBLIC AND THE PRODUCT IS NOT. Nothing a product holds is printed
 # here: no diff, no file, no title, no review, not even the reviewer's own error
@@ -302,7 +307,9 @@ jobs:
           # A carried page the product does not have is said out loud: a
           # reader missing one should know it, and a path every product
           # carries is the rulebook's words, not the product's (#68's fourth
-          # read).
+          # read). The constitution's path is the one Hemz OS uses: its main
+          # carries design/CONSTITUTION.md, and its own check.sh caps that
+          # exact path (checked at 9d20dde on 23 September, #68's eighth read).
           for f in $carried; do add "$f" || echo "carried page not found in $REPO: $f"; done
           while IFS= read -r -d '' f; do
             case "$carried" in *" $f "*) continue ;; esac
