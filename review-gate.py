@@ -1258,8 +1258,8 @@ def main(argv):
     if note:
         print("note: " + note)
         # And as an annotation, so it sits on the check itself rather than only
-        # in a log that a green tick gives nobody a reason to open (round eight
-        # on #56). A workflow command's data escapes %, CR and LF and nothing
+        # in a log that a green tick gives nobody a reason to open (found on
+        # #56). A workflow command's data escapes %, CR and LF and nothing
         # else, and the note carries file names, which the pull request writes.
         print("::notice title=A change to the review machinery::"
               + note.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A"))
