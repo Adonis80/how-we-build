@@ -34,12 +34,13 @@ name: Door
 # be merged until it is back.
 #
 # ON MAIN THE DOOR JOB PROVES TWO THINGS, AND ITS FAILING STEP SAYS WHICH. Red
-# at "reach for the key" means the environment holds no key: a wiring fault.
-# Red at the rehearsal means the reviewer's scoped token was refused, or
-# reached more or less than this repository, or GitHub could not be asked:
-# review.yml must not ask for that token until a run here is green. Neither
-# means the badge can be forged; only a door job that runs on a branch means
-# that.
+# at "reach for the key" means the environment holds no App id: a wiring
+# fault. Red at the rehearsal means the reviewer's scoped token was refused,
+# reached more or less than this repository, was granted more or less than
+# asked, or was not revoked; or the step could not ask at all, with no key to
+# sign with or no answer from GitHub. Its log says which, and review.yml must
+# not ask for that token until a run here is green. Neither means the badge
+# can be forged; only a door job that runs on a branch means that.
 #
 # GIVE THE PROOF BRANCH A COMMIT OF ITS OWN. Check runs attach to a SHA, so a
 # proof branch pushed at the same commit as a pull request's head hangs its red
@@ -189,7 +190,10 @@ jobs:
             exit 1
           fi
           echo "::add-mask::$tok"
-          echo "granted permissions: $(jq -c '.permissions' "$RUNNER_TEMP/mint.json")"
+          # Checked, not printed. Metadata read comes with every installation
+          # token; anything else beside checks: write is more than was asked.
+          granted=$(jq -c '(.permissions // {}) | del(.metadata)' "$RUNNER_TEMP/mint.json")
+          echo "granted, metadata aside: $granted"
           rm -f "$RUNNER_TEMP/mint.json"
           reach=$(curl -sS -H "Authorization: token $tok" -H "Accept: application/vnd.github+json" \
             "https://api.github.com/installation/repositories" | jq -r '[.repositories[].full_name] | join(",")')
@@ -198,5 +202,6 @@ jobs:
           [ "$code" = "204" ] && tok=""
           echo "the scoped token reached: $reach — and was revoked ($code)"
           [ "$reach" = "$GITHUB_REPOSITORY" ] || { echo "SCOPE WRONG: it reached more, or less, than this repository."; exit 1; }
+          [ "$granted" = '{"checks":"write"}' ] || { echo "SCOPE WRONG: it was granted more, or less, than checks: write."; exit 1; }
           [ "$code" = "204" ] || { echo "the token was not revoked"; exit 1; }
-          echo "THIS RUN SHOWS the request mints a token that reaches $GITHUB_REPOSITORY alone and can write check runs. Cite this run's id where review.yml adopts it."
+          echo "THIS RUN SHOWS the request mints a token that reaches $GITHUB_REPOSITORY alone, with checks: write alone. Cite this run's id where review.yml adopts it."
