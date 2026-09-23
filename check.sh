@@ -79,7 +79,8 @@ for f in $design_allowed; do
   [ -f "design/$f" ] || { echo "FAIL: 'design/$f' is missing; the design pages are a fixed set."; fail=1; }
 done
 
-# 2c. The boot stays small, and the library is the map's to name (#70).
+# 2c. The boot stays small, and the library is the map's to name: his ruling of
+# 23 September 2026 and decision 0005 (issue #75), built in #70's slices.
 # A session reads HOW-WE-BUILD.md and this README at its start and opens a
 # library page only when its task touches the topic, so what every session pays
 # for is capped in bytes, a stand-in for tokens at about four to one. The

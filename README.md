@@ -10,7 +10,7 @@ The rulebook for every product Dhayan's AI studio builds. This repository says *
 2. This `README.md`: the map, ending with *What every product carries*.
 3. In a product, its own `AGENTS.md`, the summary page of its `PRODUCT.md`, and `roadmap.json`.
 
-Everything else is opened only when the task touches it, as the index below says. `check.sh` holds the rulebook's share of the budget: this README at most 12,000 bytes, and the two files together at most 16,000 (about 4,000 tokens). A product's share is the last line of *What every product carries*. Project instructions point here rather than listing files; the current template is dated **2026-09-23** (`library/projects.md`).
+Everything else is opened only when the task touches it, as the index below says (his ruling, [decision 0005](https://github.com/Adonis80/how-we-build/issues/75)). `check.sh` holds the rulebook's share of the budget: this README at most 12,000 bytes, and the two files together at most 16,000 (about 4,000 tokens). A product's share is the last line of *What every product carries*. Project instructions point here rather than listing files; the current template is dated **2026-09-23** (`library/projects.md`).
 
 ## Where each topic lives
 
@@ -68,4 +68,4 @@ Every session is sent here at its start, by the first line of its `AGENTS.md` an
 - A Project whose instructions are the current template, whole, and nothing else (`library/projects.md`).
 - For a product with a user interface, a `design/` folder (`library/screen-design.md`). It holds its own constitution on one capped, machine-checked page, with only what is true there, and one spec per designed screen. Its check holds the shape: one constitution page, one brief at a time, one spec per screen, no two specs sharing an id.
 - Checks that do each piece of work once, and the deploy in its proved shape (`library/ci-and-deploy.md`).
-- **A boot budget**, held by its own check. Its `AGENTS.md`, `PRODUCT.md`'s summary page and `roadmap.json` together are at most 24,000 bytes (about 6,000 tokens), so a session boots under 10,000 tokens with the rulebook's share. One agent-instructions file, never two near-copies.
+- **A boot budget** ([decision 0005](https://github.com/Adonis80/how-we-build/issues/75)), held by its own check. Its `AGENTS.md`, `PRODUCT.md`'s summary page and `roadmap.json` together are at most 24,000 bytes (about 6,000 tokens), so a session boots under 10,000 tokens with the rulebook's share. One agent-instructions file, never two near-copies.
