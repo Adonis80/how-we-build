@@ -208,6 +208,24 @@ jobs:
           echo "token=$tok" >> "$GITHUB_OUTPUT"
           echo "wearing installation $inst"
 
+      # THE REVIEWER'S OWN TOOL: ONE VERSION, INSTALLED WHERE NO SECRET IS. It
+      # was installed unpinned, whatever the registry called latest that minute,
+      # inside the step that holds the Chairman's Claude token, so a bad
+      # release's install script would have run beside it. Now it is one exact
+      # version, whose platform binary is pinned to the same version and which
+      # has no other dependency, installed in a step that holds no secret. The
+      # version is the one that ran every read since it was published on 22
+      # September 2026, and before this merged, run 35856891823 installed it with
+      # this line on this runner image and found every flag the read passes.
+      # review-gate.py refuses a build that unpins it or moves it
+      # back beside the token. Like the read, it may fail without stopping the
+      # job: a failed install must reach the badge as `neutral`, never as a job
+      # that dies unseen. Moving to a newer version is this one line.
+      - name: Install the reviewer's tool
+        if: steps.gather.outputs.too_big == 'no'
+        continue-on-error: true
+        run: npm install -g @anthropic-ai/claude-code@2.1.280
+
       - name: Read it
         id: read
         if: steps.gather.outputs.too_big == 'no'
@@ -222,7 +240,6 @@ jobs:
             echo "It fails closed on purpose. See README, The independent reviewer." >&2
             exit 1
           fi
-          npm install -g @anthropic-ai/claude-code >/dev/null 2>&1
 
           # Everything under review arrives on stdin, not as an argument: an
           # argument has a length limit a 600 KB diff would pass.

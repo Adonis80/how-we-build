@@ -907,6 +907,22 @@ def _check_wiring():
             print("  wiring: %s no longer passes %s — %s" % (REVIEW_WORKFLOW, flag, why))
             bad += 1
 
+    # The reviewer's own tool is pinned to one version and installed in a step
+    # holding no secret. Unpinned, a read ran whatever the registry published
+    # last; installed beside CLAUDE_CODE_OAUTH_TOKEN, a bad release's install
+    # script ran next to the Chairman's credential.
+    pins = re.findall(r"npm install -g @anthropic-ai/claude-code@(\d+\.\d+\.\d+)\b", review)
+    loose = re.findall(r"npm install[^\n]*@anthropic-ai/claude-code(?!@\d)", review)
+    beside = [s for s in re.split(r"\n\s*- name: ", review)
+              if "CLAUDE_CODE_OAUTH_TOKEN" in s and "npm install" in s]
+    if len(pins) != 1 or loose or beside:
+        print("  wiring: %s must install the reviewer's tool once, pinned to an exact version "
+              "(npm install -g @anthropic-ai/claude-code@X.Y.Z), in a step that holds no "
+              "secret — unpinned, a read runs whatever the registry published last, and beside "
+              "CLAUDE_CODE_OAUTH_TOKEN its install script runs next to the Chairman's credential"
+              % REVIEW_WORKFLOW)
+        bad += 1
+
     # Codex's P1 on #38, accepted in full: the brief was read from the pull
     # request's own head, so a proposer could edit AGENTS.md to instruct the
     # reviewer to answer clean. It is read from the protected branch instead, and
