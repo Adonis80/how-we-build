@@ -170,9 +170,8 @@ jobs:
           [ -n "$inst" ] || { echo "::error::the App is not installed on $REPO"; exit 1; }
           # SCOPED FROM THE FIRST RUN: this product alone, and only what a read
           # needs — its code to read, its pull request to comment on, its check
-          # runs to sign. review.yml's token still reaches every repository the
-          # App is installed on (#66 is the repair); a route that has never run
-          # does not start with that exposure.
+          # runs to sign. review.yml's own token is scoped the same way: the
+          # rulebook's repository alone, checks: write alone (#66's step two, #74).
           #
           # PULL REQUESTS WRITE, AND NO ISSUES (#68's sixth read asked for
           # issues write). Two facts settle it, both GitHub's own. A comment on
