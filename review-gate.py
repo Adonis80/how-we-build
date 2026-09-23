@@ -969,6 +969,397 @@ def _check_wiring():
     return bad
 
 
+# ---------------------------------------------------------------------------
+# THE PRODUCT REVIEWER. His ruling, 23 September 2026: "Sonnet reviewer for
+# Hemz OS. Port the reviewer badge from how-we-build into this repo's review
+# gate and retire Codex here." A product is private, and on GitHub Free a
+# private repository's environment protection is no boundary, so its pull
+# requests are read from here and signed there (decision 0002, C; decision
+# 0004's "one reviewer workflow in the public rulebook, one protected App
+# credential, taking target repo, pull request and exact head SHA as inputs").
+#
+# It is a second file rather than a second trigger on review.yml, so that a
+# route which has never run cannot stop the one that works. What makes that
+# safe is below: everything review.yml is held to that is not about this
+# repository's own pull requests, the product file is held to as well, and the
+# lines the two must say identically are compared, not trusted. A product
+# gains nothing here by being named; it gains a read by being on the file's
+# list, which must name only products this README lists.
+PRODUCT_WORKFLOW = ".github/workflows/review-product.yml"
+PRODUCT_SCOPE = ('{repositories: [$r], permissions: {contents: "read", pull_requests: "write", '
+                 'checks: "write"}}')
+PRODUCT_BRIEF = 'g show "origin/$MAIN:AGENTS.md" > "$t/brief.txt"'
+PRODUCT_DIFF = 'g diff "origin/$MAIN...$SHA" > "$t/diff.txt"'
+PRODUCT_HEAD = ('[ "$head" = "$SHA" ]', '[ "$fetched" = "$SHA" ]')
+PRODUCT_REACH = ('"https://api.github.com/installation/repositories"', 'if [ "$reach" != "$REPO" ]; then')
+# What the token was granted, checked against exactly what was asked for
+# (#68's twelfth read), in that order: wanted, then read from GitHub's answer.
+PRODUCT_GRANT = ("""want='{"checks":"write","contents":"read","pull_requests":"write"}'""",
+                 """granted=$(jq -cS '(.permissions // {}) | del(.metadata)' "$RUNNER_TEMP/mint.json")""",
+                 'if [ "$granted" != "$want" ]; then')
+PRODUCT_NAMES = ('--arg name "%s"' % REVIEWER_CHECK, '"$REVIEWER_APP_ID" "%s"' % REVIEWER_CHECK)
+PASTED_INPUT = re.compile(r"^\s+[A-Z_]+: \$\{\{ inputs\.[a-z_]+ \}\}\s*$")
+XTRACE = re.compile(r"\bset\s+-\w*x|\bxtrace\b")
+TOOL_PIN = r"npm install -g @anthropic-ai/claude-code@(\d+\.\d+\.\d+)\b"
+SCHEMA = re.compile(r"^\s*schema='([^']*)'\s*$", re.M)
+CEILING = re.compile(r'"\$bytes" -gt (\d+)')
+TIMEOUT = re.compile(r"^\s*timeout-minutes:\s*(\d+)\s*$", re.M)
+# The clean-up (#68's seventh read): whatever happened, a check run the job
+# opened and never signed is closed as a read that did not happen, a close that
+# did not take turns the step red, and the token is revoked. Held as whole lines
+# inside that one step, since the file revokes a token elsewhere too, and a line
+# found anywhere would pass a clean-up that had lost it.
+PRODUCT_CLEANUP = "Leave nothing open"
+PRODUCT_CLEANUP_LINES = (
+    "if: always()",
+    "TOKEN: ${{ steps.badge.outputs.token }}",
+    "RUN: ${{ steps.open.outputs.id }}",
+    "SIGNED: ${{ steps.sign.outcome }}",
+    'if [ -z "${TOKEN:-}" ]; then',
+    'if [ -n "${RUN:-}" ] && [ "$SIGNED" != "success" ]; then',
+    """jq -n '{status:"completed", conclusion:"neutral",""",
+    'if [ "$code" = "200" ]; then',
+    "left_open=yes",
+    """code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: token $TOKEN" \\""",
+    '-H "Accept: application/vnd.github+json" "https://api.github.com/installation/token") || '
+    'code="unreachable"',
+)
+PRODUCT_CLEANUP_LAST = '[ "$left_open" = no ]'
+
+
+def _step_span(text, name):
+    """Where the step called `name` sits: from its `- name:` line to the next step's."""
+    m = re.search(r"^([ ]*)- name: %s[ ]*$" % re.escape(name), text, re.M)
+    if not m:
+        return None
+    after = re.compile(r"^%s- name: " % m.group(1), re.M).search(text, m.end())
+    return m.start(), after.start() if after else len(text)
+
+
+def _in_step(text, name, old, new):
+    """The text with the first `old` inside the named step, and only there, made `new`."""
+    span = _step_span(text, name)
+    if not span:
+        return text
+    start, end = span
+    return text[:start] + text[start:end].replace(old, new, 1) + text[end:]
+
+
+def _without_step(text, name):
+    """The text with the named step taken out whole."""
+    span = _step_span(text, name)
+    return text[:span[0]] + text[span[1]:] if span else text
+
+
+def _block(text, first, last, keep_comments=True):
+    """The stripped lines from the first matching `first` to the next `last`."""
+    lines = [l.strip() for l in text.splitlines()]
+    if not keep_comments:
+        lines = [l for l in lines if l and not l.startswith("#")]
+    try:
+        start = next(i for i, l in enumerate(lines) if first(l))
+        end = next(i for i, l in enumerate(lines) if i > start and last(l))
+    except StopIteration:
+        return None
+    return lines[start:end + 1]
+
+
+def _standing(text):
+    """The standing instruction a reviewer is given, as the lines that echo it."""
+    return _block(text, lambda l: l.startswith('echo "You are the independent reviewer'),
+                  lambda l: "say in the review that it tried." in l)
+
+
+def _jwt(text):
+    """The App's JWT, signed: from the encoding helper to the token it makes."""
+    return _block(text, lambda l: l.startswith("b64url() {"),
+                  lambda l: l == 'jwt="$hdr.$pl.$sig"', keep_comments=False)
+
+
+def _call(text):
+    """Every flag the reviewer is called with, one per line, in order.
+
+    The system prompt's flag is kept without its argument: each file reads the
+    prompt from where it keeps it, and that path is all that may differ.
+    """
+    lines = [l.strip() for l in text.splitlines()]
+    try:
+        start = next(i for i, l in enumerate(lines) if re.search(r"(^|\s)claude -p \\$", l))
+    except StopIteration:
+        return None
+    flags = []
+    for line in lines[start + 1:]:
+        if not line.startswith("--"):
+            break
+        flags.append("--system-prompt" if line.startswith("--system-prompt ") else line)
+    return flags or None
+
+
+def _check_product_wiring(review=None, product=None, readme=None, quiet=False):
+    """review-product.yml, held to review.yml and to the rulebook's own map."""
+    say = (lambda *a: None) if quiet else print
+    try:
+        review = _read(REVIEW_WORKFLOW) if review is None else review
+        product = _read(PRODUCT_WORKFLOW) if product is None else product
+        readme = _read("README.md") if readme is None else readme
+    except OSError as e:
+        say("  wiring: %s" % e)
+        return 1
+    bad = 0
+
+    def fault(what):
+        nonlocal bad
+        say("  wiring: %s %s" % (PRODUCT_WORKFLOW, what))
+        bad += 1
+
+    # A dispatch is the ask, and only a writer can make one: GitHub refuses a
+    # dispatch from anybody else, which is what keeps a stranger from spending
+    # the allowance on a public repository. Any other trigger — a comment, a
+    # push, a pull request — reaches the key from somewhere this reasoning
+    # does not cover.
+    if triggers(product) != ["workflow_dispatch"]:
+        fault("triggers on %s; it must be workflow_dispatch and nothing else, which only a "
+              "writer here can fire" % triggers(product))
+    # The door, the same one review.yml stands behind.
+    if not USES_ENVIRONMENT.search(product):
+        fault("does not run in the `%s` environment, so the App's key is readable from any "
+              "branch and a product's badge can be forged" % KEY_ENVIRONMENT)
+    for pattern, what in ((r'^\s*concurrency:', "a concurrency block"),
+                          (r'^\s*cancel-in-progress:', "a cancel-in-progress setting")):
+        if re.search(pattern, product, re.M):
+            fault("has %s; for review.yml's reason, every ask runs" % what)
+    for flag, why in (('--tools ""', "every built-in tool would be back on"),
+                      ("--restricted", "it would read the settings files it is shown"),
+                      ("--strict-mcp-config", "it could pick up MCP servers from elsewhere"),
+                      ("--model " + REVIEWER_MODEL, "it would not be the reviewer he named"),
+                      ("--effort " + REVIEWER_EFFORT, "it would not be at the effort he named")):
+        if flag not in product:
+            fault("no longer passes %s — %s" % (flag, why))
+    # One version of the tool for both reviewers, installed where no secret is.
+    pins = re.findall(TOOL_PIN, product)
+    loose = re.findall(r"npm install[^\n]*@anthropic-ai/claude-code(?!@\d)", product)
+    holds = re.compile(r"secrets\.|steps\.badge\.outputs\.token")
+    above, _, rest = product.partition("\n    steps:\n")
+    beside = [s for s in re.split(r"\n\s*- name: ", rest) if "npm install" in s and holds.search(s)]
+    if len(pins) != 1 or loose or beside or holds.search(above):
+        fault("must install the reviewer's tool once, pinned to an exact version, in a step that "
+              "holds no secret, with no secret set above the steps")
+    elif pins != re.findall(TOOL_PIN, review):
+        fault("pins the reviewer's tool at %s and %s pins %s — one reviewer, one version"
+              % (pins, REVIEW_WORKFLOW, re.findall(TOOL_PIN, review)))
+    # The brief from the product's protected branch, the diff against its tip.
+    if PRODUCT_BRIEF not in product:
+        fault("no longer reads the brief from the product's protected branch (`%s`); read from "
+              "the head, a pull request writes its own reviewer's instructions" % PRODUCT_BRIEF)
+    if PRODUCT_DIFF not in product or ".base.sha" in product:
+        fault("must read the diff against the product's protected branch (`%s`) and never "
+              "fetch the pull request's base (#34)" % PRODUCT_DIFF)
+    # The commit is given and checked, never inferred: signing the wrong work
+    # is this route's one dangerous failure (decision 0004).
+    for line in PRODUCT_HEAD:
+        if line not in product:
+            fault("no longer checks the commit asked for against the pull request's head "
+                  "(`%s`), so it could sign work nobody asked it to read" % line)
+    # Scoped to the product alone, from the first run — and what the token
+    # reaches is asked of GitHub and refused on a mismatch, not read off the
+    # request (#68's first read: the request alone was held, the check was not).
+    if PRODUCT_SCOPE not in product:
+        fault("must mint its token scoped to the product alone (`%s`); unscoped, a read of one "
+              "product reaches every repository the App is installed on" % PRODUCT_SCOPE)
+    for line in PRODUCT_REACH:
+        if line not in product:
+            fault("no longer asks GitHub what its token reaches and refuses a mismatch (`%s`)"
+                  % line)
+    # And what it was granted, checked rather than printed (#68's twelfth read).
+    for line in PRODUCT_GRANT:
+        if line not in product:
+            fault("no longer checks what its token was granted against exactly what it asked "
+                  "for, revoking it on a mismatch (`%s`)" % line)
+    # A dispatch's inputs are typed, so they reach a script as variables only.
+    for n, line in enumerate(product.splitlines(), 1):
+        if "${{ inputs." in line and not line.startswith("run-name: ") \
+                and not PASTED_INPUT.match(line):
+            fault("line %d pastes an input into the workflow rather than passing it as a "
+                  "variable — a typed value pasted into a script can run" % n)
+    # This log is public and the product is not.
+    if XTRACE.search(product):
+        fault("traces its shell, which prints what it runs — the product's words included — "
+              "into a public log")
+    # The lines the two reviewers must say identically.
+    if _standing(review) is None or _standing(product) != _standing(review):
+        fault("does not give the reviewer %s's standing instruction, line for line"
+              % REVIEW_WORKFLOW)
+    if _jwt(review) is None or _jwt(product) != _jwt(review):
+        fault("does not sign the App's JWT exactly as %s does, line for line" % REVIEW_WORKFLOW)
+    if not SCHEMA.findall(product) or SCHEMA.findall(product) != SCHEMA.findall(review):
+        fault("does not ask for the verdict in %s's shape" % REVIEW_WORKFLOW)
+    # Every flag of the call and the job's time limit, not only the five above
+    # (#68's tenth read): a flag dropped from one file is the drift this check
+    # exists to refuse, whichever flag it is.
+    if _call(review) is None or _call(product) != _call(review):
+        fault("does not call the reviewer with %s's flags, flag for flag: %s against %s"
+              % (REVIEW_WORKFLOW, _call(product), _call(review)))
+    if not TIMEOUT.findall(product) or TIMEOUT.findall(product) != TIMEOUT.findall(review):
+        fault("gives its job %s minutes and %s gives %s — one reviewer, one time limit"
+              % (TIMEOUT.findall(product), REVIEW_WORKFLOW, TIMEOUT.findall(review)))
+    # And the size past which a diff is not read at all (#68's fourth read):
+    # the two would otherwise give up on a large change at different sizes.
+    if not CEILING.findall(product) or CEILING.findall(product) != CEILING.findall(review):
+        fault("gives up on a diff at %s bytes and %s at %s — one reviewer, one ceiling"
+              % (CEILING.findall(product), REVIEW_WORKFLOW, CEILING.findall(review)))
+    # The verdict's shape, which the product's gate reads exactly as this
+    # repository's reads its own.
+    # Where the run is opened and where it is read back: renamed in either,
+    # the product's gate never sees it, or the job signs what it cannot confirm.
+    for line in PRODUCT_NAMES:
+        if line not in product:
+            fault("does not name its check run `%s` where it %s (`%s`), the only name a gate reads"
+                  % (REVIEWER_CHECK, "opens it" if line == PRODUCT_NAMES[0] else "reads it back",
+                     line))
+    written = sorted(set(re.findall(r'^\s*conclusion=([a-z_]+)\s*$', product, re.M)
+                         + re.findall(r'conclusion:\s*"([a-z_]+)"', product)))
+    fake_head = "090e429a31cd5f0b2e4d7a1c9b8e6f4d2a1c3b5e"
+    got = dict((c, check_run_verdict(
+        {"app": {"id": REVIEWER_APP_ID}, "name": REVIEWER_CHECK, "head_sha": fake_head,
+         "status": "completed", "conclusion": c}, fake_head)) for c in written)
+    if got != {"success": CLEAN, "failure": FINDINGS, "neutral": None}:
+        fault("writes the conclusions %s; it must write exactly one clean (success), one "
+              "findings (failure) and one that is no verdict at all (neutral)" % written)
+    # Opened before the read and closed with the verdict, so the product's
+    # gate is woken by the one `completed` event the verdict makes.
+    if 'status:"in_progress"' not in product or 'status:"completed"' not in product:
+        fault("must open its check run in progress and close it completed; a product's gate "
+              "wakes on the completion, and a run created already finished may never say so")
+    # And whatever happened, nothing left open (#68's seventh read): the step
+    # that closes an abandoned run and revokes the token, held line for line.
+    span = _step_span(product, PRODUCT_CLEANUP)
+    held = [l.strip() for l in product[span[0]:span[1]].splitlines()] if span else []
+    ran = [l for l in held if l and not l.startswith("#")]
+    lost = ["`%s`" % l for l in PRODUCT_CLEANUP_LINES if l not in held]
+    if ran[-1:] != [PRODUCT_CLEANUP_LAST]:
+        lost.append("`%s` as its last line" % PRODUCT_CLEANUP_LAST)
+    if lost:
+        fault("must end in a `%s` step that runs always, closes a check run it opened and never "
+              "signed as neutral, goes red when that close does not take, and revokes the token; "
+              "it has lost %s" % (PRODUCT_CLEANUP, "; ".join(lost)))
+    # Only products this rulebook lists — in the form, and refused at run time
+    # before any token is minted, since whether GitHub's API holds a dispatch
+    # to the form's `choice` is not something this file has watched happen
+    # (#68's first read). The two lists must agree, and name only products the
+    # README's map names.
+    options = re.findall(r"^\s+- (Adonis80/[A-Za-z0-9._-]+)\s*$", product, re.M)
+    block = re.search(r'case "\$REPO" in\n(.*?)\n\s*esac', product, re.S)
+    allowed = re.findall(r"^\s+(Adonis80/[A-Za-z0-9._-]+)\)\s*;;\s*$", block.group(1), re.M) \
+        if block else []
+    refused = bool(block) and re.search(r"^\s+\*\)[^\n]*exit 1", block.group(1), re.M)
+    if not options:
+        fault("names no product to read")
+    if sorted(allowed) != sorted(options) or not refused:
+        fault("must refuse, at run time, any product but the form's own list — its `case` allows "
+              "%s and the form offers %s" % (sorted(allowed), sorted(options)))
+    for repo in sorted(set(options) | set(allowed)):
+        if "`https://github.com/%s`" % repo not in readme:
+            fault("offers to read %s, which is not a product on the README's map" % repo)
+    if not bad:
+        say("ok: the product reviewer answers only a writer's dispatch, behind the `%s` door, "
+            "with a token scoped to the one product; it reads the exact head against the "
+            "product's protected branch, gives the reviewer %s's model, effort, tool, flags "
+            "and instruction line for line, and leaves nothing open whatever happens"
+            % (KEY_ENVIRONMENT, REVIEW_WORKFLOW))
+    return bad
+
+
+# Each loosening of review-product.yml that the check above must refuse. A
+# guard only ever run against files that already agree proves nothing about
+# the day they do not (#66's fourth read, on its own line-for-line check).
+PRODUCT_LOOSENINGS = (
+    ("a push trigger", lambda t: t.replace("on:\n  workflow_dispatch:", "on:\n  push:\n  workflow_dispatch:", 1)),
+    ("the door removed", lambda t: t.replace("    environment: reviewer\n", "", 1)),
+    ("a concurrency block", lambda t: t.replace("\njobs:\n", "\nconcurrency:\n  group: review\njobs:\n", 1)),
+    ("a lower effort", lambda t: t.replace("--effort max", "--effort high", 1)),
+    ("the tools back on", lambda t: t.replace('--tools "" \\\n', "", 1)),
+    ("settings files read", lambda t: t.replace("--restricted \\\n", "", 1)),
+    ("MCP servers from elsewhere", lambda t: t.replace("--strict-mcp-config \\\n", "", 1)),
+    ("another model", lambda t: t.replace("--model " + REVIEWER_MODEL, "--model claude-haiku-4-5", 1)),
+    ("the tool unpinned", lambda t: t.replace("claude-code@2.1.280", "claude-code", 1)),
+    ("a different version", lambda t: re.sub(r"claude-code@(\d+)\.(\d+)\.(\d+)", "claude-code@9.9.9", t, 1)),
+    ("the brief from the head", lambda t: t.replace('g show "origin/$MAIN:AGENTS.md"', 'g show "$SHA:AGENTS.md"', 1)),
+    ("the diff against the base", lambda t: t.replace(PRODUCT_DIFF, 'g diff "$BASE...$SHA" > "$t/diff.txt"  # .base.sha', 1)),
+    ("the head never checked", lambda t: t.replace(PRODUCT_HEAD[0], "true", 1)),
+    ("the fetched head never checked", lambda t: t.replace(PRODUCT_HEAD[1], "true", 1)),
+    ("the token's reach never asked", lambda t: t.replace(PRODUCT_REACH[0], '"https://api.github.com/user/repos"', 1)),
+    ("the install beside a secret", lambda t: t.replace("        run: npm install -g @anthropic-ai/claude-code@", "        env:\n          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}\n        run: npm install -g @anthropic-ai/claude-code@", 1)),
+    ("a secret above the steps", lambda t: t.replace("    environment: reviewer\n", "    environment: reviewer\n    env:\n      KEY: ${{ secrets.REVIEWER_APP_KEY }}\n", 1)),
+    ("a second, unpinned install", lambda t: t.replace("run: npm install -g @anthropic-ai/claude-code@2.1.280", "run: npm install -g @anthropic-ai/claude-code@2.1.280 && npm install -g @anthropic-ai/claude-code", 1)),
+    ("a cancel-in-progress setting alone", lambda t: t.replace("    timeout-minutes: 30\n", "    timeout-minutes: 30\n    cancel-in-progress: true\n", 1)),
+    ("the base fetched beside the right diff", lambda t: t.replace(PRODUCT_DIFF, PRODUCT_DIFF + "  # .base.sha", 1)),
+    ("a different size ceiling", lambda t: t.replace('"$bytes" -gt 600000', '"$bytes" -gt 900000', 1)),
+    ("no product at all", lambda t: t.replace("          - Adonis80/Hemz-OS\n", "", 1).replace("            Adonis80/Hemz-OS) ;;\n", "", 1)),
+    ("the token unscoped", lambda t: t.replace(PRODUCT_SCOPE, "{}", 1)),
+    ("an input pasted", lambda t: t.replace('echo "asked: $REPO', 'echo "asked: ${{ inputs.repo }}', 1)),
+    ("the shell traced", lambda t: t.replace("set -euo pipefail\n", "set -euxo pipefail\n", 1)),
+    ("the instruction altered", lambda t: t.replace("Read COLD:", "Read kindly:", 1)),
+    ("the JWT's lifetime altered", lambda t: t.replace("$((now + 540))", "$((now + 3600))", 1)),
+    ("the verdict's shape altered", lambda t: t.replace('"enum":["clean","findings"]', '"enum":["clean"]', 1)),
+    ("a conclusion GitHub writes", lambda t: t.replace("conclusion=neutral", "conclusion=skipped", 1)),
+    ("the run created finished", lambda t: t.replace('status:"in_progress"', 'status:"completed"', 1)),
+    ("a repository not on the map", lambda t: t.replace("          - Adonis80/Hemz-OS\n", "          - Adonis80/Hemz-OS\n          - Adonis80/elsewhere\n", 1)),
+    ("one on both lists but not the map", lambda t: t.replace("          - Adonis80/Hemz-OS\n", "          - Adonis80/Hemz-OS\n          - Adonis80/elsewhere\n", 1).replace("            Adonis80/Hemz-OS) ;;\n", "            Adonis80/Hemz-OS) ;;\n            Adonis80/elsewhere) ;;\n", 1)),
+    ("any product let through at run time", lambda t: t.replace("            Adonis80/Hemz-OS) ;;\n", "            Adonis80/*) ;;\n", 1)),
+    ("the refusal at run time removed", lambda t: t.replace('*) echo "::error::$REPO is not a product this reviewer reads"; exit 1 ;;', "*) ;;", 1)),
+    ("the token's reach taken on trust", lambda t: t.replace('if [ "$reach" != "$REPO" ]; then', "if false; then", 1)),
+    ("the check run renamed where it opens", lambda t: t.replace('--arg name "juku-reviewer"', '--arg name "juku-review"', 1)),
+    ("the check run renamed where it is read back", lambda t: t.replace('"$REVIEWER_APP_ID" "juku-reviewer"', '"$REVIEWER_APP_ID" "juku-review"', 1)),
+    # The clean-up (#68's seventh read), each change made inside its own step.
+    ("the clean-up removed", lambda t: _without_step(t, PRODUCT_CLEANUP)),
+    ("the clean-up only when all went well", lambda t: _in_step(t, PRODUCT_CLEANUP, "if: always()", "if: success()")),
+    ("the clean-up handed no token", lambda t: _in_step(t, PRODUCT_CLEANUP, "TOKEN: ${{ steps.badge.outputs.token }}", 'TOKEN: ""')),
+    ("the opened run forgotten", lambda t: _in_step(t, PRODUCT_CLEANUP, "RUN: ${{ steps.open.outputs.id }}", 'RUN: ""')),
+    ("the signing taken as done", lambda t: _in_step(t, PRODUCT_CLEANUP, "SIGNED: ${{ steps.sign.outcome }}", "SIGNED: success")),
+    ("the clean-up skipped every time", lambda t: _in_step(t, PRODUCT_CLEANUP, 'if [ -z "${TOKEN:-}" ]; then', "if true; then")),
+    ("an abandoned run never closed", lambda t: _in_step(t, PRODUCT_CLEANUP, '[ -n "${RUN:-}" ] && [ "$SIGNED" != "success" ]', "false")),
+    ("an abandoned run closed as clean", lambda t: _in_step(t, PRODUCT_CLEANUP, 'conclusion:"neutral"', 'conclusion:"success"')),
+    ("a close taken on trust", lambda t: _in_step(t, PRODUCT_CLEANUP, 'if [ "$code" = "200" ]; then', 'if [ "$code" = "200" ] || true; then')),
+    ("a close that did not take left green", lambda t: _in_step(t, PRODUCT_CLEANUP, "left_open=yes", "left_open=no")),
+    ("the token read rather than revoked", lambda t: _in_step(t, PRODUCT_CLEANUP, "-X DELETE -H", "-X GET -H")),
+    ("the revocation sent elsewhere", lambda t: _in_step(t, PRODUCT_CLEANUP, '/installation/token")', '/rate_limit")')),
+    ("the clean-up's red switched off", lambda t: _in_step(t, PRODUCT_CLEANUP, PRODUCT_CLEANUP_LAST, PRODUCT_CLEANUP_LAST + " || true")),
+    # Every flag of the call, and the time limit (#68's tenth read).
+    ("a flag dropped from the call", lambda t: t.replace("            --no-session-persistence \\\n", "", 1)),
+    ("a flag added to the call", lambda t: t.replace("            --output-format json \\\n", "            --output-format json \\\n            --verbose \\\n", 1)),
+    ("a flag's value changed", lambda t: t.replace("--permission-prompts none", "--permission-prompts ask", 1)),
+    ("a different time limit", lambda t: t.replace("    timeout-minutes: 30\n", "    timeout-minutes: 90\n", 1)),
+    # What the token was granted (#68's twelfth read).
+    ("the grant printed, not checked", lambda t: t.replace(PRODUCT_GRANT[2], "if false; then", 1)),
+    ("a wider grant wanted", lambda t: t.replace(PRODUCT_GRANT[0], PRODUCT_GRANT[0].replace('"contents":"read"', '"contents":"read","issues":"write"'), 1)),
+    ("the grant taken on trust", lambda t: t.replace(PRODUCT_GRANT[1], "granted=$want", 1)),
+)
+
+
+def _check_product_loosenings():
+    """Every loosening above must turn the product wiring red, and none may miss."""
+    try:
+        product = _read(PRODUCT_WORKFLOW)
+    except OSError as e:
+        print("  wiring: %s" % e)
+        return 1
+    bad = 0
+    for what, loosen in PRODUCT_LOOSENINGS:
+        changed = loosen(product)
+        if changed == product:
+            print("  wiring: the loosening '%s' no longer applies to %s — rewrite it against the "
+                  "file as it stands, or it proves nothing" % (what, PRODUCT_WORKFLOW))
+            bad += 1
+        elif _check_product_wiring(product=changed, quiet=True) == 0:
+            print("  wiring: %s with %s passes the check — the guard for it is gone"
+                  % (PRODUCT_WORKFLOW, what))
+            bad += 1
+    if not bad:
+        print("ok: each of %d loosenings of %s was applied to the real file and refused"
+              % (len(PRODUCT_LOOSENINGS), PRODUCT_WORKFLOW))
+    return bad
+
+
 def _run(conclusion=None, status="completed", app=REVIEWER_APP_ID, name=REVIEWER_CHECK, sha=None):
     return {"app": None if app is None else {"id": app}, "name": name,
             "head_sha": sha, "status": status, "conclusion": conclusion}
@@ -1244,6 +1635,8 @@ def _selftest():
     # until the next push.
     failed = _check_main()
     failed += _check_wiring()
+    failed += _check_product_wiring()
+    failed += _check_product_loosenings()
     return 1 if failed else 0
 
 
