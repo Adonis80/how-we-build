@@ -592,6 +592,41 @@ def wake_request(text):
     return endpoint, query, prog.replace('\\"', '"').replace("$mine", mine)
 
 
+def signing_block(text):
+    """The lines that sign the App's JWT and find its installation, or None.
+
+    From the `b64url` helper to the installation lookup, each line stripped and
+    comments and blank lines dropped, so two files may differ in layout and
+    commentary but in no command. None when there is no block to compare,
+    which fails the check rather than passing it untested.
+    """
+    lines = [l.strip() for l in text.splitlines()]
+    lines = [l for l in lines if l and not l.startswith("#")]
+    try:
+        start = next(i for i, l in enumerate(lines) if l.startswith("b64url() {"))
+        end = next(i for i, l in enumerate(lines)
+                   if i > start and l.endswith("/installation\" | jq -r '.id // empty')"))
+    except StopIteration:
+        return None
+    return lines[start:end + 1]
+
+
+def rehearsal_drifts(door, review):
+    """True unless both files carry the signing block and it is the same."""
+    theirs = signing_block(review)
+    return theirs is None or signing_block(door) != theirs
+
+
+# The shape of that block, for the selftest to show the hold going red rather
+# than only agreeing with today's two files.
+SIGNING_SAMPLE = """\
+          b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+          now=$(date +%s)
+          pl=$(printf '{"iat":%d,"exp":%d}' "$((now - 60))" "$((now + 540))" | b64url)
+          inst=$(curl -sS "https://api.github.com/repos/$GITHUB_REPOSITORY/installation" | jq -r '.id // empty')
+"""
+
+
 USES_ENVIRONMENT = re.compile(r"^\s*environment:\s*" + re.escape(KEY_ENVIRONMENT) + r"\s*$", re.M)
 
 
@@ -875,20 +910,10 @@ def _check_wiring():
     # the installation differently from the real one. So the two are held line
     # for line — from the signing helper to the installation lookup, comments
     # and blank lines aside — rather than trusted to be edited together (#66's
-    # first read). A file with no such block, or two blocks that differ, fails.
-    # It is the regression test of a repair, not a new rule: why, and the
-    # failing case, are at the rehearsal step in door.yml, once.
-    def _signing(text):
-        lines = [l.strip() for l in text.splitlines()]
-        lines = [l for l in lines if l and not l.startswith("#")]
-        try:
-            start = next(i for i, l in enumerate(lines) if l.startswith("b64url() {"))
-            end = next(i for i, l in enumerate(lines)
-                       if i > start and l.endswith("/installation\" | jq -r '.id // empty')"))
-        except StopIteration:
-            return None
-        return lines[start:end + 1]
-    if _signing(review) is None or _signing(door) != _signing(review):
+    # first read), and the selftest shows the hold going red. Why the rehearsal
+    # exists, the rule it serves and when it goes are at its step in door.yml,
+    # once.
+    if rehearsal_drifts(door, review):
         print("  wiring: %s must sign the App's JWT and find its installation exactly as %s does, "
               "line for line — a rehearsal of the reviewer's token that differs from it proves "
               "nothing about it" % (DOOR_WORKFLOW, REVIEW_WORKFLOW))
@@ -1247,6 +1272,21 @@ def _selftest():
         bad += hold(built.count("?"), 1, what + " — exactly one query string")
         bad += hold(urllib.parse.urlsplit(built).path, urllib.parse.urlsplit(url).path,
                     what + " — the path unchanged")
+    # The rehearsal's hold on review.yml's signing, going red (#66's fourth
+    # read): a layout the runner ignores is no drift; a changed command, or no
+    # block at all, is.
+    relaid = "\n".join("  # why\n\n" + l.strip() for l in SIGNING_SAMPLE.splitlines())
+    longer = SIGNING_SAMPLE.replace("now + 540", "now + 600")
+    elsewhere = SIGNING_SAMPLE.replace("repos/$GITHUB_REPOSITORY", "repos/$OTHER")
+    for door_text, review_text, want, what in (
+            (SIGNING_SAMPLE, SIGNING_SAMPLE, False, "a rehearsal signing as the reviewer does"),
+            (relaid, SIGNING_SAMPLE, False, "the same under other indentation, comments and blanks"),
+            (longer, SIGNING_SAMPLE, True, "a rehearsal whose JWT lives longer"),
+            (SIGNING_SAMPLE, longer, True, "the reviewer's signing changed alone"),
+            (elsewhere, SIGNING_SAMPLE, True, "a rehearsal that finds the installation elsewhere"),
+            ("", SIGNING_SAMPLE, True, "no rehearsal at all"),
+            ("", "", True, "neither file signing, which is not agreement")):
+        bad += hold(rehearsal_drifts(door_text, review_text), want, what)
     if bad:
         print("review-gate selftest failed: %d case(s)" % bad)
         return 1

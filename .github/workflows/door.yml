@@ -118,35 +118,35 @@ jobs:
 
       # THE REVIEWER'S TOKEN, SCOPED: A REHEARSAL, AND NOT YET RUN.
       #
-      # A REPAIR, NOT AN ADDITION TO HOW WE BUILD, SO THE CHARTER'S §13 IS NOT
-      # ENGAGED. The failing case is today's: the badge's token, minted with no
-      # repositories list, reaches Hemz OS, a private product repository, with
-      # every permission the App holds, in a job that also runs a third-party
-      # tool over the diff it is shown. That is a trust boundary crossed
-      # wrongly, P1 in this repository's queue. HOW-WE-BUILD.md proves a repair
-      # before it is relied on (step 4) and answers a failure with the smallest
-      # regression test: this step is that proof, and the line-for-line check in
-      # review-gate.py is that test, as #63, #64 and #65 held their repairs. No
-      # rule about how we build changes.
+      # THE RULE IS THE CHARTER'S ALREADY: "Use least-privilege repository access
+      # and protected `main`" (CHARTER.md §12). review.yml breaks it. It mints
+      # the badge's installation token with no body, so the token reaches every
+      # repository the App is installed on (Hemz OS, a private product
+      # repository, since #47) with every permission the App holds, in a job
+      # that also runs a third-party tool over the diff it is shown. It should
+      # reach this repository alone and do one thing: write check runs. No
+      # incident is claimed. The failing case is the reach itself, a trust
+      # boundary crossed wrongly, P1 in this repository's queue.
       #
-      # review.yml mints its installation token with no body, so the token reaches
-      # every repository the App is installed on — Hemz OS too, since #47 — in a
-      # job that also runs the reviewer's tool. It should reach this repository
-      # alone and do one thing: write check runs. That request can only be tried
-      # where the key is, which is behind this door on main; and review.yml runs
-      # only from main, so a mint that failed there would stop every read, the
-      # fix's included. So it is tried here first, where a failure stops nothing.
-      # NOTHING HERE IS PROVED YET, AND NOTHING DEPENDS ON IT. This step can run
-      # nowhere but main, so its first run is a dispatch on main after it lands,
-      # and the pull request that makes review.yml ask for the scoped token waits
-      # for that run and cites its id: this file's own rule above, a run id and
-      # not a claim. Until then review.yml mints unscoped, as it always has. The
-      # rehearsal is only worth anything while it signs and finds the
-      # installation exactly as review.yml does, which review-gate.py holds line
-      # for line. It never runs on a branch: the door refuses the whole job
-      # there, and the step above stops it if not. The token it mints is revoked
-      # before the step ends, whatever goes wrong on the way, and nothing is
-      # printed but names.
+      # THIS IS THE PROOF THE REPAIR NEEDS, NOT THE REPAIR, AND IT DOES NOT STAY.
+      # #64 and #65 proved their lines on a throwaway branch before merge. This
+      # request cannot be: it can only be tried where the key is, behind this
+      # door on main, and review.yml runs only from main, so a mint that failed
+      # there would stop every read, the revert's included. So the proof lands
+      # first, here, where a failure stops nothing. The pull request that makes
+      # review.yml ask for the scoped token cites this step's run, holds that
+      # request in review-gate.py as its regression test, and deletes this step
+      # and the check that holds it: once every read mints scoped, every read
+      # proves the request, and a rehearsal beside it would be a second copy.
+      #
+      # NOTHING HERE IS PROVED YET, AND NOTHING DEPENDS ON IT. Its first run is a
+      # dispatch on main after it lands; until the repair, review.yml mints
+      # unscoped, as it always has. The rehearsal is only worth anything while
+      # it signs and finds the installation exactly as review.yml does, which
+      # review-gate.py holds line for line. It never runs on a branch: the door
+      # refuses the whole job there, and the step above stops it if not. The
+      # token it mints is revoked before the step ends, whatever goes wrong on
+      # the way, and nothing is printed but names.
       - name: rehearse the reviewer's scoped token, as review.yml will ask for it
         env:
           APP_ID: ${{ secrets.REVIEWER_APP_ID }}
