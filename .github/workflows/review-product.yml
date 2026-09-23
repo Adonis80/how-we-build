@@ -195,7 +195,7 @@ jobs:
           fi
           echo "::add-mask::$tok"
           # What it was granted is checked, not printed (#68's twelfth read), as
-          # door.yml checks its rehearsal's. Metadata read comes with every
+          # review.yml checks its own. Metadata read comes with every
           # installation token; anything beside the three asked for is more, or
           # less, than a read needs, and the token is revoked unused.
           want='{"checks":"write","contents":"read","pull_requests":"write"}'
