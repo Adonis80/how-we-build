@@ -92,7 +92,17 @@ jobs:
           # The inputs reach every script as variables and are never pasted
           # into one: a dispatch is typed, and a value pasted into a script is a
           # value that can run. review-gate.py refuses a build that pastes one.
-          [[ "$REPO" =~ ^Adonis80/[A-Za-z0-9._-]+$ ]] || { echo "::error::the product must be named owner/name"; exit 1; }
+          #
+          # WHICH PRODUCT, CHECKED HERE AND NOT ONLY IN THE FORM. The `choice`
+          # above is what the dispatch form offers; whether GitHub also refuses
+          # another value sent through its API is not something this file has
+          # watched happen, so the run refuses it itself, before any token is
+          # minted (#68's first read). review-gate.py holds this list to the
+          # form's options, and both to the README's map of products.
+          case "$REPO" in
+            Adonis80/Hemz-OS) ;;
+            *) echo "::error::$REPO is not a product this reviewer reads"; exit 1 ;;
+          esac
           [[ "$PR" =~ ^[1-9][0-9]{0,6}$ ]] || { echo "::error::the pull request must be named by its number"; exit 1; }
           [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::the commit must be named in full: forty lower-case hex characters"; exit 1; }
           echo "asked: $REPO pull request $PR at $SHA"
@@ -500,6 +510,10 @@ jobs:
             echo "no token was minted, so nothing was opened"
             exit 0
           fi
+          # The close is checked, not echoed (#68's first read): a run left
+          # open looks like a read in flight, so a close that did not take is
+          # this step going red — after the token is revoked, not instead.
+          left_open=no
           if [ -n "${RUN:-}" ] && [ "$SIGNED" != "success" ]; then
             jq -n '{status:"completed", conclusion:"neutral",
                     output:{title:"Did not read: the run stopped before it could sign",
@@ -507,13 +521,19 @@ jobs:
               > "$RUNNER_TEMP/stop.json"
             code=$(curl -sS -o /dev/null -w '%{http_code}' -X PATCH -H "Authorization: token $TOKEN" \
               -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$REPO/check-runs/$RUN" \
-              -d @"$RUNNER_TEMP/stop.json")
-            echo "closed check run $RUN as neutral ($code)"
+              -d @"$RUNNER_TEMP/stop.json") || code="unreachable"
+            if [ "$code" = "200" ]; then
+              echo "closed check run $RUN as neutral"
+            else
+              echo "::error::check run $RUN could not be closed (HTTP $code) and still reads as a read in flight"
+              left_open=yes
+            fi
           fi
           code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: token $TOKEN" \
-            -H "Accept: application/vnd.github+json" "https://api.github.com/installation/token")
+            -H "Accept: application/vnd.github+json" "https://api.github.com/installation/token") || code="unreachable"
           if [ "$code" = "204" ]; then
             echo "token revoked"
           else
             echo "::warning::the token was not revoked (HTTP $code); it lapses within the hour"
           fi
+          [ "$left_open" = no ]

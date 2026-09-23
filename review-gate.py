@@ -991,6 +991,8 @@ PRODUCT_SCOPE = ('{repositories: [$r], permissions: {contents: "read", pull_requ
 PRODUCT_BRIEF = 'g show "origin/$MAIN:AGENTS.md" > "$t/brief.txt"'
 PRODUCT_DIFF = 'g diff "origin/$MAIN...$SHA" > "$t/diff.txt"'
 PRODUCT_HEAD = ('[ "$head" = "$SHA" ]', '[ "$fetched" = "$SHA" ]')
+PRODUCT_REACH = ('"https://api.github.com/installation/repositories"', 'if [ "$reach" != "$REPO" ]; then')
+PRODUCT_NAMES = ('--arg name "%s"' % REVIEWER_CHECK, '"$REVIEWER_APP_ID" "%s"' % REVIEWER_CHECK)
 PASTED_INPUT = re.compile(r"^\s+[A-Z_]+: \$\{\{ inputs\.[a-z_]+ \}\}\s*$")
 XTRACE = re.compile(r"\bset\s+-\w*x|\bxtrace\b")
 TOOL_PIN = r"npm install -g @anthropic-ai/claude-code@(\d+\.\d+\.\d+)\b"
@@ -1087,10 +1089,16 @@ def _check_product_wiring(review=None, product=None, readme=None, quiet=False):
         if line not in product:
             fault("no longer checks the commit asked for against the pull request's head "
                   "(`%s`), so it could sign work nobody asked it to read" % line)
-    # Scoped to the product alone, from the first run.
+    # Scoped to the product alone, from the first run — and what the token
+    # reaches is asked of GitHub and refused on a mismatch, not read off the
+    # request (#68's first read: the request alone was held, the check was not).
     if PRODUCT_SCOPE not in product:
         fault("must mint its token scoped to the product alone (`%s`); unscoped, a read of one "
               "product reaches every repository the App is installed on" % PRODUCT_SCOPE)
+    for line in PRODUCT_REACH:
+        if line not in product:
+            fault("no longer asks GitHub what its token reaches and refuses a mismatch (`%s`)"
+                  % line)
     # A dispatch's inputs are typed, so they reach a script as variables only.
     for n, line in enumerate(product.splitlines(), 1):
         if "${{ inputs." in line and not line.startswith("run-name: ") \
@@ -1111,8 +1119,13 @@ def _check_product_wiring(review=None, product=None, readme=None, quiet=False):
         fault("does not ask for the verdict in %s's shape" % REVIEW_WORKFLOW)
     # The verdict's shape, which the product's gate reads exactly as this
     # repository's reads its own.
-    if '"%s"' % REVIEWER_CHECK not in product:
-        fault("does not name its check run `%s`, the only name a gate reads" % REVIEWER_CHECK)
+    # Where the run is opened and where it is read back: renamed in either,
+    # the product's gate never sees it, or the job signs what it cannot confirm.
+    for line in PRODUCT_NAMES:
+        if line not in product:
+            fault("does not name its check run `%s` where it %s (`%s`), the only name a gate reads"
+                  % (REVIEWER_CHECK, "opens it" if line == PRODUCT_NAMES[0] else "reads it back",
+                     line))
     written = sorted(set(re.findall(r'^\s*conclusion=([a-z_]+)\s*$', product, re.M)
                          + re.findall(r'conclusion:\s*"([a-z_]+)"', product)))
     fake_head = "090e429a31cd5f0b2e4d7a1c9b8e6f4d2a1c3b5e"
@@ -1127,13 +1140,24 @@ def _check_product_wiring(review=None, product=None, readme=None, quiet=False):
     if 'status:"in_progress"' not in product or 'status:"completed"' not in product:
         fault("must open its check run in progress and close it completed; a product's gate "
               "wakes on the completion, and a run created already finished may never say so")
-    # Only products this rulebook lists.
+    # Only products this rulebook lists — in the form, and refused at run time
+    # before any token is minted, since whether GitHub's API holds a dispatch
+    # to the form's `choice` is not something this file has watched happen
+    # (#68's first read). The two lists must agree, and name only products the
+    # README's map names.
     options = re.findall(r"^\s+- (Adonis80/[A-Za-z0-9._-]+)\s*$", product, re.M)
+    block = re.search(r'case "\$REPO" in\n(.*?)\n\s*esac', product, re.S)
+    allowed = re.findall(r"^\s+(Adonis80/[A-Za-z0-9._-]+)\)\s*;;\s*$", block.group(1), re.M) \
+        if block else []
+    refused = bool(block) and re.search(r"^\s+\*\)[^\n]*exit 1", block.group(1), re.M)
     if not options:
         fault("names no product to read")
-    for repo in options:
-        if "https://github.com/%s" % repo not in readme:
-            fault("offers to read %s, which is not a product under this rulebook" % repo)
+    if sorted(allowed) != sorted(options) or not refused:
+        fault("must refuse, at run time, any product but the form's own list — its `case` allows "
+              "%s and the form offers %s" % (sorted(allowed), sorted(options)))
+    for repo in sorted(set(options) | set(allowed)):
+        if "`https://github.com/%s`" % repo not in readme:
+            fault("offers to read %s, which is not a product on the README's map" % repo)
     if not bad:
         say("ok: the product reviewer answers only a writer's dispatch, behind the `%s` door, "
             "with a token scoped to the one product; it reads the exact head against the "
@@ -1165,6 +1189,12 @@ PRODUCT_LOOSENINGS = (
     ("a conclusion GitHub writes", lambda t: t.replace("conclusion=neutral", "conclusion=skipped", 1)),
     ("the run created finished", lambda t: t.replace('status:"in_progress"', 'status:"completed"', 1)),
     ("a repository not on the map", lambda t: t.replace("          - Adonis80/Hemz-OS\n", "          - Adonis80/Hemz-OS\n          - Adonis80/elsewhere\n", 1)),
+    ("one on both lists but not the map", lambda t: t.replace("          - Adonis80/Hemz-OS\n", "          - Adonis80/Hemz-OS\n          - Adonis80/elsewhere\n", 1).replace("            Adonis80/Hemz-OS) ;;\n", "            Adonis80/Hemz-OS) ;;\n            Adonis80/elsewhere) ;;\n", 1)),
+    ("any product let through at run time", lambda t: t.replace("            Adonis80/Hemz-OS) ;;\n", "            Adonis80/*) ;;\n", 1)),
+    ("the refusal at run time removed", lambda t: t.replace('*) echo "::error::$REPO is not a product this reviewer reads"; exit 1 ;;', "*) ;;", 1)),
+    ("the token's reach taken on trust", lambda t: t.replace('if [ "$reach" != "$REPO" ]; then', "if false; then", 1)),
+    ("the check run renamed where it opens", lambda t: t.replace('--arg name "juku-reviewer"', '--arg name "juku-review"', 1)),
+    ("the check run renamed where it is read back", lambda t: t.replace('"$REVIEWER_APP_ID" "juku-reviewer"', '"$REVIEWER_APP_ID" "juku-review"', 1)),
 )
 
 
