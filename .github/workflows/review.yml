@@ -120,10 +120,7 @@ jobs:
         run: |
           set -euo pipefail
           gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" > /tmp/pr.json
-          {
-            echo "sha=$(jq -r '.head.sha' /tmp/pr.json)"
-            echo "base=$(jq -r '.base.sha' /tmp/pr.json)"
-          } >> "$GITHUB_OUTPUT"
+          echo "sha=$(jq -r '.head.sha' /tmp/pr.json)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v4
         with:
@@ -137,7 +134,15 @@ jobs:
         id: gather
         run: |
           set -euo pipefail
-          git diff "${{ steps.head.outputs.base }}...${{ steps.head.outputs.sha }}" > /tmp/diff.txt
+          # AGAINST THE PROTECTED BRANCH'S TIP, NEVER THE PULL REQUEST'S BASE.
+          # #34 found the route: open a head against a base that already carries
+          # the change being judged, get it read clean against that innocent
+          # comparison, retarget to main, and merge. The check re-runs on the
+          # retarget, but it reads the badge's run on the head, and that run
+          # judged the wrong comparison. Read against main, everything that would
+          # land on main is in the diff, whatever base the pull request names.
+          # review-gate.py refuses a build where this stops being so.
+          git diff "origin/${{ github.event.repository.default_branch }}...${{ steps.head.outputs.sha }}" > /tmp/diff.txt
           bytes=$(wc -c < /tmp/diff.txt)
           echo "diff bytes: $bytes"
           # A review of a truncated diff is worse than no review, so this says so
