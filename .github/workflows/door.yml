@@ -24,7 +24,8 @@ name: Door
 #   door      the same job behind `environment: reviewer`. On a branch it is
 #             REFUSED BEFORE IT STARTS — no steps, no log, a job that completes
 #             in about a second — because the environment admits `main` alone.
-#             On main it runs and reads the key.
+#             On main it runs, reads the key, and rehearses the reviewer's
+#             scoped token (the step below).
 #
 # So on a branch the run is red, and red in exactly one place. A control that
 # fails means something unrelated is broken and the run proves nothing. A door
@@ -107,23 +108,26 @@ jobs:
             *) echo "DOOR OPEN: a branch read the environment. The badge can be forged."; exit 1 ;;
           esac
 
-      # THE REVIEWER'S TOKEN, SCOPED, PROVED HERE BEFORE review.yml RELIES ON IT.
+      # THE REVIEWER'S TOKEN, SCOPED: A REHEARSAL, AND NOT YET RUN.
       # review.yml mints its installation token with no body, so the token reaches
       # every repository the App is installed on — Hemz OS too, since #47 — in a
       # job that also runs the reviewer's tool. It should reach this repository
-      # alone and do one thing: write check runs. That request can only be proved
+      # alone and do one thing: write check runs. That request can only be tried
       # where the key is, which is behind this door on main; and review.yml runs
       # only from main, so a mint that failed there would stop every read, the
-      # fix's included. So it is proved here first, where a failure stops
-      # nothing: dispatch this workflow on main and read this step. Until the
-      # pull request that follows lands, review.yml still mints unscoped: this
-      # step is the rehearsal for that change, and it is only worth anything
-      # while it signs and finds the installation exactly as review.yml does,
-      # which review-gate.py holds line for line. It never runs on a branch: the
-      # door refuses the whole job there, and the step above stops it if not.
-      # The token it mints is revoked before the step ends, and nothing is
+      # fix's included. So it is tried here first, where a failure stops nothing.
+      # NOTHING HERE IS PROVED YET, AND NOTHING DEPENDS ON IT. This step can run
+      # nowhere but main, so its first run is a dispatch on main after it lands,
+      # and the pull request that makes review.yml ask for the scoped token waits
+      # for that run and cites its id: this file's own rule above, a run id and
+      # not a claim. Until then review.yml mints unscoped, as it always has. The
+      # rehearsal is only worth anything while it signs and finds the
+      # installation exactly as review.yml does, which review-gate.py holds line
+      # for line. It never runs on a branch: the door refuses the whole job
+      # there, and the step above stops it if not. The token it mints is revoked
+      # before the step ends, whatever goes wrong on the way, and nothing is
       # printed but names.
-      - name: mint the reviewer's token scoped, as review.yml will, and prove its reach
+      - name: rehearse the reviewer's scoped token, as review.yml will ask for it
         env:
           APP_ID: ${{ secrets.REVIEWER_APP_ID }}
           APP_KEY: ${{ secrets.REVIEWER_APP_KEY }}
@@ -131,7 +135,18 @@ jobs:
           set -euo pipefail
           umask 077
           key="$RUNNER_TEMP/reviewer.pem"
-          trap 'rm -f "$key" "$RUNNER_TEMP/mint.json"' EXIT
+          tok=""
+          # Whatever stops this step, the key and the token response go, and a
+          # token already minted is revoked rather than left live for its hour.
+          cleanup() {
+            rm -f "$key" "$RUNNER_TEMP/mint.json"
+            if [ -n "$tok" ]; then
+              gone=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: token $tok" \
+                -H "Accept: application/vnd.github+json" "https://api.github.com/installation/token") || gone="unreachable"
+              echo "revoked on the way out ($gone)"
+            fi
+          }
+          trap cleanup EXIT
           printf '%s\n' "$APP_KEY" > "$key"
           b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
           now=$(date +%s)
@@ -160,7 +175,8 @@ jobs:
             "https://api.github.com/installation/repositories" | jq -r '[.repositories[].full_name] | join(",")')
           code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: token $tok" \
             -H "Accept: application/vnd.github+json" "https://api.github.com/installation/token")
+          [ "$code" = "204" ] && tok=""
           echo "the scoped token reached: $reach — and was revoked ($code)"
           [ "$reach" = "$GITHUB_REPOSITORY" ] || { echo "SCOPE WRONG: it reached more, or less, than this repository."; exit 1; }
           [ "$code" = "204" ] || { echo "the token was not revoked"; exit 1; }
-          echo "PROVED: this request mints a token that reaches $GITHUB_REPOSITORY alone and can write check runs."
+          echo "THIS RUN SHOWS the request mints a token that reaches $GITHUB_REPOSITORY alone and can write check runs. Cite this run's id where review.yml adopts it."
