@@ -9,10 +9,16 @@ on:
     # already attached to the head survived the move. That is half of a route
     # found on #34: open a head against a base that already carries the change
     # being judged, get it cleared against that innocent comparison, then
-    # retarget to main and merge on a green nobody re-earned. The gate's own
-    # half — judging against the protected branch's tip rather than the pull
-    # request's base — is in review-gate.py; this is the half that makes the
-    # check run again at all.
+    # retarget to main and merge on a green nobody re-earned. THE OTHER HALF IS
+    # NOT HELD. review-gate.py's verdict reads the head commit's check runs and
+    # nothing about the base, and review.yml diffs against the pull request's
+    # base at the moment of the ask, so a head read clean against another base
+    # stays clean after the retarget. While the gate still counted Codex it
+    # re-read the changed files to decide whether a change needed Codex's read,
+    # and that held nothing either: Codex could be asked before the retarget
+    # too. What closes it is the reviewer reading against main's tip, a gate
+    # change of its own. Meanwhile this trigger re-runs the check so its note
+    # reads the files the pull request now carries.
     # `ready_for_review` was here too and is not, because it repaired nothing:
     # a draft already gets its `opened` run, so marking an unchanged head ready
     # adds an invocation rather than starting a check that was missing. The
@@ -24,15 +30,25 @@ on:
     # always answers correctly, while the alternative is a state change that
     # silently keeps a stale green.
     types: [opened, synchronize, reopened, edited]
-  pull_request_review:
-    types: [submitted]
-  # Codex's clean pass arrives as a comment, and a comment starts nothing on the
-  # pull request's head — which is why a green review has needed a hand re-run to
-  # be seen. It also edits its summary comment when a review finishes, so both
-  # shapes are listened for. The badge's verdict is a check run and does not come
-  # through here at all: review.yml calls the wake itself.
-  issue_comment:
-    types: [created, edited]
+  # THE WAKE AND TWO TRIGGERS WENT WITH CODEX, on his ruling of 22 September 2026.
+  #
+  # `issue_comment` was here because Codex's clean pass arrived as a comment and a
+  # comment starts nothing on the pull request's head, so a green review needed a
+  # hand re-run to be seen. The job under it listened for that one login, and
+  # review-gate.py refuses a line here that listens for a login the gate does not
+  # count — which, with Codex off the register, is every login. Both are gone
+  # rather than pointed at somebody else.
+  #
+  # `pull_request_review` was here for the other half of Codex's voice: findings
+  # arrived as a submitted review. review-gate.py no longer reads a submitted
+  # review at all, so that trigger could only start a run that re-reads the same
+  # check runs and reaches the same answer — the "re-run that can never change the
+  # answer" the wiring check calls a fault when it is a login. It is the same
+  # fault as a trigger, so it goes the same way.
+  #
+  # NOTHING IS LEFT UNWOKEN BY THIS. The badge's verdict is a check run, and
+  # review.yml calls wake.yml itself the moment after it posts — which is not a
+  # habit but a line review-gate.py refuses a build without (`CALLS_WAKE`).
 permissions:
   contents: read
   pull-requests: read
@@ -41,26 +57,7 @@ permissions:
   # wiring check refuses a build that drops it.
   checks: read
 jobs:
-  wake:
-    # Only Codex's own comments, only on a pull request. The badge does not
-    # arrive this way, and review-gate.py refuses a line here that listens for a
-    # login the gate does not count.
-    if: >-
-      github.event_name == 'issue_comment' &&
-      github.event.issue.pull_request != null &&
-      github.event.comment.user.login == 'chatgpt-codex-connector[bot]'
-    # The write is for one call — re-running this pull request's own check — and
-    # belongs to this job alone. The check job executes the proposed tree's
-    # check.sh and must never hold it.
-    permissions:
-      contents: read
-      pull-requests: read
-      actions: write
-    uses: ./.github/workflows/wake.yml
-    with:
-      pr: ${{ github.event.issue.number }}
   check:
-    if: github.event_name != 'issue_comment'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""Has a reviewer read THIS commit, did it leave anything on it, and was it the
-reviewer this change requires?
+"""Has a reviewer read THIS commit, and did it leave anything on it?
 
 A review clears only the commit it read, and a reviewer answers in shapes that
 mean opposite things. Missing one fails in the good case: a clean pass leaves the
@@ -13,20 +12,23 @@ so the gate would certify a commit nobody read.
 Counting read and clean as one answer — which this gate did until 14 September —
 fails in a third direction, and #21 is the proof: it merged on a commit carrying
 a P1 the reviewer had posted and nobody had answered, because a read was all the
-gate could see. So the gate gives one of five answers about the head commit, and
+gate could see. So the gate gives one of three answers about the head commit, and
 opens on the first alone:
 
-    clean         read clean by a reviewer this change may be cleared by
+    clean         read clean by a reviewer on the register
     findings      read, and the reviewer left something on it
-    cross-vendor  read clean, but by the reviewer this change may NOT use
-    no verdict    a review is running on it, and has not said what it found
     unread        no finished read of this commit at all
+
+There were five until 22 September 2026. `cross-vendor` — read clean, but by the
+reviewer this change may NOT use — went with the second vendor; see below.
+`no verdict` — a review running and not yet said — went because nothing can
+produce it; see `check_run_verdict`.
 
 A finding outranks every other answer about the same commit. The answer to a
 finding is a push, and a push makes a new commit for the reviewer to read; what
 the CTO says about the old one never clears it.
 
-WHAT A READ HAS TO BE, AND WHY THE SECOND REVIEWER IS A BADGE AND NOT A LOGIN.
+WHAT A READ HAS TO BE, AND WHY THE REVIEWER IS A BADGE AND NOT A LOGIN.
 #34 closed at round ten having established the bar this file is built to:
 a read must arrive **under a login a branch cannot wear, as a signal a branch
 cannot erase**. #38 was built against `github-actions[bot]` posting a comment and
@@ -34,8 +36,8 @@ met neither half — that login belongs to every workflow token here, so a workf
 on a throwaway branch can wear it, and an issue comment can be edited or deleted
 by anyone with write access, which is the population this gate defends against.
 
-So the default reviewer answers as a **check run created by the `juku-reviewer`
-GitHub App** (id below). Both halves come from that one fact:
+So the reviewer answers as a **check run created by the `juku-reviewer` GitHub
+App** (id below). Both halves come from that one fact:
 
   * Only a GitHub App can create a check run. A repository writer cannot create
     one, cannot edit one, and cannot delete one. That is the signal half.
@@ -50,24 +52,45 @@ own `head_sha` and the verdict is its own `conclusion`. The comment its workflow
 also posts is for people to read, and this gate does not count it, which is why
 it does not matter who can edit it.
 
-WHO REVIEWS IS ONE LINE. The Chairman has changed the named reviewer twice in two
-days, so the choice is `DEFAULT_REVIEWER`, `GATE_REVIEWER`, and the model and
-effort below — nothing else, and the pages are written by role.
+WHO REVIEWS IS THE REGISTER, AND NOTHING ELSE. The Chairman's ruling of 22
+September 2026: *"Do not use Codex as a reviewer. Only use Sonnet 5 and Fable 5.1
+as the main reviewer."* So the register holds one reviewer, the badge, and it
+clears every commit. Fable 5.1 is named in the ruling and is NOT written down
+here, because it has no App, no check-run name and no workflow: a register entry
+that can never answer holds every commit shut for ever, which is the deadlock
+this change exists to end. When one answers it joins the register — and the rule
+for the classes that want two reads is written and tested in that same pull
+request, because `verdict()` opens on the first clean read and a second name
+alone would quietly buy nothing.
 
-WHICH REVIEWER A CHANGE REQUIRES is the second line, and it is not decoration.
-The rulebook requires the other vendor on pricing, live database changes or
-schema, authentication and authorisation, public trust boundaries, deploy and
-release machinery, and this review gate itself. Of that list this repository only
-ever holds the last, so here the rule has one door: a pull request that touches
-the gate opens on `GATE_REVIEWER` alone. Until a second reviewer existed that was
-true by accident — Codex was the only identity the gate could count — and an
-accident is not a door.
+WHY THE CROSS-VENDOR DOOR IS GONE, SAID PLAINLY RATHER THAN QUIETLY. The rulebook
+requires *the other vendor* on pricing, live database changes or schema,
+authentication and authorisation, public trust boundaries, deploy and release
+machinery, and this review gate itself. Of that list this repository only ever
+holds the last, and it was held here as "`GATE_REVIEWER` alone may clear it" with
+`GATE_REVIEWER = "codex"`. One vendor cannot be the other one, so after the
+ruling that rule had no satisfiable form: the only commit it would open was one
+Codex had read, and Codex is not to be asked. **A gate change and an ordinary
+change now clear the same way, on the badge's read.** That is a real loss of a
+second pair of eyes on the most dangerous diff here, it is not disguised as
+anything else, and what ends it is a second reviewer on the register rather than
+a sentence.
+
+AND THE HAZARD THAT OUTLIVED THE DOOR, WHICH IS NOT ABOUT VENDORS AT ALL. The
+check that judges a pull request is the pull request's own: check.yml checks the
+head out and runs the tree's `check.sh`, so a change to this file is judged by
+the version of this file it proposes. That was true before the ruling and is true
+after it. Nothing here can fix it — a gate cannot be its own guard — so
+`touches_the_gate` stays, and the check says so out loud on a gate change,
+whichever way it answers, so the reviewer and the CTO read it rather than infer
+it.
 
 Every shape is matched by its exact form, and --selftest holds the match against
 the real ones and the fakes on every run of check.sh — no network, no GitHub, and
 it fails the build before a loose rule can pass a commit.
 """
 
+import io
 import json
 import os
 import re
@@ -81,10 +104,10 @@ import urllib.request
 # ---------------------------------------------------------------------------
 # Who reviews, and as what. The Chairman changes any of these in one line.
 #
-# DEFAULT_REVIEWER reads every pull request. GATE_REVIEWER is the other vendor,
-# required on the classes the rulebook lists — here, the review machinery itself.
+# DEFAULT_REVIEWER reads every pull request. There is no second name beside it:
+# his ruling of 22 September 2026 retired Codex as a reviewer, and the door that
+# named it is gone rather than pointed somewhere else — see the docstring.
 DEFAULT_REVIEWER = "claude"
-GATE_REVIEWER = "codex"
 
 # His ruling of 18 September 2026, replacing that day's earlier word for Fable
 # 5.1: the reviewer must be at least as strong as the Opus that builds, or it is
@@ -93,11 +116,8 @@ GATE_REVIEWER = "codex"
 REVIEWER_MODEL = "claude-sonnet-5"
 REVIEWER_EFFORT = "max"
 
-CODEX = "chatgpt-codex-connector[bot]"
-CODEX_ASK = "@codex review"
-
-# The badge. `juku-reviewer`, created on the Chairman's account 19 September 2026
-# and installed on this repository alone; installation 162987297. The id is the
+# The badge. `juku-reviewer`, created on the Chairman's account 19 September 2026;
+# installation 162987297. The id is the
 # identity — a slug can be renamed by its owner, an id cannot — and the check
 # run's name keeps a later, unrelated use of the same App from reading as a
 # review.
@@ -110,105 +130,44 @@ REVIEWER_ASK = "/claude review"
 # a build where the workflow has stopped naming either.
 KEY_ENVIRONMENT = "reviewer"
 
-SUMMARY_MARKER = "codex-pull-request-review-summary"
-
-# The five answers, worst first: a commit is judged by the strongest thing said
-# about it, and only CLEAN opens the gate.
+# The three answers: FINDINGS and CLEAN, worst first, are what a read can say,
+# and UNREAD is what the gate says when no read has. A commit is judged by the
+# strongest thing said about it, and only CLEAN opens the gate.
+#
+# CROSS_VENDOR was another, and it is deleted rather than kept for a day it might
+# mean something again. It said "a reviewer read this clean, but not the one this
+# class of change requires" — and with one reviewer on the register there is no
+# such reviewer, so every route to it was dead. A state no input can reach, with
+# a case in the selftest asserting it, is a green test standing guard over
+# nothing; this repository was caught by exactly that on #46 and it is not worth
+# repeating to hold a word.
 FINDINGS = "findings"
 CLEAN = "clean"
-CROSS_VENDOR = "cross-vendor"
-NO_VERDICT = "no verdict"
 UNREAD = "unread"
-ORDER = (FINDINGS, CLEAN, CROSS_VENDOR, NO_VERDICT)
+ORDER = (FINDINGS, CLEAN)
 
 
 # ---------------------------------------------------------------------------
-# Codex answers in prose, so its shapes are matched exactly. None of this
-# changed when the badge arrived; it is the reviewer this repository has had
-# since the beginning and the one the gate door requires.
-
-def _completed_row(head):
-    # | 📝 **Code Review** | ✅ **Completed** <relative-time …>…</relative-time> | `090e429` | Manual request |
-    return re.compile(
-        r"^\|.*\*\*Code Review\*\*.*\|.*\*\*Completed\*\*.*\|\s*`"
-        + r"(?P<sha>" + re.escape(head[:7]) + r"[0-9a-f]*)`\s*\|"
-    )
-
-
-def _reviewed_note(head):
-    # **Reviewed commit:** `090e429a31`
-    return re.compile(
-        r"^\*\*Reviewed commit:\*\*\s*`(?P<sha>" + re.escape(head[:7]) + r"[0-9a-f]*)`\s*$"
-    )
-
-
-def _names_head(line, pattern, head, resolve):
-    """Does this line carry a commit id that is this head?
-
-    The shapes carry an abbreviated sha, and a prefix is not a commit: two
-    commits can share seven characters. When a resolver is given, the short form
-    is resolved back through GitHub and must answer this very head.
-    """
-    m = pattern.match(line)
-    if not m:
-        return False
-    if resolve is None:
-        return True
-    return resolve(m.group("sha")) == head
-
-
-# Codex Review: Didn't find any major issues. Keep them coming!
-CLEAN_VERDICT = re.compile(r"Codex Review:\s*Didn't find any major issues[.!]", re.IGNORECASE)
-
-
-def _says_clean(first):
-    """Codex's clean pass, as a finished sentence and not a phrase inside one.
-
-    This line is the only thing that opens the gate for it, so a phrase test will
-    not do — the reviewer made that case twice. As a P1 on #21: "Codex Review:
-    Found major issues" contains the two words and means the opposite. As a P1 on
-    #24, against the tighter phrase that answered it: "Codex Review: Didn't find
-    any major issues because the review did not complete" carries the whole
-    verdict and still takes it back. Verifying that one turned up its mirror
-    image, "Codex Review: I almost didn't find any major issues", which passed
-    too.
-
-    So the verdict is anchored at both ends: nothing may stand before it, and it
-    must close with its own full stop, which is where every qualification of the
-    sentence has to attach. What is left undefended is a *following* sentence
-    that reverses a finished verdict — "…issues. But the review did not
-    complete." The alternative is enumerating the encouragements the reviewer
-    appends ("Keep it up!", "Keep them coming!"), which jams this gate shut on
-    the day it writes a new one. Named here rather than papered over.
-    """
-    return CLEAN_VERDICT.match(first.replace("’", "'")) is not None
-
-
-def _codex_comment_verdict(body, head, resolve=None):
-    """What a plain comment by Codex says about this commit.
-
-    Its clean pass names the commit and means nothing was found. Its summary
-    table names the commit too, but a completed row says only that a review ran
-    — the findings, if there were any, are a separate review — so it proves a
-    read and never a clean one.
-
-    This is the one place the gate leans on a reviewer keeping its habits: Codex's
-    own blurb says it may signal no findings with a 👍 reaction alone, and a
-    reaction names no commit, so the gate cannot read one. If the clean-pass
-    comment ever stops arriving, a gate change here stops at "no verdict" until
-    somebody teaches this function the new shape. Red is the right way to fail,
-    but it is a jam, and the reason line says which shape is missing.
-    """
-    lines = [ln.strip() for ln in body.splitlines()]
-    if _says_clean(body.strip().splitlines()[0]):
-        note = _reviewed_note(head)
-        if any(_names_head(ln, note, head, resolve) for ln in lines):
-            return CLEAN
-    if SUMMARY_MARKER in body:
-        row = _completed_row(head)
-        if any(_names_head(ln, row, head, resolve) for ln in lines):
-            return NO_VERDICT
-    return None
+# NOTHING IS READ OUT OF PROSE ANY MORE, AND THAT IS THE LARGEST THING HERE.
+#
+# Codex answered in prose, so the gate had to match its sentences exactly, and
+# most of the fakes this file was ever fooled by lived in that one seam: "Codex
+# Review: Found major issues" carries the two words and means the opposite (#21);
+# "…Didn't find any major issues because the review did not complete" carries the
+# whole verdict and takes it back (#24); "I almost didn't find any major issues"
+# is its mirror. Each was a P1, each was answered by a tighter regex, and the
+# tighter regex needed the next case to prove it.
+#
+# With Codex retired from the register that whole class is deleted rather than
+# left unreachable: `_says_clean`, the summary-row and reviewed-commit matchers,
+# the short-sha resolver behind them, and the submitted-review reader that only
+# Codex could trip. The badge answers as a check run — the commit is a field
+# GitHub fills and the verdict is a field only the App that signed it can set —
+# so there is no sentence to parse and no fake to be fooled by. A reviewer added
+# to the register later answers the same way or not at all.
+#
+# The dead code is not kept for the history: the findings above are why the
+# guards existed, and this comment is where they are now recorded.
 
 
 # ---------------------------------------------------------------------------
@@ -246,78 +205,51 @@ def check_run_verdict(run, head):
     if run.get("head_sha") != head:
         return None
     if run.get("status") != "completed":
-        # Queued or running: the reviewer is reading it now. Saying "unread"
-        # here would send a session off to ask a second time for a review
-        # already in flight, and spend the allowance twice.
-        return NO_VERDICT
+        # A run not yet finished says nothing, whatever its conclusion field
+        # holds. Nor can it be the badge mid-read: review.yml creates its run
+        # once, already completed, when it has a verdict — so a "reading now"
+        # answer is one no input reaches, and keeping it with cases asserting
+        # it would be the guard over nothing #46 was caught by. The day
+        # review.yml opens its run before the read (#46's `Say it is reading`
+        # did), a "reading" answer comes back with it, in the same pull request,
+        # so a session is told to wait rather than to ask twice.
+        return None
     return CONCLUSIONS.get(run.get("conclusion"))
 
 
-# The register. Each reviewer, the route its answer arrives by, and how a session
-# asks it. Exactly one route each: Codex is read out of the pull request's prose
-# by the login that wrote it, the default reviewer out of a check run by the App
-# that created it. A reviewer with no `login` is counted in no comment and no
-# review, however the page reads — which is why `github-actions[bot]` is not on
-# this register and cannot be talked onto it.
+# The register: every reviewer the gate counts, the route its answer arrives by,
+# and how a session asks it. One entry, after his ruling of 22 September 2026.
+#
+# EVERY ENTRY ANSWERS AS A CHECK RUN, AND THAT IS NOW A RULE RATHER THAN A HABIT.
+# `_check_routes` below refuses a register entry carrying a `login`, because a
+# login is a route through prose — a comment or a submitted review — and this
+# gate no longer reads either. It is the same argument that keeps
+# `github-actions[bot]` off the register: every workflow token in this repository
+# can wear that login, including one on a branch nobody opened as a pull request
+# (#34). An App id cannot be worn by a branch at all, so the route and the
+# identity are the same fact.
+#
+# ADDING FABLE 5.1 IS THIS DICTIONARY, THE MATCH IN `check_run_verdict()`, A
+# WORKFLOW, AND A RULE — AND IT IS NOT DONE HERE. The match reads one App id and
+# one check-run name, and `_check_routes` refuses an entry it could not match,
+# so a second name here alone fails the build rather than never being counted.
+# His ruling names it beside Sonnet 5. It has no App, no check-run
+# name and no workflow, so it is not written down as though it had: a register
+# entry that never answers holds every commit shut, which is the deadlock this
+# change exists to end. And a second entry alone would not restore the two reads
+# the rulebook wants on the gate's own files — `verdict()` opens on the first
+# clean read. Whoever adds the entry writes that rule and its cases too.
 REVIEWERS = {
-    "codex": {"name": CODEX, "ask": CODEX_ASK, "login": CODEX,
-              "comment": _codex_comment_verdict, "app_id": None},
     "claude": {"name": REVIEWER_CHECK, "ask": REVIEWER_ASK, "login": None,
                "comment": None, "app_id": REVIEWER_APP_ID},
 }
 
 
-def _key_for(login):
-    """The register key for a login, or None for everybody else."""
-    if login is None:
-        return None
-    for key, who in REVIEWERS.items():
-        if who["login"] == login:
-            return key
-    return None
-
-
-def comment_verdict(body, head, login, resolve=None):
-    """What a plain comment by `login` says about this commit, or None.
-
-    Only a reviewer's own words count: anyone who can comment on a pull request
-    can type a clean pass, so a comment by anybody else is not one.
-    """
-    if not body or not body.strip():
-        return None
-    key = _key_for(login)
-    if key is None or REVIEWERS[key]["comment"] is None:
-        return None
-    return REVIEWERS[key]["comment"](body, head, resolve)
-
-
-WITH_FINDINGS = {"COMMENTED", "CHANGES_REQUESTED"}
-
-
-def review_verdict(review, head):
-    """What a submitted GitHub review says about this commit.
-
-    A reviewer submits a review only when it has something to say, so a submitted
-    review is a finding on the commit it names; an approval is the one shape that
-    is not. PENDING is a draft nobody has sent; DISMISSED is one somebody took
-    back. Neither is a read of this commit, and the old test — login and commit
-    id — counted both.
-    """
-    key = _key_for(review.get("user", {}).get("login"))
-    if key is None:
-        return None, None
-    if review.get("commit_id") != head:
-        return None, None
-    state = review.get("state")
-    if state == "APPROVED":
-        return CLEAN, key
-    if state in WITH_FINDINGS:
-        return FINDINGS, key
-    return None, None
-
-
 # The gate's own files. A pull request touching any of them is the class the
-# rulebook calls "this review gate itself", where the other vendor is required.
+# rulebook calls "this review gate itself" — where the other vendor was required
+# until 22 September 2026, and where nothing is required beyond the ordinary read
+# now, because there is no other vendor. What the list still buys is `gate_note()`
+# saying so on the run.
 #
 # The whole of .github/workflows/ stays on the list, and the reason has changed
 # rather than gone. #38 had it there because a branch could add a workflow that
@@ -337,20 +269,22 @@ def touches_the_gate(paths):
     return sorted(set(p for p in paths if p in GATE_FILES or p.startswith(GATE_DIR)))
 
 
-def verdict(reviews, comments, check_runs, head, resolve=None, gate_files=()):
+def verdict(check_runs, head):
     """The gate's one answer about the head commit, and who gave it.
 
-    `gate_files` is what this pull request changes of the gate, empty for an
-    ordinary change. When it is not empty only GATE_REVIEWER may clear the
-    commit; a clean read by anyone else is CROSS_VENDOR, which is red, and says
-    who has to read it instead.
+    It takes check runs and nothing else. Reviews and comments were Codex's two
+    routes and went with it; a reviewer on this register answers as a check run
+    or it is not on the register, which `_check_routes` enforces rather than
+    trusts.
 
-    A finding binds only from a reviewer that may clear this change. Codex's P1
-    on #38, accepted in part: with the findings test running first, a reviewer
-    with no standing on a gate change could hold the gate shut against the clean
-    read of the one required — a reviewer that cannot open a door should not be
-    able to bolt it either. Its findings are still on the page for the CTO to
-    answer; they are simply not what the gate is waiting on.
+    THERE IS NO `gate_files` ARGUMENT ANY MORE, and that is the ruling rather
+    than a tidy-up. It selected the one reviewer allowed to clear a change to the
+    review machinery, and the only value it ever selected was Codex. With one
+    reviewer on the register there is no second one to hand a gate change to, so
+    the argument had exactly one possible answer and pretending otherwise would
+    be the inversion of #46 in a new coat. What the gate can still say about a
+    gate change it says in `gate_note()`, printed beside the answer and read by
+    a person; it is no longer something the gate can act on alone.
     """
     said = {}
 
@@ -363,56 +297,66 @@ def verdict(reviews, comments, check_runs, head, resolve=None, gate_files=()):
         if said.get(key) is None or ORDER.index(answer) < ORDER.index(said[key]):
             said[key] = answer
 
-    for r in reviews:
-        note(*review_verdict(r, head))
-    for c in comments:
-        login = c.get("user", {}).get("login")
-        note(comment_verdict(c.get("body"), head, login, resolve), _key_for(login))
     for run in check_runs:
         note(check_run_verdict(run, head), DEFAULT_REVIEWER)
 
-    may_clear = (GATE_REVIEWER,) if gate_files else tuple(REVIEWERS)
-    for key in may_clear:
+    # Every reviewer on the register may clear any change, because there is one.
+    # A SECOND ENTRY IS NOT ENOUGH ON ITS OWN: these two loops open on the FIRST
+    # clean read, so the day Fable 5.1 joins the register, the rule for the
+    # classes that want two reads has to be written and tested in the same pull
+    # request. It is not written ahead of time here — a branch no input can reach,
+    # with a green case asserting it, is the guard-over-nothing this change
+    # deleted CROSS_VENDOR for.
+    for key in REVIEWERS:
         if said.get(key) == FINDINGS:
             return FINDINGS, key
-    for key in may_clear:
+    for key in REVIEWERS:
         if said.get(key) == CLEAN:
             return CLEAN, key
-    if FINDINGS in said.values():
-        return FINDINGS, _who(said, FINDINGS)
-    if CLEAN in said.values():
-        return CROSS_VENDOR, _who(said, CLEAN)
-    if NO_VERDICT in said.values():
-        return NO_VERDICT, _who(said, NO_VERDICT)
     return UNREAD, None
 
 
-def _who(said, answer):
-    for key in sorted(said):
-        if said[key] == answer:
-            return key
-    return None
+def gate_note(gate_files):
+    """What the check says out loud when a pull request changes the gate itself.
+
+    It is not a verdict and it shuts nothing. It exists because the one thing the
+    machine could do about this class — hand it to the other vendor — died with
+    the second vendor, and the hazard underneath did not: check.yml checks the
+    HEAD out and runs the tree's own `check.sh`, so the gate that judged this
+    pull request is the gate this pull request proposes. Saying so on the run,
+    green or red, is what is left, and it is said rather than left to be inferred
+    because a reader who has to infer it usually does not.
+    """
+    if not gate_files:
+        return None
+    # The names are the pull request's own writing, and the runner reads a log
+    # line starting `::` as a command: a name carrying a line break could start
+    # one, and `::stop-commands::` would silence the annotation printed after
+    # it. So every control character is written out, never printed.
+    shown = [re.sub(r"[\x00-\x1f\x7f]", lambda m: "\\x%02x" % ord(m.group()), f)
+             for f in gate_files]
+    return ("this pull request changes the review machinery (%s), so the gate that judged it is "
+            "the one it proposes, and there is no second reviewer on the register to read it as "
+            "well; read the diff, not the green"
+            % ", ".join(shown))
 
 
-def reason(answer, who, head, gate_files=()):
+def reason(answer, who, head):
     """One line saying why the gate is shut, in the gate's own voice.
 
     It names the ask rather than the bot, because the next thing a session does
     with this line is act on it.
+
+    It took a `gate_files` argument until the CROSS_VENDOR branch that read it
+    was deleted, and kept taking it for a moment after — a parameter no body
+    reads is a reader's promise that the answer depends on it. What a gate
+    change is owed is said by `gate_note()`, beside this line and not inside it.
     """
-    needed = REVIEWERS[GATE_REVIEWER] if gate_files else REVIEWERS[DEFAULT_REVIEWER]
+    needed = REVIEWERS[DEFAULT_REVIEWER]
     if answer == FINDINGS:
         return ("%s read commit %s and left findings on it — answer them, land the round's "
                 "fixes as one push, and ask once; the gate opens on a commit a reviewer reads "
                 "clean, never on an answer to a finding" % (REVIEWERS[who]["name"], head))
-    if answer == CROSS_VENDOR:
-        return ("%s read commit %s clean, but this pull request changes the review machinery "
-                "(%s), where the rulebook requires the other vendor — write '%s' on this pull "
-                "request, and it waits for that read however long it takes"
-                % (REVIEWERS[who]["name"], head, ", ".join(gate_files), needed["ask"]))
-    if answer == NO_VERDICT:
-        return ("%s is reading commit %s and has not said what it found — re-run this check "
-                "once it has" % (REVIEWERS[who]["name"], head))
     return ("no reviewer has read commit %s — write '%s' on the pull request, and when it has "
             "finished, re-run this check" % (head, needed["ask"]))
 
@@ -428,7 +372,15 @@ def reason(answer, who, head, gate_files=()):
 # these on 17 September and named the rule that catches both: check the set, not
 # the count, and say which half is missing.
 WAKE_LOGIN = re.compile(r"github\.event\.comment\.user\.login\s*==\s*'([^']+)'")
-ACTIONS = "github-actions[bot]"
+# The App behind `github-actions[bot]`, the login every workflow token in this
+# repository can wear. The login itself is no longer named here: it was used by
+# the register check that refused it and by the comment cases that tried it as a
+# fake, and both went with the prose reading. The id remains, and does more
+# work than the login ever did — a run carrying it is the nearest thing to a
+# forgery this gate will ever be shown, and it is a fake in both suites below.
+# #34 is why: a workflow on a branch nobody opened as a pull request can wear
+# that login, which is the hole a register entry carrying it would hand back.
+ACTIONS_APP = 15368
 
 
 def wake_logins(text):
@@ -649,30 +601,42 @@ def _read(path):
 
 
 def _check_routes():
-    """Every reviewer on the register is reachable exactly one way."""
+    """Every reviewer on the register answers as a check run, and only that way.
+
+    This used to say "exactly one route, login or app_id", because Codex
+    answered in prose and the badge in a check run. Codex was the only entry that
+    ever used the prose route, and `verdict()` no longer reads a comment or a
+    submitted review at all — so a `login` here would not be a second route, it
+    would be a reviewer whose answers are silently never counted. It is refused
+    outright instead, which also keeps `github-actions[bot]` off the register
+    (#34) as a consequence of the rule rather than as a special case beside it.
+    """
     bad = 0
-    for name in (DEFAULT_REVIEWER, GATE_REVIEWER):
-        if name not in REVIEWERS:
-            print("  wiring: '%s' is not on the register %s" % (name, sorted(REVIEWERS)))
-            bad += 1
+    if DEFAULT_REVIEWER not in REVIEWERS:
+        print("  wiring: '%s' is not on the register %s" % (DEFAULT_REVIEWER, sorted(REVIEWERS)))
+        bad += 1
+    if not REVIEWERS:
+        print("  wiring: the register is empty, so no commit can ever be cleared")
+        bad += 1
     for key in sorted(REVIEWERS):
         who = REVIEWERS[key]
-        routes = [r for r in ("login", "app_id") if who[r] is not None]
-        if len(routes) != 1:
-            print("  wiring: reviewer '%s' answers by %s; it must be exactly one of login or "
-                  "app_id, or the same answer counts twice" % (key, routes or "nothing"))
+        if who["app_id"] is None:
+            print("  wiring: reviewer '%s' has no app_id. Only a GitHub App can create a check "
+                  "run, and a check run is the only answer this gate reads" % key)
             bad += 1
-        if (who["comment"] is not None) != (who["login"] is not None):
-            print("  wiring: reviewer '%s' has a comment matcher and no login, or the other way "
-                  "round — a matcher nothing reaches is a dead rule" % key)
+        if who["login"] is not None or who["comment"] is not None:
+            print("  wiring: reviewer '%s' carries a login or a comment matcher — a route through "
+                  "prose, which this gate stopped reading when Codex was retired. Its answers "
+                  "would never be counted and the gate would read as unread for ever" % key)
             bad += 1
-    # The login every workflow token in this repository can wear. It was #38's
-    # reviewer identity and #34's closing argument is why it is not one here; a
-    # register entry carrying it would hand that hole straight back.
-    if ACTIONS in [w["login"] for w in REVIEWERS.values()]:
-        print("  wiring: %s is on the register. Every workflow token here can post under it, "
-              "including one on a branch that was never opened as a pull request — see #34" % ACTIONS)
-        bad += 1
+        # The same fault by another road: `check_run_verdict()` matches one App id
+        # and one check-run name, so an entry naming any other is never counted.
+        if who["app_id"] != REVIEWER_APP_ID or who["name"] != REVIEWER_CHECK:
+            print("  wiring: reviewer '%s' is on the register as App %s, check run '%s', but "
+                  "check_run_verdict() matches App %s, check run '%s' alone — its answers would "
+                  "never be counted" % (key, who["app_id"], who["name"], REVIEWER_APP_ID,
+                                        REVIEWER_CHECK))
+            bad += 1
     return bad
 
 
@@ -690,16 +654,12 @@ def _check_wiring():
     except OSError as e:
         print("  wiring: %s" % e)
         return 1
-    listened = set(wake_logins(check))
-    counted = dict((w["login"], key) for key, w in REVIEWERS.items() if w["login"])
-
-    for login in sorted(counted):
-        if login not in listened:
-            print("  wiring: %s never wakes for %s, whose read the gate DOES count — that answer "
-                  "would sit on the page unseen and the check stay red until a hand re-ran it"
-                  % (CHECK_WORKFLOW, login))
-            bad += 1
-    for login in sorted(listened - set(counted)):
+    # No login is counted — `_check_routes` above refuses one on the register —
+    # so a line in check.yml waking for a login's comment is a re-run that can
+    # never change the answer, whoever it names. The half that asked whether
+    # every counted login was listened for went with the logins: it looped over
+    # a set `_check_routes` holds empty, a guard over nothing.
+    for login in sorted(set(wake_logins(check))):
         print("  wiring: %s listens for %s, whom the gate does not count — a re-run that can "
               "never change the answer" % (CHECK_WORKFLOW, login))
         bad += 1
@@ -727,20 +687,26 @@ def _check_wiring():
               % (WAKE_WORKFLOW, wake_on))
         bad += 1
 
-    # THE WAKE MUST ASK AGAIN WHATEVER THE CHECK CURRENTLY SAYS. With one
-    # reviewer a verdict could only move the gate from red to green, so the wake
-    # re-ran the red runs and that was enough. Counting a second reviewer made
-    # the other direction reachable — one reads a commit clean, the other leaves
-    # findings on it, and the check must go from green to RED. On 21 September
-    # that happened on #43 and the wake answered "no red check run — nothing to
-    # re-run", leaving a stale green under a findings verdict.
+    # THE WAKE MUST ASK AGAIN WHATEVER THE CHECK CURRENTLY SAYS. A verdict used
+    # to move the gate only from red to green, so the wake re-ran the red runs
+    # and that was enough. The gate keeps the worst answer a commit has been
+    # given, so a second read of a commit already read clean can leave findings
+    # on it, and the check must go from green to RED — by a second reviewer, as
+    # on #43, or by a second ask of the one reviewer on the same commit. On 21
+    # September that happened on #43 and the wake answered "no red check run —
+    # nothing to re-run", leaving a stale green under a findings verdict.
     #
     # WHAT THIS GUARD IS FOR, AND WHAT IT IS NOT. It catches drift: a later
     # session narrowing the selection while tidying, which is how the defect
-    # arrived. It is not tamper-proof and is not trying to be — `wake.yml` is a
-    # gate file, so any edit to it already needs the other vendor's cold read
-    # before it can merge, and that read is what stands against a deliberate
-    # obfuscation. Codex walked through three versions of this guard by
+    # arrived. It is not tamper-proof and is not trying to be, AND THE THING IT
+    # LEANED ON IS WEAKER THAN IT WAS: this said that `wake.yml` is a gate file,
+    # so any edit to it needed the other vendor's cold read before it could
+    # merge, and that read was what stood against a deliberate obfuscation.
+    # Since 22 September 2026 there is no other vendor, so what stands there is
+    # one reviewer of the same vendor as the lead, reading a diff that proposes
+    # the gate judging it. That is a real weakening of this guard's backstop and
+    # it is written here rather than left implied by a comment that stopped
+    # being true. Codex walked through three versions of this guard by
     # rephrasing (a blacklisted operator, then bracket syntax inside `$mine`,
     # then a server-side `status=` filter and a shadowing second assignment),
     # and each pass made it better; the honest limit is written here rather
@@ -941,18 +907,126 @@ def _check_wiring():
         bad += 1
 
     if not bad:
-        print("ok: the gate counts %d reviewer(s) by %d route(s), each read reaches the check by "
-              "a route that can actually fire, the reviewer runs only from the default branch, "
-              "its key sits behind the `%s` door, and the wake's own shell was run against a "
-              "failing GitHub in %d case(s) and went red in every one that must"
-              % (len(REVIEWERS), len(set(r["app_id"] is None for r in REVIEWERS.values())),
-                 KEY_ENVIRONMENT, len(SWALLOW_CASES)))
+        # The route count that stood here was `len(set(app_id is None for ...))` —
+        # a leftover from when a reviewer could answer by a login or by an App,
+        # and an opaque way of saying "1" once only one of those is allowed.
+        # `_check_routes` now refuses any entry without an app_id, so the route
+        # is one by construction and is named rather than counted.
+        print("ok: the gate counts %d reviewer(s), each answering only as a check run it signed, "
+              "each read reaching the check by a route that can actually fire; the reviewer runs "
+              "only from the default branch, its key sits behind the `%s` door, and the wake's "
+              "own shell was run against a failing GitHub in %d case(s) and went red in every "
+              "one that must"
+              % (len(REVIEWERS), KEY_ENVIRONMENT, len(SWALLOW_CASES)))
     return bad
 
 
 def _run(conclusion=None, status="completed", app=REVIEWER_APP_ID, name=REVIEWER_CHECK, sha=None):
     return {"app": None if app is None else {"id": app}, "name": name,
             "head_sha": sha, "status": status, "conclusion": conclusion}
+
+
+def _check_main():
+    """main() is RUN, against a GitHub that answers from a dictionary.
+
+    Every case above hands verdict() a list. main() is what actually runs in CI,
+    and it chooses which endpoints to ask for — so a rule only main() calls is a
+    rule no case above reaches, and an endpoint that quietly stops being fetched
+    is the same failure wearing a different coat. Both were findings on #46, and
+    the proofs that answered them lived in a session's scratchpad and died with
+    its container. These live here, and run on every push.
+
+    It asserts WHAT MAIN ASKED GITHUB FOR as well as what it concluded. The fake
+    raises on any endpoint but the two, so the day somebody reinstates the
+    reviews or comments fetch — the routes retired with Codex — this goes red
+    rather than quietly reading prose again.
+    """
+    head = "090e429a31cd5f0b2e4d7a1c9b8e6f4d2a1c3b5e"
+    ok, findings = _run("success", sha=head), _run("failure", sha=head)
+    # files, check runs, exit code, must appear in the output, what it is
+    cases = [
+        ([{"filename": "review-gate.py"}], [ok], 0, "note:",
+         "a change to the gate itself, read clean, opens — the deadlock his ruling created"),
+        ([{"filename": ".github/workflows/check.yml"}], [ok], 0, "note:",
+         "and so does a change to a workflow"),
+        ([{"filename": "README.md"}], [ok], 0, "ok:", "an ordinary change opens"),
+        ([{"filename": "review-gate.py"}], [findings], 1, "note:",
+         "findings on a gate change are red, and it is still announced as one"),
+        ([{"filename": "README.md"}], [], 1, "no reviewer has read", "an unread commit is red"),
+        ([{"filename": "README.md"}], [_run("success", app=ACTIONS_APP, sha=head)], 1,
+         "no reviewer has read",
+         "and so is a clean run from the App every workflow token here holds"),
+        ([{"filename": "README.md"}], [_run(status="in_progress", sha=head)], 1,
+         "no reviewer has read", "a run that has not finished is not a read, and is red"),
+        ([{"filename": "review-gate.py"}], [], 1, "note:",
+         "an unread change to the gate is red, and still announced as one"),
+        ([{"filename": ".github/workflows/a\n::stop-commands::x.yml"}], [ok], 0, "note:",
+         "a workflow whose name carries a line break is announced, and starts no command"),
+    ]
+    want_asked = ["/repos/o/r/commits/%s/check-runs" % head, "/repos/o/r/pulls/7/files"]
+    bad = 0
+    real = urllib.request.urlopen
+    for files, runs, code, must, what in cases:
+        asked = []
+
+        def fake(req, *a, **k):
+            parts = urllib.parse.urlsplit(req.full_url)
+            asked.append(parts.path)
+            # Page two onwards is empty, or _pages() would paginate for ever.
+            first = urllib.parse.parse_qs(parts.query).get("page", ["1"])[0] == "1"
+            if parts.path.endswith("/files"):
+                body = files if first else []
+            elif parts.path.endswith("/check-runs"):
+                body = {"check_runs": runs if first else []}
+            else:
+                raise AssertionError("main() asked GitHub for %s, which this gate does not "
+                                     "read — the prose routes went with Codex" % parts.path)
+            return io.BytesIO(json.dumps(body).encode())
+
+        out = io.StringIO()
+        stdout = sys.stdout
+        urllib.request.urlopen = fake
+        sys.stdout = out
+        try:
+            got = main(["review-gate.py", "o/r", "7", head, "token"])
+        except AssertionError as e:
+            urllib.request.urlopen, sys.stdout = real, stdout
+            print("  main: %s — %s" % (what, e))
+            bad += 1
+            continue
+        finally:
+            urllib.request.urlopen, sys.stdout = real, stdout
+        said = out.getvalue()
+        if got != code:
+            print("  main: %s — expected exit %d, got %d (%s)" % (what, code, got, said.strip()))
+            bad += 1
+        if must not in said:
+            print("  main: %s — expected %r in the output, got %r" % (what, must, said.strip()))
+            bad += 1
+        # A gate change is announced on the check as well as in its log, and
+        # nothing else is: an annotation on every change would teach the same
+        # blindness a green tick does.
+        noticed = any(l.startswith("::notice ") for l in said.splitlines())
+        if noticed != (must == "note:"):
+            print("  main: %s — %s" % (what, "announced in the log but not on the check"
+                                       if must == "note:" else "annotated, and it is not a gate change"))
+            bad += 1
+        # And nothing else it prints is a runner command: the file names are the
+        # pull request's writing, and one could otherwise start its own.
+        stray = [l for l in said.splitlines()
+                 if l.startswith("::") and not l.startswith("::notice title=")]
+        if stray:
+            print("  main: %s — a line the runner would obey: %r" % (what, stray[0]))
+            bad += 1
+        if sorted(set(asked)) != want_asked:
+            print("  main: %s — asked GitHub for %s; it must ask for exactly %s"
+                  % (what, sorted(set(asked)), want_asked))
+            bad += 1
+    if not bad:
+        print("ok: main() was run against a GitHub answering from a dictionary in %d case(s) — "
+              "it asked for the changed files and the check runs and nothing else, and a change "
+              "to the gate itself now opens on the one reviewer's clean read" % len(cases))
+    return bad
 
 
 def _url_cases():
@@ -972,45 +1046,16 @@ def _url_cases():
          {"filter": ["all"], "per_page": ["100"], "page": ["2"]},
          "the same filter arriving in the URL — the shape that gave "
          "filter='all?per_page=100' and silently fell back to `latest`"),
-        ("https://api.github.com/repos/o/r/pulls/7/reviews", 3, None,
+        ("https://api.github.com/repos/o/r/pulls/7/files", 3, None,
          {"per_page": ["100"], "page": ["3"]},
-         "a plain endpoint with no query of its own"),
+         "a plain endpoint with no query of its own — the changed files, which is "
+         "the other fetch the gate still makes"),
     ]
 
 
 def _selftest():
     head = "090e429a31cd5f0b2e4d7a1c9b8e6f4d2a1c3b5e"
     other = "29d7b5435bf968d75ac7451c5457d440fcba5a0c"
-    summary = (
-        "<!-- codex-pull-request-review-summary -->\n\n## Codex Review Summary\n\n"
-        "| Review | Status | Commit | Review trigger |\n| --- | --- | --- | --- |\n"
-        "| \U0001f4dd **Code Review** | ✅ **Completed** <relative-time datetime=\"x\">x</relative-time> | `090e429` | Manual request |\n"
-    )
-    running = summary.replace("✅ **Completed**", "\U0001f504 **Running** since")
-    clean = "Codex Review: Didn't find any major issues. Keep them coming!\n\n**Reviewed commit:** `090e429a31`\n"
-    codex_cases = [
-        (clean, head, CLEAN, "the clean pass naming the commit"),
-        (clean.replace("Didn't", "Didn’t"), head, CLEAN, "the same, with a curly apostrophe"),
-        (summary, head, NO_VERDICT, "the summary's completed row — a read, not a verdict"),
-        (summary, other, None, "the summary row for another commit"),
-        (running, head, None, "a review still running"),
-        (clean.replace("090e429a31", "29d7b543"), head, None, "a clean pass on another commit"),
-        ("Codex Review: Found major issues; review did not complete.\n\n**Reviewed commit:** `090e429a31`\n",
-         head, None, "a comment that has the words 'major issues' and means the opposite"),
-        ("Codex Review: Didn't find any major issues because the review did not complete.\n\n"
-         "**Reviewed commit:** `090e429a31`\n", head, None,
-         "the whole verdict, taken back by what follows it (the reviewer's P1 on #24)"),
-        ("Codex Review: I almost didn't find any major issues.\n\n**Reviewed commit:** `090e429a31`\n",
-         head, None, "the same verdict with a qualifier in front of it"),
-        (clean.replace("Keep them coming!", "Keep it up!"), head, CLEAN,
-         "the clean pass with the reviewer's other encouragement"),
-        ("Task Completed for `090e429`; no review was performed", head, None, "a status line that says Completed"),
-        ("I have not Reviewed commit `090e429a31`", head, None, "a sentence containing the words"),
-        ("Codex Review: Something went wrong. Try again later.\n\n**Reviewed commit:** `090e429a31`\n",
-         head, None, "a failed run that names the commit"),
-        ("You have reached your Codex usage limits for code reviews.", head, None, "the quota message"),
-        ("", head, None, "an empty comment"),
-    ]
     # The badge, and every way a looser test would be talked into one. Only the
     # first two are the reviewer speaking; the rest are what a branch, a tidy-up
     # or GitHub itself can put on the same commit.
@@ -1018,98 +1063,71 @@ def _selftest():
         (_run("success", sha=head), CLEAN, "the badge's clean verdict on this commit"),
         (_run("failure", sha=head), FINDINGS, "its findings on this commit"),
         (_run("success", sha=other), None, "its clean verdict on another commit"),
-        (_run("success", status="queued", sha=head), NO_VERDICT, "a review queued on this commit"),
-        (_run("success", status="in_progress", sha=head), NO_VERDICT, "one running on it"),
+        (_run("success", status="queued", sha=head), None,
+         "a run queued on this commit, whatever its conclusion field says"),
+        (_run("success", status="in_progress", sha=head), None, "or one still running"),
         (_run("neutral", sha=head), None, "the shape it writes when it ran and could not read"),
         (_run("cancelled", sha=head), None, "a run somebody cancelled"),
         (_run("timed_out", sha=head), None, "one GitHub timed out"),
         (_run("action_required", sha=head), None, "one asking for a hand"),
         (_run("skipped", sha=head), None, "one that never ran"),
         (_run("stale", sha=head), None, "one GitHub called stale"),
-        (_run("success", app=15368, sha=head), None,
+        (_run("success", app=ACTIONS_APP, sha=head), None,
          "the same verdict from the GitHub Actions app — the token every workflow here holds"),
         (_run("success", app=None, sha=head), None, "a check run with no app at all"),
         (_run("success", app="5000405", sha=head), None, "the app id as a string, not the id"),
         (_run("success", name="Claude Review", sha=head), None,
          "the right app under a name this gate does not read"),
     ]
-    review_cases = [
-        ({"user": {"login": CODEX}, "commit_id": head, "state": "COMMENTED"}, (FINDINGS, "codex"), "a submitted review of this commit"),
-        ({"user": {"login": CODEX}, "commit_id": head, "state": "CHANGES_REQUESTED"}, (FINDINGS, "codex"), "changes requested on this commit"),
-        ({"user": {"login": CODEX}, "commit_id": head, "state": "APPROVED"}, (CLEAN, "codex"), "an approval of this commit"),
-        ({"user": {"login": CODEX}, "commit_id": head, "state": "DISMISSED"}, (None, None), "a review somebody took back"),
-        ({"user": {"login": CODEX}, "commit_id": head, "state": "PENDING"}, (None, None), "a draft nobody sent"),
-        ({"user": {"login": "someone"}, "commit_id": head, "state": "APPROVED"}, (None, None), "an approval by anybody else"),
-        ({"user": {"login": ACTIONS}, "commit_id": head, "state": "APPROVED"}, (None, None),
-         "an approval by the login every workflow token here can wear"),
-        ({"user": {"login": CODEX}, "commit_id": other, "state": "APPROVED"}, (None, None), "an approval of another commit"),
-        ({"user": {"login": CODEX}, "commit_id": other, "state": "COMMENTED"}, (None, None), "findings on another commit"),
-    ]
-    codex = lambda body: {"user": {"login": CODEX}, "body": body}
-    actions = lambda body: {"user": {"login": ACTIONS}, "body": body}
-    findings = {"user": {"login": CODEX}, "commit_id": head, "state": "COMMENTED"}
-    # What review.yml posts for people to read. The gate counts none of it, which
-    # is exactly why it does not matter that a writer can edit or delete it.
-    prose = ("Claude Review: no findings on this commit.\n\n**Reviewed commit:** `090e429a31`\n")
+    # What the whole gate answers, given everything on one commit. With one
+    # reviewer answering by one route these are short, and the shortness is the
+    # point: what used to be reachable through a comment, a submitted review, a
+    # summary table and a check run is now reachable one way.
     gate_cases = [
-        ([], [codex(clean)], [], (CLEAN, "codex"), "a clean pass and nothing else"),
-        ([], [], [_run("success", sha=head)], (CLEAN, "claude"), "the badge clean and nothing else"),
-        ([{"user": {"login": CODEX}, "commit_id": head, "state": "APPROVED"}], [], [], (CLEAN, "codex"),
-         "an approval and nothing else"),
-        ([findings], [], [], (FINDINGS, "codex"), "findings on the head"),
-        ([], [], [_run("failure", sha=head)], (FINDINGS, "claude"), "the badge's findings on the head"),
-        ([findings], [codex(clean)], [], (FINDINGS, "codex"),
-         "a clean pass posted after findings on the same commit — the commit still carries them"),
-        ([], [], [_run("failure", sha=head), _run("success", sha=head)], (FINDINGS, "claude"),
+        ([_run("success", sha=head)], (CLEAN, "claude"), "the badge clean and nothing else"),
+        ([_run("failure", sha=head)], (FINDINGS, "claude"), "the badge's findings on the head"),
+        ([_run("failure", sha=head), _run("success", sha=head)], (FINDINGS, "claude"),
          "asked twice on one commit, the findings stand — the answer to a finding is a push"),
-        ([], [codex(clean)], [_run("failure", sha=head)], (FINDINGS, "claude"),
-         "one reviewer's findings outrank the other's clean pass"),
-        ([findings], [codex(summary)], [], (FINDINGS, "codex"), "findings, with the summary calling the review completed"),
-        ([{"user": {"login": CODEX}, "commit_id": other, "state": "COMMENTED"}], [codex(clean)], [], (CLEAN, "codex"),
-         "findings on the commit before, a clean pass on this one"),
-        ([], [codex(summary)], [], (NO_VERDICT, "codex"), "a completed review whose verdict is not posted yet"),
-        ([], [], [_run(status="in_progress", sha=head)], (NO_VERDICT, "claude"), "the badge still reading"),
-        ([], [{"user": {"login": "someone"}, "body": clean}], [], (UNREAD, None),
-         "a clean pass typed by somebody who is not a reviewer"),
-        ([], [actions(prose)], [], (UNREAD, None),
-         "the reviewer's own prose comment — it is for people, and the gate reads none of it"),
-        ([], [actions(clean)], [], (UNREAD, None), "Codex's shape posted by a workflow"),
-        ([], [], [_run("success", app=15368, sha=head)], (UNREAD, None),
+        ([_run("success", sha=head), _run("failure", sha=head)], (FINDINGS, "claude"),
+         "and in either order, because worst wins per reviewer rather than last"),
+        ([_run(status="in_progress", sha=head)], (UNREAD, None), "a run not yet finished is no read"),
+        ([_run("failure", sha=head), _run(status="in_progress", sha=head)], (FINDINGS, "claude"),
+         "a fresh read in flight does not retire the findings already on the commit"),
+        ([_run("success", sha=other)], (UNREAD, None), "a clean verdict on another commit"),
+        ([_run("success", app=ACTIONS_APP, sha=head)], (UNREAD, None),
          "a clean check run from the app every workflow token here holds"),
-        ([], [], [], (UNREAD, None), "an empty pull request"),
-        ([{"user": {"login": CODEX}, "commit_id": head, "state": "DISMISSED"}], [], [], (UNREAD, None),
-         "a review somebody took back, and nothing else"),
+        ([], (UNREAD, None), "an empty pull request"),
     ]
-    # The door in the gate: a change to the review machinery opens on the other
-    # vendor's read alone.
+    # A GATE CHANGE IS NOW JUDGED EXACTLY AS AN ORDINARY ONE IS, and these cases
+    # are here to say so rather than to prove a door. The door was
+    # `GATE_REVIEWER`, its only value was Codex, and it went with him; what is
+    # left is `gate_note()`, which shuts nothing and is held on its own below.
+    # Before the ruling the first four of these answered CROSS_VENDOR — red — and
+    # the only thing that opened them was a Codex read, which is why the change that
+    # retires Codex could not merge until this rule went.
     gate_file_cases = [
-        (["review-gate.py"], [], [_run("success", sha=head)], (CROSS_VENDOR, "claude"),
-         "the default reviewer may not clear a change to the gate"),
-        (["check.sh"], [], [_run("success", sha=head)], (CROSS_VENDOR, "claude"), "nor to the check that runs it"),
-        ([".github/workflows/review.yml"], [], [_run("success", sha=head)], (CROSS_VENDOR, "claude"),
-         "nor to the reviewer it is"),
-        ([".github/workflows/check.yml"], [], [_run("success", sha=head)], (CROSS_VENDOR, "claude"),
-         "nor to the wake that fetches it"),
-        ([".github/workflows/door.yml"], [], [_run("success", sha=head)], (CROSS_VENDOR, "claude"),
-         "nor to the proof that the key is out of reach"),
-        ([".github/workflows/anything-new.yml"], [], [_run("success", sha=head)], (CROSS_VENDOR, "claude"),
-         "nor to a workflow a branch adds"),
-        (["review-gate.py"], [codex(clean)], [], (CLEAN, "codex"), "the other vendor clears it"),
-        (["review-gate.py"], [codex(clean)], [_run("success", sha=head)], (CLEAN, "codex"),
-         "both read it clean — the required one is what counts"),
-        (["review-gate.py"], [codex(clean)], [_run("failure", sha=head)], (CLEAN, "codex"),
-         "findings by a reviewer with no standing here do not bolt a door it cannot open "
-         "(Codex's P1 on #38, accepted in part)"),
-        (["review-gate.py"], [], [_run("failure", sha=head)], (FINDINGS, "claude"),
-         "but with no read by the required one they are still the most useful thing to say — "
-         "real work first, then the scarce ask"),
-        (["README.md"], [], [_run("success", sha=head)], (CLEAN, "claude"), "an ordinary change still clears"),
-        (["design/SCREEN-LAW.md", "README.md"], [], [_run("success", sha=head)], (CLEAN, "claude"),
+        (["review-gate.py"], [_run("success", sha=head)], (CLEAN, "claude"),
+         "the badge clears a change to the gate itself"),
+        (["check.sh"], [_run("success", sha=head)], (CLEAN, "claude"), "and to the check that runs it"),
+        ([".github/workflows/review.yml"], [_run("success", sha=head)], (CLEAN, "claude"),
+         "and to the reviewer it is"),
+        ([".github/workflows/anything-new.yml"], [_run("success", sha=head)], (CLEAN, "claude"),
+         "and to a workflow a branch adds"),
+        (["review-gate.py"], [_run("failure", sha=head)], (FINDINGS, "claude"),
+         "findings on a gate change still shut it"),
+        (["review-gate.py"], [], (UNREAD, None), "and an unread gate change is still unread"),
+        (["README.md"], [_run("success", sha=head)], (CLEAN, "claude"), "an ordinary change still clears"),
+        (["design/SCREEN-LAW.md", "README.md"], [_run("success", sha=head)], (CLEAN, "claude"),
          "and so does one touching several ordinary files"),
     ]
-    twin = "090e429" + "f" * 33  # another commit sharing the short form
-    resolved = {"090e429": twin, "090e429a31": head}
-    resolver = lambda sha: resolved.get(sha)
+    # gate_note() is the whole of what a gate change now buys, so it is held to
+    # saying something on one and nothing on the other. A note that quietly
+    # stopped appearing would be this change's own failure mode.
+    note_cases = [
+        (["review-gate.py"], True, "a gate change is announced"),
+        ([".github/workflows/door.yml"], True, "and so is a change to any workflow"),
+        ([], False, "an ordinary change is not"),
+    ]
     bad = 0
 
     def hold(got, want, what):
@@ -1118,27 +1136,31 @@ def _selftest():
         print("  selftest: %s — expected %s, got %s" % (what, want, got))
         return 1
 
-    for review, want, what in review_cases:
-        bad += hold(review_verdict(review, head), want, what)
-    for body, h, want, what in codex_cases:
-        bad += hold(comment_verdict(body, h, CODEX), want, what)
-        # No reviewer's shape may be read as another's, and no bystander's as one.
-        bad += hold(comment_verdict(body, h, ACTIONS), None, what + ", posted by a workflow")
     for run, want, what in badge_cases:
         bad += hold(check_run_verdict(run, head), want, what)
-    for reviews, comments, runs, want, what in gate_cases:
-        bad += hold(verdict(reviews, comments, runs, head), want, what)
-    for paths, comments, runs, want, what in gate_file_cases:
-        bad += hold(verdict([], comments, runs, head, gate_files=touches_the_gate(paths)), want, what)
-    bad += hold(comment_verdict(summary, head, CODEX, resolve=resolver), None,
-                "a short form that resolves to another commit")
-    bad += hold(comment_verdict(clean, head, CODEX, resolve=resolver), CLEAN,
-                "a clean pass whose short form resolves to this head")
-    # touches_the_gate decides which door a pull request goes through, so it is
-    # held on its own rather than only through the cases above.
+    for runs, want, what in gate_cases:
+        bad += hold(verdict(runs, head), want, what)
+    for paths, runs, want, what in gate_file_cases:
+        # touches_the_gate() is still computed, because what it answers is what
+        # the note below is built from — it simply no longer changes the verdict.
+        bad += hold(verdict(runs, head), want, what + " (gate files: %s)" % touches_the_gate(paths))
+    for paths, want, what in note_cases:
+        bad += hold(gate_note(touches_the_gate(paths)) is not None, want, what)
+    # touches_the_gate says which files are the gate, so it is held on its own
+    # rather than only through the cases above.
     bad += hold(touches_the_gate(["README.md", "check.sh", ".github/workflows/x.yml"]),
                 [".github/workflows/x.yml", "check.sh"], "which files are the gate")
     bad += hold(touches_the_gate(["design/ARCHITECT.md", "AGENTS.md"]), [], "and which are not")
+    # THE RETIRED ROUTES ARE HELD SHUT, not merely deleted. A later session
+    # restoring a prose reader would have to get past these: the gate reads check
+    # runs, so nothing a person or a bot can type is an answer.
+    for name in ("comment_verdict", "review_verdict", "_codex_comment_verdict", "_key_for",
+                 "_says_clean", "CLEAN_VERDICT", "SUMMARY_MARKER", "GATE_REVIEWER", "CODEX",
+                 "CODEX_ASK"):
+        bad += hold(hasattr(sys.modules[__name__], name), False,
+                    "%s is gone — the gate reads no prose" % name)
+    bad += hold([k for k, w in REVIEWERS.items() if w["login"] or w["comment"]], [],
+                "no reviewer on the register answers by a route the gate stopped reading")
     for url, page, params, want, what in _url_cases():
         built = _page_url(url, page, params)
         bad += hold(urllib.parse.parse_qs(urllib.parse.urlsplit(built).query), want, what)
@@ -1150,22 +1172,30 @@ def _selftest():
     if bad:
         print("review-gate selftest failed: %d case(s)" % bad)
         return 1
-    fakes = (sum(1 for c in codex_cases if c[2] is None)
-             + sum(1 for b in badge_cases if b[1] is None)
-             + sum(1 for r in review_cases if r[1] == (None, None))
-             + sum(1 for g in gate_cases if g[3] == (UNREAD, None))
-             + sum(1 for g in gate_file_cases if g[3][0] == CROSS_VENDOR) + 1)
-    print("ok: review gate tells a clean read from a commented one, for each reviewer on the "
-          "register, in every shape and state they arrive in; it refuses a gate change cleared "
-          "by anyone but %s; it asks GitHub for %d URL(s) that carry the parameters they say "
-          "they do; and it is fooled by none of the %d fakes"
-          % (REVIEWERS[GATE_REVIEWER]["name"], len(_url_cases()), fakes))
-    return 1 if _check_wiring() else 0
+    # A fake is anything that is not this reviewer's verdict on this commit and
+    # would open the gate if the test were looser: another App's run, no App at
+    # all, the id as a string, the right App under another name, a conclusion
+    # GitHub wrote rather than the reviewer, a verdict on a different commit.
+    # The count fell when Codex went, and it fell because the surface did: every
+    # fake it counted lived in prose the gate no longer reads.
+    fakes = (sum(1 for b in badge_cases if b[1] is None)
+             + sum(1 for g in gate_cases if g[1] == (UNREAD, None)))
+    print("ok: review gate reads a verdict only from the %d reviewer(s) on the register, only "
+          "as a check run they signed, and only on the commit in front of it; it counts no "
+          "comment and no submitted review, so the routes Codex answered by are shut rather "
+          "than idle; it asks GitHub for %d URL(s) that carry the parameters they say they do; "
+          "and it is fooled by none of the %d fakes"
+          % (len(REVIEWERS), len(_url_cases()), fakes))
+    # Both run, always: `or` stopped at the first failure and hid the second
+    # until the next push.
+    failed = _check_main()
+    failed += _check_wiring()
+    return 1 if failed else 0
 
 
-# Which fetch is in flight. There are four — reviews, comments, the changed files
-# and the check runs — and an error that names the wrong one sends the next
-# session looking behind the wrong door.
+# Which fetch is in flight. There are two — the changed files and the check runs
+# — and an error that names the wrong one sends the next session looking behind
+# the wrong door. It was four while Codex's reviews and comments were read.
 _asking = [""]
 
 
@@ -1221,30 +1251,13 @@ def main(argv):
         return 2
     repo, num, head, token = argv[1:5]
     api = "https://api.github.com/repos/%s" % repo
-    seen = {}
-
-    def resolve(short):
-        """The short form, asked of GitHub, must answer this very commit."""
-        if short not in seen:
-            _asking[0] = "commit " + short
-            req = urllib.request.Request(
-                "%s/commits/%s" % (api, short),
-                headers={"Authorization": "Bearer " + token, "Accept": "application/vnd.github+json"},
-            )
-            # A refusal from GitHub is not an answer: let it reach the handler
-            # below, which says HTTP and why, rather than becoming "the reviewer
-            # has not read this commit".
-            with urllib.request.urlopen(req) as r:
-                seen[short] = json.load(r).get("sha")
-        return seen[short]
 
     try:
-        # Every side of the page, every time: a reviewer's verdict is in one and
-        # its findings in the other, and a gate that stopped at the first answer
-        # it liked would be the gate this one replaces. The changed files decide
-        # which reviewer is allowed to clear it.
-        reviews = list(_pages("%s/pulls/%s/reviews" % (api, num), token))
-        comments = list(_pages("%s/issues/%s/comments" % (api, num), token))
+        # TWO FETCHES, WHERE THERE WERE FOUR. The reviews and the issue comments
+        # were Codex's two voices and are not asked for at all now — not fetched
+        # and ignored, which would leave a reader wondering which of them still
+        # counted. The changed files are still asked for: they no longer decide
+        # who may clear this, but they decide what the note below says.
         files = [f.get("filename") for f in _pages("%s/pulls/%s/files" % (api, num), token)]
         # `filter=all`, not the default `latest`: every run the badge has made on
         # this commit counts, worst first. On `latest` a findings verdict could be
@@ -1253,7 +1266,7 @@ def main(argv):
         runs = list(_pages("%s/commits/%s/check-runs" % (api, head), token,
                            key="check_runs", params={"filter": "all"}))
         gate_files = touches_the_gate(files)
-        answer, who = verdict(reviews, comments, runs, head, resolve=resolve, gate_files=gate_files)
+        answer, who = verdict(runs, head)
     except urllib.error.HTTPError as e:
         if e.code in (401, 403):
             why = ("the workflow's token may not read this (it needs pull-requests: read and "
@@ -1264,12 +1277,23 @@ def main(argv):
             why = "GitHub itself answered with an error — re-run the check"
         else:
             why = "GitHub refused the request"
-        print("reason: HTTP %s when asked for the %s — %s" % (e.code, _asking[0] or "reviews", why))
+        print("reason: HTTP %s when asked for the %s — %s" % (e.code, _asking[0] or "changed files", why))
         return 2
+    # Said on the way past, green or red: the tree that judged this pull request
+    # is the tree it proposes, and there is no second reviewer to catch that.
+    note = gate_note(gate_files)
+    if note:
+        print("note: " + note)
+        # And as an annotation, so it sits on the check itself rather than only
+        # in a log that a green tick gives nobody a reason to open (found on
+        # #56). A workflow command's data escapes %, CR and LF and nothing
+        # else, and the note carries file names, which the pull request writes.
+        print("::notice title=A change to the review machinery::"
+              + note.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A"))
     if answer == CLEAN:
         print("ok: %s has read %s and left nothing on it" % (REVIEWERS[who]["name"], head))
         return 0
-    print("reason: " + reason(answer, who, head, gate_files))
+    print("reason: " + reason(answer, who, head))
     return 1
 
 

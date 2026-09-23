@@ -3,11 +3,15 @@
 # It refuses: an operating page over its word cap, a screen law over its own, a
 # root or design file that is not on its list or missing from it, anything that
 # looks like a secret (naming the place, never the value), a review gate that no
-# longer matches the reviewers' answers or has drifted from the workflows that
+# longer matches the reviewer's answers or has drifted from the workflows that
 # fetch them, and, in a pull request, a commit no reviewer has read clean —
-# unread, read and left findings on, or, where the change is to the review
-# machinery itself, read clean by a reviewer the rulebook does not allow to clear
-# it. Nothing else.
+# unread, or read and left findings on. Nothing else. A read by anybody the
+# gate does not count is unread, not a shape of its own.
+# A third shape, "read clean by a reviewer the rulebook does not allow to
+# clear this change", was real while two vendors were on the register and is
+# gone with the second: see review-gate.py on CROSS_VENDOR. A header describing
+# a state the file can no longer reach is the drift this guard exists to catch,
+# so it is corrected here rather than left for the next reader to discover.
 set -euo pipefail
 cd "$(dirname "$0")"
 fail=0
@@ -90,17 +94,30 @@ fi
 # left nothing on it: green when a reviewer has read this very commit clean.
 # A later push turns it red until it has; so does a finding, until the push that
 # answers it makes a commit the reviewer reads afresh. The CTO's answer to a
-# finding is not clearance — the proposer does not clear its own change. And a
-# change to the review machinery opens on the other vendor's read alone, whoever
-# else has read it clean.
+# finding is not clearance — the proposer does not clear its own change.
+# A change to the review machinery used to need the other vendor's read alone,
+# and since his ruling of 22 September 2026 retiring Codex there is no other
+# vendor: it clears on the one reviewer's read, like everything else. The gate
+# says so on the run rather than letting a green imply otherwise.
 # The gate's own rule is machine-checked before anything asks GitHub: one
-# implementation, held against the reviewers' real answers, the states a review
-# can arrive in, the fakes that once passed a looser test, and the four workflow
-# files — the check, the reviewer, the wake it calls and the door's standing
-# proof — which must still agree with the register and with each other.
+# implementation, held against the reviewer's real answers, the states a read
+# can arrive in, the fakes that once passed a looser test, the routes the gate
+# has stopped reading, and the four workflow files — the check, the reviewer,
+# the wake it calls and the door's standing proof — which must still agree with
+# the register and with each other.
 python3 review-gate.py --selftest || fail_gate=1
-[ "${fail_gate:-0}" -eq 0 ] || { echo "FAIL: the review gate no longer matches the reviewers' answers, or has drifted from the workflows — see the cases above."; fail=1; }
-case "${GITHUB_EVENT_NAME:-}" in pull_request|pull_request_review)
+[ "${fail_gate:-0}" -eq 0 ] || { echo "FAIL: the review gate no longer matches the reviewer's answers, or has drifted from the workflows — see the cases above."; fail=1; }
+# WHICH EVENTS THE GATE RUNS ON, WRITTEN AS WHAT IT SKIPS RATHER THAN WHAT IT
+# CATCHES. This read `pull_request|pull_request_review`, and this change removed
+# the second of those triggers from check.yml, leaving that arm unreachable.
+# Deleting the dead arm is the obvious tidy and it is the wrong fix: a list of
+# events the gate RUNS on means any trigger added later and not added here is a
+# check that goes green having asked no reviewer anything — fail-open, silently,
+# in the file whose whole job is to fail closed. Inverted, an unknown event runs
+# the gate and fails loudly for want of a pull request number instead. `push` is
+# main's own, which carries no pull request to judge; an empty name is a run by
+# hand on somebody's machine.
+case "${GITHUB_EVENT_NAME:-}" in push|"") : ;; *)
   if [ -z "${GH_TOKEN:-}" ] || [ -z "${PR_NUMBER:-}" ] || [ -z "${HEAD_SHA:-}" ]; then
     echo "FAIL: the check cannot ask GitHub which commit the reviewer read — the workflow must set PR_NUMBER, HEAD_SHA and GH_TOKEN."; fail=1
   elif python3 review-gate.py "${GITHUB_REPOSITORY:-Adonis80/how-we-build}" "$PR_NUMBER" "$HEAD_SHA" "$GH_TOKEN"; then
