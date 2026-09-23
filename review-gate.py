@@ -919,6 +919,20 @@ def _check_wiring():
               "#38" % REVIEW_WORKFLOW)
         bad += 1
 
+    # The diff is read against the protected branch's tip, and the pull
+    # request's base is not fetched at all. #34's route: a head read clean
+    # against a base that already carries the change being judged, then
+    # retargeted to main, stays clean — the badge's run is on the head, and it
+    # judged the wrong comparison. Both halves are held, because a base fetched
+    # and unused is one edit from being the comparison again.
+    against_main = ('git diff "origin/${{ github.event.repository.default_branch }}...'
+                    '${{ steps.head.outputs.sha }}"')
+    if against_main not in review or ".base.sha" in review:
+        print("  wiring: %s must read the diff against the protected branch's tip — `%s` — and "
+              "never fetch the pull request's base, or a head read clean against another base "
+              "stays clean after a retarget to main (#34)" % (REVIEW_WORKFLOW, against_main))
+        bad += 1
+
     if not bad:
         # The route count that stood here was `len(set(app_id is None for ...))` —
         # a leftover from when a reviewer could answer by a login or by an App,
@@ -1172,6 +1186,12 @@ def _selftest():
                  "CODEX_ASK"):
         bad += hold(hasattr(sys.modules[__name__], name), False,
                     "%s is gone — the gate reads no prose" % name)
+    # And the two answers no input reached, held shut the same way: written
+    # back with a case asserting it, either is the guard over nothing #46 was
+    # caught by.
+    for name in ("CROSS_VENDOR", "NO_VERDICT"):
+        bad += hold(hasattr(sys.modules[__name__], name), False,
+                    "%s is gone — no input reaches it" % name)
     bad += hold([k for k, w in REVIEWERS.items() if w["login"] or w["comment"]], [],
                 "no reviewer on the register answers by a route the gate stopped reading")
     for url, page, params, want, what in _url_cases():
