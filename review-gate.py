@@ -969,6 +969,229 @@ def _check_wiring():
     return bad
 
 
+# ---------------------------------------------------------------------------
+# THE PRODUCT REVIEWER. His ruling, 23 September 2026: "Sonnet reviewer for
+# Hemz OS. Port the reviewer badge from how-we-build into this repo's review
+# gate and retire Codex here." A product is private, and on GitHub Free a
+# private repository's environment protection is no boundary, so its pull
+# requests are read from here and signed there (decision 0002, C; decision
+# 0004's "one reviewer workflow in the public rulebook, one protected App
+# credential, taking target repo, pull request and exact head SHA as inputs").
+#
+# It is a second file rather than a second trigger on review.yml, so that a
+# route which has never run cannot stop the one that works. What makes that
+# safe is below: everything review.yml is held to that is not about this
+# repository's own pull requests, the product file is held to as well, and the
+# lines the two must say identically are compared, not trusted. A product
+# gains nothing here by being named; it gains a read by being on the file's
+# list, which must name only products this README lists.
+PRODUCT_WORKFLOW = ".github/workflows/review-product.yml"
+PRODUCT_SCOPE = ('{repositories: [$r], permissions: {contents: "read", pull_requests: "write", '
+                 'checks: "write"}}')
+PRODUCT_BRIEF = 'g show "origin/$MAIN:AGENTS.md" > "$t/brief.txt"'
+PRODUCT_DIFF = 'g diff "origin/$MAIN...$SHA" > "$t/diff.txt"'
+PRODUCT_HEAD = ('[ "$head" = "$SHA" ]', '[ "$fetched" = "$SHA" ]')
+PASTED_INPUT = re.compile(r"^\s+[A-Z_]+: \$\{\{ inputs\.[a-z_]+ \}\}\s*$")
+XTRACE = re.compile(r"\bset\s+-\w*x|\bxtrace\b")
+TOOL_PIN = r"npm install -g @anthropic-ai/claude-code@(\d+\.\d+\.\d+)\b"
+SCHEMA = re.compile(r"^\s*schema='([^']*)'\s*$", re.M)
+
+
+def _block(text, first, last, keep_comments=True):
+    """The stripped lines from the first matching `first` to the next `last`."""
+    lines = [l.strip() for l in text.splitlines()]
+    if not keep_comments:
+        lines = [l for l in lines if l and not l.startswith("#")]
+    try:
+        start = next(i for i, l in enumerate(lines) if first(l))
+        end = next(i for i, l in enumerate(lines) if i > start and last(l))
+    except StopIteration:
+        return None
+    return lines[start:end + 1]
+
+
+def _standing(text):
+    """The standing instruction a reviewer is given, as the lines that echo it."""
+    return _block(text, lambda l: l.startswith('echo "You are the independent reviewer'),
+                  lambda l: "say in the review that it tried." in l)
+
+
+def _jwt(text):
+    """The App's JWT, signed: from the encoding helper to the token it makes."""
+    return _block(text, lambda l: l.startswith("b64url() {"),
+                  lambda l: l == 'jwt="$hdr.$pl.$sig"', keep_comments=False)
+
+
+def _check_product_wiring(review=None, product=None, readme=None, quiet=False):
+    """review-product.yml, held to review.yml and to the rulebook's own map."""
+    say = (lambda *a: None) if quiet else print
+    try:
+        review = _read(REVIEW_WORKFLOW) if review is None else review
+        product = _read(PRODUCT_WORKFLOW) if product is None else product
+        readme = _read("README.md") if readme is None else readme
+    except OSError as e:
+        say("  wiring: %s" % e)
+        return 1
+    bad = 0
+
+    def fault(what):
+        nonlocal bad
+        say("  wiring: %s %s" % (PRODUCT_WORKFLOW, what))
+        bad += 1
+
+    # A dispatch is the ask, and only a writer can make one: GitHub refuses a
+    # dispatch from anybody else, which is what keeps a stranger from spending
+    # the allowance on a public repository. Any other trigger — a comment, a
+    # push, a pull request — reaches the key from somewhere this reasoning
+    # does not cover.
+    if triggers(product) != ["workflow_dispatch"]:
+        fault("triggers on %s; it must be workflow_dispatch and nothing else, which only a "
+              "writer here can fire" % triggers(product))
+    # The door, the same one review.yml stands behind.
+    if not USES_ENVIRONMENT.search(product):
+        fault("does not run in the `%s` environment, so the App's key is readable from any "
+              "branch and a product's badge can be forged" % KEY_ENVIRONMENT)
+    for pattern, what in ((r'^\s*concurrency:', "a concurrency block"),
+                          (r'^\s*cancel-in-progress:', "a cancel-in-progress setting")):
+        if re.search(pattern, product, re.M):
+            fault("has %s; for review.yml's reason, every ask runs" % what)
+    for flag, why in (('--tools ""', "every built-in tool would be back on"),
+                      ("--restricted", "it would read the settings files it is shown"),
+                      ("--strict-mcp-config", "it could pick up MCP servers from elsewhere"),
+                      ("--model " + REVIEWER_MODEL, "it would not be the reviewer he named"),
+                      ("--effort " + REVIEWER_EFFORT, "it would not be at the effort he named")):
+        if flag not in product:
+            fault("no longer passes %s — %s" % (flag, why))
+    # One version of the tool for both reviewers, installed where no secret is.
+    pins = re.findall(TOOL_PIN, product)
+    loose = re.findall(r"npm install[^\n]*@anthropic-ai/claude-code(?!@\d)", product)
+    holds = re.compile(r"secrets\.|steps\.badge\.outputs\.token")
+    above, _, rest = product.partition("\n    steps:\n")
+    beside = [s for s in re.split(r"\n\s*- name: ", rest) if "npm install" in s and holds.search(s)]
+    if len(pins) != 1 or loose or beside or holds.search(above):
+        fault("must install the reviewer's tool once, pinned to an exact version, in a step that "
+              "holds no secret, with no secret set above the steps")
+    elif pins != re.findall(TOOL_PIN, review):
+        fault("pins the reviewer's tool at %s and %s pins %s — one reviewer, one version"
+              % (pins, REVIEW_WORKFLOW, re.findall(TOOL_PIN, review)))
+    # The brief from the product's protected branch, the diff against its tip.
+    if PRODUCT_BRIEF not in product:
+        fault("no longer reads the brief from the product's protected branch (`%s`); read from "
+              "the head, a pull request writes its own reviewer's instructions" % PRODUCT_BRIEF)
+    if PRODUCT_DIFF not in product or ".base.sha" in product:
+        fault("must read the diff against the product's protected branch (`%s`) and never "
+              "fetch the pull request's base (#34)" % PRODUCT_DIFF)
+    # The commit is given and checked, never inferred: signing the wrong work
+    # is this route's one dangerous failure (decision 0004).
+    for line in PRODUCT_HEAD:
+        if line not in product:
+            fault("no longer checks the commit asked for against the pull request's head "
+                  "(`%s`), so it could sign work nobody asked it to read" % line)
+    # Scoped to the product alone, from the first run.
+    if PRODUCT_SCOPE not in product:
+        fault("must mint its token scoped to the product alone (`%s`); unscoped, a read of one "
+              "product reaches every repository the App is installed on" % PRODUCT_SCOPE)
+    # A dispatch's inputs are typed, so they reach a script as variables only.
+    for n, line in enumerate(product.splitlines(), 1):
+        if "${{ inputs." in line and not line.startswith("run-name: ") \
+                and not PASTED_INPUT.match(line):
+            fault("line %d pastes an input into the workflow rather than passing it as a "
+                  "variable — a typed value pasted into a script can run" % n)
+    # This log is public and the product is not.
+    if XTRACE.search(product):
+        fault("traces its shell, which prints what it runs — the product's words included — "
+              "into a public log")
+    # The lines the two reviewers must say identically.
+    if _standing(review) is None or _standing(product) != _standing(review):
+        fault("does not give the reviewer %s's standing instruction, line for line"
+              % REVIEW_WORKFLOW)
+    if _jwt(review) is None or _jwt(product) != _jwt(review):
+        fault("does not sign the App's JWT exactly as %s does, line for line" % REVIEW_WORKFLOW)
+    if not SCHEMA.findall(product) or SCHEMA.findall(product) != SCHEMA.findall(review):
+        fault("does not ask for the verdict in %s's shape" % REVIEW_WORKFLOW)
+    # The verdict's shape, which the product's gate reads exactly as this
+    # repository's reads its own.
+    if '"%s"' % REVIEWER_CHECK not in product:
+        fault("does not name its check run `%s`, the only name a gate reads" % REVIEWER_CHECK)
+    written = sorted(set(re.findall(r'^\s*conclusion=([a-z_]+)\s*$', product, re.M)
+                         + re.findall(r'conclusion:\s*"([a-z_]+)"', product)))
+    fake_head = "090e429a31cd5f0b2e4d7a1c9b8e6f4d2a1c3b5e"
+    got = dict((c, check_run_verdict(
+        {"app": {"id": REVIEWER_APP_ID}, "name": REVIEWER_CHECK, "head_sha": fake_head,
+         "status": "completed", "conclusion": c}, fake_head)) for c in written)
+    if got != {"success": CLEAN, "failure": FINDINGS, "neutral": None}:
+        fault("writes the conclusions %s; it must write exactly one clean (success), one "
+              "findings (failure) and one that is no verdict at all (neutral)" % written)
+    # Opened before the read and closed with the verdict, so the product's
+    # gate is woken by the one `completed` event the verdict makes.
+    if 'status:"in_progress"' not in product or 'status:"completed"' not in product:
+        fault("must open its check run in progress and close it completed; a product's gate "
+              "wakes on the completion, and a run created already finished may never say so")
+    # Only products this rulebook lists.
+    options = re.findall(r"^\s+- (Adonis80/[A-Za-z0-9._-]+)\s*$", product, re.M)
+    if not options:
+        fault("names no product to read")
+    for repo in options:
+        if "https://github.com/%s" % repo not in readme:
+            fault("offers to read %s, which is not a product under this rulebook" % repo)
+    if not bad:
+        say("ok: the product reviewer answers only a writer's dispatch, behind the `%s` door, "
+            "with a token scoped to the one product; it reads the exact head against the "
+            "product's protected branch, and gives the reviewer %s's model, effort, tool, "
+            "flags and instruction line for line" % (KEY_ENVIRONMENT, REVIEW_WORKFLOW))
+    return bad
+
+
+# Each loosening of review-product.yml that the check above must refuse. A
+# guard only ever run against files that already agree proves nothing about
+# the day they do not (#66's fourth read, on its own line-for-line check).
+PRODUCT_LOOSENINGS = (
+    ("a push trigger", lambda t: t.replace("on:\n  workflow_dispatch:", "on:\n  push:\n  workflow_dispatch:", 1)),
+    ("the door removed", lambda t: t.replace("    environment: reviewer\n", "", 1)),
+    ("a concurrency block", lambda t: t.replace("\njobs:\n", "\nconcurrency:\n  group: review\njobs:\n", 1)),
+    ("a lower effort", lambda t: t.replace("--effort max", "--effort high", 1)),
+    ("the tools back on", lambda t: t.replace('--tools "" \\\n', "", 1)),
+    ("the tool unpinned", lambda t: t.replace("claude-code@2.1.280", "claude-code", 1)),
+    ("a different version", lambda t: re.sub(r"claude-code@(\d+)\.(\d+)\.(\d+)", "claude-code@9.9.9", t, 1)),
+    ("the brief from the head", lambda t: t.replace('g show "origin/$MAIN:AGENTS.md"', 'g show "$SHA:AGENTS.md"', 1)),
+    ("the diff against the base", lambda t: t.replace(PRODUCT_DIFF, 'g diff "$BASE...$SHA" > "$t/diff.txt"  # .base.sha', 1)),
+    ("the head never checked", lambda t: t.replace(PRODUCT_HEAD[0], "true", 1)),
+    ("the token unscoped", lambda t: t.replace(PRODUCT_SCOPE, "{}", 1)),
+    ("an input pasted", lambda t: t.replace('echo "asked: $REPO', 'echo "asked: ${{ inputs.repo }}', 1)),
+    ("the shell traced", lambda t: t.replace("set -euo pipefail\n", "set -euxo pipefail\n", 1)),
+    ("the instruction altered", lambda t: t.replace("Read COLD:", "Read kindly:", 1)),
+    ("the JWT's lifetime altered", lambda t: t.replace("$((now + 540))", "$((now + 3600))", 1)),
+    ("the verdict's shape altered", lambda t: t.replace('"enum":["clean","findings"]', '"enum":["clean"]', 1)),
+    ("a conclusion GitHub writes", lambda t: t.replace("conclusion=neutral", "conclusion=skipped", 1)),
+    ("the run created finished", lambda t: t.replace('status:"in_progress"', 'status:"completed"', 1)),
+    ("a repository not on the map", lambda t: t.replace("          - Adonis80/Hemz-OS\n", "          - Adonis80/Hemz-OS\n          - Adonis80/elsewhere\n", 1)),
+)
+
+
+def _check_product_loosenings():
+    """Every loosening above must turn the product wiring red, and none may miss."""
+    try:
+        product = _read(PRODUCT_WORKFLOW)
+    except OSError as e:
+        print("  wiring: %s" % e)
+        return 1
+    bad = 0
+    for what, loosen in PRODUCT_LOOSENINGS:
+        changed = loosen(product)
+        if changed == product:
+            print("  wiring: the loosening '%s' no longer applies to %s — rewrite it against the "
+                  "file as it stands, or it proves nothing" % (what, PRODUCT_WORKFLOW))
+            bad += 1
+        elif _check_product_wiring(product=changed, quiet=True) == 0:
+            print("  wiring: %s with %s passes the check — the guard for it is gone"
+                  % (PRODUCT_WORKFLOW, what))
+            bad += 1
+    if not bad:
+        print("ok: each of %d loosenings of %s was applied to the real file and refused"
+              % (len(PRODUCT_LOOSENINGS), PRODUCT_WORKFLOW))
+    return bad
+
+
 def _run(conclusion=None, status="completed", app=REVIEWER_APP_ID, name=REVIEWER_CHECK, sha=None):
     return {"app": None if app is None else {"id": app}, "name": name,
             "head_sha": sha, "status": status, "conclusion": conclusion}
@@ -1244,6 +1467,8 @@ def _selftest():
     # until the next push.
     failed = _check_main()
     failed += _check_wiring()
+    failed += _check_product_wiring()
+    failed += _check_product_loosenings()
     return 1 if failed else 0
 
 
