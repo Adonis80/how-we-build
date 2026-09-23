@@ -106,3 +106,55 @@ jobs:
             refs/heads/main) echo "main may read it. The door is where it should be." ;;
             *) echo "DOOR OPEN: a branch read the environment. The badge can be forged."; exit 1 ;;
           esac
+
+      # THE REVIEWER'S TOKEN, SCOPED, PROVED HERE BEFORE review.yml RELIES ON IT.
+      # review.yml mints its installation token with no body, so the token reaches
+      # every repository the App is installed on — Hemz OS too, since #47 — in a
+      # job that also runs the reviewer's tool. It should reach this repository
+      # alone and do one thing: write check runs. That request can only be proved
+      # where the key is, which is behind this door on main; and review.yml runs
+      # only from main, so a mint that failed there would stop every read, the
+      # fix's included. So it is proved here first, where a failure stops
+      # nothing: dispatch this workflow on main and read this step. The token it
+      # mints is revoked before the step ends, and nothing is printed but names.
+      - name: mint the reviewer's token scoped, as review.yml will, and prove its reach
+        if: github.ref == 'refs/heads/main'
+        env:
+          APP_ID: ${{ secrets.REVIEWER_APP_ID }}
+          APP_KEY: ${{ secrets.REVIEWER_APP_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          key="$RUNNER_TEMP/reviewer.pem"
+          trap 'rm -f "$key"' EXIT
+          printf '%s\n' "$APP_KEY" > "$key"
+          b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+          now=$(date +%s)
+          hdr=$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | b64url)
+          pl=$(printf '{"iat":%d,"exp":%d,"iss":"%s"}' "$((now - 60))" "$((now + 540))" "$APP_ID" | b64url)
+          sig=$(printf '%s' "$hdr.$pl" | openssl dgst -binary -sha256 -sign "$key" | b64url)
+          jwt="$hdr.$pl.$sig"
+          rm -f "$key"
+          inst=$(curl -sS -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/installation" | jq -r '.id // empty')
+          [ -n "$inst" ] || { echo "the App is not installed on $GITHUB_REPOSITORY"; exit 1; }
+          body=$(jq -cn --arg r "${GITHUB_REPOSITORY#*/}" '{repositories: [$r], permissions: {checks: "write"}}')
+          echo "asking for: $body"
+          curl -sS -X POST -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/app/installations/$inst/access_tokens" -d "$body" > "$RUNNER_TEMP/mint.json"
+          tok=$(jq -r '.token // empty' "$RUNNER_TEMP/mint.json")
+          if [ -z "$tok" ]; then
+            echo "REFUSED: the scoped mint was not granted — review.yml must not ask for it."
+            jq -r '.message // "no message"' "$RUNNER_TEMP/mint.json"
+            exit 1
+          fi
+          echo "::add-mask::$tok"
+          echo "granted permissions: $(jq -c '.permissions' "$RUNNER_TEMP/mint.json")"
+          reach=$(curl -sS -H "Authorization: token $tok" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/installation/repositories" | jq -r '[.repositories[].full_name] | join(",")')
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: token $tok" \
+            -H "Accept: application/vnd.github+json" "https://api.github.com/installation/token")
+          echo "the scoped token reached: $reach — and was revoked ($code)"
+          [ "$reach" = "$GITHUB_REPOSITORY" ] || { echo "SCOPE WRONG: it reached more, or less, than this repository."; exit 1; }
+          [ "$code" = "204" ] || { echo "the token was not revoked"; exit 1; }
+          echo "PROVED: this request mints a token that reaches $GITHUB_REPOSITORY alone and can write check runs."
