@@ -992,6 +992,11 @@ PRODUCT_BRIEF = 'g show "origin/$MAIN:AGENTS.md" > "$t/brief.txt"'
 PRODUCT_DIFF = 'g diff "origin/$MAIN...$SHA" > "$t/diff.txt"'
 PRODUCT_HEAD = ('[ "$head" = "$SHA" ]', '[ "$fetched" = "$SHA" ]')
 PRODUCT_REACH = ('"https://api.github.com/installation/repositories"', 'if [ "$reach" != "$REPO" ]; then')
+# What the token was granted, checked against exactly what was asked for
+# (#68's twelfth read), in that order: wanted, then read from GitHub's answer.
+PRODUCT_GRANT = ("""want='{"checks":"write","contents":"read","pull_requests":"write"}'""",
+                 """granted=$(jq -cS '(.permissions // {}) | del(.metadata)' "$RUNNER_TEMP/mint.json")""",
+                 'if [ "$granted" != "$want" ]; then')
 PRODUCT_NAMES = ('--arg name "%s"' % REVIEWER_CHECK, '"$REVIEWER_APP_ID" "%s"' % REVIEWER_CHECK)
 PASTED_INPUT = re.compile(r"^\s+[A-Z_]+: \$\{\{ inputs\.[a-z_]+ \}\}\s*$")
 XTRACE = re.compile(r"\bset\s+-\w*x|\bxtrace\b")
@@ -1165,6 +1170,11 @@ def _check_product_wiring(review=None, product=None, readme=None, quiet=False):
         if line not in product:
             fault("no longer asks GitHub what its token reaches and refuses a mismatch (`%s`)"
                   % line)
+    # And what it was granted, checked rather than printed (#68's twelfth read).
+    for line in PRODUCT_GRANT:
+        if line not in product:
+            fault("no longer checks what its token was granted against exactly what it asked "
+                  "for, revoking it on a mismatch (`%s`)" % line)
     # A dispatch's inputs are typed, so they reach a script as variables only.
     for n, line in enumerate(product.splitlines(), 1):
         if "${{ inputs." in line and not line.startswith("run-name: ") \
@@ -1319,6 +1329,10 @@ PRODUCT_LOOSENINGS = (
     ("a flag added to the call", lambda t: t.replace("            --output-format json \\\n", "            --output-format json \\\n            --verbose \\\n", 1)),
     ("a flag's value changed", lambda t: t.replace("--permission-prompts none", "--permission-prompts ask", 1)),
     ("a different time limit", lambda t: t.replace("    timeout-minutes: 30\n", "    timeout-minutes: 90\n", 1)),
+    # What the token was granted (#68's twelfth read).
+    ("the grant printed, not checked", lambda t: t.replace(PRODUCT_GRANT[2], "if false; then", 1)),
+    ("a wider grant wanted", lambda t: t.replace(PRODUCT_GRANT[0], PRODUCT_GRANT[0].replace('"contents":"read"', '"contents":"read","issues":"write"'), 1)),
+    ("the grant taken on trust", lambda t: t.replace(PRODUCT_GRANT[1], "granted=$want", 1)),
 )
 
 

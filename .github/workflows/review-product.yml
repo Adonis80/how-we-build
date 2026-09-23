@@ -194,7 +194,19 @@ jobs:
             exit 1
           fi
           echo "::add-mask::$tok"
-          echo "granted permissions: $(jq -c '.permissions' "$RUNNER_TEMP/mint.json")"
+          # What it was granted is checked, not printed (#68's twelfth read), as
+          # door.yml checks its rehearsal's. Metadata read comes with every
+          # installation token; anything beside the three asked for is more, or
+          # less, than a read needs, and the token is revoked unused.
+          want='{"checks":"write","contents":"read","pull_requests":"write"}'
+          granted=$(jq -cS '(.permissions // {}) | del(.metadata)' "$RUNNER_TEMP/mint.json")
+          echo "granted, metadata aside: $granted"
+          if [ "$granted" != "$want" ]; then
+            curl -sS -o /dev/null -X DELETE -H "Authorization: token $tok" \
+              -H "Accept: application/vnd.github+json" "https://api.github.com/installation/token" || true
+            echo "::error::SCOPE WRONG: the token was granted $granted, not $want. Revoked; nothing was read."
+            exit 1
+          fi
           # What it reaches is asked of GitHub rather than read off the request.
           reach=$(curl -sS -H "Authorization: token $tok" -H "Accept: application/vnd.github+json" \
             "https://api.github.com/installation/repositories" | jq -r '[.repositories[].full_name] | join(",")')
