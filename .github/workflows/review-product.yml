@@ -77,9 +77,12 @@ run-name: Review ${{ inputs.repo }}#${{ inputs.pr }} at ${{ inputs.sha }}
 # progress. That reads as unread, never as clean, and the next ask opens a run
 # of its own (#68's second read).
 #
-# NOT PROVED YET. It runs only from main, so it cannot run before it merges. Its
-# first run is the read of the pull request that ports the gate to Hemz OS, and
-# that pull request cites the run's id. No page calls this route built until then.
+# PROVED ON ITS FIRST RUN. Run 35902409140, dispatched on main on 23 September
+# 2026, read Hemz OS's port (#76) clean and signed it there: the door admitted
+# main, the grant and the reach were checked, the check run opened in progress
+# and closed success, the comment went up under the App's own name with pull
+# requests write alone, and the token was revoked. That pull request cites the
+# run. The product's wake is still to be shown, as the paragraph above says.
 
 on:
   workflow_dispatch:
