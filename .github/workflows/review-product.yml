@@ -43,7 +43,10 @@ run-name: Review ${{ inputs.repo }}#${{ inputs.pr }} at ${{ inputs.sha }}
 # looking at the pull request sees the reviewer at work and does not ask twice,
 # and the product's gate is woken by the one `completed` event its verdict makes.
 # A run that stops before it can sign is closed as `neutral` — a read that did
-# not happen — so nothing is left looking like a read in flight.
+# not happen — so nothing is left looking like a read in flight. One case is
+# beyond any step: a runner lost outright between the two leaves the run in
+# progress. That reads as unread, never as clean, and the next ask opens a run
+# of its own (#68's second read).
 #
 # NOT PROVED YET. It runs only from main, so it cannot run before it merges. Its
 # first run is the read of the pull request that ports the gate to Hemz OS, and
