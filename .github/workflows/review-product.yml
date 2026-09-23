@@ -26,6 +26,16 @@ run-name: Review ${{ inputs.repo }}#${{ inputs.pr }} at ${{ inputs.sha }}
 # holds against both files, so neither can drift alone (every flag and the time
 # limit since #68's tenth read). The system prompt's path is the one difference.
 #
+# NOR, YET, ONE SHARED STEP FOR WHAT THE TWO SAY ALIKE. The call, the standing
+# instruction, the schema and the JWT belong in one workflow both files call, as
+# the wake is shared (#68's second, third and eleventh reads). Not here, and not
+# for a third caller: extracting them rewrites review.yml, the one reviewer that
+# works, whose fault would stop every read, its own fix's included; and an
+# extraction checked against one caller that has run and one that never has is
+# checked against half its evidence. So it follows this route's first run, as a
+# pull request of its own, and the comparisons in review-gate.py go with it.
+# Until then a model switch touches three gate files, which the README says.
+#
 # THE ASK IS A DISPATCH, AND ONLY A WRITER CAN MAKE ONE. The product, the pull
 # request and the exact head commit are its inputs. GitHub refuses a dispatch
 # from anybody who cannot already write here, so nobody else can spend the
