@@ -870,6 +870,28 @@ def _check_wiring():
               "start it" % (DOOR_WORKFLOW, DOOR_BRANCHES))
         bad += 1
 
+    # door.yml rehearses the reviewer's token mint on main before review.yml
+    # relies on it, and a rehearsal is worth nothing the day it signs or finds
+    # the installation differently from the real one. So the two are held line
+    # for line — from the signing helper to the installation lookup, comments
+    # and blank lines aside — rather than trusted to be edited together (#66's
+    # first read). A file with no such block, or two blocks that differ, fails.
+    def _signing(text):
+        lines = [l.strip() for l in text.splitlines()]
+        lines = [l for l in lines if l and not l.startswith("#")]
+        try:
+            start = next(i for i, l in enumerate(lines) if l.startswith("b64url() {"))
+            end = next(i for i, l in enumerate(lines)
+                       if i > start and l.endswith("/installation\" | jq -r '.id // empty')"))
+        except StopIteration:
+            return None
+        return lines[start:end + 1]
+    if _signing(review) is None or _signing(door) != _signing(review):
+        print("  wiring: %s must sign the App's JWT and find its installation exactly as %s does, "
+              "line for line — a rehearsal of the reviewer's token that differs from it proves "
+              "nothing about it" % (DOOR_WORKFLOW, REVIEW_WORKFLOW))
+        bad += 1
+
     # The check run's name and its conclusions live in two files — the workflow
     # writes them, this one reads them — and that is the one duplication this
     # design could not avoid. So they are held against each other rather than

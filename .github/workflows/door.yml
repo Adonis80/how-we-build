@@ -115,10 +115,15 @@ jobs:
       # where the key is, which is behind this door on main; and review.yml runs
       # only from main, so a mint that failed there would stop every read, the
       # fix's included. So it is proved here first, where a failure stops
-      # nothing: dispatch this workflow on main and read this step. The token it
-      # mints is revoked before the step ends, and nothing is printed but names.
+      # nothing: dispatch this workflow on main and read this step. Until the
+      # pull request that follows lands, review.yml still mints unscoped: this
+      # step is the rehearsal for that change, and it is only worth anything
+      # while it signs and finds the installation exactly as review.yml does,
+      # which review-gate.py holds line for line. It never runs on a branch: the
+      # door refuses the whole job there, and the step above stops it if not.
+      # The token it mints is revoked before the step ends, and nothing is
+      # printed but names.
       - name: mint the reviewer's token scoped, as review.yml will, and prove its reach
-        if: github.ref == 'refs/heads/main'
         env:
           APP_ID: ${{ secrets.REVIEWER_APP_ID }}
           APP_KEY: ${{ secrets.REVIEWER_APP_KEY }}
@@ -126,7 +131,7 @@ jobs:
           set -euo pipefail
           umask 077
           key="$RUNNER_TEMP/reviewer.pem"
-          trap 'rm -f "$key"' EXIT
+          trap 'rm -f "$key" "$RUNNER_TEMP/mint.json"' EXIT
           printf '%s\n' "$APP_KEY" > "$key"
           b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
           now=$(date +%s)
@@ -150,6 +155,7 @@ jobs:
           fi
           echo "::add-mask::$tok"
           echo "granted permissions: $(jq -c '.permissions' "$RUNNER_TEMP/mint.json")"
+          rm -f "$RUNNER_TEMP/mint.json"
           reach=$(curl -sS -H "Authorization: token $tok" -H "Accept: application/vnd.github+json" \
             "https://api.github.com/installation/repositories" | jq -r '[.repositories[].full_name] | join(",")')
           code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: token $tok" \
