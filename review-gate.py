@@ -876,6 +876,8 @@ def _check_wiring():
     # for line — from the signing helper to the installation lookup, comments
     # and blank lines aside — rather than trusted to be edited together (#66's
     # first read). A file with no such block, or two blocks that differ, fails.
+    # It is the regression test of a repair, not a new rule: why, and the
+    # failing case, are at the rehearsal step in door.yml, once.
     def _signing(text):
         lines = [l.strip() for l in text.splitlines()]
         lines = [l for l in lines if l and not l.startswith("#")]

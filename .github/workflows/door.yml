@@ -33,6 +33,14 @@ name: Door
 # the deployment branch policy has been widened or removed, and nothing should
 # be merged until it is back.
 #
+# ON MAIN THE DOOR JOB PROVES TWO THINGS, AND ITS FAILING STEP SAYS WHICH. Red
+# at "reach for the key" means the environment holds no key: a wiring fault.
+# Red at the rehearsal means the reviewer's scoped token was refused, or
+# reached more or less than this repository, or GitHub could not be asked:
+# review.yml must not ask for that token until a run here is green. Neither
+# means the badge can be forged; only a door job that runs on a branch means
+# that.
+#
 # GIVE THE PROOF BRANCH A COMMIT OF ITS OWN. Check runs attach to a SHA, so a
 # proof branch pushed at the same commit as a pull request's head hangs its red
 # `door` row on that pull request, where it looks like a broken build for ever.
@@ -109,6 +117,18 @@ jobs:
           esac
 
       # THE REVIEWER'S TOKEN, SCOPED: A REHEARSAL, AND NOT YET RUN.
+      #
+      # A REPAIR, NOT AN ADDITION TO HOW WE BUILD, SO THE CHARTER'S §13 IS NOT
+      # ENGAGED. The failing case is today's: the badge's token, minted with no
+      # repositories list, reaches Hemz OS, a private product repository, with
+      # every permission the App holds, in a job that also runs a third-party
+      # tool over the diff it is shown. That is a trust boundary crossed
+      # wrongly, P1 in this repository's queue. HOW-WE-BUILD.md proves a repair
+      # before it is relied on (step 4) and answers a failure with the smallest
+      # regression test: this step is that proof, and the line-for-line check in
+      # review-gate.py is that test, as #63, #64 and #65 held their repairs. No
+      # rule about how we build changes.
+      #
       # review.yml mints its installation token with no body, so the token reaches
       # every repository the App is installed on — Hemz OS too, since #47 — in a
       # job that also runs the reviewer's tool. It should reach this repository
