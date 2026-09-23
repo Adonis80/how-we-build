@@ -997,6 +997,7 @@ PASTED_INPUT = re.compile(r"^\s+[A-Z_]+: \$\{\{ inputs\.[a-z_]+ \}\}\s*$")
 XTRACE = re.compile(r"\bset\s+-\w*x|\bxtrace\b")
 TOOL_PIN = r"npm install -g @anthropic-ai/claude-code@(\d+\.\d+\.\d+)\b"
 SCHEMA = re.compile(r"^\s*schema='([^']*)'\s*$", re.M)
+CEILING = re.compile(r'"\$bytes" -gt (\d+)')
 
 
 def _block(text, first, last, keep_comments=True):
@@ -1117,6 +1118,11 @@ def _check_product_wiring(review=None, product=None, readme=None, quiet=False):
         fault("does not sign the App's JWT exactly as %s does, line for line" % REVIEW_WORKFLOW)
     if not SCHEMA.findall(product) or SCHEMA.findall(product) != SCHEMA.findall(review):
         fault("does not ask for the verdict in %s's shape" % REVIEW_WORKFLOW)
+    # And the size past which a diff is not read at all (#68's fourth read):
+    # the two would otherwise give up on a large change at different sizes.
+    if not CEILING.findall(product) or CEILING.findall(product) != CEILING.findall(review):
+        fault("gives up on a diff at %s bytes and %s at %s — one reviewer, one ceiling"
+              % (CEILING.findall(product), REVIEW_WORKFLOW, CEILING.findall(review)))
     # The verdict's shape, which the product's gate reads exactly as this
     # repository's reads its own.
     # Where the run is opened and where it is read back: renamed in either,
@@ -1183,6 +1189,15 @@ PRODUCT_LOOSENINGS = (
     ("the brief from the head", lambda t: t.replace('g show "origin/$MAIN:AGENTS.md"', 'g show "$SHA:AGENTS.md"', 1)),
     ("the diff against the base", lambda t: t.replace(PRODUCT_DIFF, 'g diff "$BASE...$SHA" > "$t/diff.txt"  # .base.sha', 1)),
     ("the head never checked", lambda t: t.replace(PRODUCT_HEAD[0], "true", 1)),
+    ("the fetched head never checked", lambda t: t.replace(PRODUCT_HEAD[1], "true", 1)),
+    ("the token's reach never asked", lambda t: t.replace(PRODUCT_REACH[0], '"https://api.github.com/user/repos"', 1)),
+    ("the install beside a secret", lambda t: t.replace("        run: npm install -g @anthropic-ai/claude-code@", "        env:\n          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}\n        run: npm install -g @anthropic-ai/claude-code@", 1)),
+    ("a secret above the steps", lambda t: t.replace("    environment: reviewer\n", "    environment: reviewer\n    env:\n      KEY: ${{ secrets.REVIEWER_APP_KEY }}\n", 1)),
+    ("a second, unpinned install", lambda t: t.replace("run: npm install -g @anthropic-ai/claude-code@2.1.280", "run: npm install -g @anthropic-ai/claude-code@2.1.280 && npm install -g @anthropic-ai/claude-code", 1)),
+    ("a cancel-in-progress setting alone", lambda t: t.replace("    timeout-minutes: 30\n", "    timeout-minutes: 30\n    cancel-in-progress: true\n", 1)),
+    ("the base fetched beside the right diff", lambda t: t.replace(PRODUCT_DIFF, PRODUCT_DIFF + "  # .base.sha", 1)),
+    ("a different size ceiling", lambda t: t.replace('"$bytes" -gt 600000', '"$bytes" -gt 900000', 1)),
+    ("no product at all", lambda t: t.replace("          - Adonis80/Hemz-OS\n", "", 1).replace("            Adonis80/Hemz-OS) ;;\n", "", 1)),
     ("the token unscoped", lambda t: t.replace(PRODUCT_SCOPE, "{}", 1)),
     ("an input pasted", lambda t: t.replace('echo "asked: $REPO', 'echo "asked: ${{ inputs.repo }}', 1)),
     ("the shell traced", lambda t: t.replace("set -euo pipefail\n", "set -euxo pipefail\n", 1)),

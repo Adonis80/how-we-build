@@ -21,8 +21,9 @@ run-name: Review ${{ inputs.repo }}#${{ inputs.pr }} at ${{ inputs.sha }}
 # the fix's included. This route has never run; kept apart, a fault in it stops
 # nothing that works today. What the two must share — the model, the effort, the
 # tool's version, the flags that switch its tools off, the standing instruction,
-# the verdict's shape, the check run's name and conclusions, the door —
-# review-gate.py holds against both files, so neither can drift alone.
+# the verdict's shape, the check run's name and conclusions, the size past which
+# a diff is not read, the door — review-gate.py holds against both files, so
+# neither can drift alone.
 #
 # THE ASK IS A DISPATCH, AND ONLY A WRITER CAN MAKE ONE. The product, the pull
 # request and the exact head commit are its inputs. GitHub refuses a dispatch
@@ -272,7 +273,7 @@ jobs:
           added=0
           add() {
             local f="$1" size
-            size=$(g cat-file -s "$SHA:$f" 2>/dev/null) || return 0
+            size=$(g cat-file -s "$SHA:$f" 2>/dev/null) || return 1
             if [ "$size" -gt 150000 ] || [ $((added + size)) -gt 300000 ]; then
               printf '\n===== %s: %s bytes, left out for size =====\n' "$f" "$size" >> "$pages"
               return 0
@@ -284,10 +285,14 @@ jobs:
             added=$((added + size))
           }
           carried=" AGENTS.md PRODUCT.md NAMES.md roadmap.json design/CONSTITUTION.md "
-          for f in $carried; do add "$f"; done
+          # A carried page the product does not have is said out loud: a
+          # reader missing one should know it, and a path every product
+          # carries is the rulebook's words, not the product's (#68's fourth
+          # read).
+          for f in $carried; do add "$f" || echo "carried page not found in $REPO: $f"; done
           while IFS= read -r -d '' f; do
             case "$carried" in *" $f "*) continue ;; esac
-            add "$f"
+            add "$f" || true
           done < <(g diff -z --name-only --diff-filter=AMR "origin/$MAIN...$SHA")
           rm -f "$t/page"
           echo "pages bytes: $(wc -c < "$pages")"
