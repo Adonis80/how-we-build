@@ -910,17 +910,22 @@ def _check_wiring():
     # The reviewer's own tool is pinned to one version and installed in a step
     # holding no secret. Unpinned, a read ran whatever the registry published
     # last; installed beside CLAUDE_CODE_OAUTH_TOKEN, a bad release's install
-    # script ran next to the Chairman's credential.
+    # script ran next to the Chairman's credential. Held for EVERY secret, not
+    # the one that raised it (#65's first read): the App's signing key sits two
+    # steps up, and beside it an install script could sign any verdict. A step
+    # holds a secret when it names one or the installation token the badge
+    # mints; and no secret may sit above the steps, where every step inherits it.
     pins = re.findall(r"npm install -g @anthropic-ai/claude-code@(\d+\.\d+\.\d+)\b", review)
     loose = re.findall(r"npm install[^\n]*@anthropic-ai/claude-code(?!@\d)", review)
-    beside = [s for s in re.split(r"\n\s*- name: ", review)
-              if "CLAUDE_CODE_OAUTH_TOKEN" in s and "npm install" in s]
-    if len(pins) != 1 or loose or beside:
+    holds = re.compile(r"secrets\.|steps\.badge\.outputs\.token")
+    above, _, rest = review.partition("\n    steps:\n")
+    beside = [s for s in re.split(r"\n\s*- name: ", rest) if "npm install" in s and holds.search(s)]
+    if len(pins) != 1 or loose or beside or holds.search(above):
         print("  wiring: %s must install the reviewer's tool once, pinned to an exact version "
               "(npm install -g @anthropic-ai/claude-code@X.Y.Z), in a step that holds no "
-              "secret — unpinned, a read runs whatever the registry published last, and beside "
-              "CLAUDE_CODE_OAUTH_TOKEN its install script runs next to the Chairman's credential"
-              % REVIEW_WORKFLOW)
+              "secret, with no secret set above the steps — unpinned, a read runs whatever the "
+              "registry published last, and beside a secret its install script runs next to "
+              "the Chairman's credential or the App's signing key" % REVIEW_WORKFLOW)
         bad += 1
 
     # Codex's P1 on #38, accepted in full: the brief was read from the pull
