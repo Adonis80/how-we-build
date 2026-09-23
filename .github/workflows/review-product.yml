@@ -20,10 +20,11 @@ run-name: Review ${{ inputs.repo }}#${{ inputs.pr }} at ${{ inputs.sha }}
 # main, and a line that failed there would stop every read of this repository,
 # the fix's included. This route has never run; kept apart, a fault in it stops
 # nothing that works today. What the two must share — the model, the effort, the
-# tool's version, the flags that switch its tools off, the standing instruction,
-# the verdict's shape, the check run's name and conclusions, the size past which
-# a diff is not read, the door — review-gate.py holds against both files, so
-# neither can drift alone.
+# tool's version, every flag the tool is called with, the job's time limit, the
+# standing instruction, the verdict's shape, the check run's name and
+# conclusions, the size past which a diff is not read, the door — review-gate.py
+# holds against both files, so neither can drift alone (every flag and the time
+# limit since #68's tenth read). The system prompt's path is the one difference.
 #
 # THE ASK IS A DISPATCH, AND ONLY A WRITER CAN MAKE ONE. The product, the pull
 # request and the exact head commit are its inputs. GitHub refuses a dispatch
@@ -319,6 +320,8 @@ jobs:
           # read). The constitution's path is the one Hemz OS uses: its main
           # carries design/CONSTITUTION.md, and its own check.sh caps that
           # exact path (checked at 9d20dde on 23 September, #68's eighth read).
+          # A second product that names it differently makes the list learn a
+          # path per product, settled when that product joins (#68's tenth read).
           for f in $carried; do add "$f" || echo "carried page not found in $REPO: $f"; done
           while IFS= read -r -d '' f; do
             case "$carried" in *" $f "*) continue ;; esac

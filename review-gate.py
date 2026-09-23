@@ -998,6 +998,7 @@ XTRACE = re.compile(r"\bset\s+-\w*x|\bxtrace\b")
 TOOL_PIN = r"npm install -g @anthropic-ai/claude-code@(\d+\.\d+\.\d+)\b"
 SCHEMA = re.compile(r"^\s*schema='([^']*)'\s*$", re.M)
 CEILING = re.compile(r'"\$bytes" -gt (\d+)')
+TIMEOUT = re.compile(r"^\s*timeout-minutes:\s*(\d+)\s*$", re.M)
 # The clean-up (#68's seventh read): whatever happened, a check run the job
 # opened and never signed is closed as a read that did not happen, a close that
 # did not take turns the step red, and the token is revoked. Held as whole lines
@@ -1068,6 +1069,25 @@ def _jwt(text):
     """The App's JWT, signed: from the encoding helper to the token it makes."""
     return _block(text, lambda l: l.startswith("b64url() {"),
                   lambda l: l == 'jwt="$hdr.$pl.$sig"', keep_comments=False)
+
+
+def _call(text):
+    """Every flag the reviewer is called with, one per line, in order.
+
+    The system prompt's flag is kept without its argument: each file reads the
+    prompt from where it keeps it, and that path is all that may differ.
+    """
+    lines = [l.strip() for l in text.splitlines()]
+    try:
+        start = next(i for i, l in enumerate(lines) if re.search(r"(^|\s)claude -p \\$", l))
+    except StopIteration:
+        return None
+    flags = []
+    for line in lines[start + 1:]:
+        if not line.startswith("--"):
+            break
+        flags.append("--system-prompt" if line.startswith("--system-prompt ") else line)
+    return flags or None
 
 
 def _check_product_wiring(review=None, product=None, readme=None, quiet=False):
@@ -1163,6 +1183,15 @@ def _check_product_wiring(review=None, product=None, readme=None, quiet=False):
         fault("does not sign the App's JWT exactly as %s does, line for line" % REVIEW_WORKFLOW)
     if not SCHEMA.findall(product) or SCHEMA.findall(product) != SCHEMA.findall(review):
         fault("does not ask for the verdict in %s's shape" % REVIEW_WORKFLOW)
+    # Every flag of the call and the job's time limit, not only the five above
+    # (#68's tenth read): a flag dropped from one file is the drift this check
+    # exists to refuse, whichever flag it is.
+    if _call(review) is None or _call(product) != _call(review):
+        fault("does not call the reviewer with %s's flags, flag for flag: %s against %s"
+              % (REVIEW_WORKFLOW, _call(product), _call(review)))
+    if not TIMEOUT.findall(product) or TIMEOUT.findall(product) != TIMEOUT.findall(review):
+        fault("gives its job %s minutes and %s gives %s — one reviewer, one time limit"
+              % (TIMEOUT.findall(product), REVIEW_WORKFLOW, TIMEOUT.findall(review)))
     # And the size past which a diff is not read at all (#68's fourth read):
     # the two would otherwise give up on a large change at different sizes.
     if not CEILING.findall(product) or CEILING.findall(product) != CEILING.findall(review):
@@ -1285,6 +1314,11 @@ PRODUCT_LOOSENINGS = (
     ("the token read rather than revoked", lambda t: _in_step(t, PRODUCT_CLEANUP, "-X DELETE -H", "-X GET -H")),
     ("the revocation sent elsewhere", lambda t: _in_step(t, PRODUCT_CLEANUP, '/installation/token")', '/rate_limit")')),
     ("the clean-up's red switched off", lambda t: _in_step(t, PRODUCT_CLEANUP, PRODUCT_CLEANUP_LAST, PRODUCT_CLEANUP_LAST + " || true")),
+    # Every flag of the call, and the time limit (#68's tenth read).
+    ("a flag dropped from the call", lambda t: t.replace("            --no-session-persistence \\\n", "", 1)),
+    ("a flag added to the call", lambda t: t.replace("            --output-format json \\\n", "            --output-format json \\\n            --verbose \\\n", 1)),
+    ("a flag's value changed", lambda t: t.replace("--permission-prompts none", "--permission-prompts ask", 1)),
+    ("a different time limit", lambda t: t.replace("    timeout-minutes: 30\n", "    timeout-minutes: 90\n", 1)),
 )
 
 
