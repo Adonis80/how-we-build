@@ -102,9 +102,9 @@ fi
 # The gate's own rule is machine-checked before anything asks GitHub: one
 # implementation, held against the reviewer's real answers, the states a read
 # can arrive in, the fakes that once passed a looser test, the routes the gate
-# has stopped reading, and the four workflow files — the check, the reviewer,
-# the wake it calls and the door's standing proof — which must still agree with
-# the register and with each other.
+# has stopped reading, and the five workflow files — the check, the reviewer,
+# the wake it calls, the door's standing proof and the product reviewer — which
+# must still agree with the register and with each other.
 python3 review-gate.py --selftest || fail_gate=1
 [ "${fail_gate:-0}" -eq 0 ] || { echo "FAIL: the review gate no longer matches the reviewer's answers, or has drifted from the workflows — see the cases above."; fail=1; }
 # WHICH EVENTS THE GATE RUNS ON, WRITTEN AS WHAT IT SKIPS RATHER THAN WHAT IT
