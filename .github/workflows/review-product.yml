@@ -521,7 +521,8 @@ jobs:
 
       # Whatever happened above: a check run opened and never signed is closed
       # as a read that did not happen, and the token is revoked rather than
-      # left live for its hour.
+      # left live for its hour. review-gate.py holds this step's lines one by
+      # one (#68's seventh read), so rewording one means rewording it there.
       - name: Leave nothing open
         if: always()
         env:

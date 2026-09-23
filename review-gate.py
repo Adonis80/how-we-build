@@ -998,6 +998,51 @@ XTRACE = re.compile(r"\bset\s+-\w*x|\bxtrace\b")
 TOOL_PIN = r"npm install -g @anthropic-ai/claude-code@(\d+\.\d+\.\d+)\b"
 SCHEMA = re.compile(r"^\s*schema='([^']*)'\s*$", re.M)
 CEILING = re.compile(r'"\$bytes" -gt (\d+)')
+# The clean-up (#68's seventh read): whatever happened, a check run the job
+# opened and never signed is closed as a read that did not happen, a close that
+# did not take turns the step red, and the token is revoked. Held as whole lines
+# inside that one step, since the file revokes a token elsewhere too, and a line
+# found anywhere would pass a clean-up that had lost it.
+PRODUCT_CLEANUP = "Leave nothing open"
+PRODUCT_CLEANUP_LINES = (
+    "if: always()",
+    "TOKEN: ${{ steps.badge.outputs.token }}",
+    "RUN: ${{ steps.open.outputs.id }}",
+    "SIGNED: ${{ steps.sign.outcome }}",
+    'if [ -z "${TOKEN:-}" ]; then',
+    'if [ -n "${RUN:-}" ] && [ "$SIGNED" != "success" ]; then',
+    """jq -n '{status:"completed", conclusion:"neutral",""",
+    'if [ "$code" = "200" ]; then',
+    "left_open=yes",
+    """code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: token $TOKEN" \\""",
+    '-H "Accept: application/vnd.github+json" "https://api.github.com/installation/token") || '
+    'code="unreachable"',
+)
+PRODUCT_CLEANUP_LAST = '[ "$left_open" = no ]'
+
+
+def _step_span(text, name):
+    """Where the step called `name` sits: from its `- name:` line to the next step's."""
+    m = re.search(r"^([ ]*)- name: %s[ ]*$" % re.escape(name), text, re.M)
+    if not m:
+        return None
+    after = re.compile(r"^%s- name: " % m.group(1), re.M).search(text, m.end())
+    return m.start(), after.start() if after else len(text)
+
+
+def _in_step(text, name, old, new):
+    """The text with the first `old` inside the named step, and only there, made `new`."""
+    span = _step_span(text, name)
+    if not span:
+        return text
+    start, end = span
+    return text[:start] + text[start:end].replace(old, new, 1) + text[end:]
+
+
+def _without_step(text, name):
+    """The text with the named step taken out whole."""
+    span = _step_span(text, name)
+    return text[:span[0]] + text[span[1]:] if span else text
 
 
 def _block(text, first, last, keep_comments=True):
@@ -1146,6 +1191,18 @@ def _check_product_wiring(review=None, product=None, readme=None, quiet=False):
     if 'status:"in_progress"' not in product or 'status:"completed"' not in product:
         fault("must open its check run in progress and close it completed; a product's gate "
               "wakes on the completion, and a run created already finished may never say so")
+    # And whatever happened, nothing left open (#68's seventh read): the step
+    # that closes an abandoned run and revokes the token, held line for line.
+    span = _step_span(product, PRODUCT_CLEANUP)
+    held = [l.strip() for l in product[span[0]:span[1]].splitlines()] if span else []
+    ran = [l for l in held if l and not l.startswith("#")]
+    lost = ["`%s`" % l for l in PRODUCT_CLEANUP_LINES if l not in held]
+    if ran[-1:] != [PRODUCT_CLEANUP_LAST]:
+        lost.append("`%s` as its last line" % PRODUCT_CLEANUP_LAST)
+    if lost:
+        fault("must end in a `%s` step that runs always, closes a check run it opened and never "
+              "signed as neutral, goes red when that close does not take, and revokes the token; "
+              "it has lost %s" % (PRODUCT_CLEANUP, "; ".join(lost)))
     # Only products this rulebook lists — in the form, and refused at run time
     # before any token is minted, since whether GitHub's API holds a dispatch
     # to the form's `choice` is not something this file has watched happen
@@ -1167,8 +1224,9 @@ def _check_product_wiring(review=None, product=None, readme=None, quiet=False):
     if not bad:
         say("ok: the product reviewer answers only a writer's dispatch, behind the `%s` door, "
             "with a token scoped to the one product; it reads the exact head against the "
-            "product's protected branch, and gives the reviewer %s's model, effort, tool, "
-            "flags and instruction line for line" % (KEY_ENVIRONMENT, REVIEW_WORKFLOW))
+            "product's protected branch, gives the reviewer %s's model, effort, tool, flags "
+            "and instruction line for line, and leaves nothing open whatever happens"
+            % (KEY_ENVIRONMENT, REVIEW_WORKFLOW))
     return bad
 
 
@@ -1213,6 +1271,20 @@ PRODUCT_LOOSENINGS = (
     ("the token's reach taken on trust", lambda t: t.replace('if [ "$reach" != "$REPO" ]; then', "if false; then", 1)),
     ("the check run renamed where it opens", lambda t: t.replace('--arg name "juku-reviewer"', '--arg name "juku-review"', 1)),
     ("the check run renamed where it is read back", lambda t: t.replace('"$REVIEWER_APP_ID" "juku-reviewer"', '"$REVIEWER_APP_ID" "juku-review"', 1)),
+    # The clean-up (#68's seventh read), each change made inside its own step.
+    ("the clean-up removed", lambda t: _without_step(t, PRODUCT_CLEANUP)),
+    ("the clean-up only when all went well", lambda t: _in_step(t, PRODUCT_CLEANUP, "if: always()", "if: success()")),
+    ("the clean-up handed no token", lambda t: _in_step(t, PRODUCT_CLEANUP, "TOKEN: ${{ steps.badge.outputs.token }}", 'TOKEN: ""')),
+    ("the opened run forgotten", lambda t: _in_step(t, PRODUCT_CLEANUP, "RUN: ${{ steps.open.outputs.id }}", 'RUN: ""')),
+    ("the signing taken as done", lambda t: _in_step(t, PRODUCT_CLEANUP, "SIGNED: ${{ steps.sign.outcome }}", "SIGNED: success")),
+    ("the clean-up skipped every time", lambda t: _in_step(t, PRODUCT_CLEANUP, 'if [ -z "${TOKEN:-}" ]; then', "if true; then")),
+    ("an abandoned run never closed", lambda t: _in_step(t, PRODUCT_CLEANUP, '[ -n "${RUN:-}" ] && [ "$SIGNED" != "success" ]', "false")),
+    ("an abandoned run closed as clean", lambda t: _in_step(t, PRODUCT_CLEANUP, 'conclusion:"neutral"', 'conclusion:"success"')),
+    ("a close taken on trust", lambda t: _in_step(t, PRODUCT_CLEANUP, 'if [ "$code" = "200" ]; then', 'if [ "$code" = "200" ] || true; then')),
+    ("a close that did not take left green", lambda t: _in_step(t, PRODUCT_CLEANUP, "left_open=yes", "left_open=no")),
+    ("the token read rather than revoked", lambda t: _in_step(t, PRODUCT_CLEANUP, "-X DELETE -H", "-X GET -H")),
+    ("the revocation sent elsewhere", lambda t: _in_step(t, PRODUCT_CLEANUP, '/installation/token")', '/rate_limit")')),
+    ("the clean-up's red switched off", lambda t: _in_step(t, PRODUCT_CLEANUP, PRODUCT_CLEANUP_LAST, PRODUCT_CLEANUP_LAST + " || true")),
 )
 
 
