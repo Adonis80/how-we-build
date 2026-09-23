@@ -145,6 +145,20 @@ jobs:
           # runs to sign. review.yml's token still reaches every repository the
           # App is installed on (#66 is the repair); a route that has never run
           # does not start with that exposure.
+          #
+          # PULL REQUESTS WRITE, AND NO ISSUES (#68's sixth read asked for
+          # issues write). Two facts settle it, both GitHub's own. A comment on
+          # a pull request goes through the issues endpoint but is taken from a
+          # token holding pull requests write and no issues at all: review.yml
+          # posts its comment that way on every verdict, with GITHUB_TOKEN,
+          # itself an App installation token, whose `permissions:` name only
+          # contents read and pull-requests write (run 35875289101 on #68). And
+          # issues is not this App's to grant. GitHub reports juku-reviewer's
+          # permissions on every check run it signs: checks write, contents
+          # read, metadata read, pull requests write, which is decision 0002
+          # C's "read on code and write on checks and pull requests". A token
+          # asking for issues would be refused at the mint, and nothing read.
+          # Pull requests stays write, not read: the comment needs it.
           body=$(jq -cn --arg r "${REPO#*/}" '{repositories: [$r], permissions: {contents: "read", pull_requests: "write", checks: "write"}}')
           echo "asking for: $body"
           curl -sS -X POST -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
