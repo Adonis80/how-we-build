@@ -636,16 +636,12 @@ def _check_wiring():
     except OSError as e:
         print("  wiring: %s" % e)
         return 1
-    listened = set(wake_logins(check))
-    counted = dict((w["login"], key) for key, w in REVIEWERS.items() if w["login"])
-
-    for login in sorted(counted):
-        if login not in listened:
-            print("  wiring: %s never wakes for %s, whose read the gate DOES count — that answer "
-                  "would sit on the page unseen and the check stay red until a hand re-ran it"
-                  % (CHECK_WORKFLOW, login))
-            bad += 1
-    for login in sorted(listened - set(counted)):
+    # No login is counted — `_check_routes` above refuses one on the register —
+    # so a line in check.yml waking for a login's comment is a re-run that can
+    # never change the answer, whoever it names. The half that asked whether
+    # every counted login was listened for went with the logins: it looped over
+    # a set `_check_routes` holds empty, a guard over nothing.
+    for login in sorted(set(wake_logins(check))):
         print("  wiring: %s listens for %s, whom the gate does not count — a re-run that can "
               "never change the answer" % (CHECK_WORKFLOW, login))
         bad += 1
@@ -673,13 +669,14 @@ def _check_wiring():
               % (WAKE_WORKFLOW, wake_on))
         bad += 1
 
-    # THE WAKE MUST ASK AGAIN WHATEVER THE CHECK CURRENTLY SAYS. With one
-    # reviewer a verdict could only move the gate from red to green, so the wake
-    # re-ran the red runs and that was enough. Counting a second reviewer made
-    # the other direction reachable — one reads a commit clean, the other leaves
-    # findings on it, and the check must go from green to RED. On 21 September
-    # that happened on #43 and the wake answered "no red check run — nothing to
-    # re-run", leaving a stale green under a findings verdict.
+    # THE WAKE MUST ASK AGAIN WHATEVER THE CHECK CURRENTLY SAYS. A verdict used
+    # to move the gate only from red to green, so the wake re-ran the red runs
+    # and that was enough. The gate keeps the worst answer a commit has been
+    # given, so a second read of a commit already read clean can leave findings
+    # on it, and the check must go from green to RED — by a second reviewer, as
+    # on #43, or by a second ask of the one reviewer on the same commit. On 21
+    # September that happened on #43 and the wake answered "no red check run —
+    # nothing to re-run", leaving a stale green under a findings verdict.
     #
     # WHAT THIS GUARD IS FOR, AND WHAT IT IS NOT. It catches drift: a later
     # session narrowing the selection while tidying, which is how the defect

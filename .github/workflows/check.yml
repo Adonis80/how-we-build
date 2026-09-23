@@ -9,10 +9,16 @@ on:
     # already attached to the head survived the move. That is half of a route
     # found on #34: open a head against a base that already carries the change
     # being judged, get it cleared against that innocent comparison, then
-    # retarget to main and merge on a green nobody re-earned. The gate's own
-    # half — judging against the protected branch's tip rather than the pull
-    # request's base — is in review-gate.py; this is the half that makes the
-    # check run again at all.
+    # retarget to main and merge on a green nobody re-earned. THE OTHER HALF IS
+    # NOT HELD. review-gate.py's verdict reads the head commit's check runs and
+    # nothing about the base, and review.yml diffs against the pull request's
+    # base at the moment of the ask, so a head read clean against another base
+    # stays clean after the retarget. While the gate still counted Codex it
+    # re-read the changed files to decide whether a change needed Codex's read,
+    # and that held nothing either: Codex could be asked before the retarget
+    # too. What closes it is the reviewer reading against main's tip, a gate
+    # change of its own. Meanwhile this trigger re-runs the check so its note
+    # reads the files the pull request now carries.
     # `ready_for_review` was here too and is not, because it repaired nothing:
     # a draft already gets its `opened` run, so marking an unchanged head ready
     # adds an invocation rather than starting a check that was missing. The

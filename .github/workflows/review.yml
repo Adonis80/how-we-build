@@ -50,8 +50,9 @@ name: Review
 # real boundary and is not claimed as one: a hostile diff could argue this
 # reviewer into a poor verdict. What it cannot do is post a read that never
 # happened — that needs the App key, which a branch cannot reach. And with one
-# reviewer the standing advice below matters more than it did: the reader should
-# weigh a change to the gate on its own merits, because nobody is behind it.
+# reviewer the brief's advice on a gate change matters more than it did: it is
+# in AGENTS.md, which this job reads from the protected branch, and it tells the
+# reader to weigh such a change on the diff, because nobody is behind it.
 
 on:
   issue_comment:
