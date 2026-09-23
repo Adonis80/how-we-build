@@ -36,18 +36,23 @@ name: Review
 # blind) is what they are there for.
 #
 # WHAT IT PROVES, AND WHAT IT DOES NOT. That an independent reader looked at this
-# commit and said which of two things it found. It is the same vendor as the
-# lead, so it does NOT satisfy the rulebook where the other vendor is required —
-# pricing, live database changes or schema, authentication and authorisation,
-# public trust boundaries, deploy and release machinery, and the review gate
-# itself. Here only the last of those can arise, and review-gate.py holds it: a
-# pull request touching check.sh, review-gate.py or anything under
-# .github/workflows/ opens on Codex's read alone, never on this one.
+# commit and said which of two things it found. On his ruling of 22 September
+# 2026 it is now the ONLY reader: the rulebook's "other vendor" on pricing, live
+# database changes or schema, authentication and authorisation, public trust
+# boundaries, deploy and release machinery, and the review gate itself has no
+# second vendor left to name. Of that list only the last arises here, and
+# review-gate.py no longer holds a door for it — a gate change clears on this
+# read, the same as any other change. That is a loss, it is written down in that
+# file and in AGENTS.md, and it ends when a second reviewer answers rather than
+# when somebody writes a sentence.
 #
 # The diff reaches the model inside tags, told to treat it as data. That is not a
 # real boundary and is not claimed as one: a hostile diff could argue this
-# reviewer into a poor verdict, as it could Codex. What it cannot do is post a
-# read that never happened, and it cannot reach a gate change at all.
+# reviewer into a poor verdict. What it cannot do is post a read that never
+# happened — that needs the App key, which a branch cannot reach. And with one
+# reviewer the brief's advice on a gate change matters more than it did: it is
+# in AGENTS.md, which this job reads from the protected branch, and it tells the
+# reader to weigh such a change on the diff, because nobody is behind it.
 
 on:
   issue_comment:
@@ -218,8 +223,9 @@ jobs:
             echo "</pages>"
           } > /tmp/prompt.txt
 
-          # The brief is AGENTS.md from the PROTECTED branch, whole and exactly
-          # as it is for Codex, with the standing instruction under it. Built
+          # The brief is AGENTS.md from the PROTECTED branch, whole, with the
+          # standing instruction under it. It was the same brief Codex was given
+          # until 22 September 2026; it is now the only reviewer's. Built
           # with echo rather than a heredoc because a heredoc body has to begin
           # at column 0, which would end this block and the YAML with it.
           {
@@ -374,9 +380,9 @@ jobs:
             echo
             echo "---"
             echo "_Read by the model named in \`review-gate.py\`, at the effort named beside it, from_"
-            echo "_\`.github/workflows/review.yml\`. Same vendor as the lead, so it does NOT satisfy_"
-            echo "_the rulebook where the other vendor is required. A pull request touching the_"
-            echo "_review machinery waits for Codex._"
+            echo "_\`.github/workflows/review.yml\`. Since 22 September 2026 this is the only read the_"
+            echo "_gate counts, on every class of change including this machinery itself, and there_"
+            echo "_is no second reviewer behind this one._"
           } > /tmp/comment.md
           gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -F body=@/tmp/comment.md --silent
 

@@ -1,6 +1,6 @@
 # Review rubric
 
-For any reviewer — a fresh session, or the consultant briefed cold. Judge the spec and the boards against the brief, `SCREEN-LAW.md`, the product's own constitution, and its accepted design system and tokens. Nothing else is in scope.
+For any reviewer — a fresh session, briefed cold. Judge the spec and the boards against the brief, `SCREEN-LAW.md`, the product's own constitution, and its accepted design system and tokens. Nothing else is in scope.
 
 **Ask of every element and step:**
 
