@@ -1,23 +1,22 @@
 name: Wake
 
-# One implementation of "a review has landed, so ask the gate again", called by
-# both the workflows that need it. It was a job inside check.yml until a second
-# reviewer arrived and needed the same thing; copying it would have put the
-# lessons of #24, #25, #30 and #37 in two places, to be re-learned separately the
-# next time one of them bit.
+# One implementation of "a review has landed, so ask the gate again". It was a
+# job inside check.yml until a second reviewer arrived and needed the same thing,
+# and it came here rather than being copied, so the lessons of #24, #25, #30 and
+# #37 live in one place. check.yml's own call went with Codex, on his ruling of
+# 22 September 2026, which leaves review.yml the only caller.
 #
 # WHY A WAKE EXISTS AT ALL. A verdict lands on the pull request without touching
 # its head, so nothing re-runs the check that is sitting red on it, and a green
-# review used to need a hand re-run. Codex comments under its own identity, so
-# its comment raises an `issue_comment` event and check.yml listens for it. The
-# badge's verdict is a check run, and whether GitHub starts a workflow for that
-# is a thing this repository has never watched happen — so nothing is built on
-# it. review.yml calls this workflow itself, the moment after it posts, and
-# review-gate.py refuses a build where it has stopped doing so.
+# review used to need a hand re-run. The badge's verdict is a check run, and
+# whether GitHub starts a workflow for that is a thing this repository has never
+# watched happen — so nothing is built on it. review.yml calls this workflow
+# itself, the moment after it posts, and review-gate.py refuses a build where it
+# has stopped doing so.
 #
 # WHERE IT RESOLVES FROM. A local reusable workflow resolves at the CALLING run's
 # ref, not at the default branch — proved on #38, run 35343369678, which
-# referenced `wake.yml@067782d` at `refs/pull/38/merge`. Both callers execute it
+# referenced `wake.yml@067782d` at `refs/pull/38/merge`. Its caller executes it
 # on `issue_comment`, and an `issue_comment` run's ref is the default branch —
 # proved on #38, run 35343442166, `head_branch: main`. So this file is main's
 # copy wherever it matters, because of what the calling ref is rather than
@@ -102,16 +101,18 @@ jobs:
           #
           # EVERY completed run, whatever it currently says — not only the red
           # ones. A verdict used to move the gate one way, red to green, so
-          # re-running the red ones was enough. With two reviewers a commit can
-          # be read clean by one and left findings on by the other, and then the
-          # gate must go green to RED. Proved live on #43, 21 September: Codex
-          # had read the head clean so the check was green, the badge posted
+          # re-running the red ones was enough. It can move it back: the gate
+          # keeps the worst answer a commit has been given, so a commit read
+          # clean and then read again with findings must go green to RED — by a
+          # second reviewer, as on #43, or by a second ask of the one reviewer
+          # on the same commit. #43 proved it live on 21 September: Codex had
+          # read the head clean so the check was green, the badge posted
           # findings on that same commit, and this job answered "no red check
           # run — nothing to re-run" and left a stale green standing under a
           # findings verdict. That is the failure of #24, #30 and #37 arriving
-          # from the other side, and it was introduced by counting a second
-          # reviewer. Re-running a green run that is still correct simply goes
-          # green again, so being wrong in this direction costs one job.
+          # from the other side. Re-running a green run that is still correct
+          # simply goes green again, so being wrong in this direction costs one
+          # job.
           # --paginate, so no page size can truncate this. Codex's P2 on bf36391
           # argued the 100-run first page is reachable; its mechanism was wrong
           # — issue_comment runs are filed against the DEFAULT branch's sha, not
