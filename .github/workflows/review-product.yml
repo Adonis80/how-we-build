@@ -41,16 +41,25 @@ run-name: Review ${{ inputs.repo }}#${{ inputs.pr }} at ${{ inputs.sha }}
 # THIS LOG IS PUBLIC AND THE PRODUCT IS NOT. Nothing a product holds is printed
 # here: no diff, no file, no title, no review, not even the reviewer's own error
 # text, which is named rather than quoted. The run shows its inputs, byte counts
-# and a conclusion. The review goes to the product's pull request, as the check
-# run and a comment, both written with a token scoped to that repository alone
-# and revoked when the run ends.
+# and a conclusion. The inputs are shown on purpose, in the run's name as well as
+# its log: which product, a pull request's number and a commit's hash point at
+# the product's work without holding any of it, and are what a session needs to
+# find the run (#68's ninth read). The review goes to the product's pull
+# request, as the check run and a comment, both written with a token scoped to
+# that repository alone and revoked when the run ends.
 #
 # THE CHECK RUN OPENS BEFORE THE READ AND CLOSES WITH THE VERDICT. A session
 # looking at the pull request sees the reviewer at work and does not ask twice,
 # and its verdict makes one `completed` event, which the product's own wake is
 # built to hear and answer by re-running its gate. That is an assumption, not a
-# settled property, until the port's first run shows it (#68's third read; this
-# repository's own wake exists because a verdict alone woke nothing, #24-#37).
+# settled property (#68's third read; this repository's own wake exists because
+# a verdict alone woke nothing, #24-#37), and nothing here can stand in for it:
+# the App holds no Actions permission, so this route cannot re-run a product's
+# gate the way review.yml calls wake.yml (#68's ninth read). The port's own read
+# cannot prove the product's wake either, since that wake runs from the
+# product's main; the first read after the port lands does, and is cited on its
+# pull request. Until then a wake that does not fire leaves the gate where the
+# push left it, red and unread, and a session re-runs it by hand.
 # A run that stops before it can sign is closed as `neutral` — a read that did
 # not happen — so nothing is left looking like a read in flight. One case is
 # beyond any step: a runner lost outright between the two leaves the run in
