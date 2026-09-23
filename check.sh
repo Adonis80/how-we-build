@@ -35,7 +35,7 @@ else
 fi
 
 # 2. Only these files exist at the root (plus .git and .github).
-allowed=" AGENTS.md CHARTER.md HOW-WE-BUILD.md README.md RICH-DATA.md check.sh design review-gate.py "
+allowed=" AGENTS.md CHARTER.md HOW-WE-BUILD.md NAMES.md README.md RICH-DATA.md check.sh design review-gate.py "
 while IFS= read -r f; do
   case "$f" in .git|.github) continue ;; esac
   case "$allowed" in
