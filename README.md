@@ -151,7 +151,7 @@ The reviewer takes its brief from the repository's own `AGENTS.md`, read from th
 ## Review guidelines
 - Cold read: form your view from the diff, the tests, `PRODUCT.md` and `roadmap.json` first, and read the pull request's own account last. Never inherit the author's conclusions.
 - Look for what is wrong, missing, duplicated, untested, or quietly wider than the slice. Say what you checked and what you did not, and how sure you are. Do not manufacture disagreement.
-- Findings go on the pull request, addressed to the CTO, who answers them there, each marked blocking or advisory by the reviewer. Two rounds at most. Then a trade-off is the CTO's call, with the dissent left standing on the pull request: a read whose findings are all advisory opens the gate; a claim that can be tested is settled by the test, never by rank — and if it cannot be settled safely, the change shrinks or stops; a product question goes to the Chairman as "Decision needed: …".
+- Findings go on the pull request, addressed to the CTO, who answers them there, each marked blocking or advisory by the reviewer. Two rounds at most. Then a trade-off is the CTO's call, with the dissent left standing on the pull request: a read whose findings are all advisory opens the gate, here as in a product (his ruling, 24 September 2026, asked whether a reviewer's advisory findings should stop holding the gate in this repository too: *"yes advisory"*); a claim that can be tested is settled by the test, never by rank — and if it cannot be settled safely, the change shrinks or stops; a product question goes to the Chairman as "Decision needed: …".
 - A review clears only the commit it read; a later push voids it.
 - Plain English. Never write a file into the repository.
 ```
