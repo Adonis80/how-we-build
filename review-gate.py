@@ -1234,6 +1234,13 @@ WHY_CASES = (
     (1, "", '{"is_error":true,"result":"Prompt is too long"}', "too long for one read"),
     (1, "API Error: 429 rate_limit_error", "", "rate-limited or overloaded"),
     (1, "", '{"is_error":true,"result":"Claude AI usage limit reached"}', "allowance is spent"),
+    # #79's third read, run 36012650404: a spent session limit, in an answer
+    # whose usage carries `contextWindow`. Read whole, the key said "too long".
+    (1, "", '{"is_error":true,"result":"You\'ve hit your session limit \u00b7 resets 2:50pm (UTC)",'
+            '"modelUsage":{"claude-sonnet-5":{"contextWindow":200000}}}', "allowance is spent"),
+    (1, "", '{"is_error":true,"result":"boom","modelUsage":{"m":{"contextWindow":200000}}}',
+     "unrecognised; 0 bytes on stderr"),
+    (1, "", "not json: Prompt is too long", "too long for one read"),
     (1, "OAuth token has expired", "", "credential was refused"),
     (0, "", '{"subtype":"error_max_turns"}', "the tool answered 'error_max_turns'"),
     # A subtype is the tool's to write, and the reason is written to

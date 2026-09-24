@@ -454,21 +454,25 @@ jobs:
           # reason: a read the job's own limit cancels signs nothing. `why()`, the limit
           # and the call are review.yml's, held line for line by review-gate.py.
           why() {
-            local sub
+            local sub said
             sub=$(jq -r '.subtype // empty' "$out" 2>/dev/null | tr -cd 'a-z_' || true)
+            # What the tool said, not the JSON it said it in: every answer
+            # carries a `contextWindow` key, so read whole it named a spent
+            # session limit "too long" (#79, run 36012650404).
+            said=$( { cat "$err"; jq -r '.result // empty' "$out" || cat "$out"; } 2>/dev/null || true)
             if [ "$rc" -eq 124 ]; then
               echo "the read ran out of time and was stopped at minute $limit of the job; the slice wants splitting"
             elif [ "$rc" -eq 137 ]; then
               echo "the read was killed, out of time or out of memory"
             elif [ "$rc" -eq 127 ]; then
               echo "the reviewer's tool is not installed"
-            elif grep -qiE 'prompt is too long|context.{0,20}(length|window)' "$err" "$out" 2>/dev/null; then
+            elif grep -qiE 'prompt is too long|context.{0,20}(length|window)' <<< "$said"; then
               echo "the change and its pages were too long for one read"
-            elif grep -qiE 'rate.?limit|overloaded|\b429\b|\b529\b' "$err" "$out" 2>/dev/null; then
+            elif grep -qiE 'rate.?limit|overloaded|\b429\b|\b529\b' <<< "$said"; then
               echo "the reviewer was rate-limited or overloaded"
-            elif grep -qiE 'usage limit|limit reached|credit|quota' "$err" "$out" 2>/dev/null; then
+            elif grep -qiE 'usage limit|session limit|hit your .{0,20}limit|limit reached|credit|quota' <<< "$said"; then
               echo "the reviewer's allowance is spent"
-            elif grep -qiE 'unauthori[sz]ed|\b401\b|\b403\b|invalid.{0,20}(token|key)|oauth' "$err" "$out" 2>/dev/null; then
+            elif grep -qiE 'unauthori[sz]ed|\b401\b|\b403\b|invalid.{0,20}(token|key)|oauth' <<< "$said"; then
               echo "the reviewer's credential was refused"
             elif [ -n "$sub" ]; then
               echo "the tool answered '$sub'"
