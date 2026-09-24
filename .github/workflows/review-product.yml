@@ -373,9 +373,17 @@ jobs:
         run: |
           set -euo pipefail
           t="$RUNNER_TEMP"
-          if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
-            echo "No CLAUDE_CODE_OAUTH_TOKEN in the reviewer environment, so the reviewer cannot run." >&2
+          out="$t/resp.json"
+          err="$t/err.txt"
+          # A read that does not happen says why on the product's check run, in
+          # words `why()` below chose, never the tool's own.
+          fail() {
+            printf 'why=%s\n' "$(printf '%s' "$1" | tr -d '\r\n')" >> "$GITHUB_OUTPUT"
+            echo "the reviewer did not read: $1" >&2
             exit 1
+          }
+          if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+            fail "no CLAUDE_CODE_OAUTH_TOKEN in the reviewer environment"
           fi
           {
             echo "Review this change to ${REPO}. The commit is ${SHA}."
@@ -421,28 +429,39 @@ jobs:
           # THE REASON FOR A FAILED READ IS NAMED, NEVER QUOTED. review.yml's
           # log is its own repository's and can say what went wrong; this one
           # is public, and the tool's answer can carry the product's words.
+          # And the read stops in time to say so, for review.yml's reason: a
+          # read the job's own limit cancels signs nothing. `why()`, the limit
+          # and the call are review.yml's, held line for line by review-gate.py.
           why() {
             local sub
-            sub=$(jq -r '.subtype // empty' "$t/resp.json" 2>/dev/null || true)
-            if grep -qiE 'prompt is too long|context.{0,20}(length|window)' "$t/err.txt" "$t/resp.json" 2>/dev/null; then
+            sub=$(jq -r '.subtype // empty' "$out" 2>/dev/null | tr -cd 'a-z_' || true)
+            if [ "$rc" -eq 124 ]; then
+              echo "the read ran out of time and was stopped at $limit minutes; the slice wants splitting"
+            elif [ "$rc" -eq 137 ]; then
+              echo "the read was killed, out of time or out of memory"
+            elif [ "$rc" -eq 127 ]; then
+              echo "the reviewer's tool is not installed"
+            elif grep -qiE 'prompt is too long|context.{0,20}(length|window)' "$err" "$out" 2>/dev/null; then
               echo "the change and its pages were too long for one read"
-            elif grep -qiE 'rate.?limit|overloaded|\b429\b|\b529\b' "$t/err.txt" "$t/resp.json" 2>/dev/null; then
+            elif grep -qiE 'rate.?limit|overloaded|\b429\b|\b529\b' "$err" "$out" 2>/dev/null; then
               echo "the reviewer was rate-limited or overloaded"
-            elif grep -qiE 'usage limit|limit reached|credit|quota' "$t/err.txt" "$t/resp.json" 2>/dev/null; then
+            elif grep -qiE 'usage limit|limit reached|credit|quota' "$err" "$out" 2>/dev/null; then
               echo "the reviewer's allowance is spent"
-            elif grep -qiE 'unauthori[sz]ed|\b401\b|\b403\b|invalid.{0,20}(token|key)|oauth' "$t/err.txt" "$t/resp.json" 2>/dev/null; then
+            elif grep -qiE 'unauthori[sz]ed|\b401\b|\b403\b|invalid.{0,20}(token|key)|oauth' "$err" "$out" 2>/dev/null; then
               echo "the reviewer's credential was refused"
             elif [ -n "$sub" ]; then
               echo "the tool answered '$sub'"
             else
-              echo "unrecognised; $(wc -c < "$t/err.txt" 2>/dev/null || echo 0) bytes on stderr, not printed because this log is public"
+              echo "unrecognised; $(wc -c < "$err" 2>/dev/null || echo 0) bytes on stderr"
             fi
           }
 
           # The model and effort the Chairman named, the tools switched off,
           # for review.yml's reasons, which review-gate.py holds flag for flag.
           schema='{"type":"object","additionalProperties":false,"required":["verdict","review"],"properties":{"verdict":{"type":"string","enum":["clean","findings"]},"review":{"type":"string"}}}'
-          if ! claude -p \
+          limit=25
+          rc=0
+          timeout --kill-after=60s "${limit}m" claude -p \
             --model claude-sonnet-5 \
             --effort max \
             --tools "" \
@@ -454,19 +473,17 @@ jobs:
             --output-format json \
             --json-schema "$schema" \
             --system-prompt "$(cat "$t/system.txt")" \
-            < "$t/prompt.txt" > "$t/resp.json" 2> "$t/err.txt"; then
-            echo "the reviewer did not read: $(why)" >&2
-            exit 1
-          fi
+            < "$t/prompt.txt" > "$out" 2> "$err" || rc=$?
+          [ "$rc" -eq 0 ] || fail "$(why)"
 
-          result=$(jq -r '.result // empty' "$t/resp.json")
+          result=$(jq -r '.result // empty' "$out")
           verdict=$(printf '%s' "$result" | jq -r '.verdict // empty' 2>/dev/null || true)
           printf '%s' "$result" | jq -r '.review // empty' > "$t/review.md" 2>/dev/null || true
           case "$verdict" in
             clean|findings) ;;
-            *) echo "the reviewer returned no verdict: $(why)" >&2; exit 1 ;;
+            *) fail "the reviewer returned no verdict: $(why)" ;;
           esac
-          [ -s "$t/review.md" ] || { echo "the reviewer returned no review" >&2; exit 1; }
+          [ -s "$t/review.md" ] || fail "the reviewer returned no review"
           echo "verdict=$verdict" >> "$GITHUB_OUTPUT"
           echo "read: $verdict"
 
@@ -480,6 +497,7 @@ jobs:
           TOO_BIG: ${{ steps.gather.outputs.too_big }}
           OUTCOME: ${{ steps.read.outcome }}
           VERDICT: ${{ steps.read.outputs.verdict }}
+          WHY: ${{ steps.read.outputs.why }}
           REVIEWER_APP_ID: ${{ secrets.REVIEWER_APP_ID }}
         run: |
           set -euo pipefail
@@ -493,8 +511,9 @@ jobs:
             printf '%s\n' "The diff is over 600 KB. A review of a truncated diff is worse than none, so this slice wants splitting." > "$t/verdict.md"
           elif [ "$OUTCOME" != "success" ]; then
             conclusion=neutral
-            title="Did not read: the reviewer could not be reached"
-            printf '%s\n' "The reviewer could not be reached, or returned no verdict; the run in Adonis80/how-we-build names which. This is not a read, and the gate stays shut." > "$t/verdict.md"
+            WHY="${WHY:-the reading step failed before it could say why}"
+            title="Did not read: $WHY"
+            printf '%s\n' "The reviewer did not read this commit: $WHY. This is not a read, and the gate stays shut." > "$t/verdict.md"
           elif [ "$VERDICT" = "clean" ]; then
             conclusion=success
             title="No findings on this commit"

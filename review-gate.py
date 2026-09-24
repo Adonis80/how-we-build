@@ -876,6 +876,12 @@ def _check_wiring():
     # token carried every permission the App holds on every repository it is
     # installed on. The request was rehearsed on main first (door.yml, run
     # 35870516404) and these lines are its regression test (#66's step two).
+    lost = read_faults(review)
+    if lost:
+        print("  wiring: %s must stop its read in time to sign that it did not read, and say why; "
+              "it has lost %s" % (REVIEW_WORKFLOW, "; ".join(lost)))
+        bad += 1
+
     lost = review_mint_faults(review)
     if lost:
         print("  wiring: %s must mint the badge's token scoped to this repository with checks: "
@@ -1175,6 +1181,129 @@ def _call(text):
     return flags or None
 
 
+# THE READ STOPS IN TIME TO SAY SO, AND SAYS WHY. #73's second read, run
+# 35925225489, ran into the job's 30 minutes: the job was cancelled, nothing was
+# signed, and the pull request just looked unread. A read that failed any other
+# way said "the run log says which", and the log did not (#47, run 35773558213;
+# #56, run 35788659651). So each reviewer bounds its call inside the step, at a
+# limit that leaves minutes of the job's own for the verdict to be signed, and
+# carries `why()`'s reason to the check run. `why()` is run here, not read: each
+# way a read can end below must be named, on one line, or the step has lost it.
+READ_CALL = 'timeout --kill-after=60s "${limit}m" claude -p \\'
+READ_LIMIT = re.compile(r"^\s*limit=(\d+)\s*$", re.M)
+READ_MARGIN = 5
+READ_FAIL = """printf 'why=%s\\n' "$(printf '%s' "$1" | tr -d '\\r\\n')" >> "$GITHUB_OUTPUT\""""
+READ_WHY = ("WHY: ${{ steps.read.outputs.why }}", 'title="Did not read: $WHY"')
+# (how the read ended, its stderr, its answer, what must be said). `%s` is the
+# file's own limit.
+WHY_CASES = (
+    (124, "", "", "the read ran out of time and was stopped at %s minutes"),
+    (137, "", "", "the read was killed, out of time or out of memory"),
+    (127, "bash: claude: command not found", "", "the reviewer's tool is not installed"),
+    (1, "", '{"is_error":true,"result":"Prompt is too long"}', "too long for one read"),
+    (1, "API Error: 429 rate_limit_error", "", "rate-limited or overloaded"),
+    (1, "", '{"is_error":true,"result":"Claude AI usage limit reached"}', "allowance is spent"),
+    (1, "OAuth token has expired", "", "credential was refused"),
+    (0, "", '{"subtype":"error_max_turns"}', "the tool answered 'error_max_turns'"),
+    # A subtype is the tool's to write, and the reason is written to
+    # $GITHUB_OUTPUT: a line break in it would be a second output of its own.
+    (0, "", '{"subtype":"x\\nverdict=clean"}', "the tool answered 'xverdictclean'"),
+    (1, "", "", "unrecognised; 0 bytes on stderr"),
+)
+
+
+def _why(text):
+    """`why()`, as the stripped lines that define it."""
+    return _block(text, lambda l: l == "why() {", lambda l: l == "}")
+
+
+def why_says(block, limit, rc, err, out):
+    """Run `why()` as a read that ended so would. (exit status, what it said)."""
+    with tempfile.TemporaryDirectory() as d:
+        paths = {"err": os.path.join(d, "err.txt"), "out": os.path.join(d, "resp.json")}
+        for key, body in (("err", err), ("out", out)):
+            with open(paths[key], "w", encoding="utf-8") as f:
+                f.write(body)
+        e = dict(os.environ, rc=str(rc), limit=str(limit), **paths)
+        try:
+            p = subprocess.run(["bash", "-c", "set -euo pipefail\n%s\nwhy\n" % "\n".join(block)],
+                               env=e, capture_output=True, text=True, timeout=30)
+        except (OSError, subprocess.SubprocessError) as exc:
+            return None, "could not be run (%s)" % exc
+        return p.returncode, p.stdout
+
+
+def read_faults(text):
+    """What a reviewer's read has lost of stopping in time and saying why."""
+    lost = []
+    calls = [l.strip() for l in text.splitlines() if "claude -p" in l]
+    if calls != [READ_CALL]:
+        lost.append("one call of the reviewer, as `%s`" % READ_CALL)
+    job, limit = TIMEOUT.findall(text), READ_LIMIT.findall(text)
+    if len(job) != 1 or len(limit) != 1 or int(limit[0]) + READ_MARGIN > int(job[0]):
+        lost.append("one `limit=` at least %d minutes inside the job's one `timeout-minutes`, so "
+                    "a read stopped there is still signed" % READ_MARGIN)
+    read, sign = _step_span(text, "Read it"), _step_span(text, "Sign the verdict")
+    if not read or READ_FAIL not in text[read[0]:read[1]]:
+        lost.append("`%s` in the read" % READ_FAIL)
+    for line in READ_WHY:
+        if not sign or line not in text[sign[0]:sign[1]]:
+            lost.append("`%s` where the verdict is signed" % line)
+    block = _why(text)
+    if block is None:
+        lost.append("a `why()` naming the reason")
+    elif len(limit) == 1:
+        for rc, err, out, words in WHY_CASES:
+            want = words % limit[0] if "%s" in words else words
+            status, said = why_says(block, limit[0], rc, err, out)
+            if status != 0 or want not in said or said.count("\n") != 1:
+                lost.append("`why()` saying %r, on one line, when the read exits %d (it said %r)"
+                            % (want, rc, said))
+    return lost
+
+
+# Each must turn the hold red on both reviewers' files, or the hold is decoration.
+READ_LOOSENINGS = (
+    ("the read unbounded", lambda t: t.replace(READ_CALL, "claude -p \\", 1)),
+    ("a read the job cuts off first", lambda t: t.replace("          limit=25\n", "          limit=28\n", 1)),
+    ("no limit set", lambda t: t.replace("          limit=25\n", "", 1)),
+    ("a time-out not named", lambda t: _in_step(t, "Read it", 'if [ "$rc" -eq 124 ]; then', 'if [ "$rc" -eq 125 ]; then')),
+    ("a missing tool not named", lambda t: _in_step(t, "Read it", 'elif [ "$rc" -eq 127 ]; then', 'elif false; then')),
+    ("a reason that can break a line", lambda t: _in_step(t, "Read it", "| tr -cd 'a-z_' ||", "||")),
+    ("the reason never recorded", lambda t: _in_step(t, "Read it", READ_FAIL, "true")),
+    ("the reason never passed on", lambda t: _in_step(t, "Sign the verdict", READ_WHY[0], "WHY: none")),
+    ("the reason kept from the verdict", lambda t: _in_step(t, "Sign the verdict", READ_WHY[1], 'title="Did not read"')),
+)
+
+
+def _check_read_loosenings():
+    """Every loosening above, applied to each reviewer's real file, must be refused."""
+    bad = 0
+    for path in (REVIEW_WORKFLOW, PRODUCT_WORKFLOW):
+        try:
+            text = _read(path)
+        except OSError as e:
+            print("  wiring: %s" % e)
+            return 1
+        if read_faults(text):
+            return 1  # the wiring checks say what; a loosened copy proves nothing here
+        for what, loosen in READ_LOOSENINGS:
+            changed = loosen(text)
+            if changed == text:
+                print("  wiring: the loosening '%s' no longer applies to %s — rewrite it against "
+                      "the file as it stands, or it proves nothing" % (what, path))
+                bad += 1
+            elif not read_faults(changed):
+                print("  wiring: %s with %s passes the read hold — the guard for it is gone"
+                      % (path, what))
+                bad += 1
+    if not bad:
+        print("ok: each reviewer's read stops %d minutes inside its job and names why it did not "
+              "read, in %d case(s) run; each of %d loosenings of each file was refused"
+              % (READ_MARGIN, len(WHY_CASES), len(READ_LOOSENINGS)))
+    return bad
+
+
 def _check_product_wiring(review=None, product=None, readme=None, quiet=False):
     """review-product.yml, held to review.yml and to the rulebook's own map."""
     say = (lambda *a: None) if quiet else print
@@ -1279,6 +1408,16 @@ def _check_product_wiring(review=None, product=None, readme=None, quiet=False):
     if _call(review) is None or _call(product) != _call(review):
         fault("does not call the reviewer with %s's flags, flag for flag: %s against %s"
               % (REVIEW_WORKFLOW, _call(product), _call(review)))
+    lost = read_faults(product)
+    if lost:
+        fault("must stop its read in time to sign that it did not read, and say why; it has "
+              "lost %s" % "; ".join(lost))
+    if _why(review) is None or _why(product) != _why(review):
+        fault("does not name why a read did not happen as %s does, line for line"
+              % REVIEW_WORKFLOW)
+    if READ_LIMIT.findall(product) != READ_LIMIT.findall(review):
+        fault("stops its read at %s minutes and %s at %s — one reviewer, one read limit"
+              % (READ_LIMIT.findall(product), REVIEW_WORKFLOW, READ_LIMIT.findall(review)))
     if not TIMEOUT.findall(product) or TIMEOUT.findall(product) != TIMEOUT.findall(review):
         fault("gives its job %s minutes and %s gives %s — one reviewer, one time limit"
               % (TIMEOUT.findall(product), REVIEW_WORKFLOW, TIMEOUT.findall(review)))
@@ -1409,6 +1548,8 @@ PRODUCT_LOOSENINGS = (
     ("a flag added to the call", lambda t: t.replace("            --output-format json \\\n", "            --output-format json \\\n            --verbose \\\n", 1)),
     ("a flag's value changed", lambda t: t.replace("--permission-prompts none", "--permission-prompts ask", 1)),
     ("a different time limit", lambda t: t.replace("    timeout-minutes: 30\n", "    timeout-minutes: 90\n", 1)),
+    ("a different read limit", lambda t: t.replace("          limit=25\n", "          limit=20\n", 1)),
+    ("a reason worded otherwise", lambda t: _in_step(t, "Read it", "the reviewer was rate-limited or overloaded", "the reviewer was busy")),
     # What the token was granted (#68's twelfth read).
     ("the grant printed, not checked", lambda t: t.replace(PRODUCT_GRANT[2], "if false; then", 1)),
     ("a wider grant wanted", lambda t: t.replace(PRODUCT_GRANT[0], PRODUCT_GRANT[0].replace('"contents":"read"', '"contents":"read","issues":"write"'), 1)),
@@ -1719,6 +1860,7 @@ def _selftest():
     failed += _check_product_wiring()
     failed += _check_product_loosenings()
     failed += _check_review_loosenings()
+    failed += _check_read_loosenings()
     return 1 if failed else 0
 
 
