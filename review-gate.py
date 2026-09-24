@@ -1467,6 +1467,11 @@ VERDICT_SAYS = ('title="No findings on this commit (read as $CLASS at effort $EF
 # gate as a clean one does. The reviewer decides which is which, not the
 # proposer. The signing block is run, not read, on each verdict below.
 SIGN_FIRST = 'if [ "$TOO_BIG" = "yes" ]; then'
+# The read takes the schema's verdicts and nothing else, in both reviewers, held
+# as the block itself and against the schema's own list (#80's second read): a
+# file that lagged would sign a real answer "no verdict".
+VERDICT_CASE = ('case "$verdict" in', "clean|advisory|blocking) ;;",
+                '*) fail "the reviewer returned no verdict: $(why)" ;;', "esac")
 SIGN_CASES = (("clean", "success"), ("advisory", "success"), ("blocking", "failure"),
               ("findings", "failure"), ("", "failure"), ("Advisory", "failure"))
 
@@ -1603,6 +1608,14 @@ def class_faults(text, path):
         lost.append("`%s` before the call" % EFFORT_GUARD)
     if [f for f in (_call(text) or []) if f.startswith("--effort")] != [READ_EFFORT + " \\"]:
         lost.append("`%s` as the call's one effort" % READ_EFFORT)
+    if _block(r, lambda l: l == VERDICT_CASE[0], lambda l: l == "esac") != list(VERDICT_CASE):
+        lost.append("the read taking exactly the verdicts `%s`" % VERDICT_CASE[1])
+    try:
+        enum = json.loads(SCHEMA.findall(text)[0])["properties"]["verdict"]["enum"]
+    except (IndexError, ValueError, KeyError, TypeError):
+        enum = None
+    if enum != VERDICT_CASE[1].split(")")[0].split("|"):
+        lost.append("the read's verdicts the schema's own (`%s`)" % VERDICT_CASE[1])
     sign = _step_span(text, "Sign the verdict")
     sg = text[sign[0]:sign[1]] if sign else ""
     for line in VERDICT_SAYS:
@@ -1641,6 +1654,9 @@ CLASS_LOOSENINGS = (
     ("an arm for an unlisted extension", None, lambda t: t.replace("              *.md) ;;\n", "              *.sql) ;;\n              *.md) ;;\n", 1)),
     ("the left-out count dropped", REVIEW_WORKFLOW, lambda t: t.replace("          " + REVIEW_COUNT_IN + "\n", "", 1)),
     ("blocking signed as a pass", None, lambda t: _in_step(t, "Sign the verdict", "          else\n            conclusion=failure", "          else\n            conclusion=success")),
+    ("a verdict outside the schema taken", None, lambda t: _in_step(t, "Read it", VERDICT_CASE[1], "clean|advisory|blocking|findings) ;;")),
+    ("a verdict in the schema refused", None, lambda t: _in_step(t, "Read it", VERDICT_CASE[1], "clean|blocking) ;;")),
+    ("the schema widened past the read", None, lambda t: t.replace('"enum":["clean","advisory","blocking"]', '"enum":["clean","advisory","blocking","findings"]', 1)),
     ("any verdict read as advisory", None, lambda t: _in_step(t, "Sign the verdict", 'elif [ "$VERDICT" = "advisory" ]', 'elif [ -n "$VERDICT" ]')),
     ("a verdict that hides its effort", None, lambda t: t.replace(' (read as $CLASS at effort $EFFORT)"', '"', 1)),
     ("a product's decisions read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("PRODUCT.md|", "", 1), 1)),
