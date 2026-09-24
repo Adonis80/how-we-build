@@ -22,10 +22,11 @@ The whole map: what exists, where it lives, one line on what it is for, and the 
 
 - **Myst** — `https://github.com/Adonis80/myst` (private; Juku Perfume, `juku-perfume`, until 16 September 2026). The App for Perfume Collectors, a fragrance intelligence and exchange platform: a Personal Nose that learns a person's taste, samples picked for them, and the value sitting on collectors' shelves. Open `AGENTS.md`, then `PRODUCT.md`, then `roadmap.json`.
 - **Hemz OS** — `https://github.com/Adonis80/Hemz-OS` (private). The operating system for an alterations business, grown out of Alma's Alterations in Brighton. Open `AGENTS.md`, then `PRODUCT.md`, then `roadmap.json`.
+- **Phena** — `https://github.com/Adonis80/phena` (private; joined 24 September 2026). Phena App, *Documenting the Phenomena*: a living corpus of first-person extraordinary experiences, near-death experiences first, explored through the River. A Juku product at `phena.juku.pro`. Open `AGENTS.md`, then `PRODUCT.md`, then `roadmap.json`.
 
 A repository not listed here is not under this rulebook.
 
-**Which repository a chat Project reads (the Chairman's ruling, 11 September 2026).** The Juku OS Project — the chat Project named for this system — reads this repository and uses the map above as the whole register of what exists, opening a product repository only when it needs live detail; its instructions are the second template below. The Hemz OS Project reads `Adonis80/Hemz-OS` plus the global rules here; the Myst Project reads `Adonis80/myst` plus the same. This is where to read, not permission to read: each Project's own GitHub connection is proved by fetching live commits and open pull requests from inside that Project, because a successful read somewhere else proves nothing for it. Reuse this register; never start a second map.
+**Which repository a chat Project reads (the Chairman's ruling, 11 September 2026).** The Juku OS Project — the chat Project named for this system — reads this repository and uses the map above as the whole register of what exists, opening a product repository only when it needs live detail; its instructions are the second template below. The Hemz OS Project reads `Adonis80/Hemz-OS` plus the global rules here; the Myst Project reads `Adonis80/myst` plus the same; the Phena Project reads `Adonis80/phena` plus the same. This is where to read, not permission to read: each Project's own GitHub connection is proved by fetching live commits and open pull requests from inside that Project, because a successful read somewhere else proves nothing for it. Reuse this register; never start a second map.
 
 ## How a product joins
 
@@ -288,16 +289,21 @@ flowchart LR
   RB["Rulebook · how-we-build<br/>public — every session reads it, no key"]
   H["Hemz-OS · private"]
   P["myst · private"]
+  F["phena · private"]
   C1["Builder on Hemz-OS<br/>Claude code, or Codex cloud — code and words"]
   C2["Builder on myst<br/>Claude code, or Codex cloud — code and words"]
+  C3["Builder on phena<br/>Claude code, or Codex cloud — code and words"]
   W["Cowork session<br/>through the Mac — words only"]
   RB -. reads .-> C1
   RB -. reads .-> C2
+  RB -. reads .-> C3
   RB -. reads .-> W
   C1 -->|writes| H
   C2 -->|writes| P
+  C3 -->|writes| F
   W -->|writes words| H
   W -->|writes words| P
+  W -->|writes words| F
   W -->|writes words| RB
 ```
 
