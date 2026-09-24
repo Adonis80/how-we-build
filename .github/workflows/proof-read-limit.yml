@@ -45,7 +45,7 @@ jobs:
               m = re.search(r"^      - name: %s\n(.*?)^      - name: " % re.escape(name), text, re.S | re.M)
               body = m.group(1).split("        run: |\n", 1)[1]
               script = "\n".join(l[10:] if l.strip() else "" for l in body.splitlines())
-              assert "${{" not in script
+              assert "$" + "{{" not in script  # split, or GitHub reads it as its own
               return script
           read = shell("Read it")
           assert read.count("limit=25\n") == 1
