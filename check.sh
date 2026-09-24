@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # The rulebook's own guard. CI runs it on every push and pull request.
 # It refuses: an operating page over its word cap, a screen law over its own, a
-# root or design file that is not on its list or missing from it, anything that
+# library page over its size, a root, design or library file
+# that is not on its list or missing from it, anything that
 # looks like a secret (naming the place, never the value), a review gate that no
 # longer matches the reviewer's answers or has drifted from the workflows that
 # fetch them, and, in a pull request, a commit no reviewer has read clean —
@@ -25,7 +26,7 @@ fail=0
 # The cap was 500 from 28 August to 12 September 2026, when the two-lead rules
 # could not fit under it without spending a rule the page requires. It moved to
 # 600 in the pull request that needed it, for that stated reason, and 600 is the
-# ceiling: from here a rule in means a rule out. See README, Changing the rulebook.
+# ceiling: from here a rule in means a rule out. See library/changing-the-rulebook.md.
 words=$(python3 -c 'import sys; print(len(open(sys.argv[1],encoding="utf-8").read().split()))' HOW-WE-BUILD.md)
 if [ "$words" -gt 600 ]; then
   echo "FAIL: HOW-WE-BUILD.md is $words words; the cap is 600."
@@ -35,7 +36,7 @@ else
 fi
 
 # 2. Only these files exist at the root (plus .git and .github).
-allowed=" AGENTS.md CHARTER.md HOW-WE-BUILD.md README.md RICH-DATA.md check.sh design review-gate.py "
+allowed=" AGENTS.md CHARTER.md HOW-WE-BUILD.md README.md RICH-DATA.md check.sh design library review-gate.py "
 while IFS= read -r f; do
   case "$f" in .git|.github) continue ;; esac
   case "$allowed" in
@@ -49,7 +50,7 @@ done < <(ls -A)
 # `CHARTER.md/` that holds nothing this repository reads.
 for f in $allowed; do
   case "$f" in
-    design) [ -d "$f" ] || { echo "FAIL: '$f' is missing, or is not a directory; the root list is a fixed set."; fail=1; } ;;
+    design|library) [ -d "$f" ] || { echo "FAIL: '$f' is missing, or is not a directory; the root list is a fixed set."; fail=1; } ;;
     *) [ -f "$f" ] || { echo "FAIL: '$f' is missing, or is not a file; the root list is a fixed set."; fail=1; } ;;
   esac
 done
@@ -77,6 +78,28 @@ done < <(ls -A design)
 for f in $design_allowed; do
   [ -f "design/$f" ] || { echo "FAIL: 'design/$f' is missing; the design pages are a fixed set."; fail=1; }
 done
+
+# 2c. The library is the map's to name: his ruling of 23 September 2026 and
+# decision 0005 (issue #75), built in #70's slices. A session opens a library
+# page only when its task touches the topic. The README's index is the
+# library's list, both ways: a page it does not name is never opened, and a
+# name with no page sends a session nowhere. Each page is one topic, current
+# truth only, under a cap; each says whom it binds.
+named=$(grep -o -E 'library/[A-Za-z0-9._-]+\.md' README.md | sort -u)
+present=$( { ls -A library 2>/dev/null || true; } | sed 's|^|library/|' | sort)
+lib_fail=0
+for f in $present; do
+  case " $(echo $named) " in *" $f "*) ;; *) echo "FAIL: '$f' is not in the README's index, so no session is sent to it."; lib_fail=1 ;; esac
+  [ -f "$f" ] || { echo "FAIL: '$f' is not a file."; lib_fail=1; continue; }
+  b=$(wc -c < "$f")
+  [ "$b" -le 4000 ] || { echo "FAIL: '$f' is $b bytes; a library page's cap is 4000 - split the topic or cut history."; lib_fail=1; }
+  grep -q -E '^Scope: .+ Open when: .+' "$f" || { echo "FAIL: '$f' has no 'Scope: … Open when: …' line."; lib_fail=1; }
+done
+for f in $named; do
+  [ -f "$f" ] || { echo "FAIL: the README's index names '$f', which does not exist."; lib_fail=1; }
+done
+[ "$lib_fail" -eq 0 ] && echo "ok: $(echo $present | wc -w) library pages, each named by the README, each under 4000 bytes, each scoped"
+[ "$lib_fail" -eq 0 ] || fail=1
 
 # 3. Nothing that looks like a secret, anywhere.
 pattern='(ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,})'
