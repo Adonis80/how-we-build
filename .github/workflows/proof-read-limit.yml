@@ -1,0 +1,102 @@
+name: Proof of the read limit
+
+# THROWAWAY: deleted in the commit after its run, before the read is asked.
+# #76's first read asked for a run, not reasoning: this lifts the real
+# *Read it* and *Sign the verdict* shells out of both reviewers' files and
+# runs them on GitHub's own runner, as steps wired the way the files wire them
+# (a continue-on-error read, its outcome and `why` handed to the next step),
+# with a stub reviewer and the deadline at minute 2 of the job. It holds no
+# secret and signs nothing; every real read proves the POST.
+
+on:
+  push:
+    branches: [claude/determined-lovelace-jo1l21]
+
+permissions:
+  contents: read
+
+jobs:
+  proof:
+    strategy:
+      fail-fast: false
+      matrix:
+        file: [review.yml, review-product.yml]
+        case: [slow-read, stubborn, slow-before, ratelimit]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: The job's start
+        id: start
+        run: echo "started=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Lift the real steps out of the file, and stand in a stub reviewer
+        env:
+          FILE: .github/workflows/${{ matrix.file }}
+        run: |
+          set -euo pipefail
+          python3 - <<'EOF'
+          import os, re
+          text = open(os.environ["FILE"], encoding="utf-8").read()
+          def shell(name):
+              m = re.search(r"^      - name: %s\n(.*?)^      - name: " % re.escape(name), text, re.S | re.M)
+              body = m.group(1).split("        run: |\n", 1)[1]
+              script = "\n".join(l[10:] if l.strip() else "" for l in body.splitlines())
+              assert "${{" not in script
+              return script
+          read = shell("Read it")
+          assert read.count("limit=25\n") == 1
+          sign = shell("Sign the verdict").split('echo "conclusion=$conclusion"')[0]
+          tmp = os.environ["RUNNER_TEMP"]
+          open(tmp + "/read.sh", "w").write(read.replace("limit=25\n", "limit=2\n"))
+          open(tmp + "/sign.sh", "w").write(sign + 'echo "$conclusion | $title"\n')
+          EOF
+          mkdir -p "$RUNNER_TEMP/bin"
+          printf '%s\n' '#!/usr/bin/env bash' 'cat > /dev/null' 'case "$STUB" in' \
+            '  slow-read) exec sleep 600 ;;' \
+            "  stubborn) trap '' TERM; sleep 600 ;;" \
+            '  ratelimit) echo "API Error: 429 rate_limit_error" >&2; exit 1 ;;' \
+            'esac' > "$RUNNER_TEMP/bin/claude"
+          chmod +x "$RUNNER_TEMP/bin/claude"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+          for d in /tmp "$RUNNER_TEMP"; do : > "$d/diff.txt"; : > "$d/pages.txt"; : > "$d/brief.txt"; done
+
+      - name: Steps before the read that run long
+        if: matrix.case == 'slow-before'
+        run: sleep 75
+
+      - name: Read it
+        id: read
+        continue-on-error: true
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: stub
+          SHA: "0000000000000000000000000000000000000000"
+          REPO: Adonis80/Hemz-OS
+          STARTED: ${{ steps.start.outputs.started }}
+          STUB: ${{ matrix.case }}
+        run: bash "$RUNNER_TEMP/read.sh"
+
+      - name: Sign the verdict, up to the POST
+        env:
+          TOO_BIG: "no"
+          OUTCOME: ${{ steps.read.outcome }}
+          VERDICT: ${{ steps.read.outputs.verdict }}
+          WHY: ${{ steps.read.outputs.why }}
+          STARTED: ${{ steps.start.outputs.started }}
+          CASE: ${{ matrix.case }}
+        run: |
+          set -euo pipefail
+          got=$(bash "$RUNNER_TEMP/sign.sh" | tail -1)
+          echo "signed: $got"
+          echo "at second $(( $(date +%s) - STARTED )) of the job; the read's outcome was $OUTCOME"
+          case "$CASE" in
+            slow-read) want="neutral | Did not read: the read ran out of time and was stopped at minute 2 of the job; the slice wants splitting" ;;
+            stubborn) want="neutral | Did not read: the read was killed, out of time or out of memory" ;;
+            slow-before) want="neutral | Did not read: no time was left to read before minute 2 of the job" ;;
+            ratelimit) want="neutral | Did not read: the reviewer was rate-limited or overloaded" ;;
+          esac
+          [ "$got" = "$want" ] || { echo "::error::wanted [$want]"; exit 1; }
+          echo "as wanted"
