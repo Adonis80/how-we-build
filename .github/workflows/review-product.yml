@@ -319,15 +319,20 @@ jobs:
           g show "origin/$MAIN:AGENTS.md" > "$t/brief.txt"
           echo "brief bytes: $(wc -c < "$t/brief.txt")"
           # THE CLASS AND ITS EFFORT, for review.yml's reasons and by its block,
-          # which review-gate.py runs and holds line for line in both. A
-          # product's own law, design/CONSTITUTION.md, is read as code (#79's
-          # fourth read). A product's pages are routed already, below; only
-          # the effort moves.
+          # which review-gate.py runs and holds line for line in both. Every
+          # page this route carries is read as code but NAMES.md, a glossary:
+          # the brief, PRODUCT.md (his decisions, figures and the evidence
+          # section) and design/CONSTITUTION.md (#79's fourth and sixth reads).
+          # Only the effort moves here, not the pages: this route never gave a
+          # reader the whole repository. It gives the carried pages and the
+          # files the change touches, each under 150 KB and 300 KB in all, and
+          # names what it leaves out; review.yml's preload was the whole
+          # repository, which is why only review.yml trims by class.
           class=words
           g diff -z --name-only --no-renames "origin/$MAIN...$SHA" > "$t/changed.txt"
           while IFS= read -r -d '' f; do
             case "$f" in
-              AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|design/SCREEN-LAW.md|design/CONSTITUTION.md|.*|*/.*) class=code ;;
+              AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|design/SCREEN-LAW.md|design/CONSTITUTION.md|PRODUCT.md|.*|*/.*) class=code ;;
               *.md) ;;
               *) class=code ;;
             esac

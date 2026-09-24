@@ -1408,8 +1408,9 @@ def _check_read_loosenings():
 # HOW-WE-BUILD.md and CHARTER.md at the root (twice on 9 September a trim
 # weakened what the operating page required, and a reader caught it where no
 # machine could: #79's first read), RICH-DATA.md's data rules and the capped
-# design/SCREEN-LAW.md (#79's third read), and a product's own law,
-# design/CONSTITUTION.md (#79's fourth read). Nor is anything in a dot-directory, where .github
+# design/SCREEN-LAW.md (#79's third read), and a product's PRODUCT.md and
+# design/CONSTITUTION.md (#79's fourth and sixth reads): every page
+# review-product.yml carries but NAMES.md, a glossary. Nor is anything in a dot-directory, where .github
 # and .claude keep settings and agents' instructions whatever their extension.
 # The README is a page by choice (#79's second read): it is the index topics
 # leave for the library, and read as code every such move would be back at max
@@ -1423,7 +1424,7 @@ def _check_read_loosenings():
 # effort to the read, so any line added inside it is run too.
 CLASS_FIRST = "class=words"
 CLASS_CODE = ("AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|design/SCREEN-LAW.md|"
-              "design/CONSTITUTION.md|.*|*/.*) class=code ;;")
+              "design/CONSTITUTION.md|PRODUCT.md|.*|*/.*) class=code ;;")
 CLASS_EFFORT = ('case "$class" in words) effort=%s ;; *) effort=%s ;; esac'
                 % (WORDS_EFFORT, REVIEWER_EFFORT))
 CLASS_OUT = 'echo "effort=$effort" >> "$GITHUB_OUTPUT"'
@@ -1461,6 +1462,8 @@ CLASS_CASES = (
     (["RICH-DATA.md"], "code"),
     (["design/SCREEN-LAW.md"], "code"),
     (["design/CONSTITUTION.md", "README.md"], "code"),
+    (["PRODUCT.md"], "code"),
+    (["NAMES.md", "docs/guide.md"], "words"),
     (["docs/AGENTS.md"], "code"),
     (["README.md", "check.sh"], "code"),
     (["review-gate.py"], "code"),
@@ -1555,6 +1558,7 @@ CLASS_LOOSENINGS = (
     ("the data rules read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("RICH-DATA.md|", "", 1), 1)),
     ("the screen law read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("design/SCREEN-LAW.md|", "", 1), 1)),
     ("a product's constitution read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("design/CONSTITUTION.md|", "", 1), 1)),
+    ("a product's decisions read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("PRODUCT.md|", "", 1), 1)),
     ("a dot-directory read as pages", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("|.*|*/.*", "", 1), 1)),
     ("anything unrecognised read as pages", None, lambda t: t.replace("              *) class=code ;;\n", "              *) ;;\n", 1)),
     ("the class reset after the list", None, lambda t: t.replace("          " + CLASS_EFFORT + "\n", "          class=words\n          " + CLASS_EFFORT + "\n", 1)),
