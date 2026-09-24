@@ -112,7 +112,10 @@ for f in $named; do
 done
 while IFS= read -r hit; do
   f=${hit##*:}
-  [ -f "$f" ] || { echo "FAIL: ${hit%:*} links '$f', which does not exist."; lib_fail=1; }
+  # The page is held to the name pattern; the file linking it is any path in
+  # the repository, so it is printed escaped, as a page name the pattern
+  # refuses is above: a control character in a path reaches a public log.
+  [ -f "$f" ] || { printf "FAIL: %q links '%s', which does not exist.\n" "${hit%:*}" "$f"; lib_fail=1; }
 done < <(grep -r -o -I -E --exclude-dir=.git "$page_re" . | sed 's|^\./||' | sort -u || true)
 if [ "$lib_fail" -ne 0 ]; then
   fail=1
