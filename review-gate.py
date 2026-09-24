@@ -115,7 +115,20 @@ DEFAULT_REVIEWER = "claude"
 # a rubber stamp. Named here and held against the workflow that runs it by
 # _check_wiring(), so the two can never drift apart.
 REVIEWER_MODEL = "claude-sonnet-5"
+# And the effort a read is at is its change's class's. Decision 0005 (issue
+# #75, 23 September 2026), in its own words: "Effort. Build at medium, high
+# after one failed attempt, max only for reviews of the risky classes." A
+# change to pages alone is read at WORDS_EFFORT; anything else, this machinery
+# included, at REVIEWER_EFFORT. The class is worked out in each workflow and
+# held below, at CLASS_FIRST.
 REVIEWER_EFFORT = "max"
+# Why high and not medium, since the decision names only what risky reads get
+# (#79's seventh read): his ruling of 18 September holds the reviewer at least
+# as strong as the lead that builds, and the lead builds at medium and steps to
+# high after one failed attempt. At high, a read of pages stays at or above the
+# lead's own effort; at medium it could fall below it. The CTO's reading.
+# Not yet proved on a live read: review.yml's class block names the first run.
+WORDS_EFFORT = "high"
 
 # The badge. `juku-reviewer`, created on the Chairman's account 19 September 2026;
 # installation 162987297. The id is the
@@ -882,6 +895,12 @@ def _check_wiring():
         print("  wiring: %s must stop its read in time to sign that it did not read, and say why; "
               "it has lost %s" % (REVIEW_WORKFLOW, "; ".join(lost)))
         bad += 1
+    lost = class_faults(review, REVIEW_WORKFLOW)
+    if lost:
+        print("  wiring: %s must read a change at the effort its class names, and give any "
+              "change but pages alone every file; it has lost %s"
+              % (REVIEW_WORKFLOW, "; ".join(lost)))
+        bad += 1
 
     lost = review_mint_faults(review)
     if lost:
@@ -922,7 +941,7 @@ def _check_wiring():
                       ("--restricted", "it would read this repository's own settings files"),
                       ("--strict-mcp-config", "it could pick up MCP servers from elsewhere"),
                       ("--model " + REVIEWER_MODEL, "it would not be the reviewer he named"),
-                      ("--effort " + REVIEWER_EFFORT, "it would not be at the effort he named")):
+                      (READ_EFFORT, "it would not read at the effort its change's class names")):
         if flag not in review:
             print("  wiring: %s no longer passes %s — %s" % (REVIEW_WORKFLOW, flag, why))
             bad += 1
@@ -1222,6 +1241,16 @@ WHY_CASES = (
     (1, "", '{"is_error":true,"result":"Prompt is too long"}', "too long for one read"),
     (1, "API Error: 429 rate_limit_error", "", "rate-limited or overloaded"),
     (1, "", '{"is_error":true,"result":"Claude AI usage limit reached"}', "allowance is spent"),
+    # #79's third read, run 36012650404: a spent session limit, in an answer
+    # whose usage carries `contextWindow`. Read whole, the key said "too long".
+    (1, "", '{"is_error":true,"result":"You\'ve hit your session limit \u00b7 resets 2:50pm (UTC)",'
+            '"modelUsage":{"claude-sonnet-5":{"contextWindow":200000}}}', "allowance is spent"),
+    (1, "", '{"is_error":true,"result":"boom","modelUsage":{"m":{"contextWindow":200000}}}',
+     "unrecognised; 0 bytes on stderr"),
+    (1, "", "not json: Prompt is too long", "too long for one read"),
+    # Every string the answer holds, wherever it sits, and none of its keys
+    # (#79's eleventh read): a message outside `.result` is still read.
+    (1, "", '{"is_error":true,"error":{"message":"Prompt is too long"}}', "too long for one read"),
     (1, "OAuth token has expired", "", "credential was refused"),
     (0, "", '{"subtype":"error_max_turns"}', "the tool answered 'error_max_turns'"),
     # A subtype is the tool's to write, and the reason is written to
@@ -1378,6 +1407,260 @@ def _check_read_loosenings():
     return bad
 
 
+# THE CLASS A CHANGE IS READ AT, AND WHAT A READ OF IT IS GIVEN. #77's reads
+# ran out of time twice at max, each preloading every file in this repository
+# (#70's slice 2), and decision 0005 keeps max for the risky classes alone. So
+# each reviewer works out a class from the diff it reads: `words` when every
+# file the change touches is a page, `code` otherwise. The brief, AGENTS.md at
+# any depth, is never a page: it instructs the reviewer or an agent, so a change
+# to it changes a reader. Nor are the pages whose words are law here:
+# HOW-WE-BUILD.md and CHARTER.md at the root (twice on 9 September a trim
+# weakened what the operating page required, and a reader caught it where no
+# machine could: #79's first read), RICH-DATA.md's data rules and the capped
+# design/SCREEN-LAW.md (#79's third read), and a product's PRODUCT.md and
+# design/CONSTITUTION.md (#79's fourth and sixth reads): every page
+# review-product.yml carries but NAMES.md, a glossary. Nor is anything in a dot-directory, where .github
+# and .claude keep settings and agents' instructions whatever their extension.
+# The README is read as code while it still holds the rulebook's prose (#79's
+# eighth read); once the library move leaves it an index, one line returns it
+# to pages. The list splits renames, so a script renamed to a page is still a script, and is
+# NUL-separated, so no name is read as two. It is written to a file first, so a
+# list that cannot be made stops the step: read through `< <(...)` it failed
+# unseen and read as no change at all, which is pages. The block is run, not read, against
+# the changes below, from its first line to the one output that hands the
+# effort to the read, so any line added inside it is run too.
+CLASS_FIRST = "class=words"
+CLASS_CODE = ("AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|design/*|"
+              "PRODUCT.md|README.md|library/*|.*|*/.*) class=code ;;")
+CLASS_ARMS = (CLASS_CODE, "*.md) ;;", "*) class=code ;;")
+CLASS_EFFORT = ('case "$class" in words) effort=%s ;; *) effort=%s ;; esac'
+                % (WORDS_EFFORT, REVIEWER_EFFORT))
+CLASS_OUT = 'echo "effort=$effort" >> "$GITHUB_OUTPUT"'
+CLASS_LIST = {
+    REVIEW_WORKFLOW: ('git diff -z --name-only --no-renames "origin/${{ github.event.repository'
+                      '.default_branch }}...${{ steps.head.outputs.sha }}" > "$RUNNER_TEMP/changed.txt"',
+                      'done < "$RUNNER_TEMP/changed.txt"'),
+    PRODUCT_WORKFLOW: ('g diff -z --name-only --no-renames "origin/$MAIN...$SHA" > "$t/changed.txt"',
+                       'done < "$t/changed.txt"'),
+}
+EFFORT_IN = "EFFORT: ${{ steps.gather.outputs.effort }}"
+EFFORT_GUARD = ('case "$EFFORT" in high|max) ;; *) fail "the change\'s class set no effort to '
+                'read at" ;; esac')
+READ_EFFORT = '--effort "$EFFORT"'
+# review.yml's pages: a change to pages alone is given the pages and check.sh;
+# any other is given every file, as every read was before. What is left out is
+# named with its size, and the reviewer is told so and asked to say if a
+# finding needed it: without those, a read short of a file is silent about it.
+REVIEW_PAGES = "words:*.md|words:check.sh|code:*) ;;"
+# And the verdict says how thoroughly it was read (#79's eighth read): a clean
+# read at high with pages alone must not look like one at max with everything.
+VERDICT_SAYS = ('title="No findings on this commit (read as $CLASS at effort $EFFORT)"',
+                'title="Findings on this commit (read as $CLASS at effort $EFFORT)"',
+                "CLASS: ${{ steps.gather.outputs.class }}", "EFFORT: ${{ steps.gather.outputs.effort }}")
+# A thinner read that needed more says so as a finding, never as a note on a
+# clean read (#79's tenth read: the high path with pages alone is unproven
+# until runs show it, so it fails closed rather than pass on less).
+REVIEW_LEFT_OUT = "%s bytes, left out: this change touches pages only ====="
+REVIEW_COUNT = ('echo "left_out=$(grep -cE \'^===== .+: [0-9]+ bytes, left out: this change touches pages only =====$\' /tmp/pages.txt || true)" >> "$GITHUB_OUTPUT"')
+REVIEW_COUNT_IN = "LEFT_OUT: ${{ steps.gather.outputs.left_out }}"
+REVIEW_TOLD = ('if [ "$CLASS" = words ]; then', 'echo "judging it needed a left-out file or a deeper read, that is a finding: say which."',
+               "CLASS: ${{ steps.gather.outputs.class }}")
+# (the files a change touches, the class it must be read as). None is a list
+# git could not make, which must stop the block rather than read as anything.
+CLASS_CASES = (
+    (None, None),
+    ([], "words"),
+    (["README.md"], "code"),
+    (["library/topics/reviewer.md"], "code"),
+    (["design/ARCHITECT.md", "library/topics/reviewer.md"], "code"),
+    (["docs/README.md"], "words"),
+    (["docs/reviewer.md"], "words"),
+    (["design/ARCHITECT.md"], "code"),
+    (["design/REVIEW_RUBRIC.md", "docs/reviewer.md"], "code"),
+    (["design/SCREEN_SPEC_TEMPLATE.md"], "code"),
+    (["docs/HOW-WE-BUILD.md", "docs/CHARTER.md"], "words"),
+    (["a page with spaces.md"], "words"),
+    (["AGENTS.md"], "code"),
+    (["HOW-WE-BUILD.md"], "code"),
+    (["README.md", "CHARTER.md"], "code"),
+    (["RICH-DATA.md"], "code"),
+    (["design/SCREEN-LAW.md"], "code"),
+    (["design/CONSTITUTION.md", "README.md"], "code"),
+    (["PRODUCT.md"], "code"),
+    (["NAMES.md", "docs/guide.md"], "words"),
+    (["docs/AGENTS.md"], "code"),
+    (["README.md", "check.sh"], "code"),
+    (["review-gate.py"], "code"),
+    ([".github/workflows/review.yml"], "code"),
+    ([".github/copilot-instructions.md"], "code"),
+    ([".claude/skills/steward/SKILL.md"], "code"),
+    (["docs/.hidden/page.md"], "code"),
+    (["README.MD"], "code"),
+    (["page.md.sh"], "code"),
+    (["page.md\nx.sh"], "code"),
+    (["supabase/migrations/0001_init.sql", "README.md"], "code"),
+)
+
+
+def _class_block(text):
+    """The class block, as the stripped lines from `class=words` to the effort's output."""
+    return _block(text, lambda l: l == CLASS_FIRST, lambda l: l == CLASS_OUT)
+
+
+def class_says(block, paths):
+    """Run the class block as a change touching `paths` would. (class, effort) or None."""
+    with tempfile.TemporaryDirectory() as d:
+        changed, out = os.path.join(d, "changed"), os.path.join(d, "out")
+        if paths is not None:
+            with open(changed, "wb") as f:
+                f.write(b"".join(p.encode("utf-8") + b"\0" for p in paths))
+        # A workflow expression is not shell; the listing it names is stubbed,
+        # and fails as git would when there is no list to give.
+        body = "\n".join(re.sub(r"\$\{\{[^}]*\}\}", "x", l) for l in block)
+        script = 'git() { cat "$CHANGED"; }\ng() { cat "$CHANGED"; }\n%s\n' % body
+        try:
+            p = subprocess.run(["bash", "-c", "set -euo pipefail\n" + script],
+                               env=dict(os.environ, CHANGED=changed, GITHUB_OUTPUT=out,
+                                        RUNNER_TEMP=d, t=d, MAIN="main", SHA="0" * 40),
+                               capture_output=True, text=True, timeout=30)
+            said = open(out, encoding="utf-8").read() if p.returncode == 0 else ""
+        except (OSError, subprocess.SubprocessError):
+            return None
+    got = dict(l.split("=", 1) for l in said.splitlines() if "=" in l)
+    return (got["class"], got["effort"]) if "class" in got and "effort" in got else None
+
+
+def class_faults(text, path):
+    """What a reviewer has lost of reading a change at the effort its class names."""
+    lost = []
+    gather, read = _step_span(text, "Gather what the reviewer reads"), _step_span(text, "Read it")
+    g = text[gather[0]:gather[1]] if gather else ""
+    r = text[read[0]:read[1]] if read else ""
+    block = _class_block(g)
+    if block is None:
+        lost.append("a class block in the gather step, from `%s` to `%s`" % (CLASS_FIRST, CLASS_OUT))
+    else:
+        for line in CLASS_LIST[path]:
+            if line not in block:
+                lost.append("the class listed from the diff it reads, NUL-separated, renames split "
+                            "and written down before it is read (`%s`)" % line)
+        for line in (CLASS_CODE, CLASS_EFFORT):
+            if line not in block:
+                lost.append("`%s`" % line)
+        # The shape, not only the strings (#79's ninth read): an arm added for
+        # an extension no case lists would pass every case and every loosening
+        # above, so the `case` holds exactly its three arms and nothing else.
+        try:
+            arms = block[block.index('case "$f" in') + 1:block.index("esac")]
+        except ValueError:
+            arms = None
+        if arms != list(CLASS_ARMS):
+            lost.append("a `case` of exactly three arms, %s (it has %s)"
+                        % (" / ".join("`%s`" % a for a in CLASS_ARMS), arms))
+        for paths, want in CLASS_CASES:
+            got = class_says(block, paths)
+            need = want and (want, WORDS_EFFORT if want == "words" else REVIEWER_EFFORT)
+            if got != need:
+                lost.append("%s (it was %s)"
+                            % ("a change to %r read as %s at %s" % ((paths,) + need) if need
+                               else "a list that could not be made stopping the step",
+                               "%s at %s" % got if got else "not run to an answer"))
+    if len([l for l in g.splitlines() if "effort=" in l and "GITHUB_OUTPUT" in l]) != 1:
+        lost.append("one line, and only one, handing the effort on (`%s`)" % CLASS_OUT)
+    if len(re.findall(r"^\s*EFFORT:", r, re.M)) != 1 or EFFORT_IN not in r:
+        lost.append("`%s` as the read's one effort" % EFFORT_IN)
+    if EFFORT_GUARD not in r or READ_CALL not in r or r.index(EFFORT_GUARD) > r.index(READ_CALL):
+        lost.append("`%s` before the call" % EFFORT_GUARD)
+    if [f for f in (_call(text) or []) if f.startswith("--effort")] != [READ_EFFORT + " \\"]:
+        lost.append("`%s` as the call's one effort" % READ_EFFORT)
+    sign = _step_span(text, "Sign the verdict")
+    sg = text[sign[0]:sign[1]] if sign else ""
+    for line in VERDICT_SAYS:
+        if line not in sg:
+            lost.append("the verdict naming the class and effort it was read at (`%s`)" % line)
+    if path == REVIEW_WORKFLOW and REVIEW_PAGES not in g:
+        lost.append("every file given to a change that is not pages alone (`%s`)" % REVIEW_PAGES)
+    if path == REVIEW_WORKFLOW and REVIEW_LEFT_OUT not in g:
+        lost.append("each file left out of a read named with its size (`%s`)" % REVIEW_LEFT_OUT)
+    say = _step_span(text, "Say it where people read")
+    sy = text[say[0]:say[1]] if say else ""
+    if path == REVIEW_WORKFLOW and (REVIEW_COUNT not in g or REVIEW_COUNT_IN not in sy):
+        lost.append("the files left out counted where they are named and handed to the comment "
+                    "(`%s`, `%s`)" % (REVIEW_COUNT, REVIEW_COUNT_IN))
+    if path == REVIEW_WORKFLOW and not all(line in r for line in REVIEW_TOLD):
+        lost.append("the reviewer told what was left out and asked to say if it needed it (`%s`)"
+                    % "`, `".join(REVIEW_TOLD))
+    return lost
+
+
+# Each must turn the hold red on both reviewers' files (or on the one it names).
+CLASS_LOOSENINGS = (
+    ("a script read as a page", None, lambda t: t.replace("              *.md) ;;\n", "              *.md|*.sh) ;;\n", 1)),
+    ("the brief read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("AGENTS.md|*/AGENTS.md|", "", 1), 1)),
+    ("the operating page read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("HOW-WE-BUILD.md|", "", 1), 1)),
+    ("the charter read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("CHARTER.md|", "", 1), 1)),
+    ("the data rules read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("RICH-DATA.md|", "", 1), 1)),
+    ("the design pages read as pages", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("design/*|", "", 1), 1)),
+    ("the README read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("README.md|", "", 1), 1)),
+    ("the library read as pages", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("library/*|", "", 1), 1)),
+    ("an arm for an unlisted extension", None, lambda t: t.replace("              *.md) ;;\n", "              *.sql) ;;\n              *.md) ;;\n", 1)),
+    ("the left-out count dropped", REVIEW_WORKFLOW, lambda t: t.replace("          " + REVIEW_COUNT_IN + "\n", "", 1)),
+    ("a verdict that hides its effort", None, lambda t: t.replace(' (read as $CLASS at effort $EFFORT)"', '"', 1)),
+    ("a product's decisions read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("PRODUCT.md|", "", 1), 1)),
+    ("a dot-directory read as pages", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("|.*|*/.*", "", 1), 1)),
+    ("anything unrecognised read as pages", None, lambda t: t.replace("              *) class=code ;;\n", "              *) ;;\n", 1)),
+    ("the class reset after the list", None, lambda t: t.replace("          " + CLASS_EFFORT + "\n", "          class=words\n          " + CLASS_EFFORT + "\n", 1)),
+    ("code read at the lower effort", None, lambda t: t.replace("*) effort=%s ;;" % REVIEWER_EFFORT, "*) effort=%s ;;" % WORDS_EFFORT, 1)),
+    ("the effort lowered before it is handed on", None, lambda t: t.replace("          " + CLASS_OUT + "\n", "          effort=%s\n          %s\n" % (WORDS_EFFORT, CLASS_OUT), 1)),
+    ("a list that fails read as no change", None, lambda t: t.replace("--name-only --no-renames", "--name-only --no-renames 2>/dev/null || true; : ", 1)),
+    ("a rename read as its new name", None, lambda t: t.replace("--name-only --no-renames", "--name-only", 1)),
+    ("names split on a line break", None, lambda t: t.replace("diff -z --name-only --no-renames", "diff --name-only --no-renames", 1)),
+    ("the effort never handed on", None, lambda t: t.replace("          " + CLASS_OUT + "\n", "", 1)),
+    ("the effort handed on twice", None, lambda t: _in_step(t, "Gather what the reviewer reads", CLASS_OUT, CLASS_OUT + '\n          echo "effort=%s" >> "$GITHUB_OUTPUT"' % WORDS_EFFORT)),
+    ("the effort not the class's", None, lambda t: t.replace(EFFORT_IN, "EFFORT: " + WORDS_EFFORT, 1)),
+    ("a second effort in the read", None, lambda t: t.replace("          " + EFFORT_IN + "\n", "          %s\n          EFFORT: %s\n" % (EFFORT_IN, WORDS_EFFORT), 1)),
+    ("an effort unchecked", None, lambda t: t.replace(EFFORT_GUARD, "true", 1)),
+    ("an effort written into the call", None, lambda t: t.replace(READ_EFFORT + " \\", "--effort " + WORDS_EFFORT + " \\", 1)),
+    ("code given pages alone", REVIEW_WORKFLOW, lambda t: t.replace("code:*) ;;", "code:*.md) ;;", 1)),
+    ("a file left out unnamed", REVIEW_WORKFLOW, lambda t: re.sub(r"\*\) printf '[^\n]*" + re.escape(REVIEW_LEFT_OUT) + r"[^\n]*; continue ;;", "*) continue ;;", t, 1)),
+    ("the reviewer not told", REVIEW_WORKFLOW, lambda t: t.replace(REVIEW_TOLD[1], 'echo "."', 1)),
+    ("a thin read let pass clean", REVIEW_WORKFLOW, lambda t: t.replace("that is a finding: say which.", "say which.", 1)),
+    ("the class kept from the read", REVIEW_WORKFLOW, lambda t: t.replace("          " + REVIEW_TOLD[2] + "\n", "", 1)),
+)
+
+
+def _check_class_loosenings():
+    """Every loosening above, applied to each reviewer's real file, must be refused."""
+    bad = 0
+    for path in (REVIEW_WORKFLOW, PRODUCT_WORKFLOW):
+        try:
+            text = _read(path)
+        except OSError as e:
+            print("  wiring: %s" % e)
+            return 1
+        if class_faults(text, path):
+            return 1  # the wiring checks say what; a loosened copy proves nothing here
+        for what, only, loosen in CLASS_LOOSENINGS:
+            if only not in (None, path):
+                continue
+            changed = loosen(text)
+            if changed == text:
+                print("  wiring: the loosening '%s' no longer applies to %s — rewrite it against "
+                      "the file as it stands, or it proves nothing" % (what, path))
+                bad += 1
+            elif not class_faults(changed, path):
+                print("  wiring: %s with %s passes the class hold — the guard for it is gone"
+                      % (path, what))
+                bad += 1
+    if not bad:
+        print("ok: each reviewer reads a change at its class's effort, %s for pages alone and %s "
+              "for anything else, worked out from the diff it reads; the class was run on %d "
+              "change(s), review.yml gives any change but pages every file, and each of %d "
+              "loosenings was refused" % (WORDS_EFFORT, REVIEWER_EFFORT, len(CLASS_CASES),
+                                          len(CLASS_LOOSENINGS)))
+    return bad
+
+
 def _check_product_wiring(review=None, product=None, readme=None, quiet=False):
     """review-product.yml, held to review.yml and to the rulebook's own map."""
     say = (lambda *a: None) if quiet else print
@@ -1415,7 +1698,7 @@ def _check_product_wiring(review=None, product=None, readme=None, quiet=False):
                       ("--restricted", "it would read the settings files it is shown"),
                       ("--strict-mcp-config", "it could pick up MCP servers from elsewhere"),
                       ("--model " + REVIEWER_MODEL, "it would not be the reviewer he named"),
-                      ("--effort " + REVIEWER_EFFORT, "it would not be at the effort he named")):
+                      (READ_EFFORT, "it would not read at the effort its change's class names")):
         if flag not in product:
             fault("no longer passes %s — %s" % (flag, why))
     # One version of the tool for both reviewers, installed where no secret is.
@@ -1486,6 +1769,10 @@ def _check_product_wiring(review=None, product=None, readme=None, quiet=False):
     if lost:
         fault("must stop its read in time to sign that it did not read, and say why; it has "
               "lost %s" % "; ".join(lost))
+    lost = class_faults(product, PRODUCT_WORKFLOW)
+    if lost:
+        fault("must read a change at the effort its class names; it has lost %s"
+              % "; ".join(lost))
     if _why(review) is None or _why(product) != _why(review):
         fault("does not name why a read did not happen as %s does, line for line"
               % REVIEW_WORKFLOW)
@@ -1569,7 +1856,6 @@ PRODUCT_LOOSENINGS = (
     ("a push trigger", lambda t: t.replace("on:\n  workflow_dispatch:", "on:\n  push:\n  workflow_dispatch:", 1)),
     ("the door removed", lambda t: t.replace("    environment: reviewer\n", "", 1)),
     ("a concurrency block", lambda t: t.replace("\njobs:\n", "\nconcurrency:\n  group: review\njobs:\n", 1)),
-    ("a lower effort", lambda t: t.replace("--effort max", "--effort high", 1)),
     ("the tools back on", lambda t: t.replace('--tools "" \\\n', "", 1)),
     ("settings files read", lambda t: t.replace("--restricted \\\n", "", 1)),
     ("MCP servers from elsewhere", lambda t: t.replace("--strict-mcp-config \\\n", "", 1)),
@@ -1935,6 +2221,7 @@ def _selftest():
     failed += _check_product_loosenings()
     failed += _check_review_loosenings()
     failed += _check_read_loosenings()
+    failed += _check_class_loosenings()
     return 1 if failed else 0
 
 
