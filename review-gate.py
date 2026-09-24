@@ -16,7 +16,7 @@ gate could see. So the gate gives one of three answers about the head commit, an
 opens on the first alone:
 
     clean         read clean by a reviewer on the register
-    findings      read, and the reviewer left something on it
+    findings      read, and the reviewer left something blocking on it
     unread        no finished read of this commit at all
 
 There were five until 22 September 2026. `cross-vendor` — read clean, but by the
@@ -146,7 +146,8 @@ KEY_ENVIRONMENT = "reviewer"
 
 # The three answers: FINDINGS and CLEAN, worst first, are what a read can say,
 # and UNREAD is what the gate says when no read has. A commit is judged by the
-# strongest thing said about it, and only CLEAN opens the gate.
+# strongest thing said about it, and only CLEAN opens the gate. A read whose
+# findings are all advisory is signed success, so it arrives here as CLEAN.
 #
 # CROSS_VENDOR was another, and it is deleted rather than kept for a day it might
 # mean something again. It said "a reviewer read this clean, but not the one this
@@ -368,9 +369,9 @@ def reason(answer, who, head):
     """
     needed = REVIEWERS[DEFAULT_REVIEWER]
     if answer == FINDINGS:
-        return ("%s read commit %s and left findings on it — answer them, land the round's "
+        return ("%s read commit %s and left a blocking finding on it — answer it, land the round's "
                 "fixes as one push, and ask once; the gate opens on a commit a reviewer reads "
-                "clean, never on an answer to a finding" % (REVIEWERS[who]["name"], head))
+                "with nothing blocking, never on an answer to a finding" % (REVIEWERS[who]["name"], head))
     return ("no reviewer has read commit %s — open a comment on the pull request with '%s', once; "
             "this check re-runs itself when the verdict lands" % (head, needed["ask"]))
 
@@ -1455,8 +1456,42 @@ REVIEW_PAGES = "words:*.md|words:check.sh|code:*) ;;"
 # And the verdict says how thoroughly it was read (#79's eighth read): a clean
 # read at high with pages alone must not look like one at max with everything.
 VERDICT_SAYS = ('title="No findings on this commit (read as $CLASS at effort $EFFORT)"',
-                'title="Findings on this commit (read as $CLASS at effort $EFFORT)"',
+                'title="Advisory findings only on this commit (read as $CLASS at effort $EFFORT)"',
+                'title="Blocking findings on this commit (read as $CLASS at effort $EFFORT)"',
                 "CLASS: ${{ steps.gather.outputs.class }}", "EFFORT: ${{ steps.gather.outputs.effort }}")
+# BLOCKING OR ADVISORY (#79's ninth read, the ninth to leave only notes it said
+# should not hold the change). The brief allows two rounds and then leaves a
+# trade-off standing on the pull request as the CTO's call; the gate opened only
+# on a read that left nothing, so no read ever ended the rounds. The reviewer
+# now marks each finding, and a read whose findings are all advisory opens the
+# gate as a clean one does. The reviewer decides which is which, not the
+# proposer. The signing block is run, not read, on each verdict below.
+SIGN_FIRST = 'if [ "$TOO_BIG" = "yes" ]; then'
+# The read takes the schema's verdicts and nothing else, in both reviewers, held
+# as the block itself and against the schema's own list (#80's second read): a
+# file that lagged would sign a real answer "no verdict".
+VERDICT_CASE = ('case "$verdict" in', "clean|advisory|blocking) ;;",
+                '*) fail "the reviewer returned no verdict: $(why)" ;;', "esac")
+SIGN_CASES = (("clean", "success"), ("advisory", "success"), ("blocking", "failure"),
+              ("findings", "failure"), ("", "failure"), ("Advisory", "failure"))
+
+
+def sign_says(block, verdict):
+    """Run the signing block on a read that answered `verdict`. The conclusion, or None."""
+    with tempfile.TemporaryDirectory() as d:
+        open(os.path.join(d, "review.md"), "w").write("r")
+        body = "\n".join(l.replace("/tmp/", d + "/").replace('"$t/', '"' + d + "/") for l in block)
+        script = "set -euo pipefail\n%s\necho \"conclusion=$conclusion\"\n" % body
+        try:
+            p = subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=30,
+                               env=dict(os.environ, TOO_BIG="no", OUTCOME="success", WHY="",
+                                        VERDICT=verdict, CLASS="code", EFFORT="max"))
+        except (OSError, subprocess.SubprocessError):
+            return None
+    m = re.search(r"^conclusion=(\w+)$", p.stdout, re.M)
+    return m.group(1) if p.returncode == 0 and m else None
+
+
 # A thinner read that needed more says so as a finding, never as a note on a
 # clean read (#79's tenth read: the high path with pages alone is unproven
 # until runs show it, so it fails closed rather than pass on less).
@@ -1573,11 +1608,24 @@ def class_faults(text, path):
         lost.append("`%s` before the call" % EFFORT_GUARD)
     if [f for f in (_call(text) or []) if f.startswith("--effort")] != [READ_EFFORT + " \\"]:
         lost.append("`%s` as the call's one effort" % READ_EFFORT)
+    if _block(r, lambda l: l == VERDICT_CASE[0], lambda l: l == "esac") != list(VERDICT_CASE):
+        lost.append("the read taking exactly the verdicts `%s`" % VERDICT_CASE[1])
+    try:
+        enum = json.loads(SCHEMA.findall(text)[0])["properties"]["verdict"]["enum"]
+    except (IndexError, ValueError, KeyError, TypeError):
+        enum = None
+    if enum != VERDICT_CASE[1].split(")")[0].split("|"):
+        lost.append("the read's verdicts the schema's own (`%s`)" % VERDICT_CASE[1])
     sign = _step_span(text, "Sign the verdict")
     sg = text[sign[0]:sign[1]] if sign else ""
     for line in VERDICT_SAYS:
         if line not in sg:
             lost.append("the verdict naming the class and effort it was read at (`%s`)" % line)
+    block = _block(sg, lambda l: l == SIGN_FIRST, lambda l: l == "fi")
+    for verdict, want in SIGN_CASES:
+        got = sign_says(block, verdict) if block else None
+        if got != want:
+            lost.append("a read answering %r signed %s (it was signed %s)" % (verdict, want, got))
     if path == REVIEW_WORKFLOW and REVIEW_PAGES not in g:
         lost.append("every file given to a change that is not pages alone (`%s`)" % REVIEW_PAGES)
     if path == REVIEW_WORKFLOW and REVIEW_LEFT_OUT not in g:
@@ -1605,6 +1653,11 @@ CLASS_LOOSENINGS = (
     ("the library read as pages", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("library/*|", "", 1), 1)),
     ("an arm for an unlisted extension", None, lambda t: t.replace("              *.md) ;;\n", "              *.sql) ;;\n              *.md) ;;\n", 1)),
     ("the left-out count dropped", REVIEW_WORKFLOW, lambda t: t.replace("          " + REVIEW_COUNT_IN + "\n", "", 1)),
+    ("blocking signed as a pass", None, lambda t: _in_step(t, "Sign the verdict", "          else\n            conclusion=failure", "          else\n            conclusion=success")),
+    ("a verdict outside the schema taken", None, lambda t: _in_step(t, "Read it", VERDICT_CASE[1], "clean|advisory|blocking|findings) ;;")),
+    ("a verdict in the schema refused", None, lambda t: _in_step(t, "Read it", VERDICT_CASE[1], "clean|blocking) ;;")),
+    ("the schema widened past the read", None, lambda t: t.replace('"enum":["clean","advisory","blocking"]', '"enum":["clean","advisory","blocking","findings"]', 1)),
+    ("any verdict read as advisory", None, lambda t: _in_step(t, "Sign the verdict", 'elif [ "$VERDICT" = "advisory" ]', 'elif [ -n "$VERDICT" ]')),
     ("a verdict that hides its effort", None, lambda t: t.replace(' (read as $CLASS at effort $EFFORT)"', '"', 1)),
     ("a product's decisions read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("PRODUCT.md|", "", 1), 1)),
     ("a dot-directory read as pages", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("|.*|*/.*", "", 1), 1)),
@@ -1879,7 +1932,7 @@ PRODUCT_LOOSENINGS = (
     ("the shell traced", lambda t: t.replace("set -euo pipefail\n", "set -euxo pipefail\n", 1)),
     ("the instruction altered", lambda t: t.replace("Read COLD:", "Read kindly:", 1)),
     ("the JWT's lifetime altered", lambda t: t.replace("$((now + 540))", "$((now + 3600))", 1)),
-    ("the verdict's shape altered", lambda t: t.replace('"enum":["clean","findings"]', '"enum":["clean"]', 1)),
+    ("the verdict's shape altered", lambda t: t.replace('"enum":["clean","advisory","blocking"]', '"enum":["clean"]', 1)),
     ("a conclusion GitHub writes", lambda t: t.replace("conclusion=neutral", "conclusion=skipped", 1)),
     ("the run created finished", lambda t: t.replace('status:"in_progress"', 'status:"completed"', 1)),
     ("a repository not on the map", lambda t: t.replace("          - Adonis80/Hemz-OS\n", "          - Adonis80/Hemz-OS\n          - Adonis80/elsewhere\n", 1)),
