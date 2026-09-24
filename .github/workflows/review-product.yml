@@ -350,9 +350,49 @@ jobs:
           pages="$t/pages.txt"
           : > "$pages"
           added=0
+          touched=$(g diff --name-only --diff-filter=AMR "origin/$MAIN...$SHA")
+          # THE ROADMAP, CUT TO THE ITEMS THE CHANGE NAMES (the Chairman's
+          # question of 24 September 2026, on how much each read costs). A
+          # product's roadmap.json is carried on every read of every pull
+          # request, and Hemz OS's had grown past sixty kilobytes — larger than
+          # most changes it was sent beside, spent from the one allowance every
+          # product shares. When the change leaves the roadmap alone, the
+          # reader is given the items the diff names (an id such as P34 or A15)
+          # and the file's other top-level fields whole, and is told how many
+          # items were left out, so a missing one is a thing it knows rather
+          # than a thing it cannot see. A change that edits the roadmap gets it
+          # whole, as before. Nothing about which items were kept is printed:
+          # this log is public and the ids are the product's.
+          cut_roadmap() {
+            python3 - "$t/page" "$t/diff.txt" > "$t/page.cut" <<'PY' || return 1
+          import json, re, sys
+          road = json.load(open(sys.argv[1]))
+          named = set(re.findall(r"\b[PA][0-9]+[a-z]?\b", open(sys.argv[2], errors="replace").read()))
+          items = road.get("items")
+          if not isinstance(items, list):
+              raise SystemExit(1)
+          kept = [i for i in items if isinstance(i, dict) and i.get("id") in named]
+          road["items"] = kept
+          road.pop("retired", None)
+          print("(only the %d item(s) this change names; %d other item(s) and the retired list left out)"
+                % (len(kept), len(items) - len(kept)))
+          print(json.dumps(road, ensure_ascii=False, indent=1))
+          PY
+            mv "$t/page.cut" "$t/page"
+          }
           add() {
             local f="$1" size
             size=$(g cat-file -s "$SHA:$f" 2>/dev/null) || return 1
+            if [ "$f" = roadmap.json ] && ! printf '%s\n' "$touched" | grep -qxF roadmap.json; then
+              g show "$SHA:$f" > "$t/page"
+              if cut_roadmap; then
+                size=$(wc -c < "$t/page")
+                printf '\n===== %s, cut to the items this change names =====\n' "$f" >> "$pages"
+                cat "$t/page" >> "$pages"
+                added=$((added + size))
+                return 0
+              fi
+            fi
             if [ "$size" -gt 150000 ] || [ $((added + size)) -gt 300000 ]; then
               printf '\n===== %s: %s bytes, left out for size =====\n' "$f" "$size" >> "$pages"
               return 0
