@@ -187,8 +187,9 @@ jobs:
           # step and *Read it*, as written, on a clone, with the model stubbed
           # (#79). A page change was handed 142 KB, six files named as left out,
           # the notice and --effort high; check.sh and HOW-WE-BUILD.md were
-          # handed every file and --effort max. Its first run here is the first
-          # live one, and #70 cites it.
+          # handed every file and --effort max. NOT YET PROVED LIVE: no words
+          # read has run on GitHub. When one does, this line names its run, as
+          # review-product.yml's header names its own first; #70 tracks it.
           class=words
           git diff -z --name-only --no-renames "origin/${{ github.event.repository.default_branch }}...${{ steps.head.outputs.sha }}" > "$RUNNER_TEMP/changed.txt"
           while IFS= read -r -d '' f; do
@@ -415,7 +416,7 @@ jobs:
             # What the tool said, not the JSON it said it in: every answer
             # carries a `contextWindow` key, so read whole it named a spent
             # session limit "too long" (#79, run 36012650404).
-            said=$( { cat "$err"; jq -r '.result // empty' "$out" || cat "$out"; } 2>/dev/null || true)
+            said=$( { cat "$err"; jq -r '.. | strings' "$out" || cat "$out"; } 2>/dev/null || true)
             if [ "$rc" -eq 124 ]; then
               echo "the read ran out of time and was stopped at minute $limit of the job; the slice wants splitting"
             elif [ "$rc" -eq 137 ]; then

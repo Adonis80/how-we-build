@@ -466,7 +466,7 @@ jobs:
             # What the tool said, not the JSON it said it in: every answer
             # carries a `contextWindow` key, so read whole it named a spent
             # session limit "too long" (#79, run 36012650404).
-            said=$( { cat "$err"; jq -r '.result // empty' "$out" || cat "$out"; } 2>/dev/null || true)
+            said=$( { cat "$err"; jq -r '.. | strings' "$out" || cat "$out"; } 2>/dev/null || true)
             if [ "$rc" -eq 124 ]; then
               echo "the read ran out of time and was stopped at minute $limit of the job; the slice wants splitting"
             elif [ "$rc" -eq 137 ]; then

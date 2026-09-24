@@ -127,6 +127,7 @@ REVIEWER_EFFORT = "max"
 # as strong as the lead that builds, and the lead builds at medium and steps to
 # high after one failed attempt. At high, a read of pages stays at or above the
 # lead's own effort; at medium it could fall below it. The CTO's reading.
+# Not yet proved on a live read: review.yml's class block names the first run.
 WORDS_EFFORT = "high"
 
 # The badge. `juku-reviewer`, created on the Chairman's account 19 September 2026;
@@ -1247,6 +1248,9 @@ WHY_CASES = (
     (1, "", '{"is_error":true,"result":"boom","modelUsage":{"m":{"contextWindow":200000}}}',
      "unrecognised; 0 bytes on stderr"),
     (1, "", "not json: Prompt is too long", "too long for one read"),
+    # Every string the answer holds, wherever it sits, and none of its keys
+    # (#79's eleventh read): a message outside `.result` is still read.
+    (1, "", '{"is_error":true,"error":{"message":"Prompt is too long"}}', "too long for one read"),
     (1, "OAuth token has expired", "", "credential was refused"),
     (0, "", '{"subtype":"error_max_turns"}', "the tool answered 'error_max_turns'"),
     # A subtype is the tool's to write, and the reason is written to
