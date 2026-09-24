@@ -1,7 +1,8 @@
 name: Review
 
 # The independent reviewer: the model named in review-gate.py, at the effort
-# named beside it, reading every pull request cold before the Chairman sees it.
+# named there for the change's class, reading every pull request cold before
+# the Chairman sees it.
 #
 # ITS VERDICT IS A CHECK RUN, NOT A COMMENT. #34 closed at round ten having
 # established the bar: a read must arrive under a login a branch cannot wear, as
@@ -166,9 +167,12 @@ jobs:
           # THE CLASS, FROM THE DIFF THE REVIEWER READS, and the effort it is
           # read at: decision 0005 keeps max for the risky classes, and a change
           # to pages alone is not one. Pages are `.md` files, less the brief
-          # (AGENTS.md, at any depth: it instructs the reviewer or an agent) and
-          # anything in a dot-directory (.github, .claude: settings and agents'
-          # instructions, whatever their extension). Renames count as a deletion
+          # (AGENTS.md, at any depth: it instructs the reviewer or an agent),
+          # the operating page and the charter (HOW-WE-BUILD.md, CHARTER.md: a
+          # trim that weakened the operating page was caught by a reader twice
+          # on 9 September, and never by a machine) and anything in a
+          # dot-directory (.github, .claude: settings and agents' instructions,
+          # whatever their extension). Renames count as a deletion
           # and an addition, so a script renamed to a page is still a script.
           # Anything unrecognised is code, and a list that cannot be made stops
           # the step rather than reading as no change. #77's reads ran out of
@@ -179,7 +183,7 @@ jobs:
           git diff -z --name-only --no-renames "origin/${{ github.event.repository.default_branch }}...${{ steps.head.outputs.sha }}" > "$RUNNER_TEMP/changed.txt"
           while IFS= read -r -d '' f; do
             case "$f" in
-              AGENTS.md|*/AGENTS.md|.*|*/.*) class=code ;;
+              AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|.*|*/.*) class=code ;;
               *.md) ;;
               *) class=code ;;
             esac

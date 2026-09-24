@@ -1396,8 +1396,11 @@ def _check_read_loosenings():
 # each reviewer works out a class from the diff it reads: `words` when every
 # file the change touches is a page, `code` otherwise. The brief, AGENTS.md at
 # any depth, is never a page: it instructs the reviewer or an agent, so a change
-# to it changes a reader. Nor is anything in a dot-directory, where .github and
-# .claude keep settings and agents' instructions whatever their extension. The
+# to it changes a reader. Nor are the operating page and the charter at the
+# root, HOW-WE-BUILD.md and CHARTER.md: twice on 9 September a trim weakened
+# what the operating page required, and a reader caught it where no machine
+# could (#79's first read). Nor is anything in a dot-directory, where .github
+# and .claude keep settings and agents' instructions whatever their extension. The
 # list splits renames, so a script renamed to a page is still a script, and is
 # NUL-separated, so no name is read as two. It is written to a file first, so a
 # list that cannot be made stops the step: read through `< <(...)` it failed
@@ -1405,6 +1408,7 @@ def _check_read_loosenings():
 # the changes below, from its first line to the one output that hands the
 # effort to the read, so any line added inside it is run too.
 CLASS_FIRST = "class=words"
+CLASS_CODE = "AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|.*|*/.*) class=code ;;"
 CLASS_EFFORT = ('case "$class" in words) effort=%s ;; *) effort=%s ;; esac'
                 % (WORDS_EFFORT, REVIEWER_EFFORT))
 CLASS_OUT = 'echo "effort=$effort" >> "$GITHUB_OUTPUT"'
@@ -1420,17 +1424,25 @@ EFFORT_GUARD = ('case "$EFFORT" in high|max) ;; *) fail "the change\'s class set
                 'read at" ;; esac')
 READ_EFFORT = '--effort "$EFFORT"'
 # review.yml's pages: a change to pages alone is given the pages and check.sh;
-# any other is given every file, as every read was before.
+# any other is given every file, as every read was before. What is left out is
+# named with its size, and the reviewer is told so and asked to say if a
+# finding needed it: without those, a read short of a file is silent about it.
 REVIEW_PAGES = "words:*.md|words:check.sh|code:*) ;;"
+REVIEW_LEFT_OUT = "left out: this change touches pages only ====="
+REVIEW_TOLD = ('if [ "$CLASS" = words ]; then', 'echo "a finding needed one, say which."',
+               "CLASS: ${{ steps.gather.outputs.class }}")
 # (the files a change touches, the class it must be read as). None is a list
 # git could not make, which must stop the block rather than read as anything.
 CLASS_CASES = (
     (None, None),
     ([], "words"),
     (["README.md"], "words"),
-    (["docs/reviewer.md", "HOW-WE-BUILD.md", "design/SCREEN-LAW.md"], "words"),
+    (["docs/reviewer.md", "RICH-DATA.md", "design/SCREEN-LAW.md"], "words"),
+    (["docs/HOW-WE-BUILD.md", "docs/CHARTER.md"], "words"),
     (["a page with spaces.md"], "words"),
     (["AGENTS.md"], "code"),
+    (["HOW-WE-BUILD.md"], "code"),
+    (["README.md", "CHARTER.md"], "code"),
     (["docs/AGENTS.md"], "code"),
     (["README.md", "check.sh"], "code"),
     (["review-gate.py"], "code"),
@@ -1487,8 +1499,9 @@ def class_faults(text, path):
             if line not in block:
                 lost.append("the class listed from the diff it reads, NUL-separated, renames split "
                             "and written down before it is read (`%s`)" % line)
-        if CLASS_EFFORT not in block:
-            lost.append("`%s`" % CLASS_EFFORT)
+        for line in (CLASS_CODE, CLASS_EFFORT):
+            if line not in block:
+                lost.append("`%s`" % line)
         for paths, want in CLASS_CASES:
             got = class_says(block, paths)
             need = want and (want, WORDS_EFFORT if want == "words" else REVIEWER_EFFORT)
@@ -1507,14 +1520,21 @@ def class_faults(text, path):
         lost.append("`%s` as the call's one effort" % READ_EFFORT)
     if path == REVIEW_WORKFLOW and REVIEW_PAGES not in g:
         lost.append("every file given to a change that is not pages alone (`%s`)" % REVIEW_PAGES)
+    if path == REVIEW_WORKFLOW and REVIEW_LEFT_OUT not in g:
+        lost.append("each file left out of a read named with its size (`%s`)" % REVIEW_LEFT_OUT)
+    if path == REVIEW_WORKFLOW and not all(line in r for line in REVIEW_TOLD):
+        lost.append("the reviewer told what was left out and asked to say if it needed it (`%s`)"
+                    % "`, `".join(REVIEW_TOLD))
     return lost
 
 
 # Each must turn the hold red on both reviewers' files (or on the one it names).
 CLASS_LOOSENINGS = (
     ("a script read as a page", None, lambda t: t.replace("              *.md) ;;\n", "              *.md|*.sh) ;;\n", 1)),
-    ("the brief read as a page", None, lambda t: t.replace("AGENTS.md|*/AGENTS.md|.*|*/.*) class=code", ".*|*/.*) class=code", 1)),
-    ("a dot-directory read as pages", None, lambda t: t.replace("AGENTS.md|*/AGENTS.md|.*|*/.*) class=code", "AGENTS.md|*/AGENTS.md) class=code", 1)),
+    ("the brief read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("AGENTS.md|*/AGENTS.md|", "", 1), 1)),
+    ("the operating page read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("HOW-WE-BUILD.md|", "", 1), 1)),
+    ("the charter read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("CHARTER.md|", "", 1), 1)),
+    ("a dot-directory read as pages", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("|.*|*/.*", "", 1), 1)),
     ("anything unrecognised read as pages", None, lambda t: t.replace("              *) class=code ;;\n", "              *) ;;\n", 1)),
     ("the class reset after the list", None, lambda t: t.replace("          " + CLASS_EFFORT + "\n", "          class=words\n          " + CLASS_EFFORT + "\n", 1)),
     ("code read at the lower effort", None, lambda t: t.replace("*) effort=%s ;;" % REVIEWER_EFFORT, "*) effort=%s ;;" % WORDS_EFFORT, 1)),
@@ -1529,6 +1549,9 @@ CLASS_LOOSENINGS = (
     ("an effort unchecked", None, lambda t: t.replace(EFFORT_GUARD, "true", 1)),
     ("an effort written into the call", None, lambda t: t.replace(READ_EFFORT + " \\", "--effort " + WORDS_EFFORT + " \\", 1)),
     ("code given pages alone", REVIEW_WORKFLOW, lambda t: t.replace("code:*) ;;", "code:*.md) ;;", 1)),
+    ("a file left out unnamed", REVIEW_WORKFLOW, lambda t: re.sub(r"\*\) printf '[^\n]*" + re.escape(REVIEW_LEFT_OUT) + r"[^\n]*; continue ;;", "*) continue ;;", t, 1)),
+    ("the reviewer not told", REVIEW_WORKFLOW, lambda t: t.replace(REVIEW_TOLD[1], 'echo "."', 1)),
+    ("the class kept from the read", REVIEW_WORKFLOW, lambda t: t.replace("          " + REVIEW_TOLD[2] + "\n", "", 1)),
 )
 
 
