@@ -447,7 +447,7 @@ jobs:
             echo "Plain English. Never write a file into this repository."
             echo
             echo "Mark each finding blocking or advisory, and give every finding in this read."
-            echo "Blocking: it must be fixed before this lands - a defect that lets through what"
+            echo "Blocking: it must be fixed before this lands — a defect that lets through what"
             echo "should be refused, a broken rule, a security, money or data risk, or a claim"
             echo "the change makes that is false. Advisory: a trade-off, wording or improvement"
             echo "the CTO may take or leave. Answer verdict 'blocking' if any finding is"
