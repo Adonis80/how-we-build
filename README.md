@@ -10,11 +10,19 @@ The rulebook for every product Dhayan's AI studio builds. This repository says *
 
 A fourth, `AGENTS.md`, is not for sessions at all: it carries the reviewer's brief for changes to this repository, because the reviewing tool loads only a file of that name.
 
-**And `library/`, which holds no page yet.** It is where a topic goes when it leaves this README: one page per topic, opened only when a task touches it, each named here with when to open it (his ruling, 23 September 2026, [decision 0005](https://github.com/Adonis80/how-we-build/issues/75): *"a lesson learned in one product reaches every product at once; the fault is loading, not sharing"*). `check.sh` holds the shape before the first page arrives: each page named here, at most 4000 bytes and carrying a `Scope: … Open when: …` line, and every link to one resolving.
+**And `library/`, indexed under *Where each topic lives* below.** It is where a topic goes when it leaves this README: one page per topic, opened only when a task touches it, each named here with when to open it (his ruling, 23 September 2026, [decision 0005](https://github.com/Adonis80/how-we-build/issues/75): *"a lesson learned in one product reaches every product at once; the fault is loading, not sharing"*). `check.sh` holds the shape: each page named here, at most 4000 bytes and carrying a `Scope: … Open when: …` line, and every link to one resolving.
 
 **And the `decision` issues in this repository: why a rule is what it is, rather than the obvious alternative.** They hold the one thing he has ruled worth keeping from a conversation (his ruling, 22 September 2026, [decision 0003](https://github.com/Adonis80/how-we-build/issues/59): *"The only thing that we should be storing that is valuable is the architecture consensus that we reach with two intelligent AI models"*) — a consensus two capable models reached after genuinely disagreeing, each carrying the question, what was rejected, who was overruled on what evidence, and what is still unproved. **Read like `CHARTER.md`, not like the operating page:** when a rule is about to change or its reason is in question, and never loaded into a working session. Nothing executable depends on them — delete them all and the system behaves identically, and only the reasoning is lost. A record is never edited to stay current; a later one supersedes it and the earlier stands as history.
 
 **Why it is public.** It holds no secrets, prices or customer data — only the way we work — and a public repository is the one thing every session, in either stack, can read directly, with no extra setup. Product repositories stay private.
+
+## Where each topic lives
+
+One page per topic, opened when its trigger fires. A topic moves here from this README word for word, one pull request at a time.
+
+| Page | Open when |
+|---|---|
+| `library/session-changeover.md`: *Session changeover* | deciding whether to stay in a session or start a fresh one, and before leaving one |
 
 ## Products under this rulebook
 
@@ -205,24 +213,6 @@ Prefer a fresh conversation for each substantial question, and end one when the
 bounded question is settled, when the next turn is materially a new question, or when
 reloading the small source set would be cheaper and clearer than carrying the thread.
 ```
-
-## Session changeover
-
-His ruling, 10 September 2026: at every turn, weigh whether it is cheaper to stay in this session or start a fresh one, and when starting fresh, leave the next session what it needs. What follows is that ruling, worked out with the consultant and written down.
-
-At every turn, decide whether the next turn stays here or starts fresh. Stay only while all three hold:
-
-- **Same work:** the same slice or bounded question continues.
-- **Cheaper to stay:** the useful unresolved context here costs less than rebuilding it from the small canonical boot.
-- **Clear:** the history still helps more than it hurts, with no material stale truth, contradiction, looping, irrelevant output or lost detail.
-
-Otherwise, checkpoint and start fresh. Provider caches and compaction can inform that judgement but are never rules in themselves.
-
-Before leaving, put every durable fact in GitHub and make the pull request and roadmap handover sufficient on their own. If the opening words for the next session would have to carry project state, the handover is not finished. Advisory work that has no repository yet gets one temporary `START-HERE.md` — the bounded question, what is agreed, the next action, the files that matter — superseded the moment the result lands in GitHub.
-
-**And say so, as a claim that can be wrong.** A turn that ends "ready to start fresh session" also states that the next session has full context: the repository carries what it needs, and nothing has to be pasted. The saying is the mechanism. The obligation above — the handover sufficient on its own — is invisible until somebody checks it, and a session can satisfy the phrase while failing the substance. Stating it turns the phrase into a claim, and a claim gets checked before it is made. On 14 September 2026 a Juku Perfume session ended eight replies "ready to start fresh session" while `roadmap.json` still pointed at code that session had just deleted, still said a blocker had gone when it had not, and named no next action at all. The Chairman had to ask whether the slice was even finished; the check that question forced found six wrong lines. Nothing was concealed — the phrase had become a sign-off rather than a statement about the repository, and a sign-off costs nothing to say.
-
-A fresh session reads progressively from canonical truth and stops when it knows enough. It never rebuilds repository state from old chats. Keep tool output targeted, and never poll. For Codex, a fresh task starts each slice and a thread is continued only inside that slice, while the three above hold.
 
 ## The two stacks
 
