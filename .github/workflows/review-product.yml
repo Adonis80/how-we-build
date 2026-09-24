@@ -318,6 +318,22 @@ jobs:
           # head, which the proposer writes (Codex's P1 on #38, as review.yml).
           g show "origin/$MAIN:AGENTS.md" > "$t/brief.txt"
           echo "brief bytes: $(wc -c < "$t/brief.txt")"
+          # THE CLASS AND ITS EFFORT, for review.yml's reasons and by its block,
+          # which review-gate.py runs and holds line for line in both. A
+          # product's pages are routed already, below; only the effort moves.
+          class=words
+          g diff -z --name-only --no-renames "origin/$MAIN...$SHA" > "$t/changed.txt"
+          while IFS= read -r -d '' f; do
+            case "$f" in
+              AGENTS.md|*/AGENTS.md|.*|*/.*) class=code ;;
+              *.md) ;;
+              *) class=code ;;
+            esac
+          done < "$t/changed.txt"
+          case "$class" in words) effort=high ;; *) effort=max ;; esac
+          echo "class=$class" >> "$GITHUB_OUTPUT"
+          echo "effort=$effort" >> "$GITHUB_OUTPUT"
+          echo "class: $class, read at effort $effort"
           # THE PAGES, AS DATA: the files every product carries, then every file
           # the change touches, each as the change would leave it. A diff shows
           # a hunk; a reader judging it needs the file around it, and the brief
@@ -374,6 +390,7 @@ jobs:
           REPO: ${{ inputs.repo }}
           SHA: ${{ inputs.sha }}
           STARTED: ${{ steps.asked.outputs.started }}
+          EFFORT: ${{ steps.gather.outputs.effort }}
         run: |
           set -euo pipefail
           t="$RUNNER_TEMP"
@@ -460,9 +477,11 @@ jobs:
             fi
           }
 
-          # The model and effort the Chairman named, the tools switched off,
+          # The model the Chairman named, at the effort decision 0005 gives the
+          # change's class, the tools switched off,
           # for review.yml's reasons, which review-gate.py holds flag for flag.
           schema='{"type":"object","additionalProperties":false,"required":["verdict","review"],"properties":{"verdict":{"type":"string","enum":["clean","findings"]},"review":{"type":"string"}}}'
+          case "$EFFORT" in high|max) ;; *) fail "the change's class set no effort to read at" ;; esac
           limit=25
           [[ "${STARTED:-}" =~ ^[0-9]+$ ]] || fail "the job's start was not recorded, so the read had no deadline"
           left=$(( STARTED + limit * 60 - $(date +%s) ))
@@ -470,7 +489,7 @@ jobs:
           rc=0
           timeout --kill-after=60s "${left}s" claude -p \
             --model claude-sonnet-5 \
-            --effort max \
+            --effort "$EFFORT" \
             --tools "" \
             --restricted \
             --strict-mcp-config \
@@ -578,7 +597,7 @@ jobs:
             echo
             echo "---"
             echo "_Read by the model named in the rulebook's \`review-gate.py\`, at the effort named_"
-            echo "_beside it, from \`Adonis80/how-we-build\`'s \`.github/workflows/review-product.yml\`._"
+            echo "_there for its class, from \`Adonis80/how-we-build\`'s \`.github/workflows/review-product.yml\`._"
             echo "_It is the only read this repository's gate counts, and there is no second reviewer_"
             echo "_behind it._"
           } > "$t/comment.md"
