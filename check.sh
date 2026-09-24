@@ -98,7 +98,14 @@ done
 for f in $named; do
   [ -f "$f" ] || { echo "FAIL: the README's index names '$f', which does not exist."; lib_fail=1; }
 done
-[ "$lib_fail" -eq 0 ] && echo "ok: $(echo $present | wc -w) library pages, each named by the README, each under 4000 bytes, each scoped"
+# And a page named from anywhere else a session reads exists too: the README is
+# the index, but the operating page, the charter, the brief and the pages
+# themselves link into the library, and a link to nothing sends a session
+# nowhere just the same (#77's first read).
+for f in $(grep -o -h -E 'library/[A-Za-z0-9._-]+\.md' AGENTS.md CHARTER.md HOW-WE-BUILD.md $present | sort -u); do
+  [ -f "$f" ] || { echo "FAIL: '$f' is linked but does not exist."; lib_fail=1; }
+done
+[ "$lib_fail" -eq 0 ] && echo "ok: $(echo $present | wc -w) library pages, each named by the README, each under 4000 bytes, each scoped, and every link to one resolves"
 [ "$lib_fail" -eq 0 ] || fail=1
 
 # 3. Nothing that looks like a secret, anywhere.

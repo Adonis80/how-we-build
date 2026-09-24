@@ -2,7 +2,7 @@
 
 Scope: this repository. Open when: proposing or reviewing a change here, or starting *build* with this repository chosen.
 
-**By pull request only**, against protected `main`. `check.sh` runs in CI and refuses: the operating page over 600 words; a library page over its size; a file not on the lists; anything that looks like a secret; and, in a pull request, a commit the reviewer has not read clean.
+**By pull request only**, against protected `main`. `check.sh` runs in CI and refuses: the operating page over 600 words, counted as `split()` counts, so a standalone dash is a word; a library page over its size; a file not on the lists; anything that looks like a secret; and, in a pull request, a commit the reviewer has not read clean.
 
 **What needs the gate.** Adding a rule, step, file, check or agent needs the charter's gate (§13) or the Chairman's own ruling. Removing one, or correcting wording, needs neither. The CTO settles and merges changes here without him (his ruling); he is asked only for money, a permission, a product outcome or a picture. The reviewer still reads every change cold.
 
