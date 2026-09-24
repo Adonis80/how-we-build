@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # The rulebook's own guard. CI runs it on every push and pull request.
 # It refuses: an operating page over its word cap, a screen law over its own, a
-# root or design file that is not on its list or missing from it, anything that
-# looks like a secret (naming the place, never the value), a review gate that no
-# longer matches the reviewer's answers or has drifted from the workflows that
-# fetch them, and, in a pull request, a commit no reviewer has read clean —
-# unread, or read and left findings on. Nothing else. A read by anybody the
+# root, design or library file that is not on its list or missing from it, a
+# library page over its size or unscoped, a link to a page that does not exist,
+# anything that looks like a secret (naming the place, never the value), a
+# review gate that no longer matches the reviewer's answers or has drifted from
+# the workflows that fetch them, and, in a pull request, a commit no reviewer
+# has read clean — unread, or read and left findings on. Nothing else. A read by anybody the
 # gate does not count is unread, not a shape of its own.
 # A third shape, "read clean by a reviewer the rulebook does not allow to
 # clear this change", was real while two vendors were on the register and is
@@ -25,7 +26,7 @@ fail=0
 # The cap was 500 from 28 August to 12 September 2026, when the two-lead rules
 # could not fit under it without spending a rule the page requires. It moved to
 # 600 in the pull request that needed it, for that stated reason, and 600 is the
-# ceiling: from here a rule in means a rule out. See README, Changing the rulebook.
+# ceiling: from here a rule in means a rule out. See *Changing the rulebook*.
 words=$(python3 -c 'import sys; print(len(open(sys.argv[1],encoding="utf-8").read().split()))' HOW-WE-BUILD.md)
 if [ "$words" -gt 600 ]; then
   echo "FAIL: HOW-WE-BUILD.md is $words words; the cap is 600."
@@ -35,7 +36,7 @@ else
 fi
 
 # 2. Only these files exist at the root (plus .git and .github).
-allowed=" AGENTS.md CHARTER.md HOW-WE-BUILD.md README.md RICH-DATA.md check.sh design review-gate.py "
+allowed=" AGENTS.md CHARTER.md HOW-WE-BUILD.md README.md RICH-DATA.md check.sh design library review-gate.py "
 while IFS= read -r f; do
   case "$f" in .git|.github) continue ;; esac
   case "$allowed" in
@@ -50,6 +51,9 @@ done < <(ls -A)
 for f in $allowed; do
   case "$f" in
     design) [ -d "$f" ] || { echo "FAIL: '$f' is missing, or is not a directory; the root list is a fixed set."; fail=1; } ;;
+    # Git keeps no empty directory, so an absent library is the empty one, and
+    # the README's index holds it to the list both ways instead (2c).
+    library) [ ! -e "$f" ] || [ -d "$f" ] || { echo "FAIL: '$f' is not a directory."; fail=1; } ;;
     *) [ -f "$f" ] || { echo "FAIL: '$f' is missing, or is not a file; the root list is a fixed set."; fail=1; } ;;
   esac
 done
@@ -77,6 +81,46 @@ done < <(ls -A design)
 for f in $design_allowed; do
   [ -f "design/$f" ] || { echo "FAIL: 'design/$f' is missing; the design pages are a fixed set."; fail=1; }
 done
+
+# 2c. The library: one page per topic, opened only when a task touches it (his
+# ruling of 23 September 2026, decision 0005, issue #75). The README is its
+# index, both ways: a page the README does not name is never opened, and a
+# name with no page sends a session nowhere. Each page is one topic in at most
+# 4000 bytes, the machine's proxy for the decision's 1,000 tokens, and says
+# whom it binds and when to open it. A link to a page from anywhere in this
+# repository must resolve too, not only the README's: a list of the files to
+# search would be one more list to drift. With no page named there is no
+# library, and that passes: the check exists before the pages it holds.
+lib_fail=0
+page_re='library/[A-Za-z0-9._-]+\.md'
+named=$( { grep -o -E "$page_re" README.md || true; } | sort -u)
+shopt -s dotglob nullglob
+pages=(library/*)
+shopt -u dotglob nullglob
+for f in "${pages[@]}"; do
+  # A name the index cannot spell can never be named, so it is refused before
+  # anything is read from it, and printed escaped, not raw.
+  [[ "$f" =~ ^${page_re}$ ]] || { printf "FAIL: %q is not a page name the README can hold (letters, digits, '.', '_', '-', ending .md).\n" "$f"; lib_fail=1; continue; }
+  grep -qxF "$f" <<< "$named" || { echo "FAIL: '$f' is not named in the README, so no session is sent to it."; lib_fail=1; }
+  [ -f "$f" ] || { echo "FAIL: '$f' is not a file."; lib_fail=1; continue; }
+  b=$(wc -c < "$f" | tr -d ' ')
+  [ "$b" -le 4000 ] || { echo "FAIL: '$f' is $b bytes; a library page's cap is 4000 - split the topic or cut history."; lib_fail=1; }
+  grep -q -E '^Scope: .+ Open when: .+' "$f" || { echo "FAIL: '$f' has no 'Scope: … Open when: …' line."; lib_fail=1; }
+done
+for f in $named; do
+  [ -f "$f" ] || { echo "FAIL: the README names '$f', which does not exist."; lib_fail=1; }
+done
+while IFS= read -r hit; do
+  f=${hit##*:}
+  [ -f "$f" ] || { echo "FAIL: ${hit%:*} links '$f', which does not exist."; lib_fail=1; }
+done < <(grep -r -o -I -E --exclude-dir=.git "$page_re" . | sed 's|^\./||' | sort -u || true)
+if [ "$lib_fail" -ne 0 ]; then
+  fail=1
+elif [ "${#pages[@]}" -eq 0 ]; then
+  echo "ok: no library pages yet, and nothing names or links one"
+else
+  echo "ok: ${#pages[@]} library pages, each named by the README, each at most 4000 bytes and scoped, and every link to one resolves"
+fi
 
 # 3. Nothing that looks like a secret, anywhere.
 pattern='(ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,})'
