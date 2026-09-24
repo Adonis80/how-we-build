@@ -16,7 +16,7 @@ gate could see. So the gate gives one of three answers about the head commit, an
 opens on the first alone:
 
     clean         read clean by a reviewer on the register
-    findings      read, and the reviewer left something on it
+    findings      read, and the reviewer left something blocking on it
     unread        no finished read of this commit at all
 
 There were five until 22 September 2026. `cross-vendor` — read clean, but by the
@@ -146,7 +146,8 @@ KEY_ENVIRONMENT = "reviewer"
 
 # The three answers: FINDINGS and CLEAN, worst first, are what a read can say,
 # and UNREAD is what the gate says when no read has. A commit is judged by the
-# strongest thing said about it, and only CLEAN opens the gate.
+# strongest thing said about it, and only CLEAN opens the gate. A read whose
+# findings are all advisory is signed success, so it arrives here as CLEAN.
 #
 # CROSS_VENDOR was another, and it is deleted rather than kept for a day it might
 # mean something again. It said "a reviewer read this clean, but not the one this
@@ -368,9 +369,9 @@ def reason(answer, who, head):
     """
     needed = REVIEWERS[DEFAULT_REVIEWER]
     if answer == FINDINGS:
-        return ("%s read commit %s and left findings on it — answer them, land the round's "
+        return ("%s read commit %s and left a blocking finding on it — answer it, land the round's "
                 "fixes as one push, and ask once; the gate opens on a commit a reviewer reads "
-                "clean, never on an answer to a finding" % (REVIEWERS[who]["name"], head))
+                "with nothing blocking, never on an answer to a finding" % (REVIEWERS[who]["name"], head))
     return ("no reviewer has read commit %s — open a comment on the pull request with '%s', once; "
             "this check re-runs itself when the verdict lands" % (head, needed["ask"]))
 
