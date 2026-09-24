@@ -118,12 +118,15 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: What was asked
+        id: asked
         env:
           REPO: ${{ inputs.repo }}
           PR: ${{ inputs.pr }}
           SHA: ${{ inputs.sha }}
         run: |
           set -euo pipefail
+          # The read's deadline counts from here, the job's first step (*Read it*).
+          echo "started=$(date +%s)" >> "$GITHUB_OUTPUT"
           # The inputs reach every script as variables and are never pasted
           # into one: a dispatch is typed, and a value pasted into a script is a
           # value that can run. review-gate.py refuses a build that pastes one.
@@ -370,6 +373,7 @@ jobs:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           REPO: ${{ inputs.repo }}
           SHA: ${{ inputs.sha }}
+          STARTED: ${{ steps.asked.outputs.started }}
         run: |
           set -euo pipefail
           t="$RUNNER_TEMP"
@@ -429,14 +433,14 @@ jobs:
           # THE REASON FOR A FAILED READ IS NAMED, NEVER QUOTED. review.yml's
           # log is its own repository's and can say what went wrong; this one
           # is public, and the tool's answer can carry the product's words.
-          # And the read stops in time to say so, for review.yml's reason: a
-          # read the job's own limit cancels signs nothing. `why()`, the limit
+          # And the read stops at minute `limit` of the job, for review.yml's
+          # reason: a read the job's own limit cancels signs nothing. `why()`, the limit
           # and the call are review.yml's, held line for line by review-gate.py.
           why() {
             local sub
             sub=$(jq -r '.subtype // empty' "$out" 2>/dev/null | tr -cd 'a-z_' || true)
             if [ "$rc" -eq 124 ]; then
-              echo "the read ran out of time and was stopped at $limit minutes; the slice wants splitting"
+              echo "the read ran out of time and was stopped at minute $limit of the job; the slice wants splitting"
             elif [ "$rc" -eq 137 ]; then
               echo "the read was killed, out of time or out of memory"
             elif [ "$rc" -eq 127 ]; then
@@ -460,8 +464,11 @@ jobs:
           # for review.yml's reasons, which review-gate.py holds flag for flag.
           schema='{"type":"object","additionalProperties":false,"required":["verdict","review"],"properties":{"verdict":{"type":"string","enum":["clean","findings"]},"review":{"type":"string"}}}'
           limit=25
+          [[ "${STARTED:-}" =~ ^[0-9]+$ ]] || fail "the job's start was not recorded, so the read had no deadline"
+          left=$(( STARTED + limit * 60 - $(date +%s) ))
+          [ "$left" -ge 60 ] || fail "no time was left to read before minute $limit of the job"
           rc=0
-          timeout --kill-after=60s "${limit}m" claude -p \
+          timeout --kill-after=60s "${left}s" claude -p \
             --model claude-sonnet-5 \
             --effort max \
             --tools "" \

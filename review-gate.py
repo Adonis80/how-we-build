@@ -97,6 +97,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -1185,19 +1186,37 @@ def _call(text):
 # 35925225489, ran into the job's 30 minutes: the job was cancelled, nothing was
 # signed, and the pull request just looked unread. A read that failed any other
 # way said "the run log says which", and the log did not (#47, run 35773558213;
-# #56, run 35788659651). So each reviewer bounds its call inside the step, at a
-# limit that leaves minutes of the job's own for the verdict to be signed, and
-# carries `why()`'s reason to the check run. `why()` is run here, not read: each
-# way a read can end below must be named, on one line, or the step has lost it.
-READ_CALL = 'timeout --kill-after=60s "${limit}m" claude -p \\'
+# #56, run 35788659651). So each reviewer bounds its call inside the step and
+# carries `why()`'s reason to the check run. The bound is minute `limit` OF THE
+# JOB, counted from the first step's `started`, not from the read's own start
+# (#76's first read): time the steps before it spend comes out of the read, and
+# the minutes after it are left for the verdict to be signed. `why()` and the
+# deadline are run here, not read: each way a read can end below must be named,
+# on one line, or the step has lost it.
+READ_CALL = 'timeout --kill-after=60s "${left}s" claude -p \\'
 READ_LIMIT = re.compile(r"^\s*limit=(\d+)\s*$", re.M)
 READ_MARGIN = 5
+READ_START = 'echo "started=$(date +%s)" >> "$GITHUB_OUTPUT"'
+READ_LEFT = 'left=$(( STARTED + limit * 60 - $(date +%s) ))'
+# (what the steps before the read did, how long ago the job started or what was
+# recorded, whether the read may begin). `limit` is 25 in both files.
+DEADLINE_CASES = (
+    ("the job has just started", 0, True),
+    ("the steps before ran to minute 20", 20 * 60, True),
+    ("they ran to within a minute of the deadline", 25 * 60 - 30, False),
+    ("they ran past it", 60 * 60, False),
+    ("no start was recorded", "", False),
+    ("the start is not a number", "1+1", False),
+    # Unchecked, a word is an unset variable to the arithmetic, and the step
+    # dies on it before it can say why.
+    ("the start is a word", "soon", False),
+)
 READ_FAIL = """printf 'why=%s\\n' "$(printf '%s' "$1" | tr -d '\\r\\n')" >> "$GITHUB_OUTPUT\""""
 READ_WHY = ("WHY: ${{ steps.read.outputs.why }}", 'title="Did not read: $WHY"')
 # (how the read ended, its stderr, its answer, what must be said). `%s` is the
 # file's own limit.
 WHY_CASES = (
-    (124, "", "", "the read ran out of time and was stopped at %s minutes"),
+    (124, "", "", "the read ran out of time and was stopped at minute %s of the job"),
     (137, "", "", "the read was killed, out of time or out of memory"),
     (127, "bash: claude: command not found", "", "the reviewer's tool is not installed"),
     (1, "", '{"is_error":true,"result":"Prompt is too long"}', "too long for one read"),
@@ -1233,6 +1252,29 @@ def why_says(block, limit, rc, err, out):
         return p.returncode, p.stdout
 
 
+def _deadline(text):
+    """The read's deadline, as the stripped lines from `limit=` to the check on `left`."""
+    return _block(text, lambda l: READ_LIMIT.match(l) is not None,
+                  lambda l: l.startswith('[ "$left" -ge 60 ] || fail "'))
+
+
+def deadline_says(block, started):
+    """Run the deadline with `started` as the job's start. (may it read, seconds left)."""
+    now = int(time.time())
+    value = str(now - started) if isinstance(started, int) else started
+    script = 'fail() { echo "refused: $1"; exit 3; }\n%s\necho "left=$left"\n' % "\n".join(block)
+    try:
+        p = subprocess.run(["bash", "-c", "set -euo pipefail\n" + script],
+                           env=dict(os.environ, STARTED=value), capture_output=True, text=True,
+                           timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None, None
+    m = re.search(r"^left=(-?\d+)$", p.stdout, re.M)
+    if p.returncode == 0 and m:
+        return True, int(m.group(1))
+    return (False, None) if p.returncode == 3 and "refused: " in p.stdout else (None, None)
+
+
 def read_faults(text):
     """What a reviewer's read has lost of stopping in time and saying why."""
     lost = []
@@ -1246,6 +1288,31 @@ def read_faults(text):
     read, sign = _step_span(text, "Read it"), _step_span(text, "Sign the verdict")
     if not read or READ_FAIL not in text[read[0]:read[1]]:
         lost.append("`%s` in the read" % READ_FAIL)
+    # The job's start, recorded by its first step and handed to the read.
+    first = re.search(r"^    steps:\n(.*?)(?=^      - name: |\Z)", text, re.S | re.M)
+    first = re.search(r"^      - name: .*?(?=^      - name: |\Z)", text[first.end():], re.S | re.M) \
+        if first else None
+    first_id = re.search(r"^        id: (\w+)\s*$", first.group(0), re.M) if first else None
+    if not first_id or READ_START not in first.group(0):
+        lost.append("`%s` in the job's first step, which has an id" % READ_START)
+    elif not read or ("STARTED: ${{ steps.%s.outputs.started }}" % first_id.group(1)) \
+            not in text[read[0]:read[1]]:
+        lost.append("`STARTED: ${{ steps.%s.outputs.started }}` handed to the read"
+                    % first_id.group(1))
+    if not read or READ_LEFT not in text[read[0]:read[1]]:
+        lost.append("the deadline counted from the job's start (`%s`)" % READ_LEFT)
+    block = _deadline(text)
+    if block is None or len(limit) != 1:
+        lost.append("a deadline, from `limit=` to a refusal when under a minute is left")
+    else:
+        for what, started, may in DEADLINE_CASES:
+            ok, left = deadline_says(block, started)
+            budget = int(limit[0]) * 60 - (started if isinstance(started, int) else 0)
+            if ok is None or ok != may or (ok and not budget - 5 <= left <= budget):
+                lost.append("a deadline that %s the read when %s (it %s)"
+                            % ("lets in" if may else "refuses", what,
+                               "could not be run" if ok is None else
+                               "gave it %ss" % left if ok else "refused it"))
     for line in READ_WHY:
         if not sign or line not in text[sign[0]:sign[1]]:
             lost.append("`%s` where the verdict is signed" % line)
@@ -1273,6 +1340,11 @@ READ_LOOSENINGS = (
     ("the reason never recorded", lambda t: _in_step(t, "Read it", READ_FAIL, "true")),
     ("the reason never passed on", lambda t: _in_step(t, "Sign the verdict", READ_WHY[0], "WHY: none")),
     ("the reason kept from the verdict", lambda t: _in_step(t, "Sign the verdict", READ_WHY[1], 'title="Did not read"')),
+    ("the deadline from the read's own start", lambda t: t.replace(READ_LEFT, "left=$(( limit * 60 ))", 1)),
+    ("a read begun with no time left", lambda t: t.replace('[ "$left" -ge 60 ] || fail', '[ "$left" -ge -9999 ] || fail', 1)),
+    ("a start that is not checked", lambda t: _in_step(t, "Read it", '[[ "${STARTED:-}" =~ ^[0-9]+$ ]] || fail', "true || fail")),
+    ("no start recorded", lambda t: t.replace("          " + READ_START + "\n", "", 1)),
+    ("the start never handed on", lambda t: t.replace("outputs.started }}", "outputs.begun }}", 1)),
 )
 
 
@@ -1298,9 +1370,11 @@ def _check_read_loosenings():
                       % (path, what))
                 bad += 1
     if not bad:
-        print("ok: each reviewer's read stops %d minutes inside its job and names why it did not "
-              "read, in %d case(s) run; each of %d loosenings of each file was refused"
-              % (READ_MARGIN, len(WHY_CASES), len(READ_LOOSENINGS)))
+        print("ok: each reviewer's read stops at a minute of its job, counted from the job's "
+              "first step and at least %d inside its limit, and names why it did not read; the "
+              "deadline was run in %d case(s) and `why()` in %d, and each of %d loosenings of each "
+              "file was refused" % (READ_MARGIN, len(DEADLINE_CASES), len(WHY_CASES),
+                                    len(READ_LOOSENINGS)))
     return bad
 
 

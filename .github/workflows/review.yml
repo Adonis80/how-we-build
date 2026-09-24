@@ -119,6 +119,8 @@ jobs:
           PR: ${{ github.event.issue.number }}
         run: |
           set -euo pipefail
+          # The read's deadline counts from here, the job's first step (*Read it*).
+          echo "started=$(date +%s)" >> "$GITHUB_OUTPUT"
           gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" > /tmp/pr.json
           echo "sha=$(jq -r '.head.sha' /tmp/pr.json)" >> "$GITHUB_OUTPUT"
 
@@ -263,6 +265,7 @@ jobs:
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           SHA: ${{ steps.head.outputs.sha }}
+          STARTED: ${{ steps.head.outputs.started }}
         run: |
           set -euo pipefail
           out=/tmp/resp.json
@@ -330,8 +333,11 @@ jobs:
           # THE READ STOPS IN TIME TO SAY SO. On #73's 77ef79a it ran into the
           # job's 30 minutes, the job was cancelled, and nothing was signed: run
           # 35925225489 left no check run and no comment, and the pull request
-          # just looked unread. So the read has its own limit, minutes inside the
-          # job's, and a read stopped there is signed `neutral` with the reason.
+          # just looked unread. So the read stops at minute `limit` OF THE JOB,
+          # counted from its first step, not from the read's own start: whatever
+          # the steps before it spend comes out of the read, never out of the
+          # minutes left to sign (#76's first read). With too little left it does
+          # not start, and either way it is signed `neutral` with the reason.
           # `why()` is review-product.yml's, line for line: it names a reason and
           # never quotes one, so the same words can go on a product's check run.
           # review-gate.py holds the limit, the call and `why()` in both files.
@@ -339,7 +345,7 @@ jobs:
             local sub
             sub=$(jq -r '.subtype // empty' "$out" 2>/dev/null | tr -cd 'a-z_' || true)
             if [ "$rc" -eq 124 ]; then
-              echo "the read ran out of time and was stopped at $limit minutes; the slice wants splitting"
+              echo "the read ran out of time and was stopped at minute $limit of the job; the slice wants splitting"
             elif [ "$rc" -eq 137 ]; then
               echo "the read was killed, out of time or out of memory"
             elif [ "$rc" -eq 127 ]; then
@@ -371,8 +377,11 @@ jobs:
           # a hostile diff says can make a tool run.
           schema='{"type":"object","additionalProperties":false,"required":["verdict","review"],"properties":{"verdict":{"type":"string","enum":["clean","findings"]},"review":{"type":"string"}}}'
           limit=25
+          [[ "${STARTED:-}" =~ ^[0-9]+$ ]] || fail "the job's start was not recorded, so the read had no deadline"
+          left=$(( STARTED + limit * 60 - $(date +%s) ))
+          [ "$left" -ge 60 ] || fail "no time was left to read before minute $limit of the job"
           rc=0
-          timeout --kill-after=60s "${limit}m" claude -p \
+          timeout --kill-after=60s "${left}s" claude -p \
             --model claude-sonnet-5 \
             --effort max \
             --tools "" \
