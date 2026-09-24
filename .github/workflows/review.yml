@@ -169,7 +169,8 @@ jobs:
           # to pages alone is not one. Pages are `.md` files, less the brief
           # (AGENTS.md, at any depth: it instructs the reviewer or an agent),
           # the pages whose words are law here (HOW-WE-BUILD.md, CHARTER.md,
-          # RICH-DATA.md's data rules and the capped design/SCREEN-LAW.md: a
+          # RICH-DATA.md's data rules, the capped design/SCREEN-LAW.md and a
+          # product's own design/CONSTITUTION.md: a
           # trim that weakened the operating page was caught by a reader twice
           # on 9 September, and never by a machine) and anything in a
           # dot-directory (.github, .claude: settings and agents' instructions,
@@ -184,12 +185,17 @@ jobs:
           # the step rather than reading as no change. #77's reads ran out of
           # time twice at max, preloading every file (#70's slice 2).
           # review-gate.py runs this block against a list of changes, and holds
-          # it in both reviewers.
+          # it in both reviewers. REHEARSED BEFORE IT MERGED, off GitHub: this
+          # step and *Read it*, as written, on a clone, with the model stubbed
+          # (#79). A page change was handed 142 KB, six files named as left out,
+          # the notice and --effort high; check.sh and HOW-WE-BUILD.md were
+          # handed every file and --effort max. Its first run here is the first
+          # live one, and #70 cites it.
           class=words
           git diff -z --name-only --no-renames "origin/${{ github.event.repository.default_branch }}...${{ steps.head.outputs.sha }}" > "$RUNNER_TEMP/changed.txt"
           while IFS= read -r -d '' f; do
             case "$f" in
-              AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|design/SCREEN-LAW.md|.*|*/.*) class=code ;;
+              AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|design/SCREEN-LAW.md|design/CONSTITUTION.md|.*|*/.*) class=code ;;
               *.md) ;;
               *) class=code ;;
             esac
