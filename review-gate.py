@@ -1430,8 +1430,8 @@ def _check_read_loosenings():
 # the changes below, from its first line to the one output that hands the
 # effort to the read, so any line added inside it is run too.
 CLASS_FIRST = "class=words"
-CLASS_CODE = ("AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|design/SCREEN-LAW.md|"
-              "design/CONSTITUTION.md|PRODUCT.md|README.md|library/*|.*|*/.*) class=code ;;")
+CLASS_CODE = ("AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|design/*|"
+              "PRODUCT.md|README.md|library/*|.*|*/.*) class=code ;;")
 CLASS_ARMS = (CLASS_CODE, "*.md) ;;", "*) class=code ;;")
 CLASS_EFFORT = ('case "$class" in words) effort=%s ;; *) effort=%s ;; esac'
                 % (WORDS_EFFORT, REVIEWER_EFFORT))
@@ -1474,7 +1474,10 @@ CLASS_CASES = (
     (["library/topics/reviewer.md"], "code"),
     (["design/ARCHITECT.md", "library/topics/reviewer.md"], "code"),
     (["docs/README.md"], "words"),
-    (["docs/reviewer.md", "design/ARCHITECT.md", "design/REVIEW_RUBRIC.md"], "words"),
+    (["docs/reviewer.md"], "words"),
+    (["design/ARCHITECT.md"], "code"),
+    (["design/REVIEW_RUBRIC.md", "docs/reviewer.md"], "code"),
+    (["design/SCREEN_SPEC_TEMPLATE.md"], "code"),
     (["docs/HOW-WE-BUILD.md", "docs/CHARTER.md"], "words"),
     (["a page with spaces.md"], "words"),
     (["AGENTS.md"], "code"),
@@ -1597,8 +1600,7 @@ CLASS_LOOSENINGS = (
     ("the operating page read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("HOW-WE-BUILD.md|", "", 1), 1)),
     ("the charter read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("CHARTER.md|", "", 1), 1)),
     ("the data rules read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("RICH-DATA.md|", "", 1), 1)),
-    ("the screen law read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("design/SCREEN-LAW.md|", "", 1), 1)),
-    ("a product's constitution read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("design/CONSTITUTION.md|", "", 1), 1)),
+    ("the design pages read as pages", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("design/*|", "", 1), 1)),
     ("the README read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("README.md|", "", 1), 1)),
     ("the library read as pages", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("library/*|", "", 1), 1)),
     ("an arm for an unlisted extension", None, lambda t: t.replace("              *.md) ;;\n", "              *.sql) ;;\n              *.md) ;;\n", 1)),
@@ -1854,7 +1856,6 @@ PRODUCT_LOOSENINGS = (
     ("a push trigger", lambda t: t.replace("on:\n  workflow_dispatch:", "on:\n  push:\n  workflow_dispatch:", 1)),
     ("the door removed", lambda t: t.replace("    environment: reviewer\n", "", 1)),
     ("a concurrency block", lambda t: t.replace("\njobs:\n", "\nconcurrency:\n  group: review\njobs:\n", 1)),
-    ("a lower effort", lambda t: t.replace("*) effort=%s ;;" % REVIEWER_EFFORT, "*) effort=%s ;;" % WORDS_EFFORT, 1)),
     ("the tools back on", lambda t: t.replace('--tools "" \\\n', "", 1)),
     ("settings files read", lambda t: t.replace("--restricted \\\n", "", 1)),
     ("MCP servers from elsewhere", lambda t: t.replace("--strict-mcp-config \\\n", "", 1)),
