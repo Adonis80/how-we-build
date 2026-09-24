@@ -174,12 +174,10 @@ jobs:
           # trim that weakened the operating page was caught by a reader twice
           # on 9 September, and never by a machine) and anything in a
           # dot-directory (.github, .claude: settings and agents' instructions,
-          # whatever their extension). The README is a page by choice, not by
-          # oversight (#79's second read): it is the index topics leave for the
-          # library, so reading it as code would put every such move back at
-          # max with every file, the shape of #77's timeouts. A words read is
-          # still given it whole, and what it says of this machinery is held by
-          # review-gate.py, not by its prose. Renames count as a deletion
+          # whatever their extension). The README is read as code while it
+          # still holds the rulebook's prose (#79's eighth read); once the
+          # library move leaves it an index, one line returns it to pages.
+          # Renames count as a deletion
           # and an addition, so a script renamed to a page is still a script.
           # Anything unrecognised is code, and a list that cannot be made stops
           # the step rather than reading as no change. #77's reads ran out of
@@ -195,7 +193,7 @@ jobs:
           git diff -z --name-only --no-renames "origin/${{ github.event.repository.default_branch }}...${{ steps.head.outputs.sha }}" > "$RUNNER_TEMP/changed.txt"
           while IFS= read -r -d '' f; do
             case "$f" in
-              AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|design/SCREEN-LAW.md|design/CONSTITUTION.md|PRODUCT.md|.*|*/.*) class=code ;;
+              AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|design/SCREEN-LAW.md|design/CONSTITUTION.md|PRODUCT.md|README.md|.*|*/.*) class=code ;;
               *.md) ;;
               *) class=code ;;
             esac
@@ -225,6 +223,7 @@ jobs:
             cat "$f" >> /tmp/pages.txt
           done
           echo "pages bytes: $(wc -c < /tmp/pages.txt)"
+          echo "left_out=$(grep -cE '^===== .+: [0-9]+ bytes, left out: this change touches pages only =====$' /tmp/pages.txt || true)" >> "$GITHUB_OUTPUT"
 
       - name: Put on the badge
         id: badge
@@ -488,6 +487,8 @@ jobs:
           OUTCOME: ${{ steps.read.outcome }}
           VERDICT: ${{ steps.read.outputs.verdict }}
           WHY: ${{ steps.read.outputs.why }}
+          CLASS: ${{ steps.gather.outputs.class }}
+          EFFORT: ${{ steps.gather.outputs.effort }}
           REVIEWER_APP_ID: ${{ secrets.REVIEWER_APP_ID }}
         run: |
           set -euo pipefail
@@ -507,11 +508,11 @@ jobs:
             printf '%s\n' "The reviewer did not read this commit: $WHY. This is not a read, and the gate stays shut." > /tmp/verdict.md
           elif [ "$VERDICT" = "clean" ]; then
             conclusion=success
-            title="No findings on this commit"
+            title="No findings on this commit (read as $CLASS at effort $EFFORT)"
             cp /tmp/review.md /tmp/verdict.md
           else
             conclusion=failure
-            title="Findings on this commit"
+            title="Findings on this commit (read as $CLASS at effort $EFFORT)"
             cp /tmp/review.md /tmp/verdict.md
           fi
           echo "conclusion=$conclusion" >> "$GITHUB_OUTPUT"
@@ -559,6 +560,9 @@ jobs:
           PR: ${{ github.event.issue.number }}
           SHA: ${{ steps.head.outputs.sha }}
           CONCLUSION: ${{ steps.sign.outputs.conclusion }}
+          CLASS: ${{ steps.gather.outputs.class }}
+          EFFORT: ${{ steps.gather.outputs.effort }}
+          LEFT_OUT: ${{ steps.gather.outputs.left_out }}
         run: |
           set -euo pipefail
           # For people. review-gate.py parses none of it — the verdict is the
@@ -576,7 +580,7 @@ jobs:
             cat /tmp/verdict.md
             echo
             echo "---"
-            echo "_Read by the model named in \`review-gate.py\`, at the effort named there for its class, from_"
+            echo "_Read by the model named in \`review-gate.py\`, as $CLASS at effort $EFFORT with $LEFT_OUT file(s) left out, from_"
             echo "_\`.github/workflows/review.yml\`. Since 22 September 2026 this is the only read the_"
             echo "_gate counts, on every class of change including this machinery itself, and there_"
             echo "_is no second reviewer behind this one._"

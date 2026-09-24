@@ -1417,11 +1417,9 @@ def _check_read_loosenings():
 # design/CONSTITUTION.md (#79's fourth and sixth reads): every page
 # review-product.yml carries but NAMES.md, a glossary. Nor is anything in a dot-directory, where .github
 # and .claude keep settings and agents' instructions whatever their extension.
-# The README is a page by choice (#79's second read): it is the index topics
-# leave for the library, and read as code every such move would be back at max
-# with every file, the shape of #77's timeouts. A words read is still given it
-# whole, and what it says of this machinery is held here, not by its prose. The
-# list splits renames, so a script renamed to a page is still a script, and is
+# The README is read as code while it still holds the rulebook's prose (#79's
+# eighth read); once the library move leaves it an index, one line returns it
+# to pages. The list splits renames, so a script renamed to a page is still a script, and is
 # NUL-separated, so no name is read as two. It is written to a file first, so a
 # list that cannot be made stops the step: read through `< <(...)` it failed
 # unseen and read as no change at all, which is pages. The block is run, not read, against
@@ -1429,7 +1427,7 @@ def _check_read_loosenings():
 # effort to the read, so any line added inside it is run too.
 CLASS_FIRST = "class=words"
 CLASS_CODE = ("AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|design/SCREEN-LAW.md|"
-              "design/CONSTITUTION.md|PRODUCT.md|.*|*/.*) class=code ;;")
+              "design/CONSTITUTION.md|PRODUCT.md|README.md|.*|*/.*) class=code ;;")
 CLASS_EFFORT = ('case "$class" in words) effort=%s ;; *) effort=%s ;; esac'
                 % (WORDS_EFFORT, REVIEWER_EFFORT))
 CLASS_OUT = 'echo "effort=$effort" >> "$GITHUB_OUTPUT"'
@@ -1449,7 +1447,12 @@ READ_EFFORT = '--effort "$EFFORT"'
 # named with its size, and the reviewer is told so and asked to say if a
 # finding needed it: without those, a read short of a file is silent about it.
 REVIEW_PAGES = "words:*.md|words:check.sh|code:*) ;;"
-REVIEW_LEFT_OUT = "left out: this change touches pages only ====="
+# And the verdict says how thoroughly it was read (#79's eighth read): a clean
+# read at high with pages alone must not look like one at max with everything.
+VERDICT_SAYS = ('title="No findings on this commit (read as $CLASS at effort $EFFORT)"',
+                'title="Findings on this commit (read as $CLASS at effort $EFFORT)"',
+                "CLASS: ${{ steps.gather.outputs.class }}", "EFFORT: ${{ steps.gather.outputs.effort }}")
+REVIEW_LEFT_OUT = "%s bytes, left out: this change touches pages only ====="
 REVIEW_TOLD = ('if [ "$CLASS" = words ]; then', 'echo "a finding needed one, say which."',
                "CLASS: ${{ steps.gather.outputs.class }}")
 # (the files a change touches, the class it must be read as). None is a list
@@ -1457,7 +1460,8 @@ REVIEW_TOLD = ('if [ "$CLASS" = words ]; then', 'echo "a finding needed one, say
 CLASS_CASES = (
     (None, None),
     ([], "words"),
-    (["README.md"], "words"),
+    (["README.md"], "code"),
+    (["docs/README.md"], "words"),
     (["docs/reviewer.md", "design/ARCHITECT.md", "design/REVIEW_RUBRIC.md"], "words"),
     (["docs/HOW-WE-BUILD.md", "docs/CHARTER.md"], "words"),
     (["a page with spaces.md"], "words"),
@@ -1544,6 +1548,11 @@ def class_faults(text, path):
         lost.append("`%s` before the call" % EFFORT_GUARD)
     if [f for f in (_call(text) or []) if f.startswith("--effort")] != [READ_EFFORT + " \\"]:
         lost.append("`%s` as the call's one effort" % READ_EFFORT)
+    sign = _step_span(text, "Sign the verdict")
+    sg = text[sign[0]:sign[1]] if sign else ""
+    for line in VERDICT_SAYS:
+        if line not in sg:
+            lost.append("the verdict naming the class and effort it was read at (`%s`)" % line)
     if path == REVIEW_WORKFLOW and REVIEW_PAGES not in g:
         lost.append("every file given to a change that is not pages alone (`%s`)" % REVIEW_PAGES)
     if path == REVIEW_WORKFLOW and REVIEW_LEFT_OUT not in g:
@@ -1563,6 +1572,8 @@ CLASS_LOOSENINGS = (
     ("the data rules read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("RICH-DATA.md|", "", 1), 1)),
     ("the screen law read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("design/SCREEN-LAW.md|", "", 1), 1)),
     ("a product's constitution read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("design/CONSTITUTION.md|", "", 1), 1)),
+    ("the README read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("README.md|", "", 1), 1)),
+    ("a verdict that hides its effort", None, lambda t: t.replace(' (read as $CLASS at effort $EFFORT)"', '"', 1)),
     ("a product's decisions read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("PRODUCT.md|", "", 1), 1)),
     ("a dot-directory read as pages", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("|.*|*/.*", "", 1), 1)),
     ("anything unrecognised read as pages", None, lambda t: t.replace("              *) class=code ;;\n", "              *) ;;\n", 1)),

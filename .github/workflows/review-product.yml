@@ -332,7 +332,7 @@ jobs:
           g diff -z --name-only --no-renames "origin/$MAIN...$SHA" > "$t/changed.txt"
           while IFS= read -r -d '' f; do
             case "$f" in
-              AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|design/SCREEN-LAW.md|design/CONSTITUTION.md|PRODUCT.md|.*|*/.*) class=code ;;
+              AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|design/SCREEN-LAW.md|design/CONSTITUTION.md|PRODUCT.md|README.md|.*|*/.*) class=code ;;
               *.md) ;;
               *) class=code ;;
             esac
@@ -535,6 +535,8 @@ jobs:
           OUTCOME: ${{ steps.read.outcome }}
           VERDICT: ${{ steps.read.outputs.verdict }}
           WHY: ${{ steps.read.outputs.why }}
+          CLASS: ${{ steps.gather.outputs.class }}
+          EFFORT: ${{ steps.gather.outputs.effort }}
           REVIEWER_APP_ID: ${{ secrets.REVIEWER_APP_ID }}
         run: |
           set -euo pipefail
@@ -553,11 +555,11 @@ jobs:
             printf '%s\n' "The reviewer did not read this commit: $WHY. This is not a read, and the gate stays shut." > "$t/verdict.md"
           elif [ "$VERDICT" = "clean" ]; then
             conclusion=success
-            title="No findings on this commit"
+            title="No findings on this commit (read as $CLASS at effort $EFFORT)"
             cp "$t/review.md" "$t/verdict.md"
           else
             conclusion=failure
-            title="Findings on this commit"
+            title="Findings on this commit (read as $CLASS at effort $EFFORT)"
             cp "$t/review.md" "$t/verdict.md"
           fi
           echo "conclusion=$conclusion" >> "$GITHUB_OUTPUT"
@@ -589,6 +591,8 @@ jobs:
           PR: ${{ inputs.pr }}
           SHA: ${{ inputs.sha }}
           CONCLUSION: ${{ steps.sign.outputs.conclusion }}
+          CLASS: ${{ steps.gather.outputs.class }}
+          EFFORT: ${{ steps.gather.outputs.effort }}
         run: |
           set -euo pipefail
           t="$RUNNER_TEMP"
@@ -607,8 +611,8 @@ jobs:
             cat "$t/verdict.md"
             echo
             echo "---"
-            echo "_Read by the model named in the rulebook's \`review-gate.py\`, at the effort named_"
-            echo "_there for its class, from \`Adonis80/how-we-build\`'s \`.github/workflows/review-product.yml\`._"
+            echo "_Read by the model named in the rulebook's \`review-gate.py\`, as $CLASS at effort_"
+            echo "_$EFFORT, from \`Adonis80/how-we-build\`'s \`.github/workflows/review-product.yml\`._"
             echo "_It is the only read this repository's gate counts, and there is no second reviewer_"
             echo "_behind it._"
           } > "$t/comment.md"
