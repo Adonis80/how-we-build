@@ -115,11 +115,12 @@ DEFAULT_REVIEWER = "claude"
 # a rubber stamp. Named here and held against the workflow that runs it by
 # _check_wiring(), so the two can never drift apart.
 REVIEWER_MODEL = "claude-sonnet-5"
-# And the effort a read is at is its change's class's, decision 0005 (23
-# September 2026): max only for reviews of the risky classes. A change to pages
-# alone is read at WORDS_EFFORT; anything else, this machinery included, at
-# REVIEWER_EFFORT. The class is worked out in each workflow and held below, at
-# CLASS_FIRST.
+# And the effort a read is at is its change's class's. Decision 0005 (issue
+# #75, 23 September 2026), in its own words: "Effort. Build at medium, high
+# after one failed attempt, max only for reviews of the risky classes." A
+# change to pages alone is read at WORDS_EFFORT; anything else, this machinery
+# included, at REVIEWER_EFFORT. The class is worked out in each workflow and
+# held below, at CLASS_FIRST.
 REVIEWER_EFFORT = "max"
 WORDS_EFFORT = "high"
 
