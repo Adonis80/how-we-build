@@ -1428,6 +1428,7 @@ def _check_read_loosenings():
 CLASS_FIRST = "class=words"
 CLASS_CODE = ("AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|design/SCREEN-LAW.md|"
               "design/CONSTITUTION.md|PRODUCT.md|README.md|.*|*/.*) class=code ;;")
+CLASS_ARMS = (CLASS_CODE, "*.md) ;;", "*) class=code ;;")
 CLASS_EFFORT = ('case "$class" in words) effort=%s ;; *) effort=%s ;; esac'
                 % (WORDS_EFFORT, REVIEWER_EFFORT))
 CLASS_OUT = 'echo "effort=$effort" >> "$GITHUB_OUTPUT"'
@@ -1453,6 +1454,8 @@ VERDICT_SAYS = ('title="No findings on this commit (read as $CLASS at effort $EF
                 'title="Findings on this commit (read as $CLASS at effort $EFFORT)"',
                 "CLASS: ${{ steps.gather.outputs.class }}", "EFFORT: ${{ steps.gather.outputs.effort }}")
 REVIEW_LEFT_OUT = "%s bytes, left out: this change touches pages only ====="
+REVIEW_COUNT = ('echo "left_out=$(grep -cE \'^===== .+: [0-9]+ bytes, left out: this change touches pages only =====$\' /tmp/pages.txt || true)" >> "$GITHUB_OUTPUT"')
+REVIEW_COUNT_IN = "LEFT_OUT: ${{ steps.gather.outputs.left_out }}"
 REVIEW_TOLD = ('if [ "$CLASS" = words ]; then', 'echo "a finding needed one, say which."',
                "CLASS: ${{ steps.gather.outputs.class }}")
 # (the files a change touches, the class it must be read as). None is a list
@@ -1532,6 +1535,16 @@ def class_faults(text, path):
         for line in (CLASS_CODE, CLASS_EFFORT):
             if line not in block:
                 lost.append("`%s`" % line)
+        # The shape, not only the strings (#79's ninth read): an arm added for
+        # an extension no case lists would pass every case and every loosening
+        # above, so the `case` holds exactly its three arms and nothing else.
+        try:
+            arms = block[block.index('case "$f" in') + 1:block.index("esac")]
+        except ValueError:
+            arms = None
+        if arms != list(CLASS_ARMS):
+            lost.append("a `case` of exactly three arms, %s (it has %s)"
+                        % (" / ".join("`%s`" % a for a in CLASS_ARMS), arms))
         for paths, want in CLASS_CASES:
             got = class_says(block, paths)
             need = want and (want, WORDS_EFFORT if want == "words" else REVIEWER_EFFORT)
@@ -1557,6 +1570,11 @@ def class_faults(text, path):
         lost.append("every file given to a change that is not pages alone (`%s`)" % REVIEW_PAGES)
     if path == REVIEW_WORKFLOW and REVIEW_LEFT_OUT not in g:
         lost.append("each file left out of a read named with its size (`%s`)" % REVIEW_LEFT_OUT)
+    say = _step_span(text, "Say it where people read")
+    sy = text[say[0]:say[1]] if say else ""
+    if path == REVIEW_WORKFLOW and (REVIEW_COUNT not in g or REVIEW_COUNT_IN not in sy):
+        lost.append("the files left out counted where they are named and handed to the comment "
+                    "(`%s`, `%s`)" % (REVIEW_COUNT, REVIEW_COUNT_IN))
     if path == REVIEW_WORKFLOW and not all(line in r for line in REVIEW_TOLD):
         lost.append("the reviewer told what was left out and asked to say if it needed it (`%s`)"
                     % "`, `".join(REVIEW_TOLD))
@@ -1573,6 +1591,8 @@ CLASS_LOOSENINGS = (
     ("the screen law read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("design/SCREEN-LAW.md|", "", 1), 1)),
     ("a product's constitution read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("design/CONSTITUTION.md|", "", 1), 1)),
     ("the README read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("README.md|", "", 1), 1)),
+    ("an arm for an unlisted extension", None, lambda t: t.replace("              *.md) ;;\n", "              *.sql) ;;\n              *.md) ;;\n", 1)),
+    ("the left-out count dropped", REVIEW_WORKFLOW, lambda t: t.replace("          " + REVIEW_COUNT_IN + "\n", "", 1)),
     ("a verdict that hides its effort", None, lambda t: t.replace(' (read as $CLASS at effort $EFFORT)"', '"', 1)),
     ("a product's decisions read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("PRODUCT.md|", "", 1), 1)),
     ("a dot-directory read as pages", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("|.*|*/.*", "", 1), 1)),
