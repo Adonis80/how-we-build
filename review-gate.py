@@ -1453,10 +1453,13 @@ REVIEW_PAGES = "words:*.md|words:check.sh|code:*) ;;"
 VERDICT_SAYS = ('title="No findings on this commit (read as $CLASS at effort $EFFORT)"',
                 'title="Findings on this commit (read as $CLASS at effort $EFFORT)"',
                 "CLASS: ${{ steps.gather.outputs.class }}", "EFFORT: ${{ steps.gather.outputs.effort }}")
+# A thinner read that needed more says so as a finding, never as a note on a
+# clean read (#79's tenth read: the high path with pages alone is unproven
+# until runs show it, so it fails closed rather than pass on less).
 REVIEW_LEFT_OUT = "%s bytes, left out: this change touches pages only ====="
 REVIEW_COUNT = ('echo "left_out=$(grep -cE \'^===== .+: [0-9]+ bytes, left out: this change touches pages only =====$\' /tmp/pages.txt || true)" >> "$GITHUB_OUTPUT"')
 REVIEW_COUNT_IN = "LEFT_OUT: ${{ steps.gather.outputs.left_out }}"
-REVIEW_TOLD = ('if [ "$CLASS" = words ]; then', 'echo "a finding needed one, say which."',
+REVIEW_TOLD = ('if [ "$CLASS" = words ]; then', 'echo "judging it needed a left-out file or a deeper read, that is a finding: say which."',
                "CLASS: ${{ steps.gather.outputs.class }}")
 # (the files a change touches, the class it must be read as). None is a list
 # git could not make, which must stop the block rather than read as anything.
@@ -1612,6 +1615,7 @@ CLASS_LOOSENINGS = (
     ("code given pages alone", REVIEW_WORKFLOW, lambda t: t.replace("code:*) ;;", "code:*.md) ;;", 1)),
     ("a file left out unnamed", REVIEW_WORKFLOW, lambda t: re.sub(r"\*\) printf '[^\n]*" + re.escape(REVIEW_LEFT_OUT) + r"[^\n]*; continue ;;", "*) continue ;;", t, 1)),
     ("the reviewer not told", REVIEW_WORKFLOW, lambda t: t.replace(REVIEW_TOLD[1], 'echo "."', 1)),
+    ("a thin read let pass clean", REVIEW_WORKFLOW, lambda t: t.replace("that is a finding: say which.", "say which.", 1)),
     ("the class kept from the read", REVIEW_WORKFLOW, lambda t: t.replace("          " + REVIEW_TOLD[2] + "\n", "", 1)),
 )
 
