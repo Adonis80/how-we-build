@@ -6,7 +6,7 @@
 # anything that looks like a secret (naming the place, never the value), a
 # review gate that no longer matches the reviewer's answers or has drifted from
 # the workflows that fetch them, and, in a pull request, a commit no reviewer
-# has read clean — unread, or read and left findings on. Nothing else. A read by anybody the
+# has read clean — unread, or read and left a blocking finding on. Nothing else. A read by anybody the
 # gate does not count is unread, not a shape of its own.
 # A third shape, "read clean by a reviewer the rulebook does not allow to
 # clear this change", was real while two vendors were on the register and is
@@ -138,8 +138,10 @@ else
 fi
 
 # 4. In a pull request, a review clears only the commit it read, and only if it
-# left nothing on it: green when a reviewer has read this very commit clean.
-# A later push turns it red until it has; so does a finding, until the push that
+# left nothing blocking on it: green when a reviewer has read this very commit
+# clean, or with advisory findings alone, which stay standing on the pull
+# request. A later push turns it red until it has; so does a blocking finding,
+# until the push that
 # answers it makes a commit the reviewer reads afresh. The CTO's answer to a
 # finding is not clearance — the proposer does not clear its own change.
 # A change to the review machinery used to need the other vendor's read alone,
