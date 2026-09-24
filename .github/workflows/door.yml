@@ -24,23 +24,13 @@ name: Door
 #   door      the same job behind `environment: reviewer`. On a branch it is
 #             REFUSED BEFORE IT STARTS — no steps, no log, a job that completes
 #             in about a second — because the environment admits `main` alone.
-#             On main it runs, reads the key, and rehearses the reviewer's
-#             scoped token (the step below).
+#             On main it runs and reads the key.
 #
 # So on a branch the run is red, and red in exactly one place. A control that
 # fails means something unrelated is broken and the run proves nothing. A door
 # job that RUNS on a branch means the door is open and the badge is worthless:
 # the deployment branch policy has been widened or removed, and nothing should
 # be merged until it is back.
-#
-# ON MAIN THE DOOR JOB PROVES TWO THINGS, AND ITS FAILING STEP SAYS WHICH. Red
-# at "reach for the key" means the environment holds no App id: a wiring
-# fault. Red at the rehearsal means the reviewer's scoped token was refused,
-# reached more or less than this repository, was granted more or less than
-# asked, or was not revoked; or the step could not ask at all, with no key to
-# sign with or no answer from GitHub. Its log says which, and review.yml must
-# not ask for that token until a run here is green. Neither means the badge
-# can be forged; only a door job that runs on a branch means that.
 #
 # GIVE THE PROOF BRANCH A COMMIT OF ITS OWN. Check runs attach to a SHA, so a
 # proof branch pushed at the same commit as a pull request's head hangs its red
@@ -116,97 +106,3 @@ jobs:
             refs/heads/main) echo "main may read it. The door is where it should be." ;;
             *) echo "DOOR OPEN: a branch read the environment. The badge can be forged."; exit 1 ;;
           esac
-
-      # THE REVIEWER'S TOKEN, SCOPED: A REHEARSAL, RUN GREEN ON MAIN.
-      #
-      # THE RULE IS THE CHARTER'S ALREADY: "Use least-privilege repository access
-      # and protected `main`" (CHARTER.md §12). review.yml breaks it. It mints
-      # the badge's installation token with no body, so the token reaches every
-      # repository the App is installed on (Hemz OS, a private product
-      # repository, since #47) with every permission the App holds, in a job
-      # that also runs a third-party tool over the diff it is shown. It should
-      # reach this repository alone and do one thing: write check runs. No
-      # incident is claimed. The failing case is the reach itself, a trust
-      # boundary crossed wrongly, P1 in this repository's queue.
-      #
-      # THIS IS THE PROOF THE REPAIR NEEDS, NOT THE REPAIR, AND IT DOES NOT STAY.
-      # #64 and #65 proved their lines on a throwaway branch before merge. This
-      # request cannot be: it can only be tried where the key is, behind this
-      # door on main, and review.yml runs only from main, so a mint that failed
-      # there would stop every read, the revert's included. So the proof lands
-      # first, here, where a failure stops nothing. The pull request that makes
-      # review.yml ask for the scoped token cites this step's run, holds that
-      # request in review-gate.py as its regression test, and deletes this step
-      # and the check that holds it: once every read mints scoped, every read
-      # proves the request, and a rehearsal beside it would be a second copy.
-      #
-      # THE COPY IS HELD. The rehearsal is only worth anything while it signs
-      # and finds the installation exactly as review.yml does, with the same
-      # key. review-gate.py holds both, line for line: the script from writing
-      # the key to the installation lookup, and the env lines that feed it.
-      #
-      # PROVED ON MAIN: run 35870516404, 23 September 2026, dispatched straight
-      # after the step landed. It asked for this repository with checks: write,
-      # was granted checks: write alone, reached Adonis80/how-we-build alone,
-      # and was revoked (204). Until the repair, review.yml mints unscoped, as
-      # it always has. It never runs on a branch: the door refuses the whole job
-      # there, and the step above stops it if not. The token it mints is revoked
-      # before the step ends, whatever goes wrong on the way, and nothing is
-      # printed but names.
-      - name: rehearse the reviewer's scoped token, as review.yml will ask for it
-        env:
-          APP_ID: ${{ secrets.REVIEWER_APP_ID }}
-          APP_KEY: ${{ secrets.REVIEWER_APP_KEY }}
-        run: |
-          set -euo pipefail
-          umask 077
-          key="$RUNNER_TEMP/reviewer.pem"
-          tok=""
-          # Whatever stops this step, the key and the token response go, and a
-          # token already minted is revoked rather than left live for its hour.
-          cleanup() {
-            rm -f "$key" "$RUNNER_TEMP/mint.json"
-            if [ -n "$tok" ]; then
-              gone=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: token $tok" \
-                -H "Accept: application/vnd.github+json" "https://api.github.com/installation/token") || gone="unreachable"
-              echo "revoked on the way out ($gone)"
-            fi
-          }
-          trap cleanup EXIT
-          printf '%s\n' "$APP_KEY" > "$key"
-          b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
-          now=$(date +%s)
-          hdr=$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | b64url)
-          pl=$(printf '{"iat":%d,"exp":%d,"iss":"%s"}' "$((now - 60))" "$((now + 540))" "$APP_ID" | b64url)
-          sig=$(printf '%s' "$hdr.$pl" | openssl dgst -binary -sha256 -sign "$key" | b64url)
-          jwt="$hdr.$pl.$sig"
-          rm -f "$key"
-          inst=$(curl -sS -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/$GITHUB_REPOSITORY/installation" | jq -r '.id // empty')
-          [ -n "$inst" ] || { echo "the App is not installed on $GITHUB_REPOSITORY"; exit 1; }
-          body=$(jq -cn --arg r "${GITHUB_REPOSITORY#*/}" '{repositories: [$r], permissions: {checks: "write"}}')
-          echo "asking for: $body"
-          curl -sS -X POST -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/app/installations/$inst/access_tokens" -d "$body" > "$RUNNER_TEMP/mint.json"
-          tok=$(jq -r '.token // empty' "$RUNNER_TEMP/mint.json")
-          if [ -z "$tok" ]; then
-            echo "REFUSED: the scoped mint was not granted — review.yml must not ask for it."
-            jq -r '.message // "no message"' "$RUNNER_TEMP/mint.json"
-            exit 1
-          fi
-          echo "::add-mask::$tok"
-          # Checked, not printed. Metadata read comes with every installation
-          # token; anything else beside checks: write is more than was asked.
-          granted=$(jq -c '(.permissions // {}) | del(.metadata)' "$RUNNER_TEMP/mint.json")
-          echo "granted, metadata aside: $granted"
-          rm -f "$RUNNER_TEMP/mint.json"
-          reach=$(curl -sS -H "Authorization: token $tok" -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/installation/repositories" | jq -r '[.repositories[].full_name] | join(",")')
-          code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: token $tok" \
-            -H "Accept: application/vnd.github+json" "https://api.github.com/installation/token")
-          [ "$code" = "204" ] && tok=""
-          echo "the scoped token reached: $reach — and was revoked ($code)"
-          [ "$reach" = "$GITHUB_REPOSITORY" ] || { echo "SCOPE WRONG: it reached more, or less, than this repository."; exit 1; }
-          [ "$granted" = '{"checks":"write"}' ] || { echo "SCOPE WRONG: it was granted more, or less, than checks: write."; exit 1; }
-          [ "$code" = "204" ] || { echo "the token was not revoked"; exit 1; }
-          echo "THIS RUN SHOWS the request mints a token that reaches $GITHUB_REPOSITORY alone, with checks: write alone. Cite this run's id where review.yml adopts it."

@@ -185,7 +185,7 @@ jobs:
           fi
           umask 077
           key="$RUNNER_TEMP/reviewer.pem"
-          trap 'rm -f "$key"' EXIT
+          trap 'rm -f "$key" "$RUNNER_TEMP/mint.json"' EXIT
           printf '%s\n' "$APP_KEY" > "$key"
           b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
           now=$(date +%s)
@@ -201,12 +201,42 @@ jobs:
           inst=$(curl -sS -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/$GITHUB_REPOSITORY/installation" | jq -r '.id // empty')
           [ -n "$inst" ] || { echo "::error::the App is not installed on $GITHUB_REPOSITORY"; exit 1; }
-          tok=$(curl -sS -X POST -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/app/installations/$inst/access_tokens" | jq -r '.token // empty')
-          [ -n "$tok" ] || { echo "::error::the App would not mint an installation token"; exit 1; }
+          # SCOPED TO THIS REPOSITORY AND CHECKS: WRITE, THE ONLY THING THE TOKEN
+          # DOES: create the verdict's check run and read it back. Unscoped, it
+          # carried every permission the App holds on every repository it is
+          # installed on. The request was rehearsed on main before this asked
+          # for it, door.yml run 35870516404: granted checks: write alone,
+          # reaching this repository alone. review-gate.py holds these lines.
+          body=$(jq -cn --arg r "${GITHUB_REPOSITORY#*/}" '{repositories: [$r], permissions: {checks: "write"}}')
+          curl -sS -X POST -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/app/installations/$inst/access_tokens" -d "$body" > "$RUNNER_TEMP/mint.json"
+          tok=$(jq -r '.token // empty' "$RUNNER_TEMP/mint.json")
+          if [ -z "$tok" ]; then
+            echo "::error::the App would not mint a token scoped to $GITHUB_REPOSITORY: $(jq -r '.message // "no message"' "$RUNNER_TEMP/mint.json")"
+            exit 1
+          fi
           echo "::add-mask::$tok"
+          # Checked, not printed, as review-product.yml checks its own. Metadata
+          # read comes with every installation token; anything else is more, or
+          # less, than signing needs, and the token is revoked unused.
+          want='{"checks":"write"}'
+          granted=$(jq -cS '(.permissions // {}) | del(.metadata)' "$RUNNER_TEMP/mint.json")
+          if [ "$granted" != "$want" ]; then
+            curl -sS -o /dev/null -X DELETE -H "Authorization: token $tok" \
+              -H "Accept: application/vnd.github+json" "https://api.github.com/installation/token" || true
+            echo "::error::SCOPE WRONG: the token was granted $granted, not $want. Revoked; nothing was signed."
+            exit 1
+          fi
+          reach=$(curl -sS -H "Authorization: token $tok" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/installation/repositories" | jq -r '[.repositories[].full_name] | join(",")')
+          if [ "$reach" != "$GITHUB_REPOSITORY" ]; then
+            curl -sS -o /dev/null -X DELETE -H "Authorization: token $tok" \
+              -H "Accept: application/vnd.github+json" "https://api.github.com/installation/token" || true
+            echo "::error::SCOPE WRONG: the token reached [$reach], not $GITHUB_REPOSITORY alone. Revoked; nothing was signed."
+            exit 1
+          fi
           echo "token=$tok" >> "$GITHUB_OUTPUT"
-          echo "wearing installation $inst"
+          echo "wearing installation $inst, reaching $reach alone, granted $granted"
 
       # THE REVIEWER'S OWN TOOL: ONE VERSION, INSTALLED WHERE NO SECRET IS. It
       # was installed unpinned, whatever the registry called latest that minute,

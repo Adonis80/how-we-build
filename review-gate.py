@@ -592,63 +592,6 @@ def wake_request(text):
     return endpoint, query, prog.replace('\\"', '"').replace("$mine", mine)
 
 
-def signing_block(text):
-    """The lines that write the App's key, sign its JWT and find its installation, or None.
-
-    From the line that writes the key file to the installation lookup, each line
-    stripped and comments and blank lines dropped, so two files may differ in
-    layout and commentary but in no command. The write is where a secret becomes
-    the key the signature uses, so it is held with the rest (#69's first read).
-    None when there is no block to compare, which fails the check rather than
-    passing it untested.
-    """
-    return _block(text, lambda l: l.endswith('> "$key"'),
-                  lambda l: l.endswith("/installation\" | jq -r '.id // empty')"),
-                  keep_comments=False)
-
-
-def signing_env(text):
-    """The `env:` lines of the step that signs the App's JWT, or None.
-
-    Every line between that step's `env:` and its `run:`, stripped, comments
-    and blank lines dropped. A script can match line for line and still sign
-    with another key, so which secrets feed it is held too (#66's fifth read).
-    None when no `env:` sits above the signing step at all. One borrowed from an
-    earlier step brings that step's own lines with it, so it never matches a
-    step's own `env:`.
-    """
-    lines = text.splitlines()
-    try:
-        at = next(i for i, l in enumerate(lines) if l.strip().startswith("b64url() {"))
-        run = max(i for i in range(at) if re.match(r"^\s*run:\s*\|\s*$", lines[i]))
-        env = max(i for i in range(run) if re.match(r"^\s*env:\s*$", lines[i]))
-    except (StopIteration, ValueError):
-        return None
-    return [l.strip() for l in lines[env + 1:run] if l.strip() and not l.strip().startswith("#")]
-
-
-def rehearsal_drifts(door, review):
-    """True unless both files sign the same way, with the same key."""
-    theirs = (signing_env(review), signing_block(review))
-    return None in theirs or (signing_env(door), signing_block(door)) != theirs
-
-
-# The shape of a signing step, for the selftest to show the hold going red
-# rather than only agreeing with today's two files.
-SIGNING_SAMPLE = """\
-      - name: sign
-        env:
-          APP_ID: ${{ secrets.REVIEWER_APP_ID }}
-          APP_KEY: ${{ secrets.REVIEWER_APP_KEY }}
-        run: |
-          printf '%s\\n' "$APP_KEY" > "$key"
-          b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
-          now=$(date +%s)
-          pl=$(printf '{"iat":%d,"exp":%d}' "$((now - 60))" "$((now + 540))" | b64url)
-          inst=$(curl -sS "https://api.github.com/repos/$GITHUB_REPOSITORY/installation" | jq -r '.id // empty')
-"""
-
-
 USES_ENVIRONMENT = re.compile(r"^\s*environment:\s*" + re.escape(KEY_ENVIRONMENT) + r"\s*$", re.M)
 
 
@@ -927,19 +870,17 @@ def _check_wiring():
               "start it" % (DOOR_WORKFLOW, DOOR_BRANCHES))
         bad += 1
 
-    # door.yml rehearses the reviewer's token mint on main before review.yml
-    # relies on it, and a rehearsal is worth nothing the day it signs, or finds
-    # the installation, differently from the real one, or with another key. So
-    # the two are held line for line — from writing the key to the
-    # installation lookup, and the env lines that feed it, comments and blank
-    # lines aside — rather than trusted to be edited together (#66's first and
-    # fifth reads, #69's first), and the selftest shows the hold going red.
-    # Why the rehearsal exists, the rule it serves and when it goes are at its
-    # step in door.yml, once.
-    if rehearsal_drifts(door, review):
-        print("  wiring: %s must sign the App's JWT, with the same key, and find its installation "
-              "exactly as %s does, line for line — a rehearsal of the reviewer's token that "
-              "differs from it proves nothing about it" % (DOOR_WORKFLOW, REVIEW_WORKFLOW))
+    # review.yml mints the badge's token scoped to this repository with checks:
+    # write alone, and checks what it was granted and what it reaches before it
+    # signs anything, as review-product.yml does for a product. Unscoped, the
+    # token carried every permission the App holds on every repository it is
+    # installed on. The request was rehearsed on main first (door.yml, run
+    # 35870516404) and these lines are its regression test (#66's step two).
+    lost = review_mint_faults(review)
+    if lost:
+        print("  wiring: %s must mint the badge's token scoped to this repository with checks: "
+              "write alone, and check the grant and the reach; it has lost %s"
+              % (REVIEW_WORKFLOW, "; ".join(lost)))
         bad += 1
 
     # The check run's name and its conclusions live in two files — the workflow
@@ -1069,6 +1010,69 @@ PRODUCT_REACH = ('"https://api.github.com/installation/repositories"', 'if [ "$r
 PRODUCT_GRANT = ("""want='{"checks":"write","contents":"read","pull_requests":"write"}'""",
                  """granted=$(jq -cS '(.permissions // {}) | del(.metadata)' "$RUNNER_TEMP/mint.json")""",
                  'if [ "$granted" != "$want" ]; then')
+# The badge's own token, scoped as review-product.yml's is, to the one thing it
+# does: write the verdict's check run here. Held in order: the request, the
+# post that sends it, the grant wanted and checked, and the reach checked.
+REVIEW_SCOPE = '{repositories: [$r], permissions: {checks: "write"}}'
+REVIEW_MINT = ("""body=$(jq -cn --arg r "${GITHUB_REPOSITORY#*/}" '%s')""" % REVIEW_SCOPE,
+               '"https://api.github.com/app/installations/$inst/access_tokens" -d "$body"',
+               """want='{"checks":"write"}'""",
+               PRODUCT_GRANT[1],
+               PRODUCT_GRANT[2],
+               PRODUCT_REACH[0],
+               'if [ "$reach" != "$GITHUB_REPOSITORY" ]; then')
+
+
+def review_mint_faults(review):
+    """The lines of review.yml's scoped mint that are missing, or out of order."""
+    lost, at = [], 0
+    for line in REVIEW_MINT:
+        i = review.find(line, at)
+        if i < 0:
+            lost.append("`%s`" % line)
+        else:
+            at = i + len(line)
+    return lost
+
+
+# Each must turn the hold red on the real review.yml, or the hold is decoration.
+REVIEW_LOOSENINGS = (
+    ("the token unscoped", lambda t: t.replace(REVIEW_SCOPE, "{}", 1)),
+    ("the request never sent", lambda t: t.replace(' -d "$body"', "", 1)),
+    ("a wider grant wanted", lambda t: t.replace(REVIEW_MINT[2], REVIEW_MINT[2].replace('"checks":"write"', '"checks":"write","contents":"write"'), 1)),
+    ("the grant taken on trust", lambda t: t.replace(REVIEW_MINT[3], "granted=$want", 1)),
+    ("the grant printed, not checked", lambda t: t.replace(REVIEW_MINT[4], "if false; then", 1)),
+    ("the reach never asked", lambda t: t.replace(REVIEW_MINT[5], '"https://api.github.com/"', 1)),
+    ("the reach printed, not checked", lambda t: t.replace(REVIEW_MINT[6], "if false; then", 1)),
+)
+
+
+def _check_review_loosenings():
+    """Every loosening above must turn review.yml's mint hold red on the real file."""
+    try:
+        review = _read(REVIEW_WORKFLOW)
+    except OSError as e:
+        print("  wiring: %s" % e)
+        return 1
+    bad = 0
+    if review_mint_faults(review):
+        return 1  # the wiring check says what; a loosened copy proves nothing here
+    for what, loosen in REVIEW_LOOSENINGS:
+        changed = loosen(review)
+        if changed == review:
+            print("  wiring: the loosening '%s' no longer applies to %s — rewrite it against the "
+                  "file as it stands, or it proves nothing" % (what, REVIEW_WORKFLOW))
+            bad += 1
+        elif not review_mint_faults(changed):
+            print("  wiring: %s with %s passes the mint hold — the guard for it is gone"
+                  % (REVIEW_WORKFLOW, what))
+            bad += 1
+    if not bad:
+        print("ok: each of %d loosenings of %s's scoped mint was applied to the real file and "
+              "refused" % (len(REVIEW_LOOSENINGS), REVIEW_WORKFLOW))
+    return bad
+
+
 PRODUCT_NAMES = ('--arg name "%s"' % REVIEWER_CHECK, '"$REVIEWER_APP_ID" "%s"' % REVIEWER_CHECK)
 PASTED_INPUT = re.compile(r"^\s+[A-Z_]+: \$\{\{ inputs\.[a-z_]+ \}\}\s*$")
 XTRACE = re.compile(r"\bset\s+-\w*x|\bxtrace\b")
@@ -1143,8 +1147,12 @@ def _standing(text):
 
 
 def _jwt(text):
-    """The App's JWT, signed: from the encoding helper to the token it makes."""
-    return _block(text, lambda l: l.startswith("b64url() {"),
+    """The App's JWT, signed: from writing the key to the token it makes.
+
+    From the write, not the helper: the line where a secret becomes the key the
+    signature uses is held with the rest (#69's first read, on door.yml's copy).
+    """
+    return _block(text, lambda l: l.endswith('> "$key"'),
                   lambda l: l == 'jwt="$hdr.$pl.$sig"', keep_comments=False)
 
 
@@ -1405,6 +1413,7 @@ PRODUCT_LOOSENINGS = (
     ("the grant printed, not checked", lambda t: t.replace(PRODUCT_GRANT[2], "if false; then", 1)),
     ("a wider grant wanted", lambda t: t.replace(PRODUCT_GRANT[0], PRODUCT_GRANT[0].replace('"contents":"read"', '"contents":"read","issues":"write"'), 1)),
     ("the grant taken on trust", lambda t: t.replace(PRODUCT_GRANT[1], "granted=$want", 1)),
+    ("another secret written as the key", lambda t: t.replace('"$APP_KEY" > "$key"', '"$APP_ID" > "$key"', 1)),
 )
 
 
@@ -1686,32 +1695,6 @@ def _selftest():
         bad += hold(built.count("?"), 1, what + " — exactly one query string")
         bad += hold(urllib.parse.urlsplit(built).path, urllib.parse.urlsplit(url).path,
                     what + " — the path unchanged")
-    # The rehearsal's hold on review.yml's signing, going red (#66's fourth
-    # and fifth reads, #69's first): a layout the runner ignores is no drift; a
-    # changed command, another key, another secret written as the key, keys
-    # borrowed from an earlier step, or no block at all, is.
-    relaid = "\n".join("  # why\n\n" + l.strip() for l in SIGNING_SAMPLE.splitlines())
-    longer = SIGNING_SAMPLE.replace("now + 540", "now + 600")
-    elsewhere = SIGNING_SAMPLE.replace("repos/$GITHUB_REPOSITORY", "repos/$OTHER")
-    rekeyed = SIGNING_SAMPLE.replace("secrets.REVIEWER_APP_KEY", "secrets.STALE_KEY")
-    miswritten = SIGNING_SAMPLE.replace('"$APP_KEY" > "$key"', '"$APP_ID" > "$key"')
-    fed = ("        env:\n          APP_ID: ${{ secrets.REVIEWER_APP_ID }}\n"
-           "          APP_KEY: ${{ secrets.REVIEWER_APP_KEY }}\n")
-    unfed = SIGNING_SAMPLE.replace(fed, "")
-    borrowed = "      - name: earlier\n" + fed + "        run: |\n          true\n" + unfed
-    for door_text, review_text, want, what in (
-            (SIGNING_SAMPLE, SIGNING_SAMPLE, False, "a rehearsal signing as the reviewer does"),
-            (relaid, SIGNING_SAMPLE, False, "the same under other indentation, comments and blanks"),
-            (longer, SIGNING_SAMPLE, True, "a rehearsal whose JWT lives longer"),
-            (SIGNING_SAMPLE, longer, True, "the reviewer's signing changed alone"),
-            (elsewhere, SIGNING_SAMPLE, True, "a rehearsal that finds the installation elsewhere"),
-            (rekeyed, SIGNING_SAMPLE, True, "a rehearsal handed another key"),
-            (miswritten, SIGNING_SAMPLE, True, "a rehearsal writing another secret as the key"),
-            (unfed, SIGNING_SAMPLE, True, "a signing step with no env of its own"),
-            (borrowed, SIGNING_SAMPLE, True, "keys borrowed from an earlier step"),
-            ("", SIGNING_SAMPLE, True, "no rehearsal at all"),
-            ("", "", True, "neither file signing, which is not agreement")):
-        bad += hold(rehearsal_drifts(door_text, review_text), want, what)
     if bad:
         print("review-gate selftest failed: %d case(s)" % bad)
         return 1
@@ -1735,6 +1718,7 @@ def _selftest():
     failed += _check_wiring()
     failed += _check_product_wiring()
     failed += _check_product_loosenings()
+    failed += _check_review_loosenings()
     return 1 if failed else 0
 
 
