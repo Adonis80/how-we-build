@@ -23,6 +23,7 @@ One page per topic, opened when its trigger fires. A topic moves here from this 
 | Page | Open when |
 |---|---|
 | `library/session-changeover.md`: *Session changeover* | deciding whether to stay in a session or start a fresh one, and before leaving one |
+| `library/screen-design.md`: *How a screen gets designed* | a screen is new or reworked, before any code for it |
 
 ## Products under this rulebook
 
@@ -225,22 +226,6 @@ One lead owns a slice at a time. The pull request is the handover, and a replace
 **Whichever stack leads, his part is only a tap no hand may make.** The hands may not sign in for him, type a password or a secret into a web page, get past an are-you-human check, pay, or approve a sign-in key on his account by themselves. A session takes such a job to that one tap and hands him the tap alone — the link, what he will see, the words to reply — never the job, and never a choice of how. Learned 17 September 2026: a Hemz OS code session handed him *add one credential — an Anthropic API key or a Claude subscription token*, a job with a choice attached. The Cowork session that took it over chose the subscription token, since it needs no new spending, made it, and put it into the repository's secrets through GitHub's API, sealed, where no person or model saw it. Its own safety guard refused to approve the key without him, which is right, and Claude's approval page, after stalling twice in his Chrome, went through at once in the built-in browser. All he did was sign in and tap *Authorize*.
 
 **The Chairman's ruling, 11 September 2026.** While Claude Opus 5 at maximum effort is the strongest model available to him, it leads, and the OpenAI path stays configured — used for review too, until his ruling of 22 September retired Codex as a reviewer wherever the badge counts (*The independent reviewer*). The rules are written by role, so the swap costs nothing the day that changes.
-
-## How a screen gets designed
-
-Beautiful is not a step at the end. A screen earns its look by being the smallest coherent thing that does the job, and the order below is what produces that. It is the same order for every product; only the constitution differs.
-
-1. **The brief.** The CTO writes it from current product truth: who uses it, the real-world task, the fixed business rules, the data already known, the states that matter, what success looks like measurably, the non-goals. It describes the problem, never the layout. One brief exists at a time; it is an input, not a record.
-2. **The Interaction Architect.** Its role page is `design/ARCHITECT.md` here. A fresh session every time, reading four things only — the brief, `design/SCREEN-LAW.md` with the product's own constitution, the product's design system (tokens and approved patterns), and the spec template it fills. No chat history, no old attempts, no pile. Its order is: reduce the concepts before arranging any pixels; fix the information hierarchy (act now / act confidently / supporting context / on demand / not on this screen); choose the smallest interaction model; then write the short screen spec. It may challenge a brief that over-complicates the workflow, in one line per challenge. It may not change a business rule, invent a number, or optimise for novelty or tap count alone.
-3. **The visual.** Phone-first artboards of the real states, with real derived figures — never a happy path alone. This is what Claude Design is for, and the canvas link becomes the spec's `prototype_ref`. An advisory session may produce it; only an attached builder session puts it into the product.
-4. **The Chairman approves by looking.** He sees the visual and nothing else. The brief and the spec stay between the roles; he is never asked to read or approve written interaction prose.
-5. **Build the approved direction into the real product** — not into a separate finished artefact.
-
-Claude Design is a workbench, not the authority: the accepted design system, the current product and the Chairman's acceptance are. A routine change to an existing screen goes straight into the product from the design system, with no canvas at all. And no polished canvas is made before the interaction logic behind it is settled — a beautiful screen can price wrong.
-
-The screen spec is the durable record — contract, hierarchy, layout tree, states, responsive behaviour, access, acceptance, decisions — and the reviewer judges against it, the screen law and the product's constitution.
-
-**The pages live here, once.** `design/SCREEN-LAW.md` is the screen law every product's screens obey, capped at 450 words and machine-checked. `design/ARCHITECT.md` is the role. `design/BRIEF_TEMPLATE.md`, `design/SCREEN_SPEC_TEMPLATE.md` and `design/REVIEW_RUBRIC.md` are the three forms the work takes. A product copies none of them. It writes only its own constitution — its money rules, its units, its domain law — which points here for the rest, and its own screen specs.
 
 ## What every product carries
 
