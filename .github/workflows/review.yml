@@ -172,7 +172,12 @@ jobs:
           # trim that weakened the operating page was caught by a reader twice
           # on 9 September, and never by a machine) and anything in a
           # dot-directory (.github, .claude: settings and agents' instructions,
-          # whatever their extension). Renames count as a deletion
+          # whatever their extension). The README is a page by choice, not by
+          # oversight (#79's second read): it is the index topics leave for the
+          # library, so reading it as code would put every such move back at
+          # max with every file, the shape of #77's timeouts. A words read is
+          # still given it whole, and what it says of this machinery is held by
+          # review-gate.py, not by its prose. Renames count as a deletion
           # and an addition, so a script renamed to a page is still a script.
           # Anything unrecognised is code, and a list that cannot be made stops
           # the step rather than reading as no change. #77's reads ran out of

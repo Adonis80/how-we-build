@@ -1400,7 +1400,11 @@ def _check_read_loosenings():
 # root, HOW-WE-BUILD.md and CHARTER.md: twice on 9 September a trim weakened
 # what the operating page required, and a reader caught it where no machine
 # could (#79's first read). Nor is anything in a dot-directory, where .github
-# and .claude keep settings and agents' instructions whatever their extension. The
+# and .claude keep settings and agents' instructions whatever their extension.
+# The README is a page by choice (#79's second read): it is the index topics
+# leave for the library, and read as code every such move would be back at max
+# with every file, the shape of #77's timeouts. A words read is still given it
+# whole, and what it says of this machinery is held here, not by its prose. The
 # list splits renames, so a script renamed to a page is still a script, and is
 # NUL-separated, so no name is read as two. It is written to a file first, so a
 # list that cannot be made stops the step: read through `< <(...)` it failed
