@@ -325,7 +325,7 @@ jobs:
           g diff -z --name-only --no-renames "origin/$MAIN...$SHA" > "$t/changed.txt"
           while IFS= read -r -d '' f; do
             case "$f" in
-              AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|.*|*/.*) class=code ;;
+              AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|design/SCREEN-LAW.md|.*|*/.*) class=code ;;
               *.md) ;;
               *) class=code ;;
             esac

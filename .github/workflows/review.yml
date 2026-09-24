@@ -168,7 +168,8 @@ jobs:
           # read at: decision 0005 keeps max for the risky classes, and a change
           # to pages alone is not one. Pages are `.md` files, less the brief
           # (AGENTS.md, at any depth: it instructs the reviewer or an agent),
-          # the operating page and the charter (HOW-WE-BUILD.md, CHARTER.md: a
+          # the pages whose words are law here (HOW-WE-BUILD.md, CHARTER.md,
+          # RICH-DATA.md's data rules and the capped design/SCREEN-LAW.md: a
           # trim that weakened the operating page was caught by a reader twice
           # on 9 September, and never by a machine) and anything in a
           # dot-directory (.github, .claude: settings and agents' instructions,
@@ -188,11 +189,15 @@ jobs:
           git diff -z --name-only --no-renames "origin/${{ github.event.repository.default_branch }}...${{ steps.head.outputs.sha }}" > "$RUNNER_TEMP/changed.txt"
           while IFS= read -r -d '' f; do
             case "$f" in
-              AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|.*|*/.*) class=code ;;
+              AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|design/SCREEN-LAW.md|.*|*/.*) class=code ;;
               *.md) ;;
               *) class=code ;;
             esac
           done < "$RUNNER_TEMP/changed.txt"
+          # `high` is one of the pinned tool's levels (low, medium, high, xhigh,
+          # max, by its own --help; run with it on 24 September). An unknown
+          # value is not refused but warned and replaced by the default, so it
+          # is the read's own guard that refuses one, not the tool.
           case "$class" in words) effort=high ;; *) effort=max ;; esac
           echo "class=$class" >> "$GITHUB_OUTPUT"
           echo "effort=$effort" >> "$GITHUB_OUTPUT"

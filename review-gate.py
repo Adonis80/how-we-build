@@ -1403,10 +1403,11 @@ def _check_read_loosenings():
 # each reviewer works out a class from the diff it reads: `words` when every
 # file the change touches is a page, `code` otherwise. The brief, AGENTS.md at
 # any depth, is never a page: it instructs the reviewer or an agent, so a change
-# to it changes a reader. Nor are the operating page and the charter at the
-# root, HOW-WE-BUILD.md and CHARTER.md: twice on 9 September a trim weakened
-# what the operating page required, and a reader caught it where no machine
-# could (#79's first read). Nor is anything in a dot-directory, where .github
+# to it changes a reader. Nor are the pages whose words are law here:
+# HOW-WE-BUILD.md and CHARTER.md at the root (twice on 9 September a trim
+# weakened what the operating page required, and a reader caught it where no
+# machine could: #79's first read), RICH-DATA.md's data rules and the capped
+# design/SCREEN-LAW.md (#79's third read). Nor is anything in a dot-directory, where .github
 # and .claude keep settings and agents' instructions whatever their extension.
 # The README is a page by choice (#79's second read): it is the index topics
 # leave for the library, and read as code every such move would be back at max
@@ -1419,7 +1420,8 @@ def _check_read_loosenings():
 # the changes below, from its first line to the one output that hands the
 # effort to the read, so any line added inside it is run too.
 CLASS_FIRST = "class=words"
-CLASS_CODE = "AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|.*|*/.*) class=code ;;"
+CLASS_CODE = ("AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|design/SCREEN-LAW.md|"
+              ".*|*/.*) class=code ;;")
 CLASS_EFFORT = ('case "$class" in words) effort=%s ;; *) effort=%s ;; esac'
                 % (WORDS_EFFORT, REVIEWER_EFFORT))
 CLASS_OUT = 'echo "effort=$effort" >> "$GITHUB_OUTPUT"'
@@ -1448,12 +1450,14 @@ CLASS_CASES = (
     (None, None),
     ([], "words"),
     (["README.md"], "words"),
-    (["docs/reviewer.md", "RICH-DATA.md", "design/SCREEN-LAW.md"], "words"),
+    (["docs/reviewer.md", "design/ARCHITECT.md", "design/REVIEW_RUBRIC.md"], "words"),
     (["docs/HOW-WE-BUILD.md", "docs/CHARTER.md"], "words"),
     (["a page with spaces.md"], "words"),
     (["AGENTS.md"], "code"),
     (["HOW-WE-BUILD.md"], "code"),
     (["README.md", "CHARTER.md"], "code"),
+    (["RICH-DATA.md"], "code"),
+    (["design/SCREEN-LAW.md"], "code"),
     (["docs/AGENTS.md"], "code"),
     (["README.md", "check.sh"], "code"),
     (["review-gate.py"], "code"),
@@ -1545,6 +1549,8 @@ CLASS_LOOSENINGS = (
     ("the brief read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("AGENTS.md|*/AGENTS.md|", "", 1), 1)),
     ("the operating page read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("HOW-WE-BUILD.md|", "", 1), 1)),
     ("the charter read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("CHARTER.md|", "", 1), 1)),
+    ("the data rules read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("RICH-DATA.md|", "", 1), 1)),
+    ("the screen law read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("design/SCREEN-LAW.md|", "", 1), 1)),
     ("a dot-directory read as pages", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("|.*|*/.*", "", 1), 1)),
     ("anything unrecognised read as pages", None, lambda t: t.replace("              *) class=code ;;\n", "              *) ;;\n", 1)),
     ("the class reset after the list", None, lambda t: t.replace("          " + CLASS_EFFORT + "\n", "          class=words\n          " + CLASS_EFFORT + "\n", 1)),
