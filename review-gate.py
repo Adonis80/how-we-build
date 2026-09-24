@@ -1431,7 +1431,7 @@ def _check_read_loosenings():
 # effort to the read, so any line added inside it is run too.
 CLASS_FIRST = "class=words"
 CLASS_CODE = ("AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|design/SCREEN-LAW.md|"
-              "design/CONSTITUTION.md|PRODUCT.md|README.md|.*|*/.*) class=code ;;")
+              "design/CONSTITUTION.md|PRODUCT.md|README.md|library/*|.*|*/.*) class=code ;;")
 CLASS_ARMS = (CLASS_CODE, "*.md) ;;", "*) class=code ;;")
 CLASS_EFFORT = ('case "$class" in words) effort=%s ;; *) effort=%s ;; esac'
                 % (WORDS_EFFORT, REVIEWER_EFFORT))
@@ -1471,6 +1471,8 @@ CLASS_CASES = (
     (None, None),
     ([], "words"),
     (["README.md"], "code"),
+    (["library/topics/reviewer.md"], "code"),
+    (["design/ARCHITECT.md", "library/topics/reviewer.md"], "code"),
     (["docs/README.md"], "words"),
     (["docs/reviewer.md", "design/ARCHITECT.md", "design/REVIEW_RUBRIC.md"], "words"),
     (["docs/HOW-WE-BUILD.md", "docs/CHARTER.md"], "words"),
@@ -1598,6 +1600,7 @@ CLASS_LOOSENINGS = (
     ("the screen law read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("design/SCREEN-LAW.md|", "", 1), 1)),
     ("a product's constitution read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("design/CONSTITUTION.md|", "", 1), 1)),
     ("the README read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("README.md|", "", 1), 1)),
+    ("the library read as pages", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("library/*|", "", 1), 1)),
     ("an arm for an unlisted extension", None, lambda t: t.replace("              *.md) ;;\n", "              *.sql) ;;\n              *.md) ;;\n", 1)),
     ("the left-out count dropped", REVIEW_WORKFLOW, lambda t: t.replace("          " + REVIEW_COUNT_IN + "\n", "", 1)),
     ("a verdict that hides its effort", None, lambda t: t.replace(' (read as $CLASS at effort $EFFORT)"', '"', 1)),

@@ -177,6 +177,8 @@ jobs:
           # whatever their extension). The README is read as code while it
           # still holds the rulebook's prose (#79's eighth read); once the
           # library move leaves it an index, one line returns it to pages.
+          # The library is read as code for good (#79's twelfth read): it is
+          # where that prose goes, one topic a page.
           # Renames count as a deletion
           # and an addition, so a script renamed to a page is still a script.
           # Anything unrecognised is code, and a list that cannot be made stops
@@ -194,7 +196,7 @@ jobs:
           git diff -z --name-only --no-renames "origin/${{ github.event.repository.default_branch }}...${{ steps.head.outputs.sha }}" > "$RUNNER_TEMP/changed.txt"
           while IFS= read -r -d '' f; do
             case "$f" in
-              AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|design/SCREEN-LAW.md|design/CONSTITUTION.md|PRODUCT.md|README.md|.*|*/.*) class=code ;;
+              AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|design/SCREEN-LAW.md|design/CONSTITUTION.md|PRODUCT.md|README.md|library/*|.*|*/.*) class=code ;;
               *.md) ;;
               *) class=code ;;
             esac
