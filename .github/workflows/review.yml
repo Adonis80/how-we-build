@@ -338,6 +338,12 @@ jobs:
           # the steps before it spend comes out of the read, never out of the
           # minutes left to sign (#76's first read). With too little left it does
           # not start, and either way it is signed `neutral` with the reason.
+          # PROVED BEFORE IT MERGED, on GitHub's runner, since this job runs only
+          # from main: run 35988583174 lifted this step and *Sign the verdict*
+          # out of both reviewers' files, wired as here, with a stub reviewer and
+          # the deadline at minute 2. A long read stopped at second 120, one that
+          # ignored the stop was killed at 180, a slow start was refused at 76,
+          # a rate limit was named, and each was signed `neutral` with its reason.
           # `why()` is review-product.yml's, line for line: it names a reason and
           # never quotes one, so the same words can go on a product's check run.
           # review-gate.py holds the limit, the call and `why()` in both files.
