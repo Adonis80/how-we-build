@@ -434,8 +434,9 @@ jobs:
             fi
           }
 
-          # The model and effort the Chairman named, written as two flags and
-          # held against review-gate.py by its wiring check. The credential is a
+          # The model the Chairman named, at the effort decision 0005 gives the
+          # change's class, written as two flags and held against
+          # review-gate.py by its wiring and class checks. The credential is a
           # Claude subscription token from `claude setup-token`, which Anthropic
           # sanctions for the unmodified Claude Code binary reading this
           # variable — not for a hand-written call to the Messages API, whatever

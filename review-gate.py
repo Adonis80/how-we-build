@@ -122,6 +122,11 @@ REVIEWER_MODEL = "claude-sonnet-5"
 # included, at REVIEWER_EFFORT. The class is worked out in each workflow and
 # held below, at CLASS_FIRST.
 REVIEWER_EFFORT = "max"
+# Why high and not medium, since the decision names only what risky reads get
+# (#79's seventh read): his ruling of 18 September holds the reviewer at least
+# as strong as the lead that builds, and the lead builds at medium and steps to
+# high after one failed attempt. At high, a read of pages stays at or above the
+# lead's own effort; at medium it could fall below it. The CTO's reading.
 WORDS_EFFORT = "high"
 
 # The badge. `juku-reviewer`, created on the Chairman's account 19 September 2026;
