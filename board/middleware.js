@@ -51,7 +51,7 @@ export default async function middleware(req) {
   const salt = process.env.BOARD_PIN_SALT || '';
   if (!secret || !pinHash) return new Response('Not configured.', { status: 503, headers: { 'x-robots-tag': ROBOTS } });
 
-  if (url.pathname === '/robots.txt') return; // let the static "Disallow: /" through
+  if (url.pathname === '/robots.txt') return; // robots.txt says "Allow: /" so crawlers can read the noindex on the PIN response
 
   if (url.pathname === '/__pin' && req.method === 'POST') {
     const form = await req.formData().catch(() => null);
@@ -63,7 +63,7 @@ export default async function middleware(req) {
         location: '/', 'x-robots-tag': ROBOTS, 'cache-control': 'private, no-store',
         'set-cookie': `${COOKIE}=${encodeURIComponent(v)}; Path=/; Max-Age=${DAYS * 86400}; HttpOnly; Secure; SameSite=Strict` } });
     }
-    await new Promise(r => setTimeout(r, 1200)); // slow every wrong guess
+    await new Promise(r => setTimeout(r, 1200)); // slows a single guesser; the attempt limit is the project's firewall rule (10 a minute per address on POST /__pin)
     return pinPage(true);
   }
 
