@@ -3,6 +3,7 @@
 # It refuses: an operating page over its word cap, a screen law over its own, a
 # root, design or library file that is not on its list or missing from it, a
 # library page over its size or unscoped, a link to a page that does not exist,
+# an index row that opens its first page on words that page does not say,
 # anything that looks like a secret (naming the place, never the value), a
 # review gate that no longer matches the reviewer's answers or has drifted from
 # the workflows that fetch them, and, in a pull request, a commit no reviewer
@@ -119,12 +120,32 @@ while IFS= read -r hit; do
   # refuses is above: a control character in a path reaches a public log.
   [ -f "$f" ] || { printf "FAIL: %q links '%s', which does not exist.\n" "${hit%:*}" "$f"; lib_fail=1; }
 done < <(grep -r -o -I -E --exclude-dir=.git "$page_re" . | sed 's|^\./||' | sort -u || true)
+# The index holds its pages in words as well as in names. Decision 0005
+# (issue #75: his ruling of 23 September 2026, and his challenge "machine
+# first, reading last") made the map "one line per topic saying when to open
+# it", and ruled that what a machine can check "becomes a shared check the
+# same day". So this holds a settled rule rather than adding one. A page's
+# trigger lives twice: in the index row a session scans to decide what to
+# open, and on the page it opens. Nothing held the two equal (#83's read),
+# so a row edited alone would send a session to a page on words the page
+# does not say. Each row's "Open when" must be the first page it names',
+# less the final full stop. The other pages of a several-page row carry
+# lines of their own and are held only to being named. The text is
+# repository text, but it reaches a public log, so control characters are
+# dropped before it is printed.
+while IFS='|' read -r _ cell when _; do
+  first=$( { grep -o -E "$page_re" <<< "$cell" || true; } | head -n 1)
+  [ -f "$first" ] || continue
+  want=$(sed -n -E 's/^Scope: .+ Open when: (.+)\.$/\1/p' "$first" | head -n 1 | tr -d '[:cntrl:]')
+  when=$(sed -E 's/^ +//; s/ +$//' <<< "$when" | tr -d '[:cntrl:]')
+  [ "$when" = "$want" ] || { printf 'FAIL: the README opens %s when "%s"; the page says it opens when "%s".\n' "$first" "$when" "$want"; lib_fail=1; }
+done < <(grep -E "^\| \`$page_re\`" README.md || true)
 if [ "$lib_fail" -ne 0 ]; then
   fail=1
 elif [ "${#pages[@]}" -eq 0 ]; then
   echo "ok: no library pages yet, and nothing names or links one"
 else
-  echo "ok: ${#pages[@]} library pages, each named by the README, each at most 4000 bytes and scoped, and every link to one resolves"
+  echo "ok: ${#pages[@]} library pages, each named by the README, each at most 4000 bytes and scoped, every link to one resolves, and each index row opens the first page it names on that page's own words"
 fi
 
 # 3. Nothing that looks like a secret, anywhere.
