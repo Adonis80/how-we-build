@@ -17,9 +17,9 @@
 2. From latest `main`, read open PRs, run the product, find the smallest seam, branch, open a draft PR.
 3. Build. Replace rather than wrap. One implementation per business rule. No speculative abstraction.
 4. Prove it: build, tests, the Playwright journey on phone and desktop, preview deploy. A screenshot is not proof.
-5. The named reviewer reads the PR cold in its own session: one reviewer since 22 September, so pricing, live database changes or schema, authentication and authorisation, public trust boundaries, deploy and release machinery and this gate get that same single read. Asked once per round, fixes batched into one push; with no read the gate can count, the slice parks and the next begins. The gate never opens unreviewed.
+5. The named reviewer reads the PR cold in its own session: one reviewer since 22 September: pricing, live data or schema, authentication and authorisation, public trust boundaries, deploy and release and this gate get that same read. Asked once per round, fixes batched into one push; with no read the gate can count, the slice parks and the next begins. The gate never opens unreviewed.
 6. Send the preview, what changed, the journey to try, and "Decision needed: … or none".
-7. Checks green, merge to protected `main` yourself, never handed on: his standing permission. Deploy, smoke-test, roll back on failure. Delete residue; leave `roadmap.json` fit to start on *build* alone: `next` lines current and complete.
+7. Checks green, merge to protected `main` yourself: his standing permission. Else another session does, never him. Deploy, smoke-test, roll back on failure. Delete residue; leave `roadmap.json` fit to start on *build* alone: `next` lines current and complete.
 
 **The PR is the handover**: `Lead stack`, `Reviewed by`, objective, acceptance criteria, done, remaining, checks, evidence, preview, next action, rollback; kept current when work stops. Truth: the repo and product, not conversation or memory.
 
