@@ -88,7 +88,7 @@ Anthropic development uses Claude/Cowork/Code through the best current route to 
 
 Only one provider owns a slice at a time. At a clean checkpoint, opening the other provider and sending `build` transfers ownership. The outgoing provider does not prepare a prose explanation for the incoming provider; it prepares the PR and repository.
 
-Which model leads is the Chairman's, and changes as the models do; because the rules are written by role, that swap costs nothing — the lead is a role no machine here runs. A model a machine runs, such as the reviewer, is another matter, and `README.md` says what it costs today. What each stack can actually do, and how its workspace is configured, lives in `README.md`, which changes faster than this Charter.
+Which model leads is the Chairman's, and changes as the models do; because the rules are written by role, that swap costs nothing — the lead is a role no machine here runs. A model a machine runs, such as the reviewer, is another matter, and `README.md` says what it costs today. What each stack can actually do, and how its workspace is configured, lives in `README.md` and the library pages its index names, which change faster than this Charter.
 
 A new provider in future earns one adapter. It does not justify another roadmap, state store, handover format or copy of the global rules.
 
@@ -201,7 +201,7 @@ A provider-specific problem should normally change only that provider adapter. A
 
 ## 14. New-product test
 
-A product is integrated only when the shared repository contract and both provider adapters are configured and tested. The exact setup lives in `README.md`, because provider configuration changes faster than this Charter.
+A product is integrated only when the shared repository contract and both provider adapters are configured and tested. The exact setup lives in `README.md` and the library pages its index names, because provider configuration changes faster than this Charter.
 
 The acceptance test is deliberately simple:
 
