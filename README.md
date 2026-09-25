@@ -27,7 +27,7 @@ How a change reaches every product: it is made here once and then lands everywhe
 
 ## Where each topic lives
 
-One page per topic, or a named few where a topic is over the cap, opened when its trigger fires. `check.sh` holds the shape: each page named here, at most 4000 bytes, carrying a `Scope: … Open when: …` line, each row opening its first page on that page's own words.
+One page per topic, or a named few where a topic is over the cap, opened when its trigger fires. `check.sh` holds each page's shape; what it checks is in `library/rulebook-files.md`.
 
 | Page | Open when |
 |---|---|
