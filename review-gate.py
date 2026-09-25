@@ -2169,7 +2169,8 @@ def _check_product_loosenings():
 
 # THE SLICE'S PAGES, PICKED BY RULE (#86). A product read carried the product's
 # whole PRODUCT.md and roadmap.json — 155 KB of Hemz OS's on 24 September, on
-# every read — and nearly every slice edits both. Now it carries the roadmap
+# every read — and a slice usually edits the roadmap (58 of Hemz OS's last 72
+# merged pull requests did) and often PRODUCT.md (29). Now it carries the roadmap
 # item whose id the pull request's title opens with, and PRODUCT.md's opening
 # and the sections that item names, and names everything else with its size.
 # Never the sections the diff edits: the diff shows those already, and a pick

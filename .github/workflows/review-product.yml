@@ -379,10 +379,11 @@ jobs:
           g diff -z --name-only --diff-filter=AMR "origin/$MAIN...$SHA" > "$t/touched.txt"
           # THE SLICE'S PAGES, PICKED BY RULE (#86). Every read carried the
           # product's whole PRODUCT.md and roadmap.json, 155 KB of Hemz OS's,
-          # and nearly every slice edits both, so a cut that stood aside for an
-          # edited page would cut nothing. Of the two, a read now carries the
-          # roadmap item whose id the pull request's title opens with (Hemz OS
-          # titles every slice so: "P48 lands, ..."), and PRODUCT.md's opening
+          # and a slice usually edits the roadmap (58 of Hemz OS's last 72
+          # merged pull requests did) and often PRODUCT.md (29), so a cut that
+          # stood aside for an edited page would cut little. Of the two, a read
+          # now carries the roadmap item whose id the pull request's title opens
+          # with (Hemz OS titles its slices so: "P48 lands, ..."), and PRODUCT.md's opening
           # and the sections that item names (§6, or §3.4, which is §3). Never
           # the sections the diff edits: the diff shows those, and a pick made
           # from the diff is a pick the proposer makes. Every section and item
