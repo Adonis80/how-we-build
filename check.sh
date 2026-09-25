@@ -36,7 +36,7 @@ else
 fi
 
 # 2. Only these files exist at the root (plus .git and .github).
-allowed=" AGENTS.md CHARTER.md HOW-WE-BUILD.md README.md RICH-DATA.md check.sh design library review-gate.py "
+allowed=" AGENTS.md CHARTER.md HOW-WE-BUILD.md README.md RICH-DATA.md board check.sh design library review-gate.py "
 while IFS= read -r f; do
   case "$f" in .git|.github) continue ;; esac
   case "$allowed" in
@@ -51,6 +51,8 @@ done < <(ls -A)
 for f in $allowed; do
   case "$f" in
     design) [ -d "$f" ] || { echo "FAIL: '$f' is missing, or is not a directory; the root list is a fixed set."; fail=1; } ;;
+    # The build board's gate (decision 0007): its three files and nothing else. No roadmap data lives here.
+    board) [ ! -e "$f" ] || { [ -d "$f" ] && [ "$(ls -A board | tr '\n' ' ')" = "middleware.js robots.txt vercel.json " ]; } || { echo "FAIL: 'board/' holds only middleware.js, robots.txt and vercel.json."; fail=1; } ;;
     # Git keeps no empty directory, so an absent library is the empty one, and
     # the README's index holds it to the list both ways instead (2c).
     library) [ ! -e "$f" ] || [ -d "$f" ] || { echo "FAIL: '$f' is not a directory."; fail=1; } ;;
