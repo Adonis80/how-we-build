@@ -368,7 +368,7 @@ jobs:
             exit 1
           }
           if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
-            echo "It fails closed on purpose. See README, The independent reviewer." >&2
+            echo "It fails closed on purpose. See library/reviewer-parking.md, When the gate can count no read." >&2
             fail "no CLAUDE_CODE_OAUTH_TOKEN in the reviewer environment"
           fi
 
