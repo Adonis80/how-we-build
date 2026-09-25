@@ -184,13 +184,16 @@ jobs:
           # Anything unrecognised is code, and a list that cannot be made stops
           # the step rather than reading as no change. #77's reads ran out of
           # time twice at max, preloading every file (#70's slice 2).
-          # RISKY, BY NAME (#86): a file is in a risky class by its lower-cased
-          # path — the gate's own files and the brief whatever their extension,
-          # then any file but a page whose name says pricing, live data or
-          # schema, sign-in or permissions, a public trust boundary, or deploy
-          # and release. One risky file makes the change risky, read at max; the
-          # rest is read at high, told so, and asked to name a risky file the
-          # names missed. review-gate.py says why each name is there.
+          # RISKY, BY NAME (#86), AND FAILING CLOSED (decision 0008): a file is
+          # in a risky class by its lower-cased path — the gate's own files, the
+          # registry and the brief whatever their extension, then any file but
+          # a page whose name says pricing, live data, schema, destructive
+          # changes or backfills, sign-in or permissions, customer or personal
+          # data, secrets or credentials, a public trust boundary, or deploy
+          # and release — and so is any file whose kind the list does not know.
+          # One risky file makes the change risky, read at max; the rest is
+          # read at high, told so, and asked to name a risky file the names
+          # missed. review-gate.py says why each name is there.
           # review-gate.py runs this block against a list of changes, and holds
           # it in both reviewers. REHEARSED BEFORE IT MERGED, off GitHub: this
           # step and *Read it*, as written, on a clone, with the model stubbed
@@ -209,13 +212,17 @@ jobs:
               *) class=code ;;
             esac
             case "${f,,}" in
-              agents.md|*/agents.md|check.sh|*/check.sh|review-gate.py|*/review-gate.py|.*|*/.*) risky=yes ;;
+              agents.md|*/agents.md|check.sh|*/check.sh|review-gate.py|*/review-gate.py|model-registry/*|*/model-registry/*|.*|*/.*) risky=yes ;;
               *.md) ;;
               *pric*|*payment*|*billing*|*invoice*|*checkout*|*quote*) risky=yes ;;
-              *.sql|*migration*|*schema*|supabase/*|*/supabase/*) risky=yes ;;
+              *.sql|*migration*|*schema*|supabase/*|*/supabase/*|*backfill*|*purge*|*truncate*|*wipe*|*seed*) risky=yes ;;
               *auth*|*login*|*logout*|*session*|*password*|*permission*) risky=yes ;;
+              *customer*|*personal*|*pii*|*gdpr*|*privacy*|*export*|*delet*|*erase*|*anonymi*) risky=yes ;;
+              *secret*|*credential*|*token*|*.pem|*.key|*.p12|*.pfx|*.env|*.env.*) risky=yes ;;
               api/*|*/api/*|*middleware*|*webhook*|sw.js|*/sw.js) risky=yes ;;
               *.sh|*.toml|*deploy*|*vercel.json|*dockerfile*|*package.json|*lock.json|*.lock|*lock.yaml) risky=yes ;;
+              *.js|*.mjs|*.cjs|*.jsx|*.ts|*.tsx|*.py|*.html|*.css|*.scss|*.json|*.txt|*.csv|*.svg|*.png|*.jpg|*.jpeg|*.gif|*.webp|*.ico|*.woff|*.woff2) ;;
+              *) risky=yes ;;
             esac
           done < "$RUNNER_TEMP/changed.txt"
           [ "$risky" = no ] || class=risky

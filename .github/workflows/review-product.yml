@@ -341,13 +341,17 @@ jobs:
               *) class=code ;;
             esac
             case "${f,,}" in
-              agents.md|*/agents.md|check.sh|*/check.sh|review-gate.py|*/review-gate.py|.*|*/.*) risky=yes ;;
+              agents.md|*/agents.md|check.sh|*/check.sh|review-gate.py|*/review-gate.py|model-registry/*|*/model-registry/*|.*|*/.*) risky=yes ;;
               *.md) ;;
               *pric*|*payment*|*billing*|*invoice*|*checkout*|*quote*) risky=yes ;;
-              *.sql|*migration*|*schema*|supabase/*|*/supabase/*) risky=yes ;;
+              *.sql|*migration*|*schema*|supabase/*|*/supabase/*|*backfill*|*purge*|*truncate*|*wipe*|*seed*) risky=yes ;;
               *auth*|*login*|*logout*|*session*|*password*|*permission*) risky=yes ;;
+              *customer*|*personal*|*pii*|*gdpr*|*privacy*|*export*|*delet*|*erase*|*anonymi*) risky=yes ;;
+              *secret*|*credential*|*token*|*.pem|*.key|*.p12|*.pfx|*.env|*.env.*) risky=yes ;;
               api/*|*/api/*|*middleware*|*webhook*|sw.js|*/sw.js) risky=yes ;;
               *.sh|*.toml|*deploy*|*vercel.json|*dockerfile*|*package.json|*lock.json|*.lock|*lock.yaml) risky=yes ;;
+              *.js|*.mjs|*.cjs|*.jsx|*.ts|*.tsx|*.py|*.html|*.css|*.scss|*.json|*.txt|*.csv|*.svg|*.png|*.jpg|*.jpeg|*.gif|*.webp|*.ico|*.woff|*.woff2) ;;
+              *) risky=yes ;;
             esac
           done < "$t/changed.txt"
           [ "$risky" = no ] || class=risky

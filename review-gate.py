@@ -1456,16 +1456,29 @@ CLASS_CODE = ("AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|des
 CLASS_ARMS = (CLASS_CODE, "*.md) ;;", "*) class=code ;;")
 RISK_CASE = 'case "${f,,}" in'
 # The six classes, as the arms that name them, in the order they are tried.
-RISK_GATE = ("agents.md|*/agents.md|check.sh|*/check.sh|review-gate.py|*/review-gate.py|.*|*/.*) "
-             "risky=yes ;;")
+RISK_GATE = ("agents.md|*/agents.md|check.sh|*/check.sh|review-gate.py|*/review-gate.py|"
+             "model-registry/*|*/model-registry/*|.*|*/.*) risky=yes ;;")
 RISK_PRICING = "*pric*|*payment*|*billing*|*invoice*|*checkout*|*quote*) risky=yes ;;"
-RISK_DATA = "*.sql|*migration*|*schema*|supabase/*|*/supabase/*) risky=yes ;;"
+RISK_DATA = ("*.sql|*migration*|*schema*|supabase/*|*/supabase/*|*backfill*|*purge*|*truncate*|"
+             "*wipe*|*seed*) risky=yes ;;")
 RISK_SIGN_IN = "*auth*|*login*|*logout*|*session*|*password*|*permission*) risky=yes ;;"
+# Decision 0008's prerequisite: customer or personal data access, export and
+# deletion; secrets and credentials.
+RISK_PERSONAL = ("*customer*|*personal*|*pii*|*gdpr*|*privacy*|*export*|*delet*|*erase*|"
+                 "*anonymi*) risky=yes ;;")
+RISK_SECRETS = "*secret*|*credential*|*token*|*.pem|*.key|*.p12|*.pfx|*.env|*.env.*) risky=yes ;;"
 RISK_BOUNDARY = "api/*|*/api/*|*middleware*|*webhook*|sw.js|*/sw.js) risky=yes ;;"
 RISK_RELEASE = ("*.sh|*.toml|*deploy*|*vercel.json|*dockerfile*|*package.json|*lock.json|*.lock|"
                 "*lock.yaml) risky=yes ;;")
-RISK_ARMS = (RISK_GATE, "*.md) ;;", RISK_PRICING, RISK_DATA, RISK_SIGN_IN, RISK_BOUNDARY,
-             RISK_RELEASE)
+# AND IT FAILS CLOSED (decision 0008, rule 3): a file is ordinary only when its
+# kind is one the list knows, and anything else — no extension, a certificate,
+# a config format nobody named — is read as risky. It started at "not risky"
+# and flipped only on a name, so a kind nobody had thought of was read at high.
+RISK_ORDINARY = ("*.js|*.mjs|*.cjs|*.jsx|*.ts|*.tsx|*.py|*.html|*.css|*.scss|*.json|*.txt|"
+                 "*.csv|*.svg|*.png|*.jpg|*.jpeg|*.gif|*.webp|*.ico|*.woff|*.woff2) ;;")
+RISK_UNKNOWN = "*) risky=yes ;;"
+RISK_ARMS = (RISK_GATE, "*.md) ;;", RISK_PRICING, RISK_DATA, RISK_SIGN_IN, RISK_PERSONAL,
+             RISK_SECRETS, RISK_BOUNDARY, RISK_RELEASE, RISK_ORDINARY, RISK_UNKNOWN)
 CLASS_RISKY = '[ "$risky" = no ] || class=risky'
 CLASS_EFFORT = ('case "$class" in words|code) effort=%s ;; *) effort=%s ;; esac'
                 % (ORDINARY_EFFORT, RISKY_EFFORT))
@@ -1690,6 +1703,33 @@ CLASS_CASES = (
     (["Hosting/Login.JS"], "risky"),
     (["SRC/PRICING.TS"], "risky"),
     (["Agents.md"], "risky"),
+    # Decision 0008: it fails closed. A kind of file the list does not know is
+    # risky, whatever its name.
+    (["LICENSE"], "risky"),
+    (["notes.xyz"], "risky"),
+    (["hosting/nginx.conf"], "risky"),
+    (["docker-compose.yml"], "risky"),
+    (["certs/server.pem"], "risky"),
+    (["assets/logo.png", "README.md"], "code"),
+    # Customer or personal data access, export and deletion.
+    (["hosting/customer-list.js"], "risky"),
+    (["src/export-orders.ts"], "risky"),
+    (["hosting/delete-account.js"], "risky"),
+    (["lib/gdpr.py"], "risky"),
+    (["web/Privacy.tsx"], "risky"),
+    # Secrets and credentials.
+    (["config/secrets.json"], "risky"),
+    (["hosting/credentials.js"], "risky"),
+    (["config/prod.env"], "risky"),
+    (["refresh-token.ts"], "risky"),
+    # Destructive data changes and backfills.
+    (["scripts/backfill-orders.js"], "risky"),
+    (["hosting/purge-cache.js"], "risky"),
+    (["db/seed.js"], "risky"),
+    # The registry and reviewer routing are the gate; pages about them are pages.
+    (["model-registry/registry.json"], "risky"),
+    (["model-registry/resolve.py"], "risky"),
+    (["consensuses/juku-os/CLAUDE_OPEN_WEIGHT_MODEL_ROUTING_IMPLEMENTATION.md"], "words"),
 )
 
 
@@ -1719,8 +1759,12 @@ def class_says(block, cases):
             # stubbed, and fails as git would when there is no list to give.
             script.append("(\nset -euo pipefail\nCHANGED='%s'\nGITHUB_OUTPUT='%s'\n%s\n)\n"
                           'echo "rc%d=$?"' % (changed, out, body, n))
+        # From a file, not `bash -c`: one argument is capped at 128 KB, and a
+        # block run once per case outgrew it.
+        with open(os.path.join(d, "cases.sh"), "w", encoding="utf-8") as f:
+            f.write("\n".join(script))
         try:
-            p = subprocess.run(["bash", "-c", "\n".join(script)],
+            p = subprocess.run(["bash", os.path.join(d, "cases.sh")],
                                env=dict(os.environ, RUNNER_TEMP=d, t=d, MAIN="main", SHA="0" * 40),
                                capture_output=True, text=True, timeout=120)
         except (OSError, subprocess.SubprocessError):
@@ -1904,6 +1948,12 @@ CLASS_LOOSENINGS = (
     ("sign-in read as ordinary", None, _without_arm(RISK_SIGN_IN)),
     ("a trust boundary read as ordinary", None, _without_arm(RISK_BOUNDARY)),
     ("release machinery read as ordinary", None, _without_arm(RISK_RELEASE)),
+    ("personal data read as ordinary", None, _without_arm(RISK_PERSONAL)),
+    ("secrets read as ordinary", None, _without_arm(RISK_SECRETS)),
+    ("an unknown kind read as ordinary", None, lambda t: t.replace("              %s\n" % RISK_UNKNOWN, "              *) ;;\n", 1)),
+    ("an unknown kind never tried", None, _without_arm(RISK_UNKNOWN)),
+    ("a certificate's kind called ordinary", None, lambda t: t.replace(RISK_ORDINARY, RISK_ORDINARY.replace("*.woff2)", "*.woff2|*.pem)", 1), 1)),
+    ("the registry read as ordinary", None, lambda t: t.replace(RISK_GATE, RISK_GATE.replace("model-registry/*|*/model-registry/*|", "", 1), 1)),
     ("an endpoint read as ordinary", None, lambda t: t.replace(RISK_BOUNDARY, RISK_BOUNDARY.replace("api/*|*/api/*|", "", 1), 1)),
     ("every script read as ordinary", None, lambda t: t.replace(RISK_RELEASE, RISK_RELEASE.replace("*.sh|", "", 1), 1)),
     ("a page's exit put before the gate", None, lambda t: t.replace("              %s\n              *.md) ;;\n" % RISK_GATE, "              *.md) ;;\n              %s\n" % RISK_GATE, 1)),
