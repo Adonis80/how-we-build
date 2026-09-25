@@ -1,0 +1,7 @@
+# The independent reviewer: the machine, and installing the App
+
+Scope: this repository's reviewer, and every product it reads. Open when: changing the review machinery, or putting the reviewer App on a repository.
+
+**The machine is six files, not a paragraph.** Here, `review-gate.py` holds the register and the wiring checks; `.github/workflows/` holds the reviewer, the wake it calls, the door's proof and the product reviewer (`review-product.yml`, below); `check.sh` runs the lot. This repository proved the route first, being public and holding no secrets, prices or customer data; what a product carries follows [decision 0002](https://github.com/Adonis80/how-we-build/issues/58), has run, and is in *What every product carries*.
+
+**Installing the App costs him no tap: it is the session's hands**, on his ruling of 21 September 2026. `PUT /user/installations/{installation_id}/repositories/{repository_id}` does it in one call, answered `204` for Hemz OS that day. The call adds a repository to an installation and can do nothing else — an App's permissions are fixed on the App, and widening them is its owner's own approval. This page used to name the install as his part; a session believed it and handed him the job, and he sent it back. **The tap is the identity code.** A private key is generated only in the App's own settings, and GitHub emails him an identity code before those settings open. Typing that code is his; generating the key, sealing it into this repository's `reviewer` environment and deleting it from disk are the session's.
