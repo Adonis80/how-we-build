@@ -5,7 +5,7 @@
 # library page over its size or unscoped, a link to a page that does not exist,
 # an index row that opens its first page on words that page does not say,
 # anything that looks like a secret (naming the place, never the value), a
-# review gate that no longer matches the reviewer's answers or has drifted from
+# model named anywhere but the registry, a review gate that no longer matches the reviewer's answers or has drifted from
 # the workflows that fetch them, and, in a pull request, a commit no reviewer
 # has read clean — unread, or read and left a blocking finding on. Nothing else. A read by anybody the
 # gate does not count is unread, not a shape of its own.
@@ -37,7 +37,7 @@ else
 fi
 
 # 2. Only these files exist at the root (plus .git and .github).
-allowed=" AGENTS.md CHARTER.md HOW-WE-BUILD.md README.md RICH-DATA.md board check.sh design library review-gate.py "
+allowed=" AGENTS.md CHARTER.md HOW-WE-BUILD.md README.md RICH-DATA.md board check.sh consensuses design library model-registry review-gate.py "
 while IFS= read -r f; do
   case "$f" in .git|.github) continue ;; esac
   case "$allowed" in
@@ -57,6 +57,12 @@ for f in $allowed; do
     # Git keeps no empty directory, so an absent library is the empty one, and
     # the README's index holds it to the list both ways instead (2c).
     library) [ ! -e "$f" ] || [ -d "$f" ] || { echo "FAIL: '$f' is not a directory."; fail=1; } ;;
+    # The model registry (decision 0008): the one file that names models, its
+    # resolver and its OpenAI-compatible caller, and nothing else.
+    model-registry) [ -d "$f" ] && [ "$(ls -A model-registry | tr '\n' ' ')" = "ask.py registry.json resolve.py " ] || { echo "FAIL: 'model-registry/' holds ask.py, registry.json and resolve.py, and nothing else."; fail=1; } ;;
+    # Consensuses committed verbatim for a build to read from GitHub (#103's
+    # amendment): pages, one folder per project, nothing executable.
+    consensuses) [ ! -e "$f" ] || { [ -d "$f" ] && [ -z "$(find consensuses -type f ! -name '*.md')" ] && [ -z "$(find consensuses -mindepth 1 -maxdepth 1 -type f)" ]; } || { echo "FAIL: 'consensuses/' holds only .md pages, each in a project's folder."; fail=1; } ;;
     *) [ -f "$f" ] || { echo "FAIL: '$f' is missing, or is not a file; the root list is a fixed set."; fail=1; } ;;
   esac
 done
@@ -158,6 +164,23 @@ if grep -R -n -E --exclude-dir=.git "$pattern" . | cut -d: -f1,2 | sed 's/^/  /'
   fail=1
 else
   echo "ok: nothing that looks like a secret"
+fi
+
+# 3b. A model is named in the registry and nowhere else (decision 0008). Every
+# other file asks for a role, so a switch is one edit to one file. Refused: any
+# id the registry lists, and anything shaped like a model id from a vendor we
+# use, anywhere but model-registry/ and consensuses/, whose records are kept
+# verbatim. The ids are read from the registry, so a new model is held the day
+# it is added.
+ids=$(python3 -c 'import json,sys; print("|".join(m.replace(".", "[.]") for m in json.load(open(sys.argv[1]))["models"]))' model-registry/registry.json)
+shape='claude-(opus|sonnet|haiku|fable)-[0-9][0-9a-z.-]*|(z-ai|moonshotai|qwen|deepseek|anthropic|openai|google|meta-llama|mistralai|x-ai)/[a-z0-9][a-z0-9._-]*|gpt-[0-9][0-9a-z.-]*|glm-[0-9][0-9a-z.-]*|kimi-k[0-9][0-9a-z.-]*'
+if [ -z "$ids" ]; then
+  echo "FAIL: model-registry/registry.json lists no models, so nothing could be held to it."; fail=1
+elif grep -R -n -E --exclude-dir=.git --exclude-dir=model-registry --exclude-dir=consensuses "($ids|$shape)" . | cut -d: -f1,2 | sed 's/^/  /' | grep . ; then
+  echo "FAIL: the place(s) above name a model; name the role instead, and the model in model-registry/registry.json."
+  fail=1
+else
+  echo "ok: no model is named outside model-registry/registry.json"
 fi
 
 # 4. In a pull request, a review clears only the commit it read, and only if it

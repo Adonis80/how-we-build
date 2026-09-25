@@ -92,6 +92,7 @@ it fails the build before a loose rule can pass a commit.
 
 import io
 import json
+import importlib.util
 import os
 import re
 import subprocess
@@ -103,6 +104,10 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+# The selftest imports model-registry/'s scripts; a cache written beside them
+# would be a file no list names.
+sys.dont_write_bytecode = True
+
 # ---------------------------------------------------------------------------
 # Who reviews, and as what. The Chairman changes any of these in one line.
 #
@@ -111,18 +116,27 @@ import urllib.request
 # named it is gone rather than pointed somewhere else — see the docstring.
 DEFAULT_REVIEWER = "claude"
 
-# His ruling of 18 September 2026, replacing that day's earlier word for Fable
-# 5.1: the reviewer must be at least as strong as the Opus that builds, or it is
-# a rubber stamp. Named here and held against the workflow that runs it by
-# _check_wiring(), so the two can never drift apart.
-REVIEWER_MODEL = "claude-sonnet-5"
-# And the effort a read is at is its change's class's. Decision 0005 (issue
-# #75, 23 September 2026), in its own words: "Effort. Build at medium, high
-# after one failed attempt, max only for reviews of the risky classes." A
-# change touching a risky class — pricing, live data or schema, sign-in and
-# permissions, a public trust boundary, deploy and release machinery, or this
-# gate — is read at RISKY_EFFORT; pages and ordinary code at ORDINARY_EFFORT.
-# The class is worked out in each workflow and held below, at CLASS_FIRST.
+# WHO READS IS A ROLE, AND THE REGISTRY SAYS WHO HOLDS IT (decision 0008, issue
+# #103, 25 September 2026, on the 18 September consensus). No model is named in
+# this file or in either reviewer: the class a change is read as names a role,
+# and model-registry/registry.json on the protected branch resolves the role to
+# a model, a provider and an effort. A switch is one edit to that file, which is
+# in the gate's own risky class. _check_registry() holds what the roles owe:
+# ordinary changes to ORDINARY_ROLE, with FALLBACK_ROLE behind it when it does
+# not answer; risky ones to RISKY_ROLE, with nothing behind it. Neither
+# answering leaves the commit unread: the gate never fails open.
+REGISTRY = "model-registry/registry.json"
+RESOLVER = "model-registry/resolve.py"
+ORDINARY_ROLE = "reviewer-main"
+RISKY_ROLE = "reviewer-risky"
+FALLBACK_ROLE = "reviewer-fallback"
+# And the effort a role reads at is its class's. Decision 0005 (issue #75, 23
+# September 2026), in its own words: "Effort. Build at medium, high after one
+# failed attempt, max only for reviews of the risky classes." A change touching
+# a risky class is read at RISKY_EFFORT; pages and ordinary code at
+# ORDINARY_EFFORT. The registry sets each role's effort; this file refuses a
+# registry that sets them otherwise. The class is worked out in each workflow
+# and held below, at CLASS_FIRST.
 RISKY_EFFORT = "max"
 # Why high and not medium, since the decision names only what risky reads get
 # (#79's seventh read): his ruling of 18 September holds the reviewer at least
@@ -279,11 +293,11 @@ REVIEWERS = {
 # it to named files buys nothing and would have to be argued back the first time
 # a fifth file mattered.
 GATE_FILES = ("check.sh", "review-gate.py")
-GATE_DIR = ".github/workflows/"
+GATE_DIRS = (".github/workflows/", "model-registry/")
 
 
 def touches_the_gate(paths):
-    return sorted(set(p for p in paths if p in GATE_FILES or p.startswith(GATE_DIR)))
+    return sorted(set(p for p in paths if p in GATE_FILES or p.startswith(GATE_DIRS)))
 
 
 def verdict(check_runs, head):
@@ -943,7 +957,7 @@ def _check_wiring():
     for flag, why in (('--tools ""', "every built-in tool would be back on"),
                       ("--restricted", "it would read this repository's own settings files"),
                       ("--strict-mcp-config", "it could pick up MCP servers from elsewhere"),
-                      ("--model " + REVIEWER_MODEL, "it would not be the reviewer he named"),
+                      (READ_MODEL, "it would not read with the model the registry names for the role"),
                       (READ_EFFORT, "it would not read at the effort its change's class names")):
         if flag not in review:
             print("  wiring: %s no longer passes %s — %s" % (REVIEW_WORKFLOW, flag, why))
@@ -1215,7 +1229,7 @@ def _call(text):
 # the minutes after it are left for the verdict to be signed. `why()` and the
 # deadline are run here, not read: each way a read can end below must be named,
 # on one line, or the step has lost it.
-READ_CALL = 'timeout --kill-after=60s "${left}s" claude -p \\'
+READ_CALL = 'timeout --kill-after=60s "${2}s" claude -p \\'
 READ_LIMIT = re.compile(r"^\s*limit=(\d+)\s*$", re.M)
 READ_MARGIN = 5
 READ_START = 'echo "started=$(date +%s)" >> "$GITHUB_OUTPUT"'
@@ -1247,7 +1261,7 @@ WHY_CASES = (
     # #79's third read, run 36012650404: a spent session limit, in an answer
     # whose usage carries `contextWindow`. Read whole, the key said "too long".
     (1, "", '{"is_error":true,"result":"You\'ve hit your session limit \u00b7 resets 2:50pm (UTC)",'
-            '"modelUsage":{"claude-sonnet-5":{"contextWindow":200000}}}', "allowance is spent"),
+            '"modelUsage":{"a-model":{"contextWindow":200000}}}', "allowance is spent"),
     (1, "", '{"is_error":true,"result":"boom","modelUsage":{"m":{"contextWindow":200000}}}',
      "unrecognised; 0 bytes on stderr"),
     (1, "", "not json: Prompt is too long", "too long for one read"),
@@ -1480,9 +1494,9 @@ RISK_UNKNOWN = "*) risky=yes ;;"
 RISK_ARMS = (RISK_GATE, "*.md) ;;", RISK_PRICING, RISK_DATA, RISK_SIGN_IN, RISK_PERSONAL,
              RISK_SECRETS, RISK_BOUNDARY, RISK_RELEASE, RISK_ORDINARY, RISK_UNKNOWN)
 CLASS_RISKY = '[ "$risky" = no ] || class=risky'
-CLASS_EFFORT = ('case "$class" in words|code) effort=%s ;; *) effort=%s ;; esac'
-                % (ORDINARY_EFFORT, RISKY_EFFORT))
-CLASS_OUT = 'echo "effort=$effort" >> "$GITHUB_OUTPUT"'
+CLASS_ROLE = ('case "$class" in words|code) role=%s ;; *) role=%s ;; esac'
+              % (ORDINARY_ROLE, RISKY_ROLE))
+CLASS_OUT = 'echo "role=$role" >> "$GITHUB_OUTPUT"'
 CLASS_LIST = {
     REVIEW_WORKFLOW: ('git diff -z --name-only --no-renames "origin/${{ github.event.repository'
                       '.default_branch }}...${{ steps.head.outputs.sha }}" > "$RUNNER_TEMP/changed.txt"',
@@ -1490,10 +1504,13 @@ CLASS_LIST = {
     PRODUCT_WORKFLOW: ('g diff -z --name-only --no-renames "origin/$MAIN...$SHA" > "$t/changed.txt"',
                        'done < "$t/changed.txt"'),
 }
-EFFORT_IN = "EFFORT: ${{ steps.gather.outputs.effort }}"
-EFFORT_GUARD = ('case "$EFFORT" in high|max) ;; *) fail "the change\'s class set no effort to '
+# The read is handed the class's role and nothing else; the effort and the
+# model are resolved from the registry inside the read, never passed in.
+ROLE_IN = "ROLE: ${{ steps.gather.outputs.role }}"
+EFFORT_GUARD = ('case "$EFFORT" in high|max) ;; *) fail "the registry set no effort a reviewer may '
                 'read at" ;; esac')
-READ_EFFORT = '--effort "$EFFORT"'
+READ_EFFORT = '--effort "$effort"'
+READ_MODEL = '--model "$model"'
 # A read below max is told so, in both reviewers, and asked to say if a file it
 # was shown is in a risky class after all: without it, a name the list missed
 # is read at high in silence.
@@ -1529,8 +1546,9 @@ PAGES_CASES = (
 VERDICT_SAYS = ('title="No findings on this commit (read as $CLASS at effort $EFFORT${SPENT:+; $SPENT})"',
                 'title="Advisory findings only on this commit (read as $CLASS at effort $EFFORT${SPENT:+; $SPENT})"',
                 'title="Blocking findings on this commit (read as $CLASS at effort $EFFORT${SPENT:+; $SPENT})"',
-                "CLASS: ${{ steps.gather.outputs.class }}", "EFFORT: ${{ steps.gather.outputs.effort }}",
-                "SPENT: ${{ steps.read.outputs.spent }}")
+                "CLASS: ${{ steps.gather.outputs.class }}", "EFFORT: ${{ steps.read.outputs.effort }}",
+                "SPENT: ${{ steps.read.outputs.spent }}", "SPEND: ${{ steps.read.outputs.spend }}",
+                '[ -z "${SPEND:-}" ] || printf \'\\n---\\nSpend: %s\\n\' "$SPEND" >> ')
 # WHAT A READ COST, MEASURED WHERE IT HAPPENS (#86). The bytes handed to the
 # model, the diff and pages with the brief, and the seconds from the call to
 # its answer, recorded before a failed read is named, so a read that ran out of
@@ -1541,6 +1559,7 @@ READ_BEGAN = "began=$(date +%s)"
 READ_TOOK = ("took=$(( $(date +%s) - began ))",
              'echo "spent=$read_bytes bytes, $((took / 60)) min $((took % 60)) s" >> "$GITHUB_OUTPUT"')
 READ_ANSWERED = '[ "$rc" -eq 0 ] || fail "$(why)"'
+READ_ASK = 'ask "$ROLE" "$bound" || rc=$?'
 # BLOCKING OR ADVISORY (#79's ninth read, the ninth to leave only notes it said
 # should not hold the change). The brief allows two rounds and then leaves a
 # trade-off standing on the pull request as the CTO's call; the gate opened only
@@ -1618,7 +1637,7 @@ def pages_says(block, cls, changed):
 REVIEW_LEFT_OUT = "%s bytes, left out: this change touches pages only ====="
 REVIEW_COUNT = ('echo "left_out=$(grep -cE \'^===== .+: [0-9]+ bytes, left out: this change touches pages only =====$\' /tmp/pages.txt || true)" >> "$GITHUB_OUTPUT"')
 REVIEW_COUNT_IN = "LEFT_OUT: ${{ steps.gather.outputs.left_out }}"
-REVIEW_TOLD = ('if [ "$CLASS" = words ]; then', 'echo "judging it needed a left-out file or a deeper read, that is a finding: say which."',
+REVIEW_TOLD = ('if [ "$CLASS" = words ]; then', 'echo "that is a finding: say which."',
                "CLASS: ${{ steps.gather.outputs.class }}")
 # (the files a change touches, the class it must be read as). None is a list
 # git could not make, which must stop the block rather than read as anything.
@@ -1729,6 +1748,7 @@ CLASS_CASES = (
     # The registry and reviewer routing are the gate; pages about them are pages.
     (["model-registry/registry.json"], "risky"),
     (["model-registry/resolve.py"], "risky"),
+    (["library/model-registry.md"], "words"),
     (["consensuses/juku-os/CLAUDE_OPEN_WEIGHT_MODEL_ROUTING_IMPLEMENTATION.md"], "words"),
 )
 
@@ -1739,7 +1759,7 @@ def _class_block(text):
 
 
 def class_says(block, cases):
-    """Run the class block as each change in `cases` would. Per case, (class, effort) or None.
+    """Run the class block as each change in `cases` would. Per case, (class, role) or None.
 
     One shell runs them all, each case in a subshell of its own, so a block that
     fails stops only its own case; the subshell is run as a statement, never
@@ -1777,7 +1797,7 @@ def class_says(block, cases):
             except OSError:
                 lines = []
             got = dict(l.split("=", 1) for l in lines if "=" in l)
-            said.append((got["class"], got["effort"]) if "class" in got and "effort" in got else None)
+            said.append((got["class"], got["role"]) if "class" in got and "role" in got else None)
     return said
 
 
@@ -1795,7 +1815,7 @@ def class_faults(text, path):
             if line not in block:
                 lost.append("the class listed from the diff it reads, NUL-separated, renames split "
                             "and written down before it is read (`%s`)" % line)
-        for line in (CLASS_RISK_FIRST, CLASS_CODE, CLASS_RISKY, CLASS_EFFORT):
+        for line in (CLASS_RISK_FIRST, CLASS_CODE, CLASS_RISKY, CLASS_ROLE):
             if line not in block:
                 lost.append("`%s`" % line)
         # The shape, not only the strings (#79's ninth read): an arm added for
@@ -1811,27 +1831,31 @@ def class_faults(text, path):
                 lost.append("a `%s` of exactly %d arms, %s (it has %s)"
                             % (first, len(want), " / ".join("`%s`" % a for a in want), arms))
         for (paths, want), got in zip(CLASS_CASES, class_says(block, [c[0] for c in CLASS_CASES])):
-            need = want and (want, RISKY_EFFORT if want == "risky" else ORDINARY_EFFORT)
+            need = want and (want, RISKY_ROLE if want == "risky" else ORDINARY_ROLE)
             if got != need:
                 lost.append("%s (it was %s)"
                             % ("a change to %r read as %s at %s" % ((paths,) + need) if need
                                else "a list that could not be made stopping the step",
                                "%s at %s" % got if got else "not run to an answer"))
-    if len([l for l in g.splitlines() if "effort=" in l and "GITHUB_OUTPUT" in l]) != 1:
-        lost.append("one line, and only one, handing the effort on (`%s`)" % CLASS_OUT)
-    if len(re.findall(r"^\s*EFFORT:", r, re.M)) != 1 or EFFORT_IN not in r:
-        lost.append("`%s` as the read's one effort" % EFFORT_IN)
+    if len([l for l in g.splitlines() if "role=" in l and "GITHUB_OUTPUT" in l]) != 1:
+        lost.append("one line, and only one, handing the role on (`%s`)" % CLASS_OUT)
+    if [l for l in g.splitlines() if "effort=" in l and "GITHUB_OUTPUT" in l]:
+        lost.append("no effort handed on by the class: the registry sets it for the role")
+    if len(re.findall(r"^\s*ROLE:", r, re.M)) != 1 or ROLE_IN not in r or re.search(r"^\s*EFFORT:", r, re.M):
+        lost.append("`%s` as the read's one role, and no effort handed to it" % ROLE_IN)
     if EFFORT_GUARD not in r or READ_CALL not in r or r.index(EFFORT_GUARD) > r.index(READ_CALL):
         lost.append("`%s` before the call" % EFFORT_GUARD)
     if [f for f in (_call(text) or []) if f.startswith("--effort")] != [READ_EFFORT + " \\"]:
         lost.append("`%s` as the call's one effort" % READ_EFFORT)
+    if [f for f in (_call(text) or []) if f.startswith("--model")] != [READ_MODEL + " \\"]:
+        lost.append("`%s` as the call's one model" % READ_MODEL)
     if not all(line in r for line in RISK_TOLD):
         lost.append("a read below %s told so and asked to name a risky file (`%s`)"
                     % (RISKY_EFFORT, "`, `".join(RISK_TOLD)))
     # What the read cost: counted before the call, timed around it, and handed
     # on before a failed read is named, so a read that ran out of time says too.
     held = [l.strip() for l in r.splitlines()]
-    order = [READ_BYTES[path], READ_BEGAN, READ_CALL, READ_TOOK[0], READ_TOOK[1], READ_ANSWERED]
+    order = [READ_BYTES[path], READ_BEGAN, READ_ASK, READ_TOOK[0], READ_TOOK[1], READ_ANSWERED]
     at = [held.index(l) if l in held else -1 for l in order]
     if -1 in at or at != sorted(at) or sum(1 for l in held if l.startswith("echo \"spent=")) != 1:
         lost.append("the bytes read and the minutes taken, measured around the call and handed on "
@@ -1914,19 +1938,21 @@ CLASS_LOOSENINGS = (
     ("a product's decisions read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("PRODUCT.md|", "", 1), 1)),
     ("a dot-directory read as pages", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("|.*|*/.*", "", 1), 1)),
     ("anything unrecognised read as pages", None, lambda t: t.replace("              *) class=code ;;\n", "              *) ;;\n", 1)),
-    ("the class reset after the list", None, lambda t: t.replace("          " + CLASS_EFFORT + "\n", "          class=words\n          " + CLASS_EFFORT + "\n", 1)),
-    ("a risky change read at the lower effort", None, lambda t: t.replace("*) effort=%s ;;" % RISKY_EFFORT, "*) effort=%s ;;" % ORDINARY_EFFORT, 1)),
-    ("the risky class put with the ordinary", None, lambda t: t.replace("words|code) effort=", "words|code|risky) effort=", 1)),
-    ("the effort lowered before it is handed on", None, lambda t: t.replace("          " + CLASS_OUT + "\n", "          effort=%s\n          %s\n" % (ORDINARY_EFFORT, CLASS_OUT), 1)),
+    ("the class reset after the list", None, lambda t: t.replace("          " + CLASS_ROLE + "\n", "          class=words\n          " + CLASS_ROLE + "\n", 1)),
+    ("a risky change read by the ordinary role", None, lambda t: t.replace("*) role=%s ;;" % RISKY_ROLE, "*) role=%s ;;" % ORDINARY_ROLE, 1)),
+    ("the risky class put with the ordinary", None, lambda t: t.replace("words|code) role=", "words|code|risky) role=", 1)),
+    ("the role changed before it is handed on", None, lambda t: t.replace("          " + CLASS_OUT + "\n", "          role=%s\n          %s\n" % (ORDINARY_ROLE, CLASS_OUT), 1)),
     ("a list that fails read as no change", None, lambda t: t.replace("--name-only --no-renames", "--name-only --no-renames 2>/dev/null || true; : ", 1)),
     ("a rename read as its new name", None, lambda t: t.replace("--name-only --no-renames", "--name-only", 1)),
     ("names split on a line break", None, lambda t: t.replace("diff -z --name-only --no-renames", "diff --name-only --no-renames", 1)),
-    ("the effort never handed on", None, lambda t: t.replace("          " + CLASS_OUT + "\n", "", 1)),
-    ("the effort handed on twice", None, lambda t: _in_step(t, "Gather what the reviewer reads", CLASS_OUT, CLASS_OUT + '\n          echo "effort=%s" >> "$GITHUB_OUTPUT"' % ORDINARY_EFFORT)),
-    ("the effort not the class's", None, lambda t: t.replace(EFFORT_IN, "EFFORT: " + ORDINARY_EFFORT, 1)),
-    ("a second effort in the read", None, lambda t: t.replace("          " + EFFORT_IN + "\n", "          %s\n          EFFORT: %s\n" % (EFFORT_IN, ORDINARY_EFFORT), 1)),
+    ("the role never handed on", None, lambda t: t.replace("          " + CLASS_OUT + "\n", "", 1)),
+    ("the role handed on twice", None, lambda t: _in_step(t, "Gather what the reviewer reads", CLASS_OUT, CLASS_OUT + '\n          echo "role=%s" >> "$GITHUB_OUTPUT"' % ORDINARY_ROLE)),
+    ("an effort handed on by the class", None, lambda t: _in_step(t, "Gather what the reviewer reads", CLASS_OUT, CLASS_OUT + '\n          echo "effort=%s" >> "$GITHUB_OUTPUT"' % RISKY_EFFORT)),
+    ("the role not the class's", None, lambda t: t.replace(ROLE_IN, "ROLE: " + ORDINARY_ROLE, 1)),
+    ("an effort handed to the read", None, lambda t: t.replace("          " + ROLE_IN + "\n", "          %s\n          EFFORT: %s\n" % (ROLE_IN, ORDINARY_EFFORT), 1)),
     ("an effort unchecked", None, lambda t: t.replace(EFFORT_GUARD, "true", 1)),
     ("an effort written into the call", None, lambda t: t.replace(READ_EFFORT + " \\", "--effort " + ORDINARY_EFFORT + " \\", 1)),
+    ("a model written into the call", None, lambda t: t.replace(READ_MODEL + " \\", "--model a-model-named-here \\", 1)),
     ("code given pages alone", REVIEW_WORKFLOW, lambda t: t.replace("code:*|risky:*) ;;", "code:*.md|risky:*) ;;", 1)),
     ("a risky change given pages alone", REVIEW_WORKFLOW, lambda t: t.replace("code:*|risky:*) ;;", "code:*) ;;", 1)),
     ("a file left out unnamed", REVIEW_WORKFLOW, lambda t: re.sub(r"printf '[^\n]*" + re.escape(REVIEW_LEFT_OUT) + r"[^\n]*\n", "true\n", t, 1)),
@@ -1992,14 +2018,349 @@ def _check_class_loosenings():
                       % (path, what))
                 bad += 1
     if not bad:
-        print("ok: each reviewer reads a change at its class's effort, %s for pages and ordinary "
-              "code and %s for the six risky classes, worked out from the diff it reads and told "
-              "when it is below %s; the class was run on %d change(s), review.yml gives any change "
+        print("ok: each reviewer hands a change to its class's role, %s for pages and ordinary "
+              "code and %s for the risky classes and any kind of file the list does not know, "
+              "worked out from the diff it reads, and a read below %s is told so; the class was "
+              "run on %d change(s), review.yml gives any change "
               "but pages every file and pages alone the pages they touch, the README's map, "
               "HOW-WE-BUILD.md and check.sh (its loop run on %d), each verdict says what its read "
               "cost, and each of %d loosenings was refused"
-              % (ORDINARY_EFFORT, RISKY_EFFORT, RISKY_EFFORT, len(CLASS_CASES), len(PAGES_CASES),
+              % (ORDINARY_ROLE, RISKY_ROLE, RISKY_EFFORT, len(CLASS_CASES), len(PAGES_CASES),
                  len(CLASS_LOOSENINGS)))
+    return bad
+
+
+# THE ROLE, READ (decision 0008). Each reviewer resolves the class's role from
+# the registry inside the read — review.yml from the protected branch, never the
+# head it reads, and review-product.yml from this repository's checkout, which
+# the door holds to main — and asks it once. A role that does not answer with a
+# verdict hands the read to its fallback; with no fallback, or none that
+# answers, the step fails and the verdict is `neutral`: unread, the gate red.
+# The reading block is run, not read, on ROUTE_CASES below.
+ROUTE_RESOLVE = ('EFFORT=$(resolve "$ROLE" effort) || fail "the registry could not resolve $ROLE"',
+                 'FALLBACK=$(resolve "$ROLE" fallback) || fail "the registry could not resolve $ROLE"')
+ROUTE_REGISTRY = {
+    REVIEW_WORKFLOW: 'git show "origin/${{ github.event.repository.default_branch }}:model-registry/$f" '
+                     '> "$reg/$f" || fail "the protected branch holds no model-registry/$f"',
+    PRODUCT_WORKFLOW: 'reg="$GITHUB_WORKSPACE/model-registry"',
+}
+ROUTE_ASK_GUARD = ('case "$effort" in high|max) ;; *) printf \'{"is_error":true,"subtype":"no_effort"}\\n\' '
+                   '> "$out"; : > "$err"; return 2 ;; esac')
+ROUTE_FIRST = "fell_back=no"
+ROUTE_LAST = 'echo "verdict=$verdict" >> "$GITHUB_OUTPUT"'
+# A product's code is private, and no provider but Anthropic has been cleared to
+# read it (25 September 2026: a session's own guard refused to send it
+# elsewhere). So review-product.yml speaks the claude-code interface alone, and
+# names neither another caller nor another provider's credential.
+PRODUCT_EGRESS = ("ask.py", "OPENROUTER", "openai-compatible")
+# (what happens, the primary's exit and verdict, the fallback's, the fallback
+# role or none, seconds left when the fallback would start, what must follow:
+# the roles asked in order, and the verdict read or None for a read that fails).
+ROUTE_CASES = (
+    ("the role answers clean", (0, "clean"), (0, "clean"), FALLBACK_ROLE, 600,
+     ([ORDINARY_ROLE], "clean")),
+    ("the role answers blocking, which is an answer, never a reason to ask again",
+     (0, "blocking"), (0, "clean"), FALLBACK_ROLE, 600, ([ORDINARY_ROLE], "blocking")),
+    ("the role cannot be reached", (1, ""), (0, "advisory"), FALLBACK_ROLE, 600,
+     ([ORDINARY_ROLE, FALLBACK_ROLE], "advisory")),
+    ("the role runs out of time", (124, ""), (0, "clean"), FALLBACK_ROLE, 600,
+     ([ORDINARY_ROLE, FALLBACK_ROLE], "clean")),
+    ("the role answers with no verdict", (0, ""), (0, "clean"), FALLBACK_ROLE, 600,
+     ([ORDINARY_ROLE, FALLBACK_ROLE], "clean")),
+    ("neither answers", (1, ""), (1, ""), FALLBACK_ROLE, 600, ([ORDINARY_ROLE, FALLBACK_ROLE], None)),
+    ("neither answers with a verdict", (0, ""), (0, ""), FALLBACK_ROLE, 600,
+     ([ORDINARY_ROLE, FALLBACK_ROLE], None)),
+    ("no time is left for the fallback", (1, ""), (0, "clean"), FALLBACK_ROLE, 30, ([ORDINARY_ROLE], None)),
+    ("no fallback, and the role cannot be reached", (1, ""), (0, "clean"), "", 600, ([ORDINARY_ROLE], None)),
+    ("no fallback, and the role answers", (0, "advisory"), (0, "clean"), "", 600,
+     ([ORDINARY_ROLE], "advisory")),
+    # Whatever a read wrote, one that exited in error is not taken, and nor is
+    # a verdict the schema does not hold.
+    ("the role exits in error with a verdict written, and no time is left", (1, "clean"),
+     (0, "clean"), FALLBACK_ROLE, 30, ([ORDINARY_ROLE], None)),
+    ("the fallback exits in error with a verdict written", (1, ""), (1, "clean"), FALLBACK_ROLE, 600,
+     ([ORDINARY_ROLE, FALLBACK_ROLE], None)),
+    ("the fallback answers a verdict outside the schema", (1, ""), (0, "findings"), FALLBACK_ROLE, 600,
+     ([ORDINARY_ROLE, FALLBACK_ROLE], None)),
+)
+
+
+def route_says(block, answered, first, second, fallback, left):
+    """Run the reading block with a stub `ask()`. (roles asked, verdict read or None), or None."""
+    with tempfile.TemporaryDirectory() as d:
+        body = "\n".join(l.replace("/tmp/", d + "/").replace('"$t/', '"' + d + "/") for l in block)
+        stub = textwrap.dedent("""\
+            set -euo pipefail
+            out='{d}/resp.json'; err='{d}/err.txt'; : > "$err"
+            fail() {{ echo "failed: $1"; exit 3; }}
+            why() {{ echo "a reason"; }}
+            ask() {{
+              role=$1 model="model-of-$1" effort=high
+              echo "$1" >> '{d}/asked'
+              if [ "$1" = "$ROLE" ]; then r=$P_RC; v=$P_V; else r=$F_RC; v=$F_V; fi
+              if [ -n "$v" ]; then
+                jq -cn --arg v "$v" '{{result: ({{verdict: $v, review: "words"}} | tojson), usage: {{input_tokens: 9, output_tokens: 2}}, total_cost_usd: 0.01}}' > "$out"
+              else
+                printf '{{"is_error":true,"subtype":"x"}}\\n' > "$out"
+              fi
+              return "$r"
+            }}
+            limit=25 STARTED=$(( $(date +%s) - limit * 60 + {left} ))
+            left=600 read_bytes=100 began=$(date +%s)
+            role=$ROLE model=unknown effort=high
+            """).format(d=d, left=left)
+        script = stub + "\n".join(answered) + "\n" + body + '\necho "done: $verdict"\n'
+        with open(os.path.join(d, "route.sh"), "w", encoding="utf-8") as f:
+            f.write(script)
+        env = dict(os.environ, ROLE=ORDINARY_ROLE, FALLBACK=fallback, CLASS="code",
+                   P_RC=str(first[0]), P_V=first[1], F_RC=str(second[0]), F_V=second[1],
+                   GITHUB_OUTPUT=os.path.join(d, "out"), GITHUB_STEP_SUMMARY=os.path.join(d, "summary"))
+        try:
+            p = subprocess.run(["bash", os.path.join(d, "route.sh")], env=env, capture_output=True,
+                               text=True, timeout=60)
+            asked = open(os.path.join(d, "asked"), encoding="utf-8").read().split()
+        except (OSError, subprocess.SubprocessError):
+            return None
+    done = re.search(r"^done: (\w+)$", p.stdout, re.M)
+    if p.returncode == 0 and done:
+        return asked, done.group(1)
+    return (asked, None) if p.returncode == 3 and "failed: " in p.stdout else None
+
+
+def route_faults(text, path):
+    """What a reviewer has lost of reading by the registry's role, with its fallback, never open."""
+    lost = []
+    span = _step_span(text, "Read it")
+    r = text[span[0]:span[1]] if span else ""
+    for line in ROUTE_RESOLVE + (ROUTE_REGISTRY[path], ROUTE_ASK_GUARD):
+        if line not in r:
+            lost.append("`%s`" % line)
+    block = _block(r, lambda l: l == ROUTE_FIRST, lambda l: l == ROUTE_LAST)
+    answered = _block(r, lambda l: l == "answered() {", lambda l: l == "}")
+    if block is None or answered is None:
+        lost.append("a reading block from `%s` to `%s`, and `answered()`" % (ROUTE_FIRST, ROUTE_LAST))
+        return lost
+    for what, first, second, fallback, left, want in ROUTE_CASES:
+        got = route_says(block, answered, first, second, fallback, left)
+        if got != want:
+            lost.append("when %s, the roles %s asked and %s (it was %s)"
+                        % (what, want[0], "the verdict %s read" % want[1] if want[1] else
+                           "the read failed, never open", got))
+    if path == PRODUCT_WORKFLOW:
+        said = [w for w in PRODUCT_EGRESS if w in text]
+        if said:
+            lost.append("no caller or credential but Anthropic's for a product's private code "
+                        "(it names %s)" % ", ".join(said))
+    return lost
+
+
+ROUTE_LOOSENINGS = (
+    ("the registry read from the head", REVIEW_WORKFLOW, lambda t: t.replace(ROUTE_REGISTRY[REVIEW_WORKFLOW], 'cp "model-registry/$f" "$reg/$f"', 1)),
+    ("a role the registry cannot resolve read anyway", None, lambda t: t.replace(ROUTE_RESOLVE[0], 'EFFORT=$(resolve "$ROLE" effort) || EFFORT=high', 1)),
+    ("an effort the ask never checks", None, lambda t: t.replace(ROUTE_ASK_GUARD, "true", 1)),
+    ("the fallback never asked", None, lambda t: t.replace('ask "$FALLBACK" "$left" || rc=$?', "true", 1)),
+    ("the fallback asked after an answer", None, lambda t: t.replace('{ [ "$rc" -ne 0 ] || ! answered; }', "true", 1)),
+    ("an answer with no verdict taken", None, lambda t: t.replace('{ [ "$rc" -ne 0 ] || ! answered; }', '[ "$rc" -ne 0 ]', 1)),
+    ("a failure forgotten when no time is left", None, lambda t: t.replace('            if [ "$left" -ge 60 ]; then\n              rc=0\n', '            rc=0\n            if [ "$left" -ge 60 ]; then\n', 1)),
+    ("a failed read never named", None, lambda t: t.replace("          " + READ_ANSWERED + "\n", "", 1)),
+    ("a verdict outside the schema read", None, lambda t: _in_step(t, "Read it", '            *) fail "the reviewer returned no verdict: $(why)" ;;', '            *) verdict=clean ;;')),
+    ("another provider for a product's code", PRODUCT_WORKFLOW, lambda t: t.replace("          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}\n", "          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}\n          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}\n", 1)),
+)
+
+
+def _check_route_loosenings():
+    """Both reviewers read by role, fall back, and never fail open; each loosening refused."""
+    bad = 0
+    for path in (REVIEW_WORKFLOW, PRODUCT_WORKFLOW):
+        try:
+            text = _read(path)
+        except OSError as e:
+            print("  wiring: %s" % e)
+            return 1
+        lost = route_faults(text, path)
+        if lost:
+            print("  wiring: %s must read by the registry's role, fall back, and never fail open; "
+                  "it has lost %s" % (path, "; ".join(lost)))
+            bad += 1
+            continue
+        for what, only, loosen in ROUTE_LOOSENINGS:
+            if only not in (None, path):
+                continue
+            changed = loosen(text)
+            if changed == text:
+                print("  wiring: the loosening '%s' no longer applies to %s — rewrite it against "
+                      "the file as it stands, or it proves nothing" % (what, path))
+                bad += 1
+            elif not route_faults(changed, path):
+                print("  wiring: %s with %s passes the route hold — the guard for it is gone"
+                      % (path, what))
+                bad += 1
+    if not bad:
+        print("ok: each reviewer resolves its role from the registry — review.yml from the "
+              "protected branch — reads once, hands a read that did not answer to its fallback, "
+              "and fails closed when none answers; the reading block was run in %d case(s), a "
+              "product's code goes to no provider but Anthropic, and each of %d loosenings was "
+              "refused" % (len(ROUTE_CASES), len(ROUTE_LOOSENINGS)))
+    return bad
+
+
+# THE REGISTRY ITSELF (decision 0008). model-registry/resolve.py checks it whole;
+# this holds what the gate needs of it: the three reviewer roles, each at the
+# effort its class is owed, reviewer-main with a fallback and the others with
+# none, the roles a product reads by on the one interface a product's code may
+# go to, and a switch that is one edit to the one file.
+def _check_registry():
+    bad = 0
+
+    def fault(what):
+        nonlocal bad
+        print("  registry: %s" % what)
+        bad += 1
+
+    try:
+        spec = importlib.util.spec_from_file_location("resolve", RESOLVER)
+        resolve = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(resolve)
+        reg = resolve.load(REGISTRY)
+    except (OSError, ValueError, ImportError, AttributeError) as e:
+        fault("could not be read: %s" % e)
+        return bad
+    for f in resolve.check(reg):
+        fault(f)
+    owed = ((ORDINARY_ROLE, ORDINARY_EFFORT, True), (FALLBACK_ROLE, ORDINARY_EFFORT, False),
+            (RISKY_ROLE, RISKY_EFFORT, False))
+    got = {}
+    for role, effort, falls in owed:
+        try:
+            got[role] = resolve.resolve(reg, role)
+        except resolve.Unresolved as e:
+            fault(str(e))
+            continue
+        if got[role]["effort"] != effort or got[role]["effort_checked"] != "yes":
+            fault("%s reads at %r; its class is owed %s, on an effort its model is known to take"
+                  % (role, got[role]["effort"], effort))
+        if bool(got[role]["fallback"]) != falls:
+            fault("%s %s" % (role, "has no fallback, so an outage parks every ordinary change"
+                             if falls else "falls back to %r; nothing may stand behind it"
+                             % got[role]["fallback"]))
+    if got.get(ORDINARY_ROLE, {}).get("fallback") not in (None, FALLBACK_ROLE):
+        fault("%s falls back to %r, not %s" % (ORDINARY_ROLE, got[ORDINARY_ROLE]["fallback"],
+                                               FALLBACK_ROLE))
+    for role in (FALLBACK_ROLE, RISKY_ROLE):
+        if role in got and got[role]["interface"] != "claude-code":
+            fault("%s is served through %s; a product's read speaks claude-code alone, so it would "
+                  "have no reader" % (role, got[role]["interface"]))
+    # One edit, one file: the ordinary role moved to another model in a copy of
+    # the registry, and nothing else, is what the resolver then answers.
+    if ORDINARY_ROLE in got and FALLBACK_ROLE in got:
+        moved = json.loads(json.dumps(reg))
+        moved["roles"][ORDINARY_ROLE]["model"] = got[FALLBACK_ROLE]["model"]
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "registry.json")
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(moved, f)
+            p = subprocess.run([sys.executable, RESOLVER, path, ORDINARY_ROLE, "model"],
+                               capture_output=True, text=True, timeout=30)
+        if p.returncode != 0 or p.stdout.strip() != got[FALLBACK_ROLE]["model"]:
+            fault("a switch of %s's model in the registry alone did not switch what it resolves "
+                  "to (it said %r)" % (ORDINARY_ROLE, p.stdout.strip() or p.stderr.strip()))
+    # And a role nobody defined, or a registry that names a blocked model, fails
+    # closed rather than resolving to anything.
+    blocked = json.loads(json.dumps(reg))
+    if ORDINARY_ROLE in got:
+        blocked["models"][got[ORDINARY_ROLE]["model"]]["status"] = "blocked"
+    for what, r, role in (("an unknown role", reg, "reviewer-nobody"),
+                          ("a role whose model is blocked", blocked, ORDINARY_ROLE)):
+        try:
+            resolve.resolve(r, role)
+            fault("%s resolved; it must fail closed" % what)
+        except resolve.Unresolved:
+            pass
+    if not bad:
+        print("ok: the registry resolves %s at %s with %s behind it, and %s at %s with nothing "
+              "behind it; a switch is one edit to %s, and an unknown role or a blocked model "
+              "fails closed" % (ORDINARY_ROLE, ORDINARY_EFFORT, FALLBACK_ROLE, RISKY_ROLE,
+                                RISKY_EFFORT, REGISTRY))
+    return bad
+
+
+# THE CALLER, model-registry/ask.py: the OpenAI-compatible read. What it must
+# do is run here on answers a provider could give, never on a network: refuse a
+# model it did not pin (no silent substitution), take a verdict however it is
+# wrapped, name a refusal, count the tokens and the cost, and put the effort
+# where the registry says the provider takes it, sending no list of models.
+CALLER = "model-registry/ask.py"
+
+
+def _check_caller():
+    bad = 0
+
+    def fault(what):
+        nonlocal bad
+        print("  caller: %s" % what)
+        bad += 1
+
+    try:
+        spec = importlib.util.spec_from_file_location("ask", CALLER)
+        ask = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(ask)
+    except (OSError, ImportError, SyntaxError) as e:
+        fault("could not be loaded: %s" % e)
+        return bad
+    pinned = "vendor/model-2"
+    for served, want in ((pinned, True), (pinned + "-20260816", True), (pinned + "-flash", False),
+                         ("vendor/model-1", False), ("", False), (pinned + "-2026", False)):
+        if ask.served_is_pinned(served, pinned) != want:
+            fault("an answer from %r %s" % (served, "refused" if want else "taken as the pinned model's"))
+    verdict = '{"verdict": "clean", "review": "r"}'
+    for content, want in ((verdict, verdict), ("```json\n%s\n```" % verdict, verdict),
+                          ("Here it is: %s. Done." % verdict, verdict), ("no object", None),
+                          (None, None)):
+        if ask.verdict_text(content) != want:
+            fault("the answer %r read as %r" % (content, ask.verdict_text(content)))
+
+    def reply(model=pinned, content=verdict, **more):
+        r = {"model": model, "choices": [{"message": {"content": content}}],
+             "usage": {"prompt_tokens": 900, "completion_tokens": 40, "cost": 0.0021}}
+        r.update(more)
+        return r
+    for what, resp, rc, sub in (("an answer from the pinned model", reply(), 0, None),
+                                ("an answer from another model", reply(model="vendor/other"), 1, "wrong_model"),
+                                ("a refusal in the body", reply(error={"code": 402, "message": "Insufficient credits"}), 1, "provider_error"),
+                                ("an answer with no content", reply(content=None), 1, "no_verdict"),
+                                ("no object at all", [], 1, "no_answer")):
+        got, status = ask.answer(resp, pinned)
+        if status != rc or got.get("subtype") != sub:
+            fault("%s answered %s (%s), not %s (%s)" % (what, status, got.get("subtype"), rc, sub))
+    got, _ = ask.answer(reply(), pinned)
+    if (got.get("usage"), got.get("total_cost_usd")) != ({"input_tokens": 900, "output_tokens": 40}, 0.0021):
+        fault("the tokens and cost not carried to the spend line (%s)" % got)
+    provider = {"effort_param": "reasoning.effort", "extra": {"provider": {"data_collection": "deny"}}}
+    body = ask.build({"model": pinned, "effort": "high"}, provider, "s", "p", {"type": "object"})
+    if body.get("reasoning") != {"effort": "high"} or "reasoning_effort" in body:
+        fault("the effort not put where the registry says the provider takes it (%s)" % body)
+    if body.get("provider") != {"data_collection": "deny"} or "models" in body or body.get("model") != pinned:
+        fault("a body that is not one pinned model with the registry's extras (%s)" % body)
+    if ask.build({"model": pinned, "effort": "high"}, {}, "s", "p", {}).get("reasoning_effort") != "high":
+        fault("a provider that names no effort_param not given the standard reasoning_effort")
+    # With no credential it refuses before any request, and says so.
+    env = dict((k, v) for k, v in os.environ.items() if k != "OPENROUTER_API_KEY")
+    with tempfile.TemporaryDirectory() as d:
+        open(os.path.join(d, "system.txt"), "w").write("s")
+        p = subprocess.run([sys.executable, CALLER, REGISTRY, ORDINARY_ROLE, os.path.join(d, "system.txt"),
+                            "{}", "60"], input="p", capture_output=True, text=True, timeout=30, env=env)
+    try:
+        said = json.loads(p.stdout)
+    except ValueError:
+        said = {}
+    if p.returncode != 1 or said.get("subtype") != "no_credential" or not said.get("is_error"):
+        fault("with no credential it answered %s %r, not a refusal before any request"
+              % (p.returncode, p.stdout.strip()[:200]))
+    if not bad:
+        print("ok: the OpenAI-compatible caller takes an answer only from the model it pinned, reads "
+              "a verdict however it is wrapped, names a refusal, carries tokens and cost to the "
+              "spend line, puts the effort where the registry says, and refuses before any request "
+              "with no credential")
     return bad
 
 
@@ -2039,7 +2400,7 @@ def _check_product_wiring(review=None, product=None, readme=None, quiet=False):
     for flag, why in (('--tools ""', "every built-in tool would be back on"),
                       ("--restricted", "it would read the settings files it is shown"),
                       ("--strict-mcp-config", "it could pick up MCP servers from elsewhere"),
-                      ("--model " + REVIEWER_MODEL, "it would not be the reviewer he named"),
+                      (READ_MODEL, "it would not read with the model the registry names for the role"),
                       (READ_EFFORT, "it would not read at the effort its change's class names")):
         if flag not in product:
             fault("no longer passes %s — %s" % (flag, why))
@@ -2205,7 +2566,7 @@ PRODUCT_LOOSENINGS = (
     ("the tools back on", lambda t: t.replace('--tools "" \\\n', "", 1)),
     ("settings files read", lambda t: t.replace("--restricted \\\n", "", 1)),
     ("MCP servers from elsewhere", lambda t: t.replace("--strict-mcp-config \\\n", "", 1)),
-    ("another model", lambda t: t.replace("--model " + REVIEWER_MODEL, "--model claude-haiku-4-5", 1)),
+    ("a model named in the call", lambda t: t.replace(READ_MODEL, "--model a-model-named-here", 1)),
     ("the tool unpinned", lambda t: t.replace("claude-code@2.1.280", "claude-code", 1)),
     ("a different version", lambda t: re.sub(r"claude-code@(\d+)\.(\d+)\.(\d+)", "claude-code@9.9.9", t, 1)),
     ("the brief from the head", lambda t: t.replace('g show "origin/$MAIN:AGENTS.md"', 'g show "$SHA:AGENTS.md"', 1)),
@@ -2792,6 +3153,9 @@ def _selftest():
     failed += _check_review_loosenings()
     failed += _check_read_loosenings()
     failed += _check_class_loosenings()
+    failed += _check_route_loosenings()
+    failed += _check_registry()
+    failed += _check_caller()
     failed += _check_pick_loosenings()
     return 1 if failed else 0
 
