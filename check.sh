@@ -3,6 +3,7 @@
 # It refuses: an operating page over its word cap, a screen law over its own, a
 # root, design or library file that is not on its list or missing from it, a
 # library page over its size or unscoped, a link to a page that does not exist,
+# an index row that opens a page on words the page does not say,
 # anything that looks like a secret (naming the place, never the value), a
 # review gate that no longer matches the reviewer's answers or has drifted from
 # the workflows that fetch them, and, in a pull request, a commit no reviewer
@@ -117,12 +118,26 @@ while IFS= read -r hit; do
   # refuses is above: a control character in a path reaches a public log.
   [ -f "$f" ] || { printf "FAIL: %q links '%s', which does not exist.\n" "${hit%:*}" "$f"; lib_fail=1; }
 done < <(grep -r -o -I -E --exclude-dir=.git "$page_re" . | sed 's|^\./||' | sort -u || true)
+# A page's trigger lives twice: in the index row a session scans to decide
+# what to open, and on the page it opens. Nothing held the two equal (#83's
+# read), so a row edited alone would send a session to a page on words the
+# page does not say. Each row's "Open when" must be its page's, less the
+# final full stop; a row naming several pages carries the first one's. The
+# text is repository text, but it reaches a public log, so control
+# characters are dropped before it is printed.
+while IFS='|' read -r _ cell when _; do
+  first=$( { grep -o -E "$page_re" <<< "$cell" || true; } | head -n 1)
+  [ -f "$first" ] || continue
+  want=$(sed -n -E 's/^Scope: .+ Open when: (.+)\.$/\1/p' "$first" | head -n 1 | tr -d '[:cntrl:]')
+  when=$(sed -E 's/^ +//; s/ +$//' <<< "$when" | tr -d '[:cntrl:]')
+  [ "$when" = "$want" ] || { printf 'FAIL: the README opens %s when "%s"; the page says it opens when "%s".\n' "$first" "$when" "$want"; lib_fail=1; }
+done < <(grep -E "^\| \`$page_re\`" README.md || true)
 if [ "$lib_fail" -ne 0 ]; then
   fail=1
 elif [ "${#pages[@]}" -eq 0 ]; then
   echo "ok: no library pages yet, and nothing names or links one"
 else
-  echo "ok: ${#pages[@]} library pages, each named by the README, each at most 4000 bytes and scoped, and every link to one resolves"
+  echo "ok: ${#pages[@]} library pages, each named by the README, each at most 4000 bytes and scoped, every link to one resolves, and each index row opens its page on the page's own words"
 fi
 
 # 3. Nothing that looks like a secret, anywhere.
