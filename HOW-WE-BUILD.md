@@ -8,9 +8,9 @@
 
 **Numbers.** Never invent one; unknown is valid. An unrun number is a claim: the machine checks, not the model.
 
-**The hands are never his.** Work by hand goes into CI, to the lead's hands (*The two stacks*), or the slice passes to a stack with hands. Never to him.
+**The hands are never his.** Work by hand goes into CI, to the lead's hands (*The two stacks*), or the slice passes to a stack with hands.
 
-**The unit of work**: one accepted slice, a user-visible outcome with acceptance criteria, never a screen. **"Build" is a whole instruction**: take the top `roadmap.json` item carrying his word, settling everything technical yourself. It never means run the build, nor is answered with a question.
+**The unit of work**: one accepted slice, a user-visible outcome with acceptance criteria, never a screen. **"Build" is a whole instruction**: take the top `roadmap.json` item carrying his word. It never means run the build, nor is answered with a question.
 
 **The loop.** One builder session per slice, attached to the repo. A turn stays only while the work is the same, staying beats a fresh start, and the history still helps; otherwise checkpoint and start fresh. When nothing can move it stops hard: no clock, timer, schedule or automation wakes it. Words change from an advisory session by PR.
 1. State the slice and its non-goals. A new or reworked screen follows *How a screen gets designed*; planning stops.
@@ -19,7 +19,7 @@
 4. Prove it: build, tests, the Playwright journey on phone and desktop, preview deploy. A screenshot is not proof.
 5. The named reviewer reads the PR cold in its own session: one reviewer since 22 September, so pricing, live database changes or schema, authentication and authorisation, public trust boundaries, deploy and release machinery and this gate get that same single read. Asked once per round, fixes batched into one push; with no read the gate can count, the slice parks and the next begins. The gate never opens unreviewed.
 6. Send the preview, what changed, the journey to try, and "Decision needed: … or none".
-7. Merge to protected `main`, deploy, smoke-test, roll back on failure. Delete residue; leave `roadmap.json` fit to start on *build* alone: `next` lines current and complete.
+7. Checks green, merge to protected `main` yourself, never handed on: his standing permission. Deploy, smoke-test, roll back on failure. Delete residue; leave `roadmap.json` fit to start on *build* alone: `next` lines current and complete.
 
 **The PR is the handover**: `Lead stack`, `Reviewed by`, objective, acceptance criteria, done, remaining, checks, evidence, preview, next action, rollback; kept current when work stops. Truth: the repo and product, not conversation or memory.
 
