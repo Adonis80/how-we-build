@@ -97,6 +97,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import textwrap
 import time
 import urllib.error
 import urllib.parse
@@ -118,17 +119,18 @@ REVIEWER_MODEL = "claude-sonnet-5"
 # And the effort a read is at is its change's class's. Decision 0005 (issue
 # #75, 23 September 2026), in its own words: "Effort. Build at medium, high
 # after one failed attempt, max only for reviews of the risky classes." A
-# change to pages alone is read at WORDS_EFFORT; anything else, this machinery
-# included, at REVIEWER_EFFORT. The class is worked out in each workflow and
-# held below, at CLASS_FIRST.
-REVIEWER_EFFORT = "max"
+# change touching a risky class — pricing, live data or schema, sign-in and
+# permissions, a public trust boundary, deploy and release machinery, or this
+# gate — is read at RISKY_EFFORT; pages and ordinary code at ORDINARY_EFFORT.
+# The class is worked out in each workflow and held below, at CLASS_FIRST.
+RISKY_EFFORT = "max"
 # Why high and not medium, since the decision names only what risky reads get
 # (#79's seventh read): his ruling of 18 September holds the reviewer at least
 # as strong as the lead that builds, and the lead builds at medium and steps to
-# high after one failed attempt. At high, a read of pages stays at or above the
-# lead's own effort; at medium it could fall below it. The CTO's reading.
+# high after one failed attempt. At high, a read stays at or above the lead's
+# own effort; at medium it could fall below it. The CTO's reading.
 # Not yet proved on a live read: review.yml's class block names the first run.
-WORDS_EFFORT = "high"
+ORDINARY_EFFORT = "high"
 
 # The badge. `juku-reviewer`, created on the Chairman's account 19 September 2026;
 # installation 162987297. The id is the
@@ -1232,7 +1234,7 @@ DEADLINE_CASES = (
     ("the start is a word", "soon", False),
 )
 READ_FAIL = """printf 'why=%s\\n' "$(printf '%s' "$1" | tr -d '\\r\\n')" >> "$GITHUB_OUTPUT\""""
-READ_WHY = ("WHY: ${{ steps.read.outputs.why }}", 'title="Did not read: $WHY"')
+READ_WHY = ("WHY: ${{ steps.read.outputs.why }}", 'title="Did not read: $WHY${SPENT:+ ($SPENT)}"')
 # (how the read ended, its stderr, its answer, what must be said). `%s` is the
 # file's own limit.
 WHY_CASES = (
@@ -1412,16 +1414,17 @@ def _check_read_loosenings():
 # ran out of time twice at max, each preloading every file in this repository
 # (#70's slice 2), and decision 0005 keeps max for the risky classes alone. So
 # each reviewer works out a class from the diff it reads: `words` when every
-# file the change touches is a page, `code` otherwise. The brief, AGENTS.md at
+# file the change touches is a page, `code` otherwise, and `risky` when any
+# file it touches is in one of the six risky classes. The brief, AGENTS.md at
 # any depth, is never a page: it instructs the reviewer or an agent, so a change
 # to it changes a reader. Nor are the pages whose words are law here:
 # HOW-WE-BUILD.md and CHARTER.md at the root (twice on 9 September a trim
 # weakened what the operating page required, and a reader caught it where no
 # machine could: #79's first read), RICH-DATA.md's data rules and the capped
 # design/SCREEN-LAW.md (#79's third read), and a product's PRODUCT.md and
-# design/CONSTITUTION.md (#79's fourth and sixth reads): every page
-# review-product.yml carries but NAMES.md, a glossary. Nor is anything in a dot-directory, where .github
-# and .claude keep settings and agents' instructions whatever their extension.
+# design/CONSTITUTION.md (#79's fourth and sixth reads). Nor is anything in a
+# dot-directory, where .github and .claude keep settings and agents'
+# instructions whatever their extension.
 # The README is read as code while it still holds the rulebook's prose (#79's
 # eighth read); once the library move leaves it an index, one line returns it
 # to pages. The list splits renames, so a script renamed to a page is still a script, and is
@@ -1430,12 +1433,42 @@ def _check_read_loosenings():
 # unseen and read as no change at all, which is pages. The block is run, not read, against
 # the changes below, from its first line to the one output that hands the
 # effort to the read, so any line added inside it is run too.
+#
+# RISKY, BY NAME (#86). Max is kept for the six classes decision 0005 and the
+# operating page's step 5 name, and ordinary code is read at high with
+# everything it was given before. A file is risky by its path, lower-cased, so
+# a name's case cannot hide it: the gate's own files and the brief whatever
+# their extension, then, for anything that is not a page, a name that says
+# pricing, live data or schema, sign-in or permissions, a public trust boundary
+# (every endpoint under an `api/` is one: it is where the internet meets the
+# data), or deploy and release (every script, and what a build installs). A
+# page is never risky by its name: a screen spec called garment-pricing.md is
+# words about pricing, and the diff shows what it says. The names are a rule,
+# not a proof, so a read at high is told it was not read at max, and a reader
+# that finds a risky change the names missed says so as a finding — which
+# puts the name in this list. Replayed before it merged, on the files each
+# merged pull request touched: of Hemz OS's last 72, 46 read risky and 26
+# ordinary; of this repository's last 57, 28 risky and 29 ordinary.
 CLASS_FIRST = "class=words"
+CLASS_RISK_FIRST = "risky=no"
 CLASS_CODE = ("AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|design/*|"
               "PRODUCT.md|README.md|library/*|.*|*/.*) class=code ;;")
 CLASS_ARMS = (CLASS_CODE, "*.md) ;;", "*) class=code ;;")
-CLASS_EFFORT = ('case "$class" in words) effort=%s ;; *) effort=%s ;; esac'
-                % (WORDS_EFFORT, REVIEWER_EFFORT))
+RISK_CASE = 'case "${f,,}" in'
+# The six classes, as the arms that name them, in the order they are tried.
+RISK_GATE = ("agents.md|*/agents.md|check.sh|*/check.sh|review-gate.py|*/review-gate.py|.*|*/.*) "
+             "risky=yes ;;")
+RISK_PRICING = "*pric*|*payment*|*billing*|*invoice*|*checkout*|*quote*) risky=yes ;;"
+RISK_DATA = "*.sql|*migration*|*schema*|supabase/*|*/supabase/*) risky=yes ;;"
+RISK_SIGN_IN = "*auth*|*login*|*logout*|*session*|*password*|*permission*) risky=yes ;;"
+RISK_BOUNDARY = "api/*|*/api/*|*middleware*|*webhook*|sw.js|*/sw.js) risky=yes ;;"
+RISK_RELEASE = ("*.sh|*.toml|*deploy*|*vercel.json|*dockerfile*|*package.json|*lock.json|*.lock|"
+                "*lock.yaml) risky=yes ;;")
+RISK_ARMS = (RISK_GATE, "*.md) ;;", RISK_PRICING, RISK_DATA, RISK_SIGN_IN, RISK_BOUNDARY,
+             RISK_RELEASE)
+CLASS_RISKY = '[ "$risky" = no ] || class=risky'
+CLASS_EFFORT = ('case "$class" in words|code) effort=%s ;; *) effort=%s ;; esac'
+                % (ORDINARY_EFFORT, RISKY_EFFORT))
 CLASS_OUT = 'echo "effort=$effort" >> "$GITHUB_OUTPUT"'
 CLASS_LIST = {
     REVIEW_WORKFLOW: ('git diff -z --name-only --no-renames "origin/${{ github.event.repository'
@@ -1448,17 +1481,36 @@ EFFORT_IN = "EFFORT: ${{ steps.gather.outputs.effort }}"
 EFFORT_GUARD = ('case "$EFFORT" in high|max) ;; *) fail "the change\'s class set no effort to '
                 'read at" ;; esac')
 READ_EFFORT = '--effort "$EFFORT"'
+# A read below max is told so, in both reviewers, and asked to say if a file it
+# was shown is in a risky class after all: without it, a name the list missed
+# is read at high in silence.
+RISK_TOLD = ('if [ "$EFFORT" != %s ]; then' % RISKY_EFFORT,
+             'echo "release machinery, or the review gate, that is a finding: say which file, so its '
+             'name joins the rule."')
 # review.yml's pages: a change to pages alone is given the pages and check.sh;
 # any other is given every file, as every read was before. What is left out is
 # named with its size, and the reviewer is told so and asked to say if a
 # finding needed it: without those, a read short of a file is silent about it.
-REVIEW_PAGES = "words:*.md|words:check.sh|code:*) ;;"
+REVIEW_PAGES = "words:*.md|words:check.sh|code:*|risky:*) ;;"
 # And the verdict says how thoroughly it was read (#79's eighth read): a clean
 # read at high with pages alone must not look like one at max with everything.
-VERDICT_SAYS = ('title="No findings on this commit (read as $CLASS at effort $EFFORT)"',
-                'title="Advisory findings only on this commit (read as $CLASS at effort $EFFORT)"',
-                'title="Blocking findings on this commit (read as $CLASS at effort $EFFORT)"',
-                "CLASS: ${{ steps.gather.outputs.class }}", "EFFORT: ${{ steps.gather.outputs.effort }}")
+# Since #86 it also says how much was read and how long the read took, so a
+# slow or heavy read shows on the pull request rather than only in a log.
+VERDICT_SAYS = ('title="No findings on this commit (read as $CLASS at effort $EFFORT${SPENT:+; $SPENT})"',
+                'title="Advisory findings only on this commit (read as $CLASS at effort $EFFORT${SPENT:+; $SPENT})"',
+                'title="Blocking findings on this commit (read as $CLASS at effort $EFFORT${SPENT:+; $SPENT})"',
+                "CLASS: ${{ steps.gather.outputs.class }}", "EFFORT: ${{ steps.gather.outputs.effort }}",
+                "SPENT: ${{ steps.read.outputs.spent }}")
+# WHAT A READ COST, MEASURED WHERE IT HAPPENS (#86). The bytes handed to the
+# model, the diff and pages with the brief, and the seconds from the call to
+# its answer, recorded before a failed read is named, so a read that ran out of
+# time says how much it was carrying. Each file writes its own paths.
+READ_BYTES = {REVIEW_WORKFLOW: "read_bytes=$(cat /tmp/prompt.txt /tmp/system.txt | wc -c)",
+              PRODUCT_WORKFLOW: 'read_bytes=$(cat "$t/prompt.txt" "$t/system.txt" | wc -c)'}
+READ_BEGAN = "began=$(date +%s)"
+READ_TOOK = ("took=$(( $(date +%s) - began ))",
+             'echo "spent=$read_bytes bytes, $((took / 60)) min $((took % 60)) s" >> "$GITHUB_OUTPUT"')
+READ_ANSWERED = '[ "$rc" -eq 0 ] || fail "$(why)"'
 # BLOCKING OR ADVISORY (#79's ninth read, the ninth to leave only notes it said
 # should not hold the change). The brief allows two rounds and then leaves a
 # trade-off standing on the pull request as the CTO's call; the gate opened only
@@ -1474,22 +1526,28 @@ VERDICT_CASE = ('case "$verdict" in', "clean|advisory|blocking) ;;",
                 '*) fail "the reviewer returned no verdict: $(why)" ;;', "esac")
 SIGN_CASES = (("clean", "success"), ("advisory", "success"), ("blocking", "failure"),
               ("findings", "failure"), ("", "failure"), ("Advisory", "failure"))
+SIGN_SPENT = "84213 bytes, 3 min 12 s"
 
 
-def sign_says(block, verdict):
-    """Run the signing block on a read that answered `verdict`. The conclusion, or None."""
+def sign_says(block, verdict, spent=None):
+    """Run the signing block on a read that answered `verdict`. (conclusion, title), or None."""
     with tempfile.TemporaryDirectory() as d:
         open(os.path.join(d, "review.md"), "w").write("r")
         body = "\n".join(l.replace("/tmp/", d + "/").replace('"$t/', '"' + d + "/") for l in block)
-        script = "set -euo pipefail\n%s\necho \"conclusion=$conclusion\"\n" % body
+        script = "set -euo pipefail\n%s\necho \"conclusion=$conclusion\"\necho \"title=$title\"\n" % body
+        env = dict(os.environ, TOO_BIG="no", OUTCOME="success", WHY="", VERDICT=verdict,
+                   CLASS="code", EFFORT="max")
+        env.pop("SPENT", None)
+        if spent is not None:
+            env["SPENT"] = spent
         try:
             p = subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=30,
-                               env=dict(os.environ, TOO_BIG="no", OUTCOME="success", WHY="",
-                                        VERDICT=verdict, CLASS="code", EFFORT="max"))
+                               env=env)
         except (OSError, subprocess.SubprocessError):
             return None
-    m = re.search(r"^conclusion=(\w+)$", p.stdout, re.M)
-    return m.group(1) if p.returncode == 0 and m else None
+    c = re.search(r"^conclusion=(\w+)$", p.stdout, re.M)
+    t = re.search(r"^title=(.*)$", p.stdout, re.M)
+    return (c.group(1), t.group(1) if t else "") if p.returncode == 0 and c else None
 
 
 # A thinner read that needed more says so as a finding, never as a note on a
@@ -1515,7 +1573,7 @@ CLASS_CASES = (
     (["design/SCREEN_SPEC_TEMPLATE.md"], "code"),
     (["docs/HOW-WE-BUILD.md", "docs/CHARTER.md"], "words"),
     (["a page with spaces.md"], "words"),
-    (["AGENTS.md"], "code"),
+    (["AGENTS.md"], "risky"),
     (["HOW-WE-BUILD.md"], "code"),
     (["README.md", "CHARTER.md"], "code"),
     (["RICH-DATA.md"], "code"),
@@ -1523,17 +1581,65 @@ CLASS_CASES = (
     (["design/CONSTITUTION.md", "README.md"], "code"),
     (["PRODUCT.md"], "code"),
     (["NAMES.md", "docs/guide.md"], "words"),
-    (["docs/AGENTS.md"], "code"),
-    (["README.md", "check.sh"], "code"),
-    (["review-gate.py"], "code"),
-    ([".github/workflows/review.yml"], "code"),
-    ([".github/copilot-instructions.md"], "code"),
-    ([".claude/skills/steward/SKILL.md"], "code"),
-    (["docs/.hidden/page.md"], "code"),
+    (["docs/AGENTS.md"], "risky"),
+    (["README.md", "check.sh"], "risky"),
+    (["review-gate.py"], "risky"),
+    ([".github/workflows/review.yml"], "risky"),
+    ([".github/copilot-instructions.md"], "risky"),
+    ([".claude/skills/steward/SKILL.md"], "risky"),
+    (["docs/.hidden/page.md"], "risky"),
     (["README.MD"], "code"),
-    (["page.md.sh"], "code"),
-    (["page.md\nx.sh"], "code"),
-    (["supabase/migrations/0001_init.sql", "README.md"], "code"),
+    (["page.md.sh"], "risky"),
+    (["page.md\nx.sh"], "risky"),
+    (["supabase/migrations/0001_init.sql", "README.md"], "risky"),
+    # Ordinary code, and pages whose names sound risky, stay at high.
+    (["roadmap.json", "PRODUCT.md"], "code"),
+    (["the-workshop.html", "hosting/queue.js"], "code"),
+    (["hosting/test-orders.mjs"], "code"),
+    (["design/screens/garment-pricing.md"], "code"),
+    (["library/session-changeover.md"], "code"),
+    (["docs/authoring.md"], "words"),
+    # Pricing.
+    (["hosting/pricing-core.js"], "risky"),
+    (["src/Payments/refund.ts"], "risky"),
+    (["billing.py"], "risky"),
+    (["lib/invoice.rb"], "risky"),
+    (["web/checkout.tsx"], "risky"),
+    (["the-quote.html", "README.md"], "risky"),
+    # Live data and schema.
+    (["db/seed.sql"], "risky"),
+    (["hosting/migrations/2026-09-24-add.js"], "risky"),
+    (["prisma/schema.prisma"], "risky"),
+    (["supabase/functions/index.ts"], "risky"),
+    # Sign-in and permissions.
+    (["src/auth/guard.ts"], "risky"),
+    (["hosting/login.js"], "risky"),
+    (["hosting/logout.js"], "risky"),
+    (["hosting/session.js"], "risky"),
+    (["reset-password.ts"], "risky"),
+    (["permissions.json"], "risky"),
+    # Public trust boundaries.
+    (["hosting/api/orders.js"], "risky"),
+    (["api/hello.js"], "risky"),
+    (["hosting/middleware.js"], "risky"),
+    (["stripe-webhook.js"], "risky"),
+    (["hosting/shell/sw.js"], "risky"),
+    (["sw.js"], "risky"),
+    # Deploy and release.
+    (["hosting/build.sh"], "risky"),
+    (["netlify.toml"], "risky"),
+    (["scripts/deploy.mjs"], "risky"),
+    (["hosting/vercel.json"], "risky"),
+    (["Dockerfile"], "risky"),
+    (["package.json"], "risky"),
+    (["hosting/package.json"], "risky"),
+    (["package-lock.json"], "risky"),
+    (["yarn.lock"], "risky"),
+    (["pnpm-lock.yaml"], "risky"),
+    # A name's case hides nothing.
+    (["Hosting/Login.JS"], "risky"),
+    (["SRC/PRICING.TS"], "risky"),
+    (["Agents.md"], "risky"),
 )
 
 
@@ -1542,27 +1648,43 @@ def _class_block(text):
     return _block(text, lambda l: l == CLASS_FIRST, lambda l: l == CLASS_OUT)
 
 
-def class_says(block, paths):
-    """Run the class block as a change touching `paths` would. (class, effort) or None."""
+def class_says(block, cases):
+    """Run the class block as each change in `cases` would. Per case, (class, effort) or None.
+
+    One shell runs them all, each case in a subshell of its own, so a block that
+    fails stops only its own case; the subshell is run as a statement, never
+    tested, because `set -e` is off inside anything a `&&` or `if` tests.
+    """
+    body = "\n".join(re.sub(r"\$\{\{[^}]*\}\}", "x", l) for l in block)
     with tempfile.TemporaryDirectory() as d:
-        changed, out = os.path.join(d, "changed"), os.path.join(d, "out")
-        if paths is not None:
-            with open(changed, "wb") as f:
-                f.write(b"".join(p.encode("utf-8") + b"\0" for p in paths))
-        # A workflow expression is not shell; the listing it names is stubbed,
-        # and fails as git would when there is no list to give.
-        body = "\n".join(re.sub(r"\$\{\{[^}]*\}\}", "x", l) for l in block)
-        script = 'git() { cat "$CHANGED"; }\ng() { cat "$CHANGED"; }\n%s\n' % body
+        script = ['git() { cat "$CHANGED"; }', 'g() { cat "$CHANGED"; }']
+        outs = []
+        for n, paths in enumerate(cases):
+            changed, out = os.path.join(d, "changed%d" % n), os.path.join(d, "out%d" % n)
+            if paths is not None:
+                with open(changed, "wb") as f:
+                    f.write(b"".join(p.encode("utf-8") + b"\0" for p in paths))
+            outs.append(out)
+            # A workflow expression is not shell; the listing it names is
+            # stubbed, and fails as git would when there is no list to give.
+            script.append("(\nset -euo pipefail\nCHANGED='%s'\nGITHUB_OUTPUT='%s'\n%s\n)\n"
+                          'echo "rc%d=$?"' % (changed, out, body, n))
         try:
-            p = subprocess.run(["bash", "-c", "set -euo pipefail\n" + script],
-                               env=dict(os.environ, CHANGED=changed, GITHUB_OUTPUT=out,
-                                        RUNNER_TEMP=d, t=d, MAIN="main", SHA="0" * 40),
-                               capture_output=True, text=True, timeout=30)
-            said = open(out, encoding="utf-8").read() if p.returncode == 0 else ""
+            p = subprocess.run(["bash", "-c", "\n".join(script)],
+                               env=dict(os.environ, RUNNER_TEMP=d, t=d, MAIN="main", SHA="0" * 40),
+                               capture_output=True, text=True, timeout=120)
         except (OSError, subprocess.SubprocessError):
-            return None
-    got = dict(l.split("=", 1) for l in said.splitlines() if "=" in l)
-    return (got["class"], got["effort"]) if "class" in got and "effort" in got else None
+            return [None] * len(cases)
+        said = []
+        for n, out in enumerate(outs):
+            ok = re.search(r"^rc%d=0$" % n, p.stdout, re.M)
+            try:
+                lines = open(out, encoding="utf-8").read().splitlines() if ok else []
+            except OSError:
+                lines = []
+            got = dict(l.split("=", 1) for l in lines if "=" in l)
+            said.append((got["class"], got["effort"]) if "class" in got and "effort" in got else None)
+    return said
 
 
 def class_faults(text, path):
@@ -1579,22 +1701,23 @@ def class_faults(text, path):
             if line not in block:
                 lost.append("the class listed from the diff it reads, NUL-separated, renames split "
                             "and written down before it is read (`%s`)" % line)
-        for line in (CLASS_CODE, CLASS_EFFORT):
+        for line in (CLASS_RISK_FIRST, CLASS_CODE, CLASS_RISKY, CLASS_EFFORT):
             if line not in block:
                 lost.append("`%s`" % line)
         # The shape, not only the strings (#79's ninth read): an arm added for
         # an extension no case lists would pass every case and every loosening
-        # above, so the `case` holds exactly its three arms and nothing else.
-        try:
-            arms = block[block.index('case "$f" in') + 1:block.index("esac")]
-        except ValueError:
-            arms = None
-        if arms != list(CLASS_ARMS):
-            lost.append("a `case` of exactly three arms, %s (it has %s)"
-                        % (" / ".join("`%s`" % a for a in CLASS_ARMS), arms))
-        for paths, want in CLASS_CASES:
-            got = class_says(block, paths)
-            need = want and (want, WORDS_EFFORT if want == "words" else REVIEWER_EFFORT)
+        # above, so each `case` holds exactly its arms and nothing else.
+        for first, want in (('case "$f" in', CLASS_ARMS), (RISK_CASE, RISK_ARMS)):
+            try:
+                start = block.index(first) + 1
+                arms = block[start:block.index("esac", start)]
+            except ValueError:
+                arms = None
+            if arms != list(want):
+                lost.append("a `%s` of exactly %d arms, %s (it has %s)"
+                            % (first, len(want), " / ".join("`%s`" % a for a in want), arms))
+        for (paths, want), got in zip(CLASS_CASES, class_says(block, [c[0] for c in CLASS_CASES])):
+            need = want and (want, RISKY_EFFORT if want == "risky" else ORDINARY_EFFORT)
             if got != need:
                 lost.append("%s (it was %s)"
                             % ("a change to %r read as %s at %s" % ((paths,) + need) if need
@@ -1608,6 +1731,17 @@ def class_faults(text, path):
         lost.append("`%s` before the call" % EFFORT_GUARD)
     if [f for f in (_call(text) or []) if f.startswith("--effort")] != [READ_EFFORT + " \\"]:
         lost.append("`%s` as the call's one effort" % READ_EFFORT)
+    if not all(line in r for line in RISK_TOLD):
+        lost.append("a read below %s told so and asked to name a risky file (`%s`)"
+                    % (RISKY_EFFORT, "`, `".join(RISK_TOLD)))
+    # What the read cost: counted before the call, timed around it, and handed
+    # on before a failed read is named, so a read that ran out of time says too.
+    held = [l.strip() for l in r.splitlines()]
+    order = [READ_BYTES[path], READ_BEGAN, READ_CALL, READ_TOOK[0], READ_TOOK[1], READ_ANSWERED]
+    at = [held.index(l) if l in held else -1 for l in order]
+    if -1 in at or at != sorted(at) or sum(1 for l in held if l.startswith("echo \"spent=")) != 1:
+        lost.append("the bytes read and the minutes taken, measured around the call and handed on "
+                    "before a failed read is named (`%s`)" % "`, `".join(order))
     if _block(r, lambda l: l == VERDICT_CASE[0], lambda l: l == "esac") != list(VERDICT_CASE):
         lost.append("the read taking exactly the verdicts `%s`" % VERDICT_CASE[1])
     try:
@@ -1620,12 +1754,19 @@ def class_faults(text, path):
     sg = text[sign[0]:sign[1]] if sign else ""
     for line in VERDICT_SAYS:
         if line not in sg:
-            lost.append("the verdict naming the class and effort it was read at (`%s`)" % line)
+            lost.append("the verdict naming the class and effort it was read at, and what the read "
+                        "cost (`%s`)" % line)
     block = _block(sg, lambda l: l == SIGN_FIRST, lambda l: l == "fi")
     for verdict, want in SIGN_CASES:
         got = sign_says(block, verdict) if block else None
-        if got != want:
-            lost.append("a read answering %r signed %s (it was signed %s)" % (verdict, want, got))
+        if (got and got[0]) != want:
+            lost.append("a read answering %r signed %s (it was signed %s)"
+                        % (verdict, want, got and got[0]))
+    for verdict in ("clean", "advisory", "blocking"):
+        got = sign_says(block, verdict, SIGN_SPENT) if block else None
+        if not got or not got[1].endswith("; %s)" % SIGN_SPENT):
+            lost.append("a %s read's verdict saying what it cost (it said %r)"
+                        % (verdict, got and got[1]))
     if path == REVIEW_WORKFLOW and REVIEW_PAGES not in g:
         lost.append("every file given to a change that is not pages alone (`%s`)" % REVIEW_PAGES)
     if path == REVIEW_WORKFLOW and REVIEW_LEFT_OUT not in g:
@@ -1639,6 +1780,11 @@ def class_faults(text, path):
         lost.append("the reviewer told what was left out and asked to say if it needed it (`%s`)"
                     % "`, `".join(REVIEW_TOLD))
     return lost
+
+
+def _without_arm(arm):
+    """A loosening that takes one risky class's arm out of the risk `case`."""
+    return lambda t: t.replace("              %s\n" % arm, "", 1)
 
 
 # Each must turn the hold red on both reviewers' files (or on the one it names).
@@ -1658,27 +1804,48 @@ CLASS_LOOSENINGS = (
     ("a verdict in the schema refused", None, lambda t: _in_step(t, "Read it", VERDICT_CASE[1], "clean|blocking) ;;")),
     ("the schema widened past the read", None, lambda t: t.replace('"enum":["clean","advisory","blocking"]', '"enum":["clean","advisory","blocking","findings"]', 1)),
     ("any verdict read as advisory", None, lambda t: _in_step(t, "Sign the verdict", 'elif [ "$VERDICT" = "advisory" ]', 'elif [ -n "$VERDICT" ]')),
-    ("a verdict that hides its effort", None, lambda t: t.replace(' (read as $CLASS at effort $EFFORT)"', '"', 1)),
+    ("a verdict that hides its effort", None, lambda t: t.replace(" (read as $CLASS at effort $EFFORT${SPENT:+; $SPENT})\"", "\"", 1)),
     ("a product's decisions read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("PRODUCT.md|", "", 1), 1)),
     ("a dot-directory read as pages", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("|.*|*/.*", "", 1), 1)),
     ("anything unrecognised read as pages", None, lambda t: t.replace("              *) class=code ;;\n", "              *) ;;\n", 1)),
     ("the class reset after the list", None, lambda t: t.replace("          " + CLASS_EFFORT + "\n", "          class=words\n          " + CLASS_EFFORT + "\n", 1)),
-    ("code read at the lower effort", None, lambda t: t.replace("*) effort=%s ;;" % REVIEWER_EFFORT, "*) effort=%s ;;" % WORDS_EFFORT, 1)),
-    ("the effort lowered before it is handed on", None, lambda t: t.replace("          " + CLASS_OUT + "\n", "          effort=%s\n          %s\n" % (WORDS_EFFORT, CLASS_OUT), 1)),
+    ("a risky change read at the lower effort", None, lambda t: t.replace("*) effort=%s ;;" % RISKY_EFFORT, "*) effort=%s ;;" % ORDINARY_EFFORT, 1)),
+    ("the risky class put with the ordinary", None, lambda t: t.replace("words|code) effort=", "words|code|risky) effort=", 1)),
+    ("the effort lowered before it is handed on", None, lambda t: t.replace("          " + CLASS_OUT + "\n", "          effort=%s\n          %s\n" % (ORDINARY_EFFORT, CLASS_OUT), 1)),
     ("a list that fails read as no change", None, lambda t: t.replace("--name-only --no-renames", "--name-only --no-renames 2>/dev/null || true; : ", 1)),
     ("a rename read as its new name", None, lambda t: t.replace("--name-only --no-renames", "--name-only", 1)),
     ("names split on a line break", None, lambda t: t.replace("diff -z --name-only --no-renames", "diff --name-only --no-renames", 1)),
     ("the effort never handed on", None, lambda t: t.replace("          " + CLASS_OUT + "\n", "", 1)),
-    ("the effort handed on twice", None, lambda t: _in_step(t, "Gather what the reviewer reads", CLASS_OUT, CLASS_OUT + '\n          echo "effort=%s" >> "$GITHUB_OUTPUT"' % WORDS_EFFORT)),
-    ("the effort not the class's", None, lambda t: t.replace(EFFORT_IN, "EFFORT: " + WORDS_EFFORT, 1)),
-    ("a second effort in the read", None, lambda t: t.replace("          " + EFFORT_IN + "\n", "          %s\n          EFFORT: %s\n" % (EFFORT_IN, WORDS_EFFORT), 1)),
+    ("the effort handed on twice", None, lambda t: _in_step(t, "Gather what the reviewer reads", CLASS_OUT, CLASS_OUT + '\n          echo "effort=%s" >> "$GITHUB_OUTPUT"' % ORDINARY_EFFORT)),
+    ("the effort not the class's", None, lambda t: t.replace(EFFORT_IN, "EFFORT: " + ORDINARY_EFFORT, 1)),
+    ("a second effort in the read", None, lambda t: t.replace("          " + EFFORT_IN + "\n", "          %s\n          EFFORT: %s\n" % (EFFORT_IN, ORDINARY_EFFORT), 1)),
     ("an effort unchecked", None, lambda t: t.replace(EFFORT_GUARD, "true", 1)),
-    ("an effort written into the call", None, lambda t: t.replace(READ_EFFORT + " \\", "--effort " + WORDS_EFFORT + " \\", 1)),
-    ("code given pages alone", REVIEW_WORKFLOW, lambda t: t.replace("code:*) ;;", "code:*.md) ;;", 1)),
+    ("an effort written into the call", None, lambda t: t.replace(READ_EFFORT + " \\", "--effort " + ORDINARY_EFFORT + " \\", 1)),
+    ("code given pages alone", REVIEW_WORKFLOW, lambda t: t.replace("code:*|risky:*) ;;", "code:*.md|risky:*) ;;", 1)),
+    ("a risky change given pages alone", REVIEW_WORKFLOW, lambda t: t.replace("code:*|risky:*) ;;", "code:*) ;;", 1)),
     ("a file left out unnamed", REVIEW_WORKFLOW, lambda t: re.sub(r"\*\) printf '[^\n]*" + re.escape(REVIEW_LEFT_OUT) + r"[^\n]*; continue ;;", "*) continue ;;", t, 1)),
     ("the reviewer not told", REVIEW_WORKFLOW, lambda t: t.replace(REVIEW_TOLD[1], 'echo "."', 1)),
     ("a thin read let pass clean", REVIEW_WORKFLOW, lambda t: t.replace("that is a finding: say which.", "say which.", 1)),
     ("the class kept from the read", REVIEW_WORKFLOW, lambda t: t.replace("          " + REVIEW_TOLD[2] + "\n", "", 1)),
+    # The six classes (#86): each arm taken out, reordered, or blinded to case.
+    ("the gate read as ordinary", None, _without_arm(RISK_GATE)),
+    ("the brief read as ordinary", None, lambda t: t.replace(RISK_GATE, RISK_GATE.replace("agents.md|*/agents.md|", "", 1), 1)),
+    ("pricing read as ordinary", None, _without_arm(RISK_PRICING)),
+    ("live data read as ordinary", None, _without_arm(RISK_DATA)),
+    ("sign-in read as ordinary", None, _without_arm(RISK_SIGN_IN)),
+    ("a trust boundary read as ordinary", None, _without_arm(RISK_BOUNDARY)),
+    ("release machinery read as ordinary", None, _without_arm(RISK_RELEASE)),
+    ("an endpoint read as ordinary", None, lambda t: t.replace(RISK_BOUNDARY, RISK_BOUNDARY.replace("api/*|*/api/*|", "", 1), 1)),
+    ("every script read as ordinary", None, lambda t: t.replace(RISK_RELEASE, RISK_RELEASE.replace("*.sh|", "", 1), 1)),
+    ("a page's exit put before the gate", None, lambda t: t.replace("              %s\n              *.md) ;;\n" % RISK_GATE, "              *.md) ;;\n              %s\n" % RISK_GATE, 1)),
+    ("a name's case trusted", None, lambda t: t.replace(RISK_CASE, 'case "$f" in', 1)),
+    ("the risk never raised", None, lambda t: t.replace("          " + CLASS_RISKY + "\n", "", 1)),
+    ("the risk found and dropped", None, lambda t: t.replace(CLASS_RISKY, '[ "$risky" = yes ] || class=risky', 1)),
+    ("the read below max not told", None, lambda t: _in_step(t, "Read it", RISK_TOLD[1], 'echo "."')),
+    ("what the read cost never counted", None, lambda t: _in_step(t, "Read it", READ_TOOK[1], "true")),
+    ("what the read cost counted after a failure is named", None, lambda t: _in_step(t, "Read it", "          %s\n" % READ_TOOK[0], "          %s\n          %s\n" % (READ_ANSWERED, READ_TOOK[0]))),
+    ("what the read cost never passed on", None, lambda t: _in_step(t, "Sign the verdict", "SPENT: ${{ steps.read.outputs.spent }}", "SPENT: none")),
+    ("what the read cost kept from the verdict", None, lambda t: _in_step(t, "Sign the verdict", 'title="No findings on this commit (read as $CLASS at effort $EFFORT${SPENT:+; $SPENT})"', 'title="No findings on this commit (read as $CLASS at effort $EFFORT)"')),
 )
 
 
@@ -1706,11 +1873,12 @@ def _check_class_loosenings():
                       % (path, what))
                 bad += 1
     if not bad:
-        print("ok: each reviewer reads a change at its class's effort, %s for pages alone and %s "
-              "for anything else, worked out from the diff it reads; the class was run on %d "
-              "change(s), review.yml gives any change but pages every file, and each of %d "
-              "loosenings was refused" % (WORDS_EFFORT, REVIEWER_EFFORT, len(CLASS_CASES),
-                                          len(CLASS_LOOSENINGS)))
+        print("ok: each reviewer reads a change at its class's effort, %s for pages and ordinary "
+              "code and %s for the six risky classes, worked out from the diff it reads and told "
+              "when it is below %s; the class was run on %d change(s), review.yml gives any change "
+              "but pages every file, each verdict says what its read cost, and each of %d "
+              "loosenings was refused" % (ORDINARY_EFFORT, RISKY_EFFORT, RISKY_EFFORT,
+                                          len(CLASS_CASES), len(CLASS_LOOSENINGS)))
     return bad
 
 
@@ -1825,6 +1993,10 @@ def _check_product_wiring(review=None, product=None, readme=None, quiet=False):
     lost = class_faults(product, PRODUCT_WORKFLOW)
     if lost:
         fault("must read a change at the effort its class names; it has lost %s"
+              % "; ".join(lost))
+    lost = pick_faults(product)
+    if lost:
+        fault("must carry the slice's own pages by rule and name what it leaves out; it has lost %s"
               % "; ".join(lost))
     if _why(review) is None or _why(product) != _why(review):
         fault("does not name why a read did not happen as %s does, line for line"
@@ -1992,6 +2164,229 @@ def _check_product_loosenings():
     if not bad:
         print("ok: each of %d loosenings of %s was applied to the real file and refused"
               % (len(PRODUCT_LOOSENINGS), PRODUCT_WORKFLOW))
+    return bad
+
+
+# THE SLICE'S PAGES, PICKED BY RULE (#86). A product read carried the product's
+# whole PRODUCT.md and roadmap.json — 155 KB of Hemz OS's on 24 September, on
+# every read — and nearly every slice edits both. Now it carries the roadmap
+# item whose id the pull request's title opens with, and PRODUCT.md's opening
+# and the sections that item names, and names everything else with its size.
+# Never the sections the diff edits: the diff shows those already, and a pick
+# made from the diff is one the proposer makes. The picker is run here, not
+# read, against the cases below, as the class block is: an item read out of the
+# middle of a title, a section left out unnamed, or a summary that prints the
+# product's words into the public log each turns the check red.
+PICK_CALL = ("if python3 - \"$t/title.txt\" \"$t/carried.roadmap.json\" \"$t/carried.PRODUCT.md\" "
+             "\"$t/picked.txt\" 2>/dev/null <<'PY'")
+PICK_TAKEN = ('cat "$t/picked.txt" >> "$pages"',
+              'for f in roadmap.json PRODUCT.md; do add "$f" || echo "carried page not found in $REPO: $f"; done')
+PICK_TITLE = 'jq -r \'.title // ""\' "$pr" > "$RUNNER_TEMP/title.txt"'
+PICK_TOLD = 'echo "left-out part, that is a finding: say which."'
+PICK_SAID = re.compile(r"^picked: (the slice's item|no item); \d+ of \d+ section\(s\) of PRODUCT\.md "
+                       r"carried; \d+ of \d+ bytes\n$")
+PICK_ROAD = json.dumps({
+    "_what_this_is": "The agreed order.", "money_milestones": {"items": [{"at": 1000}]},
+    "items": [{"id": "P2", "title": "Hosting", "plain": "Priced by §3's rules."},
+              {"id": "P2b", "title": "Hosting, second", "plain": "Built to PRODUCT.md §4 and §6.2.",
+               "next": "then § 1"},
+              {"id": "P48", "title": "What is kept", "plain": "Nothing named here."},
+              {"id": "P48.1", "title": "What is kept, a part", "plain": "See §2."},
+              {"id": "A12", "title": "The truth", "next": "Per §9."},
+              "not an item"],
+    "retired": []}, ensure_ascii=False, indent=1)
+PICK_SECTIONS = (("1. What it is", "ALPHA"), ("2. Who uses it", "BETA"), ("3. Money", "GAMMA £"),
+                 ("4. Layers", "DELTA"), ("6. Backstage", "EPSILON"), ("Notes", "ZETA"))
+PICK_OPENING = "# PRODUCT.md\n\nOwner: the Chairman.\n\n"
+PICK_PRODUCT = PICK_OPENING + "".join("## %s\n%s\n" % s for s in PICK_SECTIONS)
+# (the title, roadmap.json, PRODUCT.md, the item carried or None, the sections
+# carried by number, a section named that is not there). None as the item's
+# place means the picker must refuse, so the pages are carried whole.
+PICK_CASES = (
+    ("P2b lands, first half", PICK_ROAD, PICK_PRODUCT, "P2b", {1, 4, 6}, None),
+    ("P2 — hosting", PICK_ROAD, PICK_PRODUCT, "P2", {3}, None),
+    ("P2: hosting", PICK_ROAD, PICK_PRODUCT, "P2", {3}, None),
+    ("P2bx lands", PICK_ROAD, PICK_PRODUCT, "", set(), None),
+    ("A12's line", PICK_ROAD, PICK_PRODUCT, "A12", set(), 9),
+    ("P48 lands", PICK_ROAD, PICK_PRODUCT, "P48", set(), None),
+    ("P48.1 lands", PICK_ROAD, PICK_PRODUCT, "P48.1", {2}, None),
+    ("Fix: P48 lands", PICK_ROAD, PICK_PRODUCT, "", set(), None),
+    ("The refusal P2's newest fetch", PICK_ROAD, PICK_PRODUCT, "", set(), None),
+    ("", PICK_ROAD, PICK_PRODUCT, "", set(), None),
+    ("P2 with no roadmap", "", PICK_PRODUCT, "", set(), None),
+    ("P2 with no product page", PICK_ROAD, "", "P2", set(), None),
+    ("P2 on a broken roadmap", "{", PICK_PRODUCT, None, set(), None),
+    ("P2 on a roadmap with no list", '{"items": {}}', PICK_PRODUCT, None, set(), None),
+)
+PICK_HARNESS = r'''
+import contextlib, io, json, sys
+program, cases = sys.argv[1], json.load(open(sys.argv[2], encoding="utf-8"))
+code = compile(open(program, encoding="utf-8").read(), "picker", "exec")
+said = []
+for argv in cases:
+    out, rc = io.StringIO(), 0
+    sys.argv = ["-"] + argv
+    try:
+        with contextlib.redirect_stdout(out):
+            exec(code, {"__name__": "__main__"})
+    except SystemExit as e:
+        rc = e.code if isinstance(e.code, int) else (0 if e.code is None else 1)
+    except Exception:
+        rc = 1
+    said.append([rc, out.getvalue()])
+json.dump(said, sys.stdout)
+'''
+
+
+def _picker(text):
+    """The picker's program, as the lines between its call and `PY`, dedented."""
+    gather = _step_span(text, "Gather what the reviewer reads")
+    lines = text[gather[0]:gather[1]].splitlines() if gather else []
+    try:
+        start = next(i for i, l in enumerate(lines) if l.strip() == PICK_CALL)
+        end = next(i for i, l in enumerate(lines) if i > start and l.strip() == "PY")
+    except StopIteration:
+        return None
+    return textwrap.dedent("\n".join(lines[start + 1:end])) + "\n"
+
+
+def picks(program, cases):
+    """Run the picker on each case. Per case, (exit status, what it printed, the pages it wrote)."""
+    with tempfile.TemporaryDirectory() as d:
+        argvs = []
+        for n, (title, road, product) in enumerate(cases):
+            names = [os.path.join(d, "%s%d" % (k, n)) for k in ("title", "road", "product", "out")]
+            for name, body in zip(names, (title, road, product)):
+                with open(name, "w", encoding="utf-8") as f:
+                    f.write(body)
+            argvs.append(names)
+        for name, body in (("program", program), ("cases", json.dumps(argvs)),
+                           ("harness", PICK_HARNESS)):
+            with open(os.path.join(d, name), "w", encoding="utf-8") as f:
+                f.write(body)
+        try:
+            p = subprocess.run([sys.executable, os.path.join(d, "harness"), os.path.join(d, "program"),
+                                os.path.join(d, "cases")], capture_output=True, text=True, timeout=60)
+            said = json.loads(p.stdout)
+        except (OSError, subprocess.SubprocessError, ValueError):
+            return [None] * len(cases)
+        got = []
+        for (rc, printed), argv in zip(said, argvs):
+            try:
+                pages = open(argv[3], encoding="utf-8").read()
+            except OSError:
+                pages = None
+            got.append((rc, printed, pages))
+    return got
+
+
+def pick_faults(text):
+    """What a product read has lost of carrying the slice's pages by rule, and saying so."""
+    lost = []
+    gather, read = _step_span(text, "Gather what the reviewer reads"), _step_span(text, "Read it")
+    head = _step_span(text, "The commit asked for is the head")
+    g = text[gather[0]:gather[1]] if gather else ""
+    h = text[head[0]:head[1]] if head else ""
+    if PICK_TITLE not in h or h.index(PICK_TITLE) > h.find('rm -f "$pr"'):
+        lost.append("the title kept in a file before the pull request's answer goes (`%s`)" % PICK_TITLE)
+    if "outputs.title" in text or [l for l in h.splitlines() if "title" in l and "GITHUB_OUTPUT" in l]:
+        lost.append("the title kept out of the step outputs, whose variables this public log prints")
+    for line in PICK_TAKEN:
+        if line not in g:
+            lost.append("`%s`, so the pages picked are the pages read, and whole when the pick fails"
+                        % line)
+    if not read or PICK_TOLD not in text[read[0]:read[1]]:
+        lost.append("the reviewer told the pages were picked and asked to say if it needed one "
+                    "(`%s`)" % PICK_TOLD)
+    program = _picker(text)
+    if program is None:
+        lost.append("the picker, called as `%s` — the title and the two pages, never the diff, "
+                    "its errors kept out of this public log" % PICK_CALL)
+        return lost
+    runs = picks(program, [c[:3] for c in PICK_CASES])
+    for (title, road, product, item, carried, missing), got in zip(PICK_CASES, runs):
+        case = "on a title %r%s%s" % (title, "" if road else ", with no roadmap",
+                                       "" if product else ", with no product page")
+        if got is None:
+            lost.append("a picker that can be run %s" % case)
+            continue
+        rc, printed, pages = got
+        if item is None:
+            if rc == 0:
+                lost.append("a pick refused %s, so the pages are carried whole" % case)
+            continue
+        if rc != 0 or pages is None:
+            lost.append("a pick made %s (it exited %s)" % (case, rc))
+            continue
+        if not PICK_SAID.match(printed):
+            lost.append("a summary of numbers alone %s (it printed %r)" % (case, printed))
+        ids = re.findall(r'^ "id": "([^"]*)",$', pages, re.M)
+        if ids != ([item] if item else []):
+            lost.append("item %s carried alone %s (it carried %s)" % (item or "none", case, ids))
+        if road and not item and not re.search(r"^===== roadmap\.json: \d+ bytes, left out: ", pages, re.M):
+            lost.append("the roadmap named as left out %s" % case)
+        if product and PICK_OPENING.strip() not in pages:
+            lost.append("PRODUCT.md's opening carried %s" % case)
+        for heading, body in (PICK_SECTIONS if product else ()):
+            number = int(heading.split(".")[0]) if heading[0].isdigit() else None
+            size = len(("## %s\n%s\n" % (heading, body)).encode())
+            named = "\n===== PRODUCT.md, %s: %d bytes, left out: " % (heading, size)
+            if number in carried and (body not in pages or named in pages):
+                lost.append("§%d carried %s" % (number, case))
+            if number not in carried and (body in pages or named not in pages):
+                lost.append("%s named with its size and left out %s" % (heading, case))
+        if missing and "===== PRODUCT.md §%d: named by the slice's roadmap item, and no such section" \
+                % missing not in pages:
+            lost.append("§%d named as missing %s" % (missing, case))
+    return lost
+
+
+# Each must turn the pick's hold red on review-product.yml.
+PICK_LOOSENINGS = (
+    ("an item found anywhere in the title", lambda t: t.replace('if title.startswith(i["id"]) and', 'if i["id"] in title and', 1)),
+    ("an id read as the start of a longer word", lambda t: t.replace(' and not title[len(i["id"]):][:1].isalnum()', "", 1)),
+    ("the shorter of two ids preferred", lambda t: t.replace("max(ids, key=len)", "min(ids, key=len)", 1)),
+    ("the sections named ignored", lambda t: t.replace("int(number.group(1)) in named:", "False:", 1)),
+    ("a left-out section unnamed", lambda t: t.replace("bytes, left out: not named by the slice's roadmap item", "bytes", 1)),
+    ("a section's size misstated", lambda t: t.replace("len(part.encode())", "len(part)", 1)),
+    ("a missing section not named", lambda t: t.replace("and no such section", "", 1)),
+    ("a broken roadmap read as no item", lambda t: t.replace("                  raise SystemExit(1)\n", "                  road = {\"items\": []}\n", 1)),
+    ("the summary naming the item", lambda t: t.replace('% ("the slice\'s item" if item', '% (item["id"] if item', 1)),
+    ("the diff handed to the picker", lambda t: t.replace(PICK_CALL, PICK_CALL.replace('"$t/picked.txt"', '"$t/picked.txt" "$t/diff.txt"'), 1)),
+    ("the picker's errors printed", lambda t: t.replace(PICK_CALL, PICK_CALL.replace(" 2>/dev/null", ""), 1)),
+    ("the picked pages dropped", lambda t: t.replace(PICK_TAKEN[0], "true", 1)),
+    ("a failed pick carrying nothing", lambda t: t.replace(PICK_TAKEN[1], "true", 1)),
+    ("the reviewer not told", lambda t: t.replace(PICK_TOLD, 'echo "."', 1)),
+    ("the title printed", lambda t: t.replace(PICK_TITLE, "jq -r '.title // \"\"' \"$pr\"", 1)),
+    ("the title made an output", lambda t: t.replace(PICK_TITLE, PICK_TITLE + '\n          echo "title=$(cat "$RUNNER_TEMP/title.txt")" >> "$GITHUB_OUTPUT"', 1)),
+)
+
+
+def _check_pick_loosenings():
+    """Every loosening above, applied to review-product.yml, must be refused."""
+    try:
+        product = _read(PRODUCT_WORKFLOW)
+    except OSError as e:
+        print("  wiring: %s" % e)
+        return 1
+    if pick_faults(product):
+        return 1  # the wiring checks say what
+    bad = 0
+    for what, loosen in PICK_LOOSENINGS:
+        changed = loosen(product)
+        if changed == product:
+            print("  wiring: the loosening '%s' no longer applies to %s — rewrite it against the "
+                  "file as it stands, or it proves nothing" % (what, PRODUCT_WORKFLOW))
+            bad += 1
+        elif not pick_faults(changed):
+            print("  wiring: %s with %s passes the pick's hold — the guard for it is gone"
+                  % (PRODUCT_WORKFLOW, what))
+            bad += 1
+    if not bad:
+        print("ok: a product read carries the roadmap item its pull request's title opens with and "
+              "the PRODUCT.md sections that item names, naming every other part with its size and "
+              "printing numbers alone; the picker was run on %d case(s), and each of %d loosenings "
+              "was refused" % (len(PICK_CASES), len(PICK_LOOSENINGS)))
     return bad
 
 
@@ -2275,6 +2670,7 @@ def _selftest():
     failed += _check_review_loosenings()
     failed += _check_read_loosenings()
     failed += _check_class_loosenings()
+    failed += _check_pick_loosenings()
     return 1 if failed else 0
 
 
