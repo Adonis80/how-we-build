@@ -10,7 +10,16 @@ At every turn, decide whether the next turn stays here or starts fresh. Stay onl
 - **Cheaper to stay:** the useful unresolved context here costs less than rebuilding it from the small canonical boot.
 - **Clear:** the history still helps more than it hurts, with no material stale truth, contradiction, looping, irrelevant output or lost detail.
 
-Otherwise, checkpoint and start fresh. Provider caches and compaction can inform that judgement but are never rules in themselves.
+Otherwise, checkpoint and start fresh. Provider caches can inform that judgement but are never a rule in themselves.
+
+**The session checkpoints itself; he never asks (his ruling, 25 September 2026: *"so I dont have to manually use the 'checkpoint and stop' command"*).** Heavy is judged by signs a session can see, not by feel. Any one of these ends the session at its next clean point, unasked:
+
+- the slice merged, parked or handed over;
+- the history has been compacted or summarised once;
+- the same file read a third time, or the same failure met twice;
+- the session can no longer state the slice's state without re-reading it.
+
+It then leaves the handover below and ends "ready to start fresh session". A "checkpoint and stop" typed by him is a fault in the line, as any word but *build* is.
 
 Before leaving, put every durable fact in GitHub and make the pull request and roadmap handover sufficient on their own. If the opening words for the next session would have to carry project state, the handover is not finished. Advisory work that has no repository yet gets one temporary `START-HERE.md` — the bounded question, what is agreed, the next action, the files that matter — superseded the moment the result lands in GitHub.
 
