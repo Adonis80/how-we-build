@@ -1425,9 +1425,9 @@ def _check_read_loosenings():
 # design/CONSTITUTION.md (#79's fourth and sixth reads). Nor is anything in a
 # dot-directory, where .github and .claude keep settings and agents'
 # instructions whatever their extension.
-# The README is read as code while it still holds the rulebook's prose (#79's
-# eighth read); once the library move leaves it an index, one line returns it
-# to pages. The list splits renames, so a script renamed to a page is still a script, and is
+# The README and the library are pages again (decision 0008's PR 0): since #102
+# the README is a map and the library one topic a page, and #102's own
+# words-only change, read as code, was handed every file, 528,728 bytes. The list splits renames, so a script renamed to a page is still a script, and is
 # NUL-separated, so no name is read as two. It is written to a file first, so a
 # list that cannot be made stops the step: read through `< <(...)` it failed
 # unseen and read as no change at all, which is pages. The block is run, not read, against
@@ -1452,7 +1452,7 @@ def _check_read_loosenings():
 CLASS_FIRST = "class=words"
 CLASS_RISK_FIRST = "risky=no"
 CLASS_CODE = ("AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|design/*|"
-              "PRODUCT.md|README.md|library/*|.*|*/.*) class=code ;;")
+              "PRODUCT.md|.*|*/.*) class=code ;;")
 CLASS_ARMS = (CLASS_CODE, "*.md) ;;", "*) class=code ;;")
 RISK_CASE = 'case "${f,,}" in'
 # The six classes, as the arms that name them, in the order they are tried.
@@ -1487,11 +1487,28 @@ READ_EFFORT = '--effort "$EFFORT"'
 RISK_TOLD = ('if [ "$EFFORT" != %s ]; then' % RISKY_EFFORT,
              'echo "release machinery, or the review gate, that is a finding: say which file, so its '
              'name joins the rule."')
-# review.yml's pages: a change to pages alone is given the pages and check.sh;
-# any other is given every file, as every read was before. What is left out is
-# named with its size, and the reviewer is told so and asked to say if a
-# finding needed it: without those, a read short of a file is silent about it.
-REVIEW_PAGES = "words:*.md|words:check.sh|code:*|risky:*) ;;"
+# review.yml's pages: a change to pages alone is given the pages it touches, the
+# README's map, HOW-WE-BUILD.md and check.sh (decision 0008's PR 0; before it,
+# every page, 528,728 bytes on #102); any other is given every file, as every
+# read was before. What is left out is named with its size, and the reviewer is
+# told so and asked to say if a finding needed it: without those, a read short
+# of a file is silent about it. The loop is run, not read, on PAGES_CASES below.
+REVIEW_PAGES = ("words:README.md|words:HOW-WE-BUILD.md|words:check.sh|code:*|risky:*) ;;",
+                'words:*.md) grep -qzxF -- "$f" "$RUNNER_TEMP/changed.txt" || given=no ;;',
+                "*) given=no ;;")
+PAGES_FIRST = ": > /tmp/pages.txt"
+PAGES_TREE = ("AGENTS.md", "CHARTER.md", "HOW-WE-BUILD.md", "README.md", "check.sh", "review-gate.py",
+              "library/deploy.md", "library/reviewer.md", ".github/workflows/review.yml")
+# (class, the files the change touches, the files of PAGES_TREE it is given whole).
+PAGES_CASES = (
+    ("words", ["library/reviewer.md"], {"README.md", "HOW-WE-BUILD.md", "check.sh", "library/reviewer.md"}),
+    ("words", ["README.md"], {"README.md", "HOW-WE-BUILD.md", "check.sh"}),
+    ("words", ["library/reviewer.md", "library/deploy.md"],
+     {"README.md", "HOW-WE-BUILD.md", "check.sh", "library/reviewer.md", "library/deploy.md"}),
+    ("words", ["library/reviewer.md.bak", "library/review"], {"README.md", "HOW-WE-BUILD.md", "check.sh"}),
+    ("code", ["library/reviewer.md", "x.js"], set(PAGES_TREE)),
+    ("risky", ["check.sh"], set(PAGES_TREE)),
+)
 # And the verdict says how thoroughly it was read (#79's eighth read): a clean
 # read at high with pages alone must not look like one at max with everything.
 # Since #86 it also says how much was read and how long the read took, so a
@@ -1550,6 +1567,38 @@ def sign_says(block, verdict, spent=None):
     return (c.group(1), t.group(1) if t else "") if p.returncode == 0 and c else None
 
 
+def pages_says(block, cls, changed):
+    """Run review.yml's pages loop on PAGES_TREE as a change of `cls` touching `changed`.
+
+    (files given whole, files named as left out, the count handed on), or None.
+    """
+    with tempfile.TemporaryDirectory() as d:
+        tree = os.path.join(d, "tree")
+        for f in PAGES_TREE:
+            os.makedirs(os.path.dirname(os.path.join(tree, f)), exist_ok=True)
+            open(os.path.join(tree, f), "w").write("the page %s\n" % f)
+        with open(os.path.join(d, "changed.txt"), "wb") as out:
+            out.write(b"".join(p.encode("utf-8") + b"\0" for p in changed))
+        body = "\n".join(l.replace("/tmp/", d + "/") for l in block)
+        script = ("set -euo pipefail\ncd '%s'\ngit() { printf '%%s\\n' %s; }\nclass='%s'\n%s\n"
+                  % (tree, " ".join("'%s'" % f for f in PAGES_TREE), cls, body))
+        try:
+            p = subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=30,
+                               env=dict(os.environ, RUNNER_TEMP=d,
+                                        GITHUB_OUTPUT=os.path.join(d, "out")))
+            pages = open(os.path.join(d, "pages.txt"), encoding="utf-8").read()
+            count = open(os.path.join(d, "out"), encoding="utf-8").read()
+        except (OSError, subprocess.SubprocessError):
+            return None
+    if p.returncode != 0:
+        return None
+    given = set(re.findall(r"^===== (\S+) =====$", pages, re.M))
+    left = set(re.findall(r"^===== (\S+): \d+ bytes, left out: this change touches pages only =====$",
+                          pages, re.M))
+    n = re.search(r"^left_out=(\d+)$", count, re.M)
+    return given, left, int(n.group(1)) if n else None
+
+
 # A thinner read that needed more says so as a finding, never as a note on a
 # clean read (#79's tenth read: the high path with pages alone is unproven
 # until runs show it, so it fails closed rather than pass on less).
@@ -1563,8 +1612,8 @@ REVIEW_TOLD = ('if [ "$CLASS" = words ]; then', 'echo "judging it needed a left-
 CLASS_CASES = (
     (None, None),
     ([], "words"),
-    (["README.md"], "code"),
-    (["library/topics/reviewer.md"], "code"),
+    (["README.md"], "words"),
+    (["library/topics/reviewer.md"], "words"),
     (["design/ARCHITECT.md", "library/topics/reviewer.md"], "code"),
     (["docs/README.md"], "words"),
     (["docs/reviewer.md"], "words"),
@@ -1576,6 +1625,7 @@ CLASS_CASES = (
     (["AGENTS.md"], "risky"),
     (["HOW-WE-BUILD.md"], "code"),
     (["README.md", "CHARTER.md"], "code"),
+    (["README.md", "library/deploy.md"], "words"),
     (["RICH-DATA.md"], "code"),
     (["design/SCREEN-LAW.md"], "code"),
     (["design/CONSTITUTION.md", "README.md"], "code"),
@@ -1597,7 +1647,7 @@ CLASS_CASES = (
     (["the-workshop.html", "hosting/queue.js"], "code"),
     (["hosting/test-orders.mjs"], "code"),
     (["design/screens/garment-pricing.md"], "code"),
-    (["library/session-changeover.md"], "code"),
+    (["library/session-changeover.md"], "words"),
     (["docs/authoring.md"], "words"),
     # Pricing.
     (["hosting/pricing-core.js"], "risky"),
@@ -1767,8 +1817,22 @@ def class_faults(text, path):
         if not got or not got[1].endswith("; %s)" % SIGN_SPENT):
             lost.append("a %s read's verdict saying what it cost (it said %r)"
                         % (verdict, got and got[1]))
-    if path == REVIEW_WORKFLOW and REVIEW_PAGES not in g:
-        lost.append("every file given to a change that is not pages alone (`%s`)" % REVIEW_PAGES)
+    if path == REVIEW_WORKFLOW:
+        pages = _block(g, lambda l: l == PAGES_FIRST, lambda l: l == REVIEW_COUNT)
+        try:
+            start = pages.index('case "$class:$f" in') + 1
+            arms = pages[start:pages.index("esac", start)]
+        except (AttributeError, ValueError):
+            arms = None
+        if arms != list(REVIEW_PAGES):
+            lost.append("a pages `case` of exactly %d arms, %s (it has %s)"
+                        % (len(REVIEW_PAGES), " / ".join("`%s`" % a for a in REVIEW_PAGES), arms))
+        for cls, changed, want in PAGES_CASES:
+            got = pages_says(pages, cls, changed) if pages else None
+            need = (want, set(PAGES_TREE) - want, len(PAGES_TREE) - len(want))
+            if got != need:
+                lost.append("a %s change to %r given %s whole and the rest named as left out "
+                            "(it was %s)" % (cls, changed, sorted(want), got))
     if path == REVIEW_WORKFLOW and REVIEW_LEFT_OUT not in g:
         lost.append("each file left out of a read named with its size (`%s`)" % REVIEW_LEFT_OUT)
     say = _step_span(text, "Say it where people read")
@@ -1795,8 +1859,6 @@ CLASS_LOOSENINGS = (
     ("the charter read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("CHARTER.md|", "", 1), 1)),
     ("the data rules read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("RICH-DATA.md|", "", 1), 1)),
     ("the design pages read as pages", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("design/*|", "", 1), 1)),
-    ("the README read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("README.md|", "", 1), 1)),
-    ("the library read as pages", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("library/*|", "", 1), 1)),
     ("an arm for an unlisted extension", None, lambda t: t.replace("              *.md) ;;\n", "              *.sql) ;;\n              *.md) ;;\n", 1)),
     ("the left-out count dropped", REVIEW_WORKFLOW, lambda t: t.replace("          " + REVIEW_COUNT_IN + "\n", "", 1)),
     ("blocking signed as a pass", None, lambda t: _in_step(t, "Sign the verdict", "          else\n            conclusion=failure", "          else\n            conclusion=success")),
@@ -1823,7 +1885,14 @@ CLASS_LOOSENINGS = (
     ("an effort written into the call", None, lambda t: t.replace(READ_EFFORT + " \\", "--effort " + ORDINARY_EFFORT + " \\", 1)),
     ("code given pages alone", REVIEW_WORKFLOW, lambda t: t.replace("code:*|risky:*) ;;", "code:*.md|risky:*) ;;", 1)),
     ("a risky change given pages alone", REVIEW_WORKFLOW, lambda t: t.replace("code:*|risky:*) ;;", "code:*) ;;", 1)),
-    ("a file left out unnamed", REVIEW_WORKFLOW, lambda t: re.sub(r"\*\) printf '[^\n]*" + re.escape(REVIEW_LEFT_OUT) + r"[^\n]*; continue ;;", "*) continue ;;", t, 1)),
+    ("a file left out unnamed", REVIEW_WORKFLOW, lambda t: re.sub(r"printf '[^\n]*" + re.escape(REVIEW_LEFT_OUT) + r"[^\n]*\n", "true\n", t, 1)),
+    ("a page read as words given every page", REVIEW_WORKFLOW, lambda t: t.replace(REVIEW_PAGES[1], 'words:*.md) ;;', 1)),
+    ("a page read as words given no page it touches", REVIEW_WORKFLOW, lambda t: t.replace(REVIEW_PAGES[1], 'words:*.md) given=no ;;', 1)),
+    ("a touched page matched by its prefix", REVIEW_WORKFLOW, lambda t: t.replace("grep -qzxF --", "grep -qzF --", 1)),
+    ("the README's map left out of a words read", REVIEW_WORKFLOW, lambda t: t.replace("words:README.md|", "", 1)),
+    ("the operating page left out of a words read", REVIEW_WORKFLOW, lambda t: t.replace("words:HOW-WE-BUILD.md|", "", 1)),
+    ("check.sh left out of a words read", REVIEW_WORKFLOW, lambda t: t.replace("words:check.sh|", "", 1)),
+    ("a words read given every script", REVIEW_WORKFLOW, lambda t: t.replace("              *) given=no ;;\n", "              *) ;;\n", 1)),
     ("the reviewer not told", REVIEW_WORKFLOW, lambda t: t.replace(REVIEW_TOLD[1], 'echo "."', 1)),
     ("a thin read let pass clean", REVIEW_WORKFLOW, lambda t: t.replace("that is a finding: say which.", "say which.", 1)),
     ("the class kept from the read", REVIEW_WORKFLOW, lambda t: t.replace("          " + REVIEW_TOLD[2] + "\n", "", 1)),
@@ -1876,9 +1945,11 @@ def _check_class_loosenings():
         print("ok: each reviewer reads a change at its class's effort, %s for pages and ordinary "
               "code and %s for the six risky classes, worked out from the diff it reads and told "
               "when it is below %s; the class was run on %d change(s), review.yml gives any change "
-              "but pages every file, each verdict says what its read cost, and each of %d "
-              "loosenings was refused" % (ORDINARY_EFFORT, RISKY_EFFORT, RISKY_EFFORT,
-                                          len(CLASS_CASES), len(CLASS_LOOSENINGS)))
+              "but pages every file and pages alone the pages they touch, the README's map, "
+              "HOW-WE-BUILD.md and check.sh (its loop run on %d), each verdict says what its read "
+              "cost, and each of %d loosenings was refused"
+              % (ORDINARY_EFFORT, RISKY_EFFORT, RISKY_EFFORT, len(CLASS_CASES), len(PAGES_CASES),
+                 len(CLASS_LOOSENINGS)))
     return bad
 
 

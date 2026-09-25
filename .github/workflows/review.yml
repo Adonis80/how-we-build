@@ -175,13 +175,10 @@ jobs:
           # screen law, a product's constitution, and the role, rubric and
           # templates that shape every screen: #79's thirteenth read) and anything in a
           # dot-directory (.github, .claude: settings and agents' instructions,
-          # whatever their extension). The README is read as code while it
-          # still holds the rulebook's prose (#79's eighth read); once the
-          # library move leaves it an index, one line returns it to pages.
-          # The library is read as code for good (#79's twelfth read): it is
-          # where that prose goes, one topic a page. So in this repository no
-          # page is read as words until the README is an index; the class
-          # serves a product's own ordinary pages.
+          # whatever their extension). The README and the library are pages
+          # again (decision 0008's PR 0): since #102 the README is a map and
+          # the library one topic a page, and #102's own words-only change,
+          # read as code, was handed every file, 528,728 bytes.
           # Renames count as a deletion
           # and an addition, so a script renamed to a page is still a script.
           # Anything unrecognised is code, and a list that cannot be made stops
@@ -207,7 +204,7 @@ jobs:
           git diff -z --name-only --no-renames "origin/${{ github.event.repository.default_branch }}...${{ steps.head.outputs.sha }}" > "$RUNNER_TEMP/changed.txt"
           while IFS= read -r -d '' f; do
             case "$f" in
-              AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|design/*|PRODUCT.md|README.md|library/*|.*|*/.*) class=code ;;
+              AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|design/*|PRODUCT.md|.*|*/.*) class=code ;;
               *.md) ;;
               *) class=code ;;
             esac
@@ -235,8 +232,10 @@ jobs:
           # repository correctness depends on pages a diff does not touch: a rule
           # added here can contradict one three files away, and a diff alone
           # cannot show that. Codex's P2 on #38. A change to pages alone is
-          # given the pages and check.sh, which holds the rules a page need not;
-          # anything else, ordinary or risky, is given every file. What is left out is named, with
+          # given the pages it touches, the README's map, HOW-WE-BUILD.md and
+          # check.sh, which holds the rules a page need not (decision 0008's
+          # PR 0: every page was 528,728 bytes on #102); anything else,
+          # ordinary or risky, is given every file. What is left out is named, with
           # its size, so the reviewer can say it needed it. Saying so is a
           # finding, and so is needing a deeper read: the thinner read is on
           # probation (#79's tenth read), and it fails closed rather than
@@ -244,10 +243,16 @@ jobs:
           # to the list read as code.
           : > /tmp/pages.txt
           for f in $(git ls-tree -r --name-only HEAD | grep -E '\.(md|sh|py|ya?ml)$' | sort); do
+            given=yes
             case "$class:$f" in
-              words:*.md|words:check.sh|code:*|risky:*) ;;
-              *) printf '\n===== %s: %s bytes, left out: this change touches pages only =====\n' "$f" "$(wc -c < "$f")" >> /tmp/pages.txt; continue ;;
+              words:README.md|words:HOW-WE-BUILD.md|words:check.sh|code:*|risky:*) ;;
+              words:*.md) grep -qzxF -- "$f" "$RUNNER_TEMP/changed.txt" || given=no ;;
+              *) given=no ;;
             esac
+            if [ "$given" = no ]; then
+              printf '\n===== %s: %s bytes, left out: this change touches pages only =====\n' "$f" "$(wc -c < "$f")" >> /tmp/pages.txt
+              continue
+            fi
             printf '\n===== %s =====\n' "$f" >> /tmp/pages.txt
             cat "$f" >> /tmp/pages.txt
           done
@@ -382,8 +387,9 @@ jobs:
             echo "</diff>"
             echo
             if [ "$CLASS" = words ]; then
-              echo "This change touches pages only, so it is read at effort $EFFORT with the pages"
-              echo "and check.sh below; every other file is named with its size and left out. If"
+              echo "This change touches pages only, so it is read at effort $EFFORT with the pages it"
+              echo "touches, README.md, HOW-WE-BUILD.md and check.sh below; every other file is named"
+              echo "with its size and left out. If"
               echo "judging it needed a left-out file or a deeper read, that is a finding: say which."
             fi
             if [ "$EFFORT" != max ]; then
