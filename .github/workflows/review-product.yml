@@ -343,10 +343,10 @@ jobs:
             case "${f,,}" in
               agents.md|*/agents.md|check.sh|*/check.sh|review-gate.py|*/review-gate.py|.*|*/.*) risky=yes ;;
               *.md) ;;
-              *pric*|*payment*|*billing*|*invoice*|*checkout*|*quote*) risky=yes ;;
+              *pric*|*payment*|*billing*|*invoice*|*checkout*|*quote*|*estimate*|*discount*|*surcharge*|*taxes*|rate[-_.s]*|*/rate[-_.s]*|*[-_.]rate[-_.s]*|tax[-_.s]*|*/tax[-_.s]*|*[-_.]tax[-_.s]*|vat[-_.s]*|*/vat[-_.s]*|*[-_.]vat[-_.s]*|fee[-_.s]*|*/fee[-_.s]*|*[-_.]fee[-_.s]*) risky=yes ;;
               *.sql|*migration*|*schema*|supabase/*|*/supabase/*) risky=yes ;;
-              *auth*|*login*|*logout*|*session*|*password*|*permission*) risky=yes ;;
-              api/*|*/api/*|*middleware*|*webhook*|sw.js|*/sw.js) risky=yes ;;
+              *auth*|*login*|*logout*|*session*|*password*|*permission*|*token*|*jwt*|*credential*) risky=yes ;;
+              api/*|*/api/*|functions/*|*/functions/*|*middleware*|*webhook*|sw.js|*/sw.js) risky=yes ;;
               *.sh|*.toml|*deploy*|*vercel.json|*dockerfile*|*package.json|*lock.json|*.lock|*lock.yaml) risky=yes ;;
             esac
           done < "$t/changed.txt"
@@ -389,8 +389,9 @@ jobs:
           # from the diff is a pick the proposer makes. Every section and item
           # left out is named with its size, so a reader that needed one says
           # so. The picker is handed the title and the two pages and nothing
-          # else, and prints numbers alone: this log is public. Should it fail
-          # for any reason, the two pages are carried whole, as before.
+          # else, and prints numbers alone: this log is public. What it picks
+          # is held to add()'s caps, as every other page is (#86's read). Should
+          # it fail for any reason, the two pages are carried whole, as before.
           # review-gate.py runs it against the cases it holds.
           for f in roadmap.json PRODUCT.md; do
             g show "$SHA:$f" > "$t/carried.$f" 2>/dev/null || : > "$t/carried.$f"
@@ -456,8 +457,13 @@ jobs:
                    len(text.encode()), len(road_text.encode()) + len(product.encode())))
           PY
           then
-            cat "$t/picked.txt" >> "$pages"
-            added=$((added + $(wc -c < "$t/picked.txt")))
+            size=$(wc -c < "$t/picked.txt")
+            if [ "$size" -gt 150000 ] || [ $((added + size)) -gt 300000 ]; then
+              printf '\n===== the pages picked from roadmap.json and PRODUCT.md: %s bytes, left out for size =====\n' "$size" >> "$pages"
+            else
+              cat "$t/picked.txt" >> "$pages"
+              added=$((added + size))
+            fi
           else
             echo "the slice's pages could not be picked, so roadmap.json and PRODUCT.md are carried whole"
             for f in roadmap.json PRODUCT.md; do add "$f" || echo "carried page not found in $REPO: $f"; done

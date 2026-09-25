@@ -1458,10 +1458,20 @@ RISK_CASE = 'case "${f,,}" in'
 # The six classes, as the arms that name them, in the order they are tried.
 RISK_GATE = ("agents.md|*/agents.md|check.sh|*/check.sh|review-gate.py|*/review-gate.py|.*|*/.*) "
              "risky=yes ;;")
-RISK_PRICING = "*pric*|*payment*|*billing*|*invoice*|*checkout*|*quote*) risky=yes ;;"
+# A short word counts only whole, bounded by a separator or the path's start
+# and followed by one or by a plural (#86's read, finding 1): anywhere in a
+# name, "vat" is in Hemz OS's observations.js and "fee" in any feedback page,
+# while its almas-base-rate-model.html, pricing that no name here caught, is
+# "rate" between hyphens.
+RISK_WORDS = ("rate", "tax", "vat", "fee")
+RISK_PRICING = ("*pric*|*payment*|*billing*|*invoice*|*checkout*|*quote*|*estimate*|*discount*|"
+                "*surcharge*|*taxes*|%s) risky=yes ;;"
+                % "|".join("%s[-_.s]*|*/%s[-_.s]*|*[-_.]%s[-_.s]*" % (w, w, w) for w in RISK_WORDS))
 RISK_DATA = "*.sql|*migration*|*schema*|supabase/*|*/supabase/*) risky=yes ;;"
-RISK_SIGN_IN = "*auth*|*login*|*logout*|*session*|*password*|*permission*) risky=yes ;;"
-RISK_BOUNDARY = "api/*|*/api/*|*middleware*|*webhook*|sw.js|*/sw.js) risky=yes ;;"
+RISK_SIGN_IN = ("*auth*|*login*|*logout*|*session*|*password*|*permission*|*token*|*jwt*|"
+                "*credential*) risky=yes ;;")
+RISK_BOUNDARY = ("api/*|*/api/*|functions/*|*/functions/*|*middleware*|*webhook*|sw.js|*/sw.js) "
+                 "risky=yes ;;")
 RISK_RELEASE = ("*.sh|*.toml|*deploy*|*vercel.json|*dockerfile*|*package.json|*lock.json|*.lock|"
                 "*lock.yaml) risky=yes ;;")
 RISK_ARMS = (RISK_GATE, "*.md) ;;", RISK_PRICING, RISK_DATA, RISK_SIGN_IN, RISK_BOUNDARY,
@@ -1636,6 +1646,26 @@ CLASS_CASES = (
     (["package-lock.json"], "risky"),
     (["yarn.lock"], "risky"),
     (["pnpm-lock.yaml"], "risky"),
+    # Names #86's read found missing, and the words that must not catch others.
+    (["almas-base-rate-model.html"], "risky"),
+    (["config/rates.json"], "risky"),
+    (["src/vat.ts"], "risky"),
+    (["lib/tax-table.js"], "risky"),
+    (["taxes.py"], "risky"),
+    (["fees.js"], "risky"),
+    (["estimate-engine.ts"], "risky"),
+    (["discounts.js"], "risky"),
+    (["surcharge.py"], "risky"),
+    (["src/token-store.ts"], "risky"),
+    (["jwt.js"], "risky"),
+    (["credentials.json"], "risky"),
+    (["netlify/functions/hello.js"], "risky"),
+    (["functions/index.js"], "risky"),
+    (["verify-observations.js"], "code"),
+    (["feedback.js"], "code"),
+    (["syntax.js"], "code"),
+    (["generate-icons.mjs"], "code"),
+    (["separate.js"], "code"),
     # A name's case hides nothing.
     (["Hosting/Login.JS"], "risky"),
     (["SRC/PRICING.TS"], "risky"),
@@ -1835,6 +1865,9 @@ CLASS_LOOSENINGS = (
     ("sign-in read as ordinary", None, _without_arm(RISK_SIGN_IN)),
     ("a trust boundary read as ordinary", None, _without_arm(RISK_BOUNDARY)),
     ("release machinery read as ordinary", None, _without_arm(RISK_RELEASE)),
+    ("a rate between separators missed", None, lambda t: t.replace("|*[-_.]rate[-_.s]*", "", 1)),
+    ("a short word caught anywhere in a name", None, lambda t: t.replace("vat[-_.s]*|*/vat[-_.s]*|*[-_.]vat[-_.s]*", "*vat*", 1)),
+    ("a function directory read as ordinary", None, lambda t: t.replace("functions/*|*/functions/*|", "", 1)),
     ("an endpoint read as ordinary", None, lambda t: t.replace(RISK_BOUNDARY, RISK_BOUNDARY.replace("api/*|*/api/*|", "", 1), 1)),
     ("every script read as ordinary", None, lambda t: t.replace(RISK_RELEASE, RISK_RELEASE.replace("*.sh|", "", 1), 1)),
     ("a page's exit put before the gate", None, lambda t: t.replace("              %s\n              *.md) ;;\n" % RISK_GATE, "              *.md) ;;\n              %s\n" % RISK_GATE, 1)),
@@ -2182,6 +2215,13 @@ PICK_CALL = ("if python3 - \"$t/title.txt\" \"$t/carried.roadmap.json\" \"$t/car
              "\"$t/picked.txt\" 2>/dev/null <<'PY'")
 PICK_TAKEN = ('cat "$t/picked.txt" >> "$pages"',
               'for f in roadmap.json PRODUCT.md; do add "$f" || echo "carried page not found in $REPO: $f"; done')
+# What is picked is held to the caps add() holds every other page to (#86's
+# read, finding 4): the lines after the picker, one for one.
+PICK_KEPT = ("then", 'size=$(wc -c < "$t/picked.txt")',
+             'if [ "$size" -gt 150000 ] || [ $((added + size)) -gt 300000 ]; then',
+             "printf '\\n===== the pages picked from roadmap.json and PRODUCT.md: %s bytes, left out for "
+             "size =====\\n' \"$size\" >> \"$pages\"",
+             "else", 'cat "$t/picked.txt" >> "$pages"', "added=$((added + size))", "fi")
 PICK_TITLE = 'jq -r \'.title // ""\' "$pr" > "$RUNNER_TEMP/title.txt"'
 PICK_TOLD = 'echo "left-out part, that is a finding: say which."'
 PICK_SAID = re.compile(r"^picked: (the slice's item|no item); \d+ of \d+ section\(s\) of PRODUCT\.md "
@@ -2299,6 +2339,14 @@ def pick_faults(text):
     if not read or PICK_TOLD not in text[read[0]:read[1]]:
         lost.append("the reviewer told the pages were picked and asked to say if it needed one "
                     "(`%s`)" % PICK_TOLD)
+    lines = [l.strip() for l in g.splitlines()]
+    try:
+        after = lines.index("PY") + 1
+    except ValueError:
+        after = None
+    if after is None or tuple(lines[after:after + len(PICK_KEPT)]) != PICK_KEPT:
+        lost.append("the picked pages held to the caps every page is held to, as the lines "
+                    "`%s`" % "`, `".join(PICK_KEPT))
     program = _picker(text)
     if program is None:
         lost.append("the picker, called as `%s` — the title and the two pages, never the diff, "
@@ -2356,6 +2404,7 @@ PICK_LOOSENINGS = (
     ("the diff handed to the picker", lambda t: t.replace(PICK_CALL, PICK_CALL.replace('"$t/picked.txt"', '"$t/picked.txt" "$t/diff.txt"'), 1)),
     ("the picker's errors printed", lambda t: t.replace(PICK_CALL, PICK_CALL.replace(" 2>/dev/null", ""), 1)),
     ("the picked pages dropped", lambda t: t.replace(PICK_TAKEN[0], "true", 1)),
+    ("the picked pages carried past the cap", lambda t: t.replace("%s\n            %s" % (PICK_KEPT[1], PICK_KEPT[2]), "%s\n            if false; then" % PICK_KEPT[1], 1)),
     ("a failed pick carrying nothing", lambda t: t.replace(PICK_TAKEN[1], "true", 1)),
     ("the reviewer not told", lambda t: t.replace(PICK_TOLD, 'echo "."', 1)),
     ("the title printed", lambda t: t.replace(PICK_TITLE, "jq -r '.title // \"\"' \"$pr\"", 1)),
