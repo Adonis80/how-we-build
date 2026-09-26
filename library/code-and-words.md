@@ -9,15 +9,20 @@ flowchart LR
   RB["Rulebook · how-we-build<br/>public — every session reads it, no key"]
   H["Hemz-OS · private"]
   P["myst · private"]
+  F["phena · private"]
   C1["Builder on Hemz-OS<br/>Claude code, or Codex cloud — code and words"]
   C2["Builder on myst<br/>Claude code, or Codex cloud — code and words"]
+  C3["Builder on phena<br/>Claude code, or Codex cloud — code and words"]
   W["Cowork session<br/>through the Mac — words only"]
   RB -. reads .-> C1
   RB -. reads .-> C2
+  RB -. reads .-> C3
   RB -. reads .-> W
   C1 -->|writes| H
   C2 -->|writes| P
+  C3 -->|writes| F
   W -->|writes words| H
   W -->|writes words| P
+  W -->|writes words| F
   W -->|writes words| RB
 ```
