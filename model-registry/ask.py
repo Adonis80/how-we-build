@@ -17,6 +17,14 @@ workflows read either caller the same way: on success
 No silent substitution: an answer from any model but the one pinned is refused,
 exactly as if the provider had not answered. Nothing here prints the prompt, the
 answer or the key. Standard library only.
+
+No silent loss either (#115, 26 September 2026: twice a `blocking` verdict was
+published whose review stopped at "one finding below", 9,389 and 6,492 tokens
+out, while full reads of the same commits carried the findings). An answer the
+provider cut off for length is no answer. Words the model wrote outside its
+verdict object are never thrown away: a refusal keeps them, appended to its
+review, so it carries its findings; a verdict that would clear the change,
+written partly outside its object, is no answer, and its fallback reads.
 """
 import json
 import os
@@ -51,22 +59,40 @@ def served_is_pinned(served, pinned):
     return bool(re.fullmatch(re.escape(pinned) + r"(-\d{8})?", served or ""))
 
 
-def verdict_text(content):
-    """The answer's JSON object as text: fenced or wrapped in prose, it is unwrapped."""
+# Words outside the object past this many characters, not counting whitespace
+# or fences, are the model writing its review beside its verdict rather than a
+# wrapper such as "Here it is:".
+OUTSIDE_BAR = 200
+
+
+def verdict_parts(content):
+    """(the answer's JSON object as text, what was written outside it): fenced or
+    wrapped in prose, it is unwrapped, and the prose around it is handed back."""
     if not isinstance(content, str):
-        return None
+        return None, ""
     for text in (content, re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", content)):
         try:
-            return json.dumps(json.loads(text))
+            return json.dumps(json.loads(text)), ""
         except ValueError:
             pass
     start, end = content.find("{"), content.rfind("}")
     if 0 <= start < end:
         try:
-            return json.dumps(json.loads(content[start:end + 1]))
+            text = json.dumps(json.loads(content[start:end + 1]))
         except ValueError:
-            pass
-    return None
+            return None, ""
+        around = (content[:start] + "\n\n" + content[end + 1:]).replace("```json", "").replace("```", "")
+        return text, around.strip()
+    return None, ""
+
+
+def verdict_text(content):
+    """The answer's JSON object as text: fenced or wrapped in prose, it is unwrapped."""
+    return verdict_parts(content)[0]
+
+
+def outside(prose):
+    return len(re.sub(r"\s", "", prose or "")) > OUTSIDE_BAR
 
 
 def build(got, provider, system, prompt, schema):
@@ -97,14 +123,29 @@ def answer(resp, pinned):
         return {"is_error": True, "subtype": "wrong_model",
                 "result": "answered by %r, not the pinned %r" % (served, pinned)}, 1
     try:
-        content = resp["choices"][0]["message"]["content"]
+        choice = resp["choices"][0]
+        content = choice["message"]["content"]
     except (KeyError, IndexError, TypeError):
-        content = None
-    text = verdict_text(content)
+        choice, content = {}, None
+    usage = resp.get("usage") or {}
+    if isinstance(choice, dict) and choice.get("finish_reason") == "length":
+        return {"is_error": True, "subtype": "truncated",
+                "result": "the model ran out of room before its answer ended (%s tokens out)"
+                          % usage.get("completion_tokens", "unknown")}, 1
+    text, prose = verdict_parts(content)
     if text is None:
         return {"is_error": True, "subtype": "no_verdict",
                 "result": "the model answered no verdict object"}, 1
-    usage = resp.get("usage") or {}
+    if outside(prose):
+        said = json.loads(text)
+        if not isinstance(said, dict) or said.get("verdict") != "blocking":
+            return {"is_error": True, "subtype": "outside",
+                    "result": "the model wrote %d characters outside its verdict object, so its "
+                              "verdict is not taken" % len(prose)}, 1
+        said["review"] = ("%s\n\n---\n*Written outside the verdict object, and kept by the "
+                          "caller so the refusal carries its findings:*\n\n%s"
+                          % (said.get("review") or "", prose))
+        text = json.dumps(said)
     return {"result": text, "model": served, "provider": resp.get("provider", ""),
             "usage": {"input_tokens": usage.get("prompt_tokens"),
                       "output_tokens": usage.get("completion_tokens")},
