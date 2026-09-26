@@ -2034,8 +2034,9 @@ def _check_class_loosenings():
 # the registry inside the read — review.yml from the protected branch, never the
 # head it reads, and review-product.yml from this repository's checkout, which
 # the door holds to main — and asks it once. A role that does not answer with a
-# verdict hands the read to its fallback; with no fallback, or none that
-# answers, the step fails and the verdict is `neutral`: unread, the gate red.
+# verdict and a review behind it hands the read to its fallback; with no
+# fallback, or none that answers, the step fails and the verdict is `neutral`:
+# unread, the gate red.
 # The reading block is run, not read, on ROUTE_CASES below.
 ROUTE_RESOLVE = ('EFFORT=$(resolve "$ROLE" effort) || fail "the registry could not resolve $ROLE"',
                  'FALLBACK=$(resolve "$ROLE" fallback) || fail "the registry could not resolve $ROLE"')
@@ -2094,6 +2095,12 @@ ROUTE_CASES = (
      (0, "clean", "..."), (0, "clean"), "", 600, ([ORDINARY_ROLE], None)),
     ("neither writes a review with anything in it", (0, "clean", "..."), (0, "blocking", " "),
      FALLBACK_ROLE, 600, ([ORDINARY_ROLE, FALLBACK_ROLE], None)),
+    # The bar, pinned on both sides: 100 characters that are not whitespace.
+    ("no fallback, and the role's review is one character short of the bar",
+     (0, "clean", " \n".join(["x" * 33] * 3)), (0, "clean"), "", 600, ([ORDINARY_ROLE], None)),
+    ("no fallback, and the role's review just clears the bar",
+     (0, "clean", " \n".join(["x" * 33] * 3) + "x"), (0, "clean"), "", 600,
+     ([ORDINARY_ROLE], "clean")),
 )
 REVIEW_READ = ("Addressed to the CTO. I read the diff against main's tip and the pages it touches, "
                "and checked each changed line against the brief and the pages beside it. Nothing "
@@ -2153,9 +2160,11 @@ def route_faults(text, path):
         if line not in r:
             lost.append("`%s`" % line)
     block = _block(r, lambda l: l == ROUTE_FIRST, lambda l: l == ROUTE_LAST)
-    answered = _block(r, lambda l: l == "answered() {", lambda l: l == "}")
-    if block is None or answered is None:
-        lost.append("a reading block from `%s` to `%s`, and `answered()`" % (ROUTE_FIRST, ROUTE_LAST))
+    # `reviewed()` and then `answered()`, which asks it: the two run as one.
+    answered = _block(r, lambda l: l == REVIEW_TEST, lambda l: l == "}")
+    if block is None or answered is None or "answered() {" not in answered:
+        lost.append("a reading block from `%s` to `%s`, and `%s` then `answered()`"
+                    % (ROUTE_FIRST, ROUTE_LAST, REVIEW_TEST))
         return lost
     for what, first, second, fallback, left, want in ROUTE_CASES:
         got = route_says(block, answered, first, second, fallback, left)
@@ -2171,6 +2180,19 @@ def route_faults(text, path):
     return lost
 
 
+# The review behind a verdict (#109): one test, `reviewed()`, run in
+# `answered()` so an empty read hands over to the fallback, and on the review
+# the gate publishes so with no fallback it fails; and, per file, that last line
+# beside the one it replaced, which took any review at all.
+REVIEW_TEST = r'''reviewed() { jq -Rse 'gsub("\\s"; "") | length >= 100' > /dev/null 2>&1; }'''
+REVIEW_WEIGHED = ("jq -r '.result // empty' \"$out\" 2>/dev/null | jq -r '.review // empty' 2>/dev/null "
+                  "| reviewed")
+REVIEW_TAKEN = {
+    REVIEW_WORKFLOW: ('reviewed < /tmp/review.md || fail "the reviewer returned no review of substance"',
+                      '[ -s /tmp/review.md ] || fail "the reviewer returned no review"'),
+    PRODUCT_WORKFLOW: ('reviewed < "$t/review.md" || fail "the reviewer returned no review of substance"',
+                       '[ -s "$t/review.md" ] || fail "the reviewer returned no review"'),
+}
 ROUTE_LOOSENINGS = (
     ("the registry read from the head", REVIEW_WORKFLOW, lambda t: t.replace(ROUTE_REGISTRY[REVIEW_WORKFLOW], 'cp "model-registry/$f" "$reg/$f"', 1)),
     ("a role the registry cannot resolve read anyway", None, lambda t: t.replace(ROUTE_RESOLVE[0], 'EFFORT=$(resolve "$ROLE" effort) || EFFORT=high', 1)),
@@ -2181,6 +2203,10 @@ ROUTE_LOOSENINGS = (
     ("a failure forgotten when no time is left", None, lambda t: t.replace('            if [ "$left" -ge 60 ]; then\n              rc=0\n', '            rc=0\n            if [ "$left" -ge 60 ]; then\n', 1)),
     ("a failed read never named", None, lambda t: t.replace("          " + READ_ANSWERED + "\n", "", 1)),
     ("a verdict outside the schema read", None, lambda t: _in_step(t, "Read it", '            *) fail "the reviewer returned no verdict: $(why)" ;;', '            *) verdict=clean ;;')),
+    ("a verdict with no review behind it counted as an answer", None, lambda t: t.replace(REVIEW_WEIGHED, "true", 1)),
+    ("an empty review taken, as before #109", REVIEW_WORKFLOW, lambda t: t.replace(*REVIEW_TAKEN[REVIEW_WORKFLOW], 1)),
+    ("an empty review taken, as before #109", PRODUCT_WORKFLOW, lambda t: t.replace(*REVIEW_TAKEN[PRODUCT_WORKFLOW], 1)),
+    ("a bar of one character", None, lambda t: t.replace(REVIEW_TEST, REVIEW_TEST.replace(">= 100", ">= 1"), 1)),
     ("another provider for a product's code", PRODUCT_WORKFLOW, lambda t: t.replace("          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}\n", "          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}\n          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}\n", 1)),
 )
 

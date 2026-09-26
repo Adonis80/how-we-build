@@ -550,9 +550,15 @@ jobs:
               *) printf '{"is_error":true,"subtype":"no_interface"}\n' > "$out"; : > "$err"; return 2 ;;
             esac
           }
+          # A verdict counts only with a review behind it: at least 100
+          # characters that are not whitespace (#109). #108's first read
+          # answered `clean` over three dots, and the gate opened on it.
+          reviewed() { jq -Rse 'gsub("\\s"; "") | length >= 100' > /dev/null 2>&1; }
           answered() {
             case "$(jq -r '.result // empty' "$out" 2>/dev/null | jq -r '.verdict // empty' 2>/dev/null || true)" in
-              clean|advisory|blocking) return 0 ;;
+              clean|advisory|blocking)
+                jq -r '.result // empty' "$out" 2>/dev/null | jq -r '.review // empty' 2>/dev/null | reviewed
+                return ;;
             esac
             return 1
           }
@@ -566,9 +572,10 @@ jobs:
           read_bytes=$(cat /tmp/prompt.txt /tmp/system.txt | wc -c)
           began=$(date +%s)
           # THE FALLBACK (decision 0008, rule 2): a role that does not answer
-          # with a verdict hands the read to the role the registry names after
-          # it, given half the time so the fallback has the rest. With no
-          # fallback, or none that answers, the commit stays unread: never open.
+          # with a verdict and a review behind it hands the read to the role the
+          # registry names after it, given half the time so the fallback has the
+          # rest. With no fallback, or none that answers, the commit stays
+          # unread: never open.
           fell_back=no
           bound=$left
           [ -z "$FALLBACK" ] || bound=$(( left / 2 ))
@@ -604,7 +611,7 @@ jobs:
             clean|advisory|blocking) ;;
             *) fail "the reviewer returned no verdict: $(why)" ;;
           esac
-          [ -s /tmp/review.md ] || fail "the reviewer returned no review"
+          reviewed < /tmp/review.md || fail "the reviewer returned no review of substance"
           echo "verdict=$verdict" >> "$GITHUB_OUTPUT"
 
       - name: Sign the verdict
