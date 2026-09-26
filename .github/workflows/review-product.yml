@@ -34,7 +34,8 @@ run-name: Review ${{ inputs.repo }}#${{ inputs.pr }} at ${{ inputs.sha }}
 # extraction checked against one caller that has run and one that never has is
 # checked against half its evidence. So it follows this route's first run, as a
 # pull request of its own, and the comparisons in review-gate.py go with it.
-# Until then a model switch touches three gate files, which the README says.
+# A model switch no longer waits on it: since decision 0008 both files ask
+# model-registry/ for a role, so a switch touches that one file.
 #
 # THE ASK IS A DISPATCH, AND ONLY A WRITER CAN MAKE ONE. The product, the pull
 # request and the exact head commit are its inputs. GitHub refuses a dispatch
@@ -322,11 +323,12 @@ jobs:
           # head, which the proposer writes (Codex's P1 on #38, as review.yml).
           g show "origin/$MAIN:AGENTS.md" > "$t/brief.txt"
           echo "brief bytes: $(wc -c < "$t/brief.txt")"
-          # THE CLASS AND ITS EFFORT, for review.yml's reasons and by its block,
-          # which review-gate.py runs and holds line for line in both: max for a
-          # change touching any of the six risky classes, by the names
-          # review-gate.py gives its reasons for, and high for pages and
-          # ordinary code (#86). Every page of the product's own is read as
+          # THE CLASS AND ITS ROLE, for review.yml's reasons and by its block,
+          # which review-gate.py runs and holds line for line in both:
+          # reviewer-risky for a change touching any risky class, or any file
+          # whose kind the list does not know, by the names review-gate.py gives
+          # its reasons for, and reviewer-main for pages and ordinary code (#86,
+          # decision 0008). Every page of the product's own is read as
           # code but NAMES.md, a glossary: the brief, PRODUCT.md (his
           # decisions, figures and the evidence section) and
           # design/CONSTITUTION.md (#79's fourth and sixth reads). The class
@@ -341,20 +343,24 @@ jobs:
               *) class=code ;;
             esac
             case "${f,,}" in
-              agents.md|*/agents.md|check.sh|*/check.sh|review-gate.py|*/review-gate.py|.*|*/.*) risky=yes ;;
+              agents.md|*/agents.md|check.sh|*/check.sh|review-gate.py|*/review-gate.py|model-registry/*|*/model-registry/*|.*|*/.*) risky=yes ;;
               *.md) ;;
               *pric*|*payment*|*billing*|*invoice*|*checkout*|*quote*) risky=yes ;;
-              *.sql|*migration*|*schema*|supabase/*|*/supabase/*) risky=yes ;;
+              *.sql|*migration*|*schema*|supabase/*|*/supabase/*|*backfill*|*purge*|*truncate*|*wipe*|*seed*) risky=yes ;;
               *auth*|*login*|*logout*|*session*|*password*|*permission*) risky=yes ;;
+              *customer*|*personal*|*pii*|*gdpr*|*privacy*|*export*|*delet*|*erase*|*anonymi*) risky=yes ;;
+              *secret*|*credential*|*token*|*.pem|*.key|*.p12|*.pfx|*.env|*.env.*) risky=yes ;;
               api/*|*/api/*|*middleware*|*webhook*|sw.js|*/sw.js) risky=yes ;;
               *.sh|*.toml|*deploy*|*vercel.json|*dockerfile*|*package.json|*lock.json|*.lock|*lock.yaml) risky=yes ;;
+              *.js|*.mjs|*.cjs|*.jsx|*.ts|*.tsx|*.py|*.html|*.css|*.scss|*.json|*.txt|*.csv|*.svg|*.png|*.jpg|*.jpeg|*.gif|*.webp|*.ico|*.woff|*.woff2) ;;
+              *) risky=yes ;;
             esac
           done < "$t/changed.txt"
           [ "$risky" = no ] || class=risky
-          case "$class" in words|code) effort=high ;; *) effort=max ;; esac
+          case "$class" in words|code) role=reviewer-main ;; *) role=reviewer-risky ;; esac
           echo "class=$class" >> "$GITHUB_OUTPUT"
-          echo "effort=$effort" >> "$GITHUB_OUTPUT"
-          echo "class: $class, read at effort $effort"
+          echo "role=$role" >> "$GITHUB_OUTPUT"
+          echo "class: $class, read by $role"
           # THE PAGES, AS DATA: the slice's own pages, picked by rule, then every
           # other file the change touches, each as the change would leave it. A
           # diff shows a hunk; a reader judging it needs the file around it. A
@@ -498,7 +504,8 @@ jobs:
           REPO: ${{ inputs.repo }}
           SHA: ${{ inputs.sha }}
           STARTED: ${{ steps.asked.outputs.started }}
-          EFFORT: ${{ steps.gather.outputs.effort }}
+          CLASS: ${{ steps.gather.outputs.class }}
+          ROLE: ${{ steps.gather.outputs.role }}
         run: |
           set -euo pipefail
           t="$RUNNER_TEMP"
@@ -511,9 +518,16 @@ jobs:
             echo "the reviewer did not read: $1" >&2
             exit 1
           }
-          if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
-            fail "no CLAUDE_CODE_OAUTH_TOKEN in the reviewer environment"
-          fi
+          # THE ROLE, RESOLVED FROM THE REGISTRY in this repository's checkout,
+          # which is main: the door admits no other ref (decision 0008). The
+          # product never names a model, and cannot pick its own reviewer. Only
+          # the claude-code interface is spoken here (see `ask()`), so an
+          # ordinary product read falls back until another provider is cleared
+          # for a product's private code.
+          reg="$GITHUB_WORKSPACE/model-registry"
+          resolve() { python3 "$reg/resolve.py" "$reg/registry.json" "$@"; }
+          EFFORT=$(resolve "$ROLE" effort) || fail "the registry could not resolve $ROLE"
+          FALLBACK=$(resolve "$ROLE" fallback) || fail "the registry could not resolve $ROLE"
           {
             echo "Review this change to ${REPO}. The commit is ${SHA}."
             echo
@@ -604,36 +618,81 @@ jobs:
             fi
           }
 
-          # The model the Chairman named, at the effort decision 0005 gives the
-          # change's class, the tools switched off,
-          # for review.yml's reasons, which review-gate.py holds flag for flag.
+          # The role's model at the role's effort, the tools switched off, for
+          # review.yml's reasons, which review-gate.py holds flag for flag.
           schema='{"type":"object","additionalProperties":false,"required":["verdict","review"],"properties":{"verdict":{"type":"string","enum":["clean","advisory","blocking"]},"review":{"type":"string"}}}'
-          case "$EFFORT" in high|max) ;; *) fail "the change's class set no effort to read at" ;; esac
+          case "$EFFORT" in high|max) ;; *) fail "the registry set no effort a reviewer may read at" ;; esac
           limit=25
           [[ "${STARTED:-}" =~ ^[0-9]+$ ]] || fail "the job's start was not recorded, so the read had no deadline"
           left=$(( STARTED + limit * 60 - $(date +%s) ))
           [ "$left" -ge 60 ] || fail "no time was left to read before minute $limit of the job"
+          # One read by one role, review.yml's `ask()` with this file's paths.
+          role=$ROLE model=unknown effort=$EFFORT
+          ask() {
+            role=$1
+            { m=$(resolve "$role" model) && i=$(resolve "$role" interface) && e=$(resolve "$role" effort); } \
+              || { model=unknown effort=unknown; printf '{"is_error":true,"subtype":"unresolved"}\n' > "$out"; : > "$err"; return 2; }
+            model=$m interface=$i effort=$e
+            case "$effort" in high|max) ;; *) printf '{"is_error":true,"subtype":"no_effort"}\n' > "$out"; : > "$err"; return 2 ;; esac
+            echo "reading as $role: $model at effort $effort, for at most $2 s"
+            case "$interface" in
+              claude-code)
+                [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] || { printf '{"is_error":true,"subtype":"no_credential"}\n' > "$out"; : > "$err"; return 2; }
+                timeout --kill-after=60s "${2}s" claude -p \
+                  --model "$model" \
+                  --effort "$effort" \
+                  --tools "" \
+                  --restricted \
+                  --strict-mcp-config \
+                  --disable-slash-commands \
+                  --no-session-persistence \
+                  --permission-prompts none \
+                  --output-format json \
+                  --json-schema "$schema" \
+                  --system-prompt "$(cat "$t/system.txt")" \
+                  < "$t/prompt.txt" > "$out" 2> "$err" ;;
+              # A product's code is private, and no provider but Anthropic has
+              # been cleared to read it: a role served any other way is refused
+              # here, and its fallback reads instead.
+              *) printf '{"is_error":true,"subtype":"no_interface"}\n' > "$out"; : > "$err"; return 2 ;;
+            esac
+          }
+          answered() {
+            case "$(jq -r '.result // empty' "$out" 2>/dev/null | jq -r '.verdict // empty' 2>/dev/null || true)" in
+              clean|advisory|blocking) return 0 ;;
+            esac
+            return 1
+          }
           # What the read cost, for review.yml's reason: numbers alone reach
-          # this log and the verdict.
+          # this log and the verdict. The spend line is review.yml's, and names
+          # nothing of the product's but its class.
           read_bytes=$(cat "$t/prompt.txt" "$t/system.txt" | wc -c)
           began=$(date +%s)
+          # The fallback, for review.yml's reason: never open.
+          fell_back=no
+          bound=$left
+          [ -z "$FALLBACK" ] || bound=$(( left / 2 ))
           rc=0
-          timeout --kill-after=60s "${left}s" claude -p \
-            --model claude-sonnet-5 \
-            --effort "$EFFORT" \
-            --tools "" \
-            --restricted \
-            --strict-mcp-config \
-            --disable-slash-commands \
-            --no-session-persistence \
-            --permission-prompts none \
-            --output-format json \
-            --json-schema "$schema" \
-            --system-prompt "$(cat "$t/system.txt")" \
-            < "$t/prompt.txt" > "$out" 2> "$err" || rc=$?
+          ask "$ROLE" "$bound" || rc=$?
+          if [ -n "$FALLBACK" ] && { [ "$rc" -ne 0 ] || ! answered; }; then
+            fell_back="yes, after $ROLE: $(why)"
+            echo "$ROLE did not answer; reading on $FALLBACK"
+            left=$(( STARTED + limit * 60 - $(date +%s) ))
+            if [ "$left" -ge 60 ]; then
+              rc=0
+              ask "$FALLBACK" "$left" || rc=$?
+            fi
+          fi
           took=$(( $(date +%s) - began ))
           echo "spent=$read_bytes bytes, $((took / 60)) min $((took % 60)) s" >> "$GITHUB_OUTPUT"
           echo "read $read_bytes bytes in $took s"
+          tin=$(jq -r '[.usage.input_tokens, .usage.cache_creation_input_tokens, .usage.cache_read_input_tokens] | map(numbers) | if length > 0 then add else "unknown" end' "$out" 2>/dev/null || echo unknown)
+          tout=$(jq -r '.usage.output_tokens | numbers' "$out" 2>/dev/null || true)
+          cost=$(jq -r '.total_cost_usd | numbers' "$out" 2>/dev/null || true)
+          spend="class $CLASS, role $role, model $model, effort $effort, $read_bytes bytes and $tin tokens in, ${tout:-unknown} tokens out, cost ${cost:-unknown} USD, $((took / 60)) min $((took % 60)) s, fallback: $fell_back"
+          printf 'spend=%s\n' "$(printf '%s' "$spend" | tr -d '\r\n')" >> "$GITHUB_OUTPUT"
+          echo "effort=$effort" >> "$GITHUB_OUTPUT"
+          echo "spend: $spend" | tee -a "$GITHUB_STEP_SUMMARY"
           [ "$rc" -eq 0 ] || fail "$(why)"
 
           result=$(jq -r '.result // empty' "$out")
@@ -659,8 +718,9 @@ jobs:
           VERDICT: ${{ steps.read.outputs.verdict }}
           WHY: ${{ steps.read.outputs.why }}
           CLASS: ${{ steps.gather.outputs.class }}
-          EFFORT: ${{ steps.gather.outputs.effort }}
+          EFFORT: ${{ steps.read.outputs.effort }}
           SPENT: ${{ steps.read.outputs.spent }}
+          SPEND: ${{ steps.read.outputs.spend }}
           REVIEWER_APP_ID: ${{ secrets.REVIEWER_APP_ID }}
         run: |
           set -euo pipefail
@@ -690,6 +750,8 @@ jobs:
             title="Blocking findings on this commit (read as $CLASS at effort $EFFORT${SPENT:+; $SPENT})"
             cp "$t/review.md" "$t/verdict.md"
           fi
+          # The spend line goes on every verdict, read or not (decision 0008).
+          [ -z "${SPEND:-}" ] || printf '\n---\nSpend: %s\n' "$SPEND" >> "$t/verdict.md"
           echo "conclusion=$conclusion" >> "$GITHUB_OUTPUT"
           # A check run summary is capped at 65535 characters; the whole review
           # goes in the comment below.
@@ -720,7 +782,7 @@ jobs:
           SHA: ${{ inputs.sha }}
           CONCLUSION: ${{ steps.sign.outputs.conclusion }}
           CLASS: ${{ steps.gather.outputs.class }}
-          EFFORT: ${{ steps.gather.outputs.effort }}
+          EFFORT: ${{ steps.read.outputs.effort }}
         run: |
           set -euo pipefail
           t="$RUNNER_TEMP"
@@ -739,7 +801,7 @@ jobs:
             cat "$t/verdict.md"
             echo
             echo "---"
-            echo "_Read by the model named in the rulebook's \`review-gate.py\`, as $CLASS at effort_"
+            echo "_Read by the role the rulebook's \`model-registry/\` names for its class, as $CLASS at effort_"
             echo "_$EFFORT, from \`Adonis80/how-we-build\`'s \`.github/workflows/review-product.yml\`._"
             echo "_It is the only read this repository's gate counts, and there is no second reviewer_"
             echo "_behind it._"

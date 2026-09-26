@@ -1,8 +1,8 @@
 name: Review
 
-# The independent reviewer: the model named in review-gate.py, at the effort
-# named there for the change's class, reading every pull request cold before
-# the Chairman sees it.
+# The independent reviewer: the role model-registry/ names for the change's
+# class, at the effort the registry gives that role, reading every pull request
+# cold before the Chairman sees it (decision 0008).
 #
 # ITS VERDICT IS A CHECK RUN, NOT A COMMENT. #34 closed at round ten having
 # established the bar: a read must arrive under a login a branch cannot wear, as
@@ -184,13 +184,17 @@ jobs:
           # Anything unrecognised is code, and a list that cannot be made stops
           # the step rather than reading as no change. #77's reads ran out of
           # time twice at max, preloading every file (#70's slice 2).
-          # RISKY, BY NAME (#86): a file is in a risky class by its lower-cased
-          # path — the gate's own files and the brief whatever their extension,
-          # then any file but a page whose name says pricing, live data or
-          # schema, sign-in or permissions, a public trust boundary, or deploy
-          # and release. One risky file makes the change risky, read at max; the
-          # rest is read at high, told so, and asked to name a risky file the
-          # names missed. review-gate.py says why each name is there.
+          # RISKY, BY NAME (#86), AND FAILING CLOSED (decision 0008): a file is
+          # in a risky class by its lower-cased path — the gate's own files, the
+          # registry and the brief whatever their extension, then any file but
+          # a page whose name says pricing, live data, schema, destructive
+          # changes or backfills, sign-in or permissions, customer or personal
+          # data, secrets or credentials, a public trust boundary, or deploy
+          # and release — and so is any file whose kind the list does not know.
+          # One risky file makes the change risky, read by reviewer-risky at
+          # max; the rest is read by reviewer-main at high, told so, and asked
+          # to name a risky file the names missed. review-gate.py says why each
+          # name is there.
           # review-gate.py runs this block against a list of changes, and holds
           # it in both reviewers. REHEARSED BEFORE IT MERGED, off GitHub: this
           # step and *Read it*, as written, on a clone, with the model stubbed
@@ -209,25 +213,28 @@ jobs:
               *) class=code ;;
             esac
             case "${f,,}" in
-              agents.md|*/agents.md|check.sh|*/check.sh|review-gate.py|*/review-gate.py|.*|*/.*) risky=yes ;;
+              agents.md|*/agents.md|check.sh|*/check.sh|review-gate.py|*/review-gate.py|model-registry/*|*/model-registry/*|.*|*/.*) risky=yes ;;
               *.md) ;;
               *pric*|*payment*|*billing*|*invoice*|*checkout*|*quote*) risky=yes ;;
-              *.sql|*migration*|*schema*|supabase/*|*/supabase/*) risky=yes ;;
+              *.sql|*migration*|*schema*|supabase/*|*/supabase/*|*backfill*|*purge*|*truncate*|*wipe*|*seed*) risky=yes ;;
               *auth*|*login*|*logout*|*session*|*password*|*permission*) risky=yes ;;
+              *customer*|*personal*|*pii*|*gdpr*|*privacy*|*export*|*delet*|*erase*|*anonymi*) risky=yes ;;
+              *secret*|*credential*|*token*|*.pem|*.key|*.p12|*.pfx|*.env|*.env.*) risky=yes ;;
               api/*|*/api/*|*middleware*|*webhook*|sw.js|*/sw.js) risky=yes ;;
               *.sh|*.toml|*deploy*|*vercel.json|*dockerfile*|*package.json|*lock.json|*.lock|*lock.yaml) risky=yes ;;
+              *.js|*.mjs|*.cjs|*.jsx|*.ts|*.tsx|*.py|*.html|*.css|*.scss|*.json|*.txt|*.csv|*.svg|*.png|*.jpg|*.jpeg|*.gif|*.webp|*.ico|*.woff|*.woff2) ;;
+              *) risky=yes ;;
             esac
           done < "$RUNNER_TEMP/changed.txt"
           [ "$risky" = no ] || class=risky
-          # `high` is one of the pinned tool's levels (low, medium, high, xhigh,
-          # max, by its own --help; run with it on 24 September). An unknown
-          # value is not refused but warned and replaced by the default, so it
-          # is the read's own guard that refuses one, not the tool. A class
-          # this line does not know is read at max.
-          case "$class" in words|code) effort=high ;; *) effort=max ;; esac
+          # THE CLASS NAMES A ROLE, NEVER A MODEL (decision 0008): ordinary
+          # changes to reviewer-main, the risky classes to reviewer-risky, and
+          # the registry on the protected branch says who holds each and at
+          # what effort. A class this line does not know is read as risky.
+          case "$class" in words|code) role=reviewer-main ;; *) role=reviewer-risky ;; esac
           echo "class=$class" >> "$GITHUB_OUTPUT"
-          echo "effort=$effort" >> "$GITHUB_OUTPUT"
-          echo "class: $class, read at effort $effort"
+          echo "role=$role" >> "$GITHUB_OUTPUT"
+          echo "class: $class, read by $role"
           # And the pages as this change would leave them, as DATA. On a rulebook
           # repository correctness depends on pages a diff does not touch: a rule
           # added here can contradict one three files away, and a diff alone
@@ -349,10 +356,11 @@ jobs:
         continue-on-error: true
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           SHA: ${{ steps.head.outputs.sha }}
           STARTED: ${{ steps.head.outputs.started }}
           CLASS: ${{ steps.gather.outputs.class }}
-          EFFORT: ${{ steps.gather.outputs.effort }}
+          ROLE: ${{ steps.gather.outputs.role }}
         run: |
           set -euo pipefail
           out=/tmp/resp.json
@@ -372,10 +380,21 @@ jobs:
             jq -r '.result // empty' "$out" 2>/dev/null | head -c 2000 >&2 || true
             exit 1
           }
-          if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
-            echo "It fails closed on purpose. See library/reviewer-parking.md, When the gate can count no read." >&2
-            fail "no CLAUDE_CODE_OAUTH_TOKEN in the reviewer environment"
-          fi
+          # THE ROLE, RESOLVED FROM THE REGISTRY ON THE PROTECTED BRANCH
+          # (decision 0008). Never from the head: a pull request that could edit
+          # the registry it is read by would pick its own reviewer, as one that
+          # could edit AGENTS.md once wrote its own instructions (Codex's P1 on
+          # #38). Nothing in this file names a model; a role the registry cannot
+          # resolve fails closed. It fails closed on purpose: see
+          # library/reviewer-parking.md, When the gate can count no read.
+          reg="$RUNNER_TEMP/registry"
+          mkdir -p "$reg"
+          for f in registry.json resolve.py ask.py; do
+            git show "origin/${{ github.event.repository.default_branch }}:model-registry/$f" > "$reg/$f" || fail "the protected branch holds no model-registry/$f"
+          done
+          resolve() { python3 "$reg/resolve.py" "$reg/registry.json" "$@"; }
+          EFFORT=$(resolve "$ROLE" effort) || fail "the registry could not resolve $ROLE"
+          FALLBACK=$(resolve "$ROLE" fallback) || fail "the registry could not resolve $ROLE"
 
           # Everything under review arrives on stdin, not as an argument: an
           # argument has a length limit a 600 KB diff would pass.
@@ -389,8 +408,8 @@ jobs:
             if [ "$CLASS" = words ]; then
               echo "This change touches pages only, so it is read at effort $EFFORT with the pages it"
               echo "touches, README.md, HOW-WE-BUILD.md and check.sh below; every other file is named"
-              echo "with its size and left out. If"
-              echo "judging it needed a left-out file or a deeper read, that is a finding: say which."
+              echo "with its size and left out. If judging it needed a left-out file or a deeper read,"
+              echo "that is a finding: say which."
             fi
             if [ "$EFFORT" != max ]; then
               echo "This change is read at effort $EFFORT, not max: no file it touches is in a risky"
@@ -479,45 +498,101 @@ jobs:
             fi
           }
 
-          # The model the Chairman named, at the effort decision 0005 gives the
-          # change's class, written as two flags and held against
-          # review-gate.py by its wiring and class checks. The credential is a
+          # The effort the role reads at, as the registry sets it and
+          # review-gate.py holds it: max for reviewer-risky, high for the
+          # ordinary roles (decision 0005). The claude-code interface runs on a
           # Claude subscription token from `claude setup-token`, which Anthropic
           # sanctions for the unmodified Claude Code binary reading this
           # variable — not for a hand-written call to the Messages API, whatever
-          # header the token rides on. So the read runs through the CLI.
+          # header the token rides on. So that read runs through the CLI.
           # `--bare` is deliberately absent: it never reads this variable. Every
           # tool is off and settings are ignored, so "read the code, write one
           # verdict, nothing else" is enforced rather than intended, and nothing
-          # a hostile diff says can make a tool run.
+          # a hostile diff says can make a tool run. The openai-compatible
+          # interface is one HTTP call, which has no tools to switch off.
           schema='{"type":"object","additionalProperties":false,"required":["verdict","review"],"properties":{"verdict":{"type":"string","enum":["clean","advisory","blocking"]},"review":{"type":"string"}}}'
-          case "$EFFORT" in high|max) ;; *) fail "the change's class set no effort to read at" ;; esac
+          case "$EFFORT" in high|max) ;; *) fail "the registry set no effort a reviewer may read at" ;; esac
           limit=25
           [[ "${STARTED:-}" =~ ^[0-9]+$ ]] || fail "the job's start was not recorded, so the read had no deadline"
           left=$(( STARTED + limit * 60 - $(date +%s) ))
           [ "$left" -ge 60 ] || fail "no time was left to read before minute $limit of the job"
+          # ONE READ BY ONE ROLE, through the caller its provider speaks, for at
+          # most $2 seconds. The model and the effort are the registry's, so a
+          # switch touches model-registry/registry.json alone. A read that cannot
+          # start leaves a subtype `why()` names, never a default.
+          role=$ROLE model=unknown effort=$EFFORT
+          ask() {
+            role=$1
+            { m=$(resolve "$role" model) && i=$(resolve "$role" interface) && e=$(resolve "$role" effort); } \
+              || { model=unknown effort=unknown; printf '{"is_error":true,"subtype":"unresolved"}\n' > "$out"; : > "$err"; return 2; }
+            model=$m interface=$i effort=$e
+            case "$effort" in high|max) ;; *) printf '{"is_error":true,"subtype":"no_effort"}\n' > "$out"; : > "$err"; return 2 ;; esac
+            echo "reading as $role: $model at effort $effort, for at most $2 s"
+            case "$interface" in
+              claude-code)
+                [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] || { printf '{"is_error":true,"subtype":"no_credential"}\n' > "$out"; : > "$err"; return 2; }
+                timeout --kill-after=60s "${2}s" claude -p \
+                  --model "$model" \
+                  --effort "$effort" \
+                  --tools "" \
+                  --restricted \
+                  --strict-mcp-config \
+                  --disable-slash-commands \
+                  --no-session-persistence \
+                  --permission-prompts none \
+                  --output-format json \
+                  --json-schema "$schema" \
+                  --system-prompt "$(cat /tmp/system.txt)" \
+                  < /tmp/prompt.txt > "$out" 2> "$err" ;;
+              openai-compatible)
+                timeout --kill-after=60s "${2}s" python3 "$reg/ask.py" "$reg/registry.json" "$role" /tmp/system.txt "$schema" "$2" \
+                  < /tmp/prompt.txt > "$out" 2> "$err" ;;
+              *) printf '{"is_error":true,"subtype":"no_interface"}\n' > "$out"; : > "$err"; return 2 ;;
+            esac
+          }
+          answered() {
+            case "$(jq -r '.result // empty' "$out" 2>/dev/null | jq -r '.verdict // empty' 2>/dev/null || true)" in
+              clean|advisory|blocking) return 0 ;;
+            esac
+            return 1
+          }
           # WHAT THE READ COST (#86): the bytes handed to the model and the time
           # from the call to its answer, handed on before a failed read is named,
           # so the verdict says both whichever way the read ends.
+          # And what it spent, logged on every verdict (decision 0008, rule 6):
+          # the class, the role, the exact model, the effort, bytes and tokens
+          # in and out, the cost the provider reported, the minutes, and whether
+          # the fallback read it.
           read_bytes=$(cat /tmp/prompt.txt /tmp/system.txt | wc -c)
           began=$(date +%s)
+          # THE FALLBACK (decision 0008, rule 2): a role that does not answer
+          # with a verdict hands the read to the role the registry names after
+          # it, given half the time so the fallback has the rest. With no
+          # fallback, or none that answers, the commit stays unread: never open.
+          fell_back=no
+          bound=$left
+          [ -z "$FALLBACK" ] || bound=$(( left / 2 ))
           rc=0
-          timeout --kill-after=60s "${left}s" claude -p \
-            --model claude-sonnet-5 \
-            --effort "$EFFORT" \
-            --tools "" \
-            --restricted \
-            --strict-mcp-config \
-            --disable-slash-commands \
-            --no-session-persistence \
-            --permission-prompts none \
-            --output-format json \
-            --json-schema "$schema" \
-            --system-prompt "$(cat /tmp/system.txt)" \
-            < /tmp/prompt.txt > "$out" 2> "$err" || rc=$?
+          ask "$ROLE" "$bound" || rc=$?
+          if [ -n "$FALLBACK" ] && { [ "$rc" -ne 0 ] || ! answered; }; then
+            fell_back="yes, after $ROLE: $(why)"
+            echo "$ROLE did not answer; reading on $FALLBACK"
+            left=$(( STARTED + limit * 60 - $(date +%s) ))
+            if [ "$left" -ge 60 ]; then
+              rc=0
+              ask "$FALLBACK" "$left" || rc=$?
+            fi
+          fi
           took=$(( $(date +%s) - began ))
           echo "spent=$read_bytes bytes, $((took / 60)) min $((took % 60)) s" >> "$GITHUB_OUTPUT"
           echo "read $read_bytes bytes in $took s"
+          tin=$(jq -r '[.usage.input_tokens, .usage.cache_creation_input_tokens, .usage.cache_read_input_tokens] | map(numbers) | if length > 0 then add else "unknown" end' "$out" 2>/dev/null || echo unknown)
+          tout=$(jq -r '.usage.output_tokens | numbers' "$out" 2>/dev/null || true)
+          cost=$(jq -r '.total_cost_usd | numbers' "$out" 2>/dev/null || true)
+          spend="class $CLASS, role $role, model $model, effort $effort, $read_bytes bytes and $tin tokens in, ${tout:-unknown} tokens out, cost ${cost:-unknown} USD, $((took / 60)) min $((took % 60)) s, fallback: $fell_back"
+          printf 'spend=%s\n' "$(printf '%s' "$spend" | tr -d '\r\n')" >> "$GITHUB_OUTPUT"
+          echo "effort=$effort" >> "$GITHUB_OUTPUT"
+          echo "spend: $spend" | tee -a "$GITHUB_STEP_SUMMARY"
           [ "$rc" -eq 0 ] || fail "$(why)"
 
           # Whatever shape the answer arrives in, it must carry both fields or it
@@ -542,8 +617,9 @@ jobs:
           VERDICT: ${{ steps.read.outputs.verdict }}
           WHY: ${{ steps.read.outputs.why }}
           CLASS: ${{ steps.gather.outputs.class }}
-          EFFORT: ${{ steps.gather.outputs.effort }}
+          EFFORT: ${{ steps.read.outputs.effort }}
           SPENT: ${{ steps.read.outputs.spent }}
+          SPEND: ${{ steps.read.outputs.spend }}
           REVIEWER_APP_ID: ${{ secrets.REVIEWER_APP_ID }}
         run: |
           set -euo pipefail
@@ -574,6 +650,8 @@ jobs:
             title="Blocking findings on this commit (read as $CLASS at effort $EFFORT${SPENT:+; $SPENT})"
             cp /tmp/review.md /tmp/verdict.md
           fi
+          # The spend line goes on every verdict, read or not (decision 0008).
+          [ -z "${SPEND:-}" ] || printf '\n---\nSpend: %s\n' "$SPEND" >> /tmp/verdict.md
           echo "conclusion=$conclusion" >> "$GITHUB_OUTPUT"
           # A check run summary is capped at 65535 characters; the whole review
           # goes in the comment below.
@@ -620,7 +698,7 @@ jobs:
           SHA: ${{ steps.head.outputs.sha }}
           CONCLUSION: ${{ steps.sign.outputs.conclusion }}
           CLASS: ${{ steps.gather.outputs.class }}
-          EFFORT: ${{ steps.gather.outputs.effort }}
+          EFFORT: ${{ steps.read.outputs.effort }}
           LEFT_OUT: ${{ steps.gather.outputs.left_out }}
         run: |
           set -euo pipefail
@@ -639,7 +717,7 @@ jobs:
             cat /tmp/verdict.md
             echo
             echo "---"
-            echo "_Read by the model named in \`review-gate.py\`, as $CLASS at effort $EFFORT with $LEFT_OUT file(s) left out, from_"
+            echo "_Read by the role \`model-registry/\` names for its class, as $CLASS at effort $EFFORT with $LEFT_OUT file(s) left out, from_"
             echo "_\`.github/workflows/review.yml\`. Since 22 September 2026 this is the only read the_"
             echo "_gate counts, on every class of change including this machinery itself, and there_"
             echo "_is no second reviewer behind this one._"

@@ -1,0 +1,153 @@
+{
+  "about": "The one place a model is named (decision 0008, issue #103, on the 18 September consensus in consensuses/juku-os/). Every other file asks for a role. How to ask, inspect and switch: library/model-registry.md. A switch is one edit to this file, reviewed like any other change to the gate. The reviewer roles are decision 0008's own assignment, which reverses the 22 September pairing that put the open-weight model behind Sonnet as the main backup.",
+  "version": "2026-09-25.1",
+  "reviewed": "2026-09-25",
+  "decision": "https://github.com/Adonis80/how-we-build/issues/103",
+  "providers": {
+    "anthropic": {
+      "interface": "claude-code",
+      "credential": "CLAUDE_CODE_OAUTH_TOKEN",
+      "note": "Called through the Claude Code tool pinned in the reviewer workflows, on the Chairman's Claude subscription token."
+    },
+    "openrouter": {
+      "interface": "openai-compatible",
+      "base_url": "https://openrouter.ai/api/v1",
+      "credential": "OPENROUTER_API_KEY",
+      "effort_param": "reasoning.effort",
+      "extra": {
+        "usage": {"include": true},
+        "provider": {"require_parameters": true, "data_collection": "deny"}
+      },
+      "note": "First provider, not the only one: any OpenAI-compatible endpoint (a LiteLLM proxy, a direct provider) is a new entry here and nothing else. No model list is sent, so OpenRouter never substitutes another model; the caller also refuses an answer from any model but the one pinned. data_collection deny keeps a product's private code off providers that store it.",
+      "checked": "2026-09-25",
+      "source": "https://openrouter.ai/docs/api-reference/overview"
+    }
+  },
+  "models": {
+    "claude-opus-5-5": {
+      "name": "Claude Opus 5.5",
+      "provider": "anthropic",
+      "open_weight": false,
+      "status": "active",
+      "efforts": ["low", "medium", "high", "xhigh", "max"],
+      "checked": "2026-09-25",
+      "source": "Anthropic's model id as the build session's environment names it; efforts are the pinned Claude Code tool's own --help, run 24 September 2026"
+    },
+    "claude-sonnet-5": {
+      "name": "Claude Sonnet 5",
+      "provider": "anthropic",
+      "open_weight": false,
+      "status": "active",
+      "efforts": ["low", "medium", "high", "xhigh", "max"],
+      "checked": "2026-09-25",
+      "source": "The reviewer every read ran on from 18 to 25 September 2026 (review-gate.py's REVIEWER_MODEL until decision 0008)"
+    },
+    "z-ai/glm-5.3": {
+      "name": "GLM 5.3",
+      "provider": "openrouter",
+      "open_weight": true,
+      "licence": "unknown, not checked",
+      "status": "active",
+      "efforts": ["low", "high", "max"],
+      "context_tokens": 1048576,
+      "price_usd_per_million": {"input": 0.5614, "output": 1.764},
+      "note": "The consensus named GLM-5.3 on 18 September; the Chairman said GLM 5.2 on 22 September. 5.3 is current on OpenRouter and improves on 5.2, so it is pinned, as the amendment says. Reasoning is always on.",
+      "checked": "2026-09-25",
+      "source": "https://openrouter.ai/z-ai/glm-5.3 by web search on 25 September 2026: openrouter.ai is not reachable from the build session, so the first live read proves the id"
+    },
+    "z-ai/glm-5.3-flash": {
+      "name": "GLM 5.3 Flash",
+      "provider": "openrouter",
+      "open_weight": true,
+      "licence": "unknown, not checked",
+      "status": "active",
+      "checked": "2026-09-25",
+      "source": "https://openrouter.ai/z-ai/glm-5.3-flash by web search on 25 September 2026; efforts not checked, so none is listed; not yet called"
+    },
+    "moonshotai/kimi-k3": {
+      "name": "Kimi K3",
+      "provider": "openrouter",
+      "open_weight": true,
+      "licence": "unknown, not checked",
+      "status": "active",
+      "note": "The consensus's Kimi K3 Max. Benefits from sustained sessions and kept assistant messages for its prompt cache (the consensus's research); no caller yet.",
+      "checked": "2026-09-25",
+      "source": "https://openrouter.ai/compare/deepseek/deepseek-v4.1-flash/moonshotai/kimi-k3 by web search on 25 September 2026; efforts not checked, so none is listed; not yet called"
+    },
+    "qwen/qwen3.8-flash": {
+      "name": "Qwen3.8 Flash",
+      "provider": "openrouter",
+      "open_weight": true,
+      "licence": "unknown, not checked",
+      "status": "active",
+      "note": "The consensus named Qwen3.8 Flash Next; the id found on OpenRouter is Qwen3.8 Flash. Checked again before anything calls it.",
+      "checked": "2026-09-25",
+      "source": "https://openrouter.ai/compare/deepseek/deepseek-v4.1-flash/qwen/qwen3.8-flash by web search on 25 September 2026; efforts not checked, so none is listed; not yet called"
+    },
+    "deepseek/deepseek-v4.1-flash": {
+      "name": "DeepSeek V4.1 Flash",
+      "provider": "openrouter",
+      "open_weight": true,
+      "licence": "unknown, not checked",
+      "status": "active",
+      "checked": "2026-09-25",
+      "source": "https://openrouter.ai/compare/deepseek/deepseek-v4.1-flash/moonshotai/kimi-k3 by web search on 25 September 2026; efforts not checked, so none is listed; not yet called"
+    }
+  },
+  "roles": {
+    "reviewer-main": {
+      "model": "z-ai/glm-5.3",
+      "effort": "high",
+      "fallback": "reviewer-fallback",
+      "use": "Reads every ordinary change: pages and ordinary code (decision 0008, rule 2)."
+    },
+    "reviewer-risky": {
+      "model": "claude-opus-5-5",
+      "effort": "max",
+      "fallback": null,
+      "use": "Reads every change in a risky class, always whole (decision 0008, rule 1). No fallback: if it does not answer, the commit stays unread."
+    },
+    "reviewer-fallback": {
+      "model": "claude-sonnet-5",
+      "effort": "high",
+      "fallback": null,
+      "use": "Reads an ordinary change when reviewer-main does not answer (decision 0008, rule 2). If it does not answer either, the commit stays unread."
+    },
+    "reviewer-frontend": {
+      "model": "moonshotai/kimi-k3",
+      "effort": "high",
+      "fallback": {"model": "z-ai/glm-5.3", "effort": "high"},
+      "use": "Final front-end and design review. No caller yet: a product UI change calls it in a later pull request."
+    },
+    "coder-fast": {
+      "model": "z-ai/glm-5.3-flash",
+      "effort": "high",
+      "fallback": {"model": "deepseek/deepseek-v4.1-flash", "effort": "high"},
+      "use": "Default high-volume implementation. No caller yet: the builder is a Claude or Codex session."
+    },
+    "coder-max": {
+      "model": "z-ai/glm-5.3",
+      "effort": "max",
+      "fallback": {"model": "moonshotai/kimi-k3", "effort": "high"},
+      "use": "Difficult implementation. No caller yet."
+    },
+    "frontend-fast": {
+      "model": "qwen/qwen3.8-flash",
+      "effort": "high",
+      "fallback": {"model": "z-ai/glm-5.3-flash", "effort": "high"},
+      "use": "Cheap front-end iteration before final review. No caller yet."
+    },
+    "frontend-max": {
+      "model": "moonshotai/kimi-k3",
+      "effort": "high",
+      "fallback": {"model": "z-ai/glm-5.3", "effort": "high"},
+      "use": "Final, design-sensitive UI generation. No caller yet."
+    },
+    "agent-fast": {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "effort": "high",
+      "fallback": {"model": "z-ai/glm-5.3-flash", "effort": "high"},
+      "use": "Fast terminal and tool-use agent work. No caller yet."
+    }
+  }
+}
