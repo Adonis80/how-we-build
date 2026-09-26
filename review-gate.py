@@ -2059,7 +2059,8 @@ PRODUCT_EGRESS = ("ask.py", "OPENROUTER", "openai-compatible")
 # role or none, seconds left when the fallback would start, what must follow:
 # the roles asked in order, and the verdict read or None for a read that fails).
 # An exit and verdict may carry a third item, the review written with it; left
-# out, it is REVIEW_READ, a review that says what it read.
+# out, it is REVIEW_READ, a review that says what it read; None leaves the
+# answer with no `review` at all.
 ROUTE_CASES = (
     ("the role answers clean", (0, "clean"), (0, "clean"), FALLBACK_ROLE, 600,
      ([ORDINARY_ROLE], "clean")),
@@ -2102,6 +2103,12 @@ ROUTE_CASES = (
      (0, "blocking", "..."), (0, "clean"), FALLBACK_ROLE, 600, ([ORDINARY_ROLE], "blocking")),
     ("no fallback, and the role refuses in three dots",
      (0, "blocking", "..."), (0, "clean"), "", 600, ([ORDINARY_ROLE], "blocking")),
+    # And with no review at all, signed a failure since #110 where it had gone
+    # unread (#111's read, advisory 2: the sentence was prose no case held).
+    ("no fallback, and the role refuses with no review at all",
+     (0, "blocking", None), (0, "clean"), "", 600, ([ORDINARY_ROLE], "blocking")),
+    ("the role refuses with no review at all, and the fallback would answer clean",
+     (0, "blocking", None), (0, "clean"), FALLBACK_ROLE, 600, ([ORDINARY_ROLE], "blocking")),
     ("the role answers clean in three dots, and the fallback refuses in three",
      (0, "clean", "..."), (0, "blocking", "..."), FALLBACK_ROLE, 600,
      ([ORDINARY_ROLE, FALLBACK_ROLE], "blocking")),
@@ -2134,9 +2141,9 @@ def route_says(block, first, second, fallback, left):
             ask() {{
               role=$1 model="model-of-$1" effort=high
               echo "$1" >> '{d}/asked'
-              if [ "$1" = "$ROLE" ]; then r=$P_RC; v=$P_V; w=$P_W; else r=$F_RC; v=$F_V; w=$F_W; fi
+              if [ "$1" = "$ROLE" ]; then r=$P_RC; v=$P_V; w=$P_W; n=$P_NONE; else r=$F_RC; v=$F_V; w=$F_W; n=$F_NONE; fi
               if [ -n "$v" ]; then
-                jq -cn --arg v "$v" --arg w "$w" '{{result: ({{verdict: $v, review: $w}} | tojson), usage: {{input_tokens: 9, output_tokens: 2}}, total_cost_usd: 0.01}}' > "$out"
+                jq -cn --arg v "$v" --arg w "$w" --arg n "$n" '{{result: ((if $n == "1" then {{verdict: $v}} else {{verdict: $v, review: $w}} end) | tojson), usage: {{input_tokens: 9, output_tokens: 2}}, total_cost_usd: 0.01}}' > "$out"
               else
                 printf '{{"is_error":true,"subtype":"x"}}\\n' > "$out"
               fi
@@ -2151,8 +2158,10 @@ def route_says(block, first, second, fallback, left):
             f.write(script)
         env = dict(os.environ, ROLE=ORDINARY_ROLE, FALLBACK=fallback, CLASS="code",
                    P_RC=str(first[0]), P_V=first[1], F_RC=str(second[0]), F_V=second[1],
-                   P_W=first[2] if len(first) > 2 else REVIEW_READ,
-                   F_W=second[2] if len(second) > 2 else REVIEW_READ,
+                   P_W=first[2] if len(first) > 2 and first[2] is not None else REVIEW_READ,
+                   F_W=second[2] if len(second) > 2 and second[2] is not None else REVIEW_READ,
+                   P_NONE="1" if len(first) > 2 and first[2] is None else "",
+                   F_NONE="1" if len(second) > 2 and second[2] is None else "",
                    GITHUB_OUTPUT=os.path.join(d, "out"), GITHUB_STEP_SUMMARY=os.path.join(d, "summary"))
         try:
             p = subprocess.run(["bash", os.path.join(d, "route.sh")], env=env, capture_output=True,
@@ -2179,6 +2188,11 @@ def route_faults(text, path):
     # here as it runs in the job. Run as two pieces, the lines between them
     # ran in neither, and bash takes a function's last definition: a second
     # `reviewed()` placed there would win in the real read and pass here.
+    # ITS LIMIT (#111's read, advisory 1): everything above `reviewed()` —
+    # `ask()`, `why()`, `fail()`, the role and its limits — comes from the
+    # stub, not the file, so a second `ask()` placed above the block would win
+    # in the real read and never run here. Only the reader of the diff guards
+    # that region until the harness starts higher, with a fake `claude` on PATH.
     block = _block(r, lambda l: l == REVIEW_TEST, lambda l: l == ROUTE_LAST)
     if block is None or "answered() {" not in block or ROUTE_FIRST not in block:
         lost.append("one reading block from `%s`, through `answered()` and `%s`, to `%s`"
@@ -2236,6 +2250,8 @@ ROUTE_LOOSENINGS = (
     ("a second, looser bar defined after the first", None, lambda t: t.replace("          " + READ_BEGAN + "\n", "          " + READ_BEGAN + "\n          " + REVIEW_TEST.replace(">= 100", ">= 99") + "\n", 1)),
     ("a terse refusal handed to the fallback", None, lambda t: t.replace(REFUSAL_ANSWERED, "clean|advisory|blocking)", 1)),
     ("a terse refusal failed as unread", None, lambda t: t.replace(REFUSAL_KEPT, "", 1)),
+    ("an empty refusal failed as unread, as before #110", REVIEW_WORKFLOW, lambda t: t.replace(REVIEW_TAKEN[REVIEW_WORKFLOW][0], REVIEW_TAKEN[REVIEW_WORKFLOW][1] + "\n          " + REVIEW_TAKEN[REVIEW_WORKFLOW][0], 1)),
+    ("an empty refusal failed as unread, as before #110", PRODUCT_WORKFLOW, lambda t: t.replace(REVIEW_TAKEN[PRODUCT_WORKFLOW][0], REVIEW_TAKEN[PRODUCT_WORKFLOW][1] + "\n          " + REVIEW_TAKEN[PRODUCT_WORKFLOW][0], 1)),
     ("another provider for a product's code", PRODUCT_WORKFLOW, lambda t: t.replace("          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}\n", "          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}\n          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}\n", 1)),
 )
 
