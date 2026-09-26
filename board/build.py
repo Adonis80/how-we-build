@@ -200,18 +200,24 @@ def product_row(p):
 
 # ---------------------------------------------------------------- Juku OS
 
-def body_line(body, key):
-    """The rest of the line after `key:`, markdown emphasis dropped (`**P2**` reads as P2)."""
-    m = re.search(r"\*{0,2}%s:\*{0,2}[ \t]*([^\n]*)" % key, body or "")
-    return m.group(1).replace("*", "").strip() if m else None
+def field(body, key, value):
+    """The first `key:` whose rest of line, emphasis dropped, opens with `value`.
+
+    The first that parses, not the first that appears: a description may name
+    the field in prose ("a `Ready:` line is a pointer") before it gives it
+    (#113's second read).
+    """
+    for m in re.finditer(r"\*{0,2}%s:\*{0,2}[ \t]*([^\n]*)" % key, body or ""):
+        got = re.match(value, m.group(1).replace("*", "").strip(), re.I)
+        if got:
+            return got
+    return None
 
 
 def readiness(pr):
     """(ready: 'yes' | 'no' | None, its reason or '', priority 'P1'..'P4' or None). §8: nothing else."""
-    pri = body_line(pr.get("body"), "Priority")
-    pri = re.match(r"(P[1-4])\b", pri or "")
-    line = body_line(pr.get("body"), "Ready")
-    m = re.match(r"(yes|no)\b(.*)", line or "", re.I)
+    pri = field(pr.get("body"), "Priority", r"(P[1-4])\b")
+    m = field(pr.get("body"), "Ready", r"(yes|no)\b(.*)")
     if not m:
         return None, "", pri.group(1) if pri else None
     # The reason runs to the next field on the same line, if one follows.
@@ -393,6 +399,8 @@ def _selftest():
         (pr(9, ok, review=[("completed", "failure"), ("completed", "success")]), "Review check failed"),
         (pr(11, ok, review=[("completed", "success"), ("completed", "failure")]), "Review check failed"),
         (pr(12, "**Priority:** **P2**. **Ready:** no — **Decision needed:** which host."), "Waiting on the Chairman"),
+        (pr(13, "A `Ready:` line is a pointer, and `Priority:` a level.\n**Priority:** P3. **Ready:** yes.",
+            review=[("completed", "success")]), "Review check passed"),
         (pr(10, ok, review=[("completed", "neutral")]), "Review incomplete"),
     ]
     for p, want in states:
