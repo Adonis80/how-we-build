@@ -2193,7 +2193,8 @@ def route_faults(text, path):
 # `reviewed()`, run in `answered()` so an empty `clean` or `advisory` hands over
 # to the fallback, and on the review the gate publishes so with no fallback it
 # fails; and, per file, that last line beside the one it replaced, which took
-# any review at all. A `blocking` is exempt from both (REFUSAL_*), as it was.
+# any review at all. A `blocking` is exempt from both (REFUSAL_*): a terse one
+# stands, and so does one with no review at all, which before #110 went unread.
 REVIEW_TEST = r'''reviewed() { jq -Rse 'gsub("\\s"; "") | length >= 100' > /dev/null 2>&1; }'''
 REVIEW_WEIGHED = ("jq -r '.result // empty' \"$out\" 2>/dev/null | jq -r '.review // empty' 2>/dev/null "
                   "| reviewed")
