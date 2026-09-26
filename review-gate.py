@@ -2033,10 +2033,10 @@ def _check_class_loosenings():
 # THE ROLE, READ (decision 0008). Each reviewer resolves the class's role from
 # the registry inside the read — review.yml from the protected branch, never the
 # head it reads, and review-product.yml from this repository's checkout, which
-# the door holds to main — and asks it once. A role that does not answer with a
-# verdict and a review behind it hands the read to its fallback; with no
-# fallback, or none that answers, the step fails and the verdict is `neutral`:
-# unread, the gate red.
+# the door holds to main — and asks it once. A role that gives no verdict, or
+# clears the change without a review behind it, hands the read to its fallback;
+# with no fallback, or none that answers, the step fails and the verdict is
+# `neutral`: unread, the gate red.
 # The reading block is run, not read, on ROUTE_CASES below.
 ROUTE_RESOLVE = ('EFFORT=$(resolve "$ROLE" effort) || fail "the registry could not resolve $ROLE"',
                  'FALLBACK=$(resolve "$ROLE" fallback) || fail "the registry could not resolve $ROLE"')
@@ -2093,8 +2093,17 @@ ROUTE_CASES = (
      (0, "clean", "..."), (0, "advisory"), FALLBACK_ROLE, 600, ([ORDINARY_ROLE, FALLBACK_ROLE], "advisory")),
     ("no fallback, and the role answers clean with a review of three dots",
      (0, "clean", "..."), (0, "clean"), "", 600, ([ORDINARY_ROLE], None)),
-    ("neither writes a review with anything in it", (0, "clean", "..."), (0, "blocking", " "),
+    ("neither writes a review with anything in it", (0, "clean", "..."), (0, "advisory", " "),
      FALLBACK_ROLE, 600, ([ORDINARY_ROLE, FALLBACK_ROLE], None)),
+    # A refusal is an answer however short (#110's first read): a terse
+    # `blocking` is never handed to a reader who might clear the commit.
+    ("the role refuses in three dots, and the fallback would answer clean",
+     (0, "blocking", "..."), (0, "clean"), FALLBACK_ROLE, 600, ([ORDINARY_ROLE], "blocking")),
+    ("no fallback, and the role refuses in three dots",
+     (0, "blocking", "..."), (0, "clean"), "", 600, ([ORDINARY_ROLE], "blocking")),
+    ("the role answers clean in three dots, and the fallback refuses in three",
+     (0, "clean", "..."), (0, "blocking", "..."), FALLBACK_ROLE, 600,
+     ([ORDINARY_ROLE, FALLBACK_ROLE], "blocking")),
     # The bar, pinned on both sides: 100 characters that are not whitespace.
     ("no fallback, and the role's review is one character short of the bar",
      (0, "clean", " \n".join(["x" * 33] * 3)), (0, "clean"), "", 600, ([ORDINARY_ROLE], None)),
@@ -2180,17 +2189,21 @@ def route_faults(text, path):
     return lost
 
 
-# The review behind a verdict (#109): one test, `reviewed()`, run in
-# `answered()` so an empty read hands over to the fallback, and on the review
-# the gate publishes so with no fallback it fails; and, per file, that last line
-# beside the one it replaced, which took any review at all.
+# The review behind a verdict that opens the gate (#109): one test,
+# `reviewed()`, run in `answered()` so an empty `clean` or `advisory` hands over
+# to the fallback, and on the review the gate publishes so with no fallback it
+# fails; and, per file, that last line beside the one it replaced, which took
+# any review at all. A `blocking` is exempt from both (REFUSAL_*), as it was.
 REVIEW_TEST = r'''reviewed() { jq -Rse 'gsub("\\s"; "") | length >= 100' > /dev/null 2>&1; }'''
 REVIEW_WEIGHED = ("jq -r '.result // empty' \"$out\" 2>/dev/null | jq -r '.review // empty' 2>/dev/null "
                   "| reviewed")
+REVIEW_FAIL = 'fail "the reviewer\'s review was under 100 characters, not counting whitespace"'
+REFUSAL_KEPT = '[ "$verdict" = blocking ] || '
+REFUSAL_ANSWERED = "blocking) return 0 ;;\n              clean|advisory)"
 REVIEW_TAKEN = {
-    REVIEW_WORKFLOW: ('reviewed < /tmp/review.md || fail "the reviewer returned no review of substance"',
+    REVIEW_WORKFLOW: (REFUSAL_KEPT + "reviewed < /tmp/review.md || " + REVIEW_FAIL,
                       '[ -s /tmp/review.md ] || fail "the reviewer returned no review"'),
-    PRODUCT_WORKFLOW: ('reviewed < "$t/review.md" || fail "the reviewer returned no review of substance"',
+    PRODUCT_WORKFLOW: (REFUSAL_KEPT + 'reviewed < "$t/review.md" || ' + REVIEW_FAIL,
                        '[ -s "$t/review.md" ] || fail "the reviewer returned no review"'),
 }
 ROUTE_LOOSENINGS = (
@@ -2207,6 +2220,8 @@ ROUTE_LOOSENINGS = (
     ("an empty review taken, as before #109", REVIEW_WORKFLOW, lambda t: t.replace(*REVIEW_TAKEN[REVIEW_WORKFLOW], 1)),
     ("an empty review taken, as before #109", PRODUCT_WORKFLOW, lambda t: t.replace(*REVIEW_TAKEN[PRODUCT_WORKFLOW], 1)),
     ("a bar of one character", None, lambda t: t.replace(REVIEW_TEST, REVIEW_TEST.replace(">= 100", ">= 1"), 1)),
+    ("a terse refusal handed to the fallback", None, lambda t: t.replace(REFUSAL_ANSWERED, "clean|advisory|blocking)", 1)),
+    ("a terse refusal failed as unread", None, lambda t: t.replace(REFUSAL_KEPT, "", 1)),
     ("another provider for a product's code", PRODUCT_WORKFLOW, lambda t: t.replace("          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}\n", "          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}\n          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}\n", 1)),
 )
 
