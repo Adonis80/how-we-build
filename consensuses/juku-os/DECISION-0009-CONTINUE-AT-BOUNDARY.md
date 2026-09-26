@@ -30,6 +30,10 @@ The Chairman, 26 September 2026: code mode "was telling me to start a new sessio
 - The tidying freeze governs words a session **writes**, whichever pull request they land in; advancing an existing pull request without originating words is the clean case. No sentence added.
 - A change to `HOW-WE-BUILD.md` is a deterministic stop; a changed library page that an item's trigger names is re-read and reassessed, and stops the session only if it requires a fresh boot or cannot be applied reliably.
 
+## Dropped from the 0006 page, on purpose
+
+The page is at its byte cap, so the rewrite kept every rule that still governs and cut two that did not: the temporary `START-HERE.md` for advisory work with no repository yet (GitHub is the one source of truth, his ruling of 25 September; an advisory result goes into a repository's pull request or issue, never a loose file), and the handover test "if the next session's opening words would have to carry project state, it is not finished", which "the pull request and roadmap handover stand alone" and the checked claim behind "ready to start fresh session" now carry between them. Kept, after the reviewer's read: mid-slice resumption after a gap verifies the branch, pull request and `main` facts first; and the slicing remedy for products, whose roadmap `next` lines do exist.
+
 ## Still unproved
 
 - Whether a session judges "continuing is preferable" honestly, or the assessment becomes a reverse sign-off; the `Continued:` / `Resumed:` lines are the only check, and they miss what no one later detects.
