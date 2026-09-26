@@ -1,0 +1,263 @@
+name: Build the board
+run-name: Build the board (${{ github.event_name }})
+
+# THE BUILD BOARD, REBUILT ON AN EVENT, NEVER ON A CLOCK (decision 0007 §6,
+# issue #97). It reads each product's roadmap.json on its main and this
+# repository's pull requests, renders the one page with board/build.py, and
+# deploys it with board/'s PIN gate to the Vercel project juku-build-board.
+# A failed read or render stops before the deploy, so the last dated snapshot
+# stands (§5). review-gate.py holds this file: its triggers, its door, its
+# token's scope and reach, and its list of products against the README's map.
+#
+# WHAT WAKES IT. A dispatch, for a product's merge that touched its roadmap
+# (a product cannot see this repository's events) or for a session's refresh;
+# a pull request here opened, edited, pushed to, reopened, readied, drafted or
+# closed; and the reviewer's check run created, re-requested or completed. The
+# `check_run` route is decision 0007's first unproved line: it is cited on the
+# pull request that proves it, not claimed here.
+#
+# WHY pull_request_target AND NOT pull_request. A `pull_request` run takes the
+# pull request's ref, and the `reviewer` environment admits `main` alone, so
+# every such run would be refused its keys. `pull_request_target` runs this
+# file as it stands on main, and nothing of the pull request is checked out or
+# run: its number, title, two body lines and the reviewer's check run are read
+# through the API as data. A fork's pull request wakes nothing and is not
+# read, because this repository is public: only a branch here, which only a
+# writer can push, reaches the board.
+#
+# THIS LOG IS PUBLIC AND THE ROADMAPS ARE NOT. Nothing a product holds is
+# printed: byte counts and conclusions only. No artifact is uploaded, because
+# a public repository's artifacts are public too.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: production, the board itself; preview, a look first.
+        required: true
+        default: production
+        type: choice
+        options:
+          - production
+          - preview
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened, ready_for_review, converted_to_draft, closed]
+  check_run:
+    types: [created, rerequested, completed]
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: read
+
+# One at a time, and none cancelled: a deploy is never cut off between going
+# live and its smoke test. GitHub keeps one run pending and replaces it with
+# the newest, which reads the newest sources.
+concurrency:
+  group: build-board
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request_target' &&
+       github.event.pull_request.head.repo.full_name == github.repository) ||
+      (github.event_name == 'check_run' &&
+       github.event.check_run.app.id == 5000405 &&
+       github.event.check_run.name == 'juku-reviewer')
+    runs-on: ubuntu-latest
+    # THE DOOR. The App's key and the deploy key are readable only from main.
+    # review-gate.py refuses a build that loses it.
+    environment: reviewer
+    timeout-minutes: 15
+    env:
+      TEAM: team_B8AXqxDb20T9DrXElAAXsvgF
+      PROJECT: prj_Y61u57bV01hn4UAhVS1GSeTNlIca
+      DOMAIN: roadmap.juku.pro
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Read the products
+        env:
+          APP_ID: ${{ secrets.REVIEWER_APP_ID }}
+          APP_KEY: ${{ secrets.REVIEWER_APP_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${APP_ID:-}" ] || [ -z "${APP_KEY:-}" ]; then
+            echo "::error::No badge: the reviewer environment holds no REVIEWER_APP_ID or REVIEWER_APP_KEY. Nothing is read or deployed."
+            exit 1
+          fi
+          umask 077
+          key="$RUNNER_TEMP/reviewer.pem"
+          trap 'rm -f "$key" "$RUNNER_TEMP/mint.json"' EXIT
+          printf '%s\n' "$APP_KEY" > "$key"
+          b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+          now=$(date +%s)
+          hdr=$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | b64url)
+          pl=$(printf '{"iat":%d,"exp":%d,"iss":"%s"}' "$((now - 60))" "$((now + 540))" "$APP_ID" | b64url)
+          sig=$(printf '%s' "$hdr.$pl" | openssl dgst -binary -sha256 -sign "$key" | b64url)
+          jwt="$hdr.$pl.$sig"
+          rm -f "$key"
+          mkdir -p "$RUNNER_TEMP/reads"
+          # THE PRODUCTS: the README's map, and nothing else. review-gate.py
+          # holds this list to the map both ways.
+          while IFS='=' read -r REPO NAME; do
+            [ -n "$REPO" ] || continue
+            inst=$(curl -sS -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$REPO/installation" | jq -r '.id // empty')
+            [ -n "$inst" ] || { echo "::error::the App is not installed on $REPO; nothing is deployed"; exit 1; }
+            # ONE PRODUCT, CONTENTS READ, AND NOTHING ELSE: a roadmap is all
+            # this token is for.
+            body=$(jq -cn --arg r "${REPO#*/}" '{repositories: [$r], permissions: {contents: "read"}}')
+            curl -sS -X POST -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/app/installations/$inst/access_tokens" -d "$body" > "$RUNNER_TEMP/mint.json"
+            tok=$(jq -r '.token // empty' "$RUNNER_TEMP/mint.json")
+            [ -n "$tok" ] || { echo "::error::the App would not mint a token scoped to $REPO"; exit 1; }
+            echo "::add-mask::$tok"
+            revoke() { curl -sS -o /dev/null -X DELETE -H "Authorization: token $tok" \
+              -H "Accept: application/vnd.github+json" "https://api.github.com/installation/token" || true; }
+            want='{"contents":"read"}'
+            granted=$(jq -cS '(.permissions // {}) | del(.metadata)' "$RUNNER_TEMP/mint.json")
+            if [ "$granted" != "$want" ]; then
+              revoke
+              echo "::error::SCOPE WRONG: the token was granted $granted, not $want. Revoked; nothing was read."
+              exit 1
+            fi
+            reach=$(curl -sS -H "Authorization: token $tok" -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/installation/repositories" | jq -r '[.repositories[].full_name] | join(",")')
+            if [ "$reach" != "$REPO" ]; then
+              revoke
+              echo "::error::SCOPE WRONG: the token reached [$reach], not $REPO alone. Revoked; nothing was read."
+              exit 1
+            fi
+            main=$(curl -sS -H "Authorization: token $tok" -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$REPO" | jq -r '.default_branch // empty')
+            [[ "$main" =~ ^[A-Za-z0-9._/-]+$ ]] || { revoke; echo "::error::$REPO names no default branch"; exit 1; }
+            road="$RUNNER_TEMP/road.json"
+            curl -sSf -H "Authorization: token $tok" -H "Accept: application/vnd.github.raw+json" \
+              "https://api.github.com/repos/$REPO/contents/roadmap.json?ref=$main" -o "$road" \
+              || { revoke; echo "::error::$REPO's roadmap.json could not be read from $main"; exit 1; }
+            edited=$(curl -sS -H "Authorization: token $tok" -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$REPO/commits?path=roadmap.json&sha=$main&per_page=1" \
+              | jq -r '.[0].commit.committer.date // empty')
+            revoke
+            [ -n "$edited" ] || { echo "::error::$REPO's roadmap.json has no commit on $main"; exit 1; }
+            jq -e 'type == "object"' "$road" > /dev/null 2>&1 \
+              || { echo "::error::$REPO's roadmap.json is not a JSON object"; exit 1; }
+            jq -n --arg name "$NAME" --arg edited "$edited" --slurpfile road "$road" \
+              '{name: $name, last_edited: $edited, roadmap: $road[0]}' > "$RUNNER_TEMP/reads/${REPO#*/}.json"
+            echo "read $NAME: $(wc -c < "$road") bytes, last edited $edited"
+            rm -f "$road"
+          done <<'PRODUCTS'
+          Adonis80/Hemz-OS=Hemz OS
+          Adonis80/myst=Myst
+          Adonis80/phena=Phena
+          PRODUCTS
+
+      - name: Read this repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          R: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          api() { curl -sSf -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$R/$1"; }
+          # This repository's own branches only: a fork's pull request is not
+          # put on his board.
+          api "pulls?state=open&per_page=100" | jq --arg r "$R" '[.[] | select(.head.repo.full_name == $r)
+            | {number, title, body: (.body // ""), draft, created_at, url: .html_url, sha: .head.sha}]' > "$RUNNER_TEMP/open.json"
+          # The reviewer's check runs on each head, newest first (§7: an older
+          # success never overrides a newer attempt).
+          echo '[]' > "$RUNNER_TEMP/open+review.json"
+          for row in $(jq -r '.[] | @base64' "$RUNNER_TEMP/open.json"); do
+            pr=$(printf '%s' "$row" | base64 -d)
+            sha=$(printf '%s' "$pr" | jq -r '.sha')
+            [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::a pull request's head is not a commit"; exit 1; }
+            runs=$(api "commits/$sha/check-runs?check_name=juku-reviewer&app_id=5000405&filter=all&per_page=100" \
+              | jq '[.check_runs | sort_by(.started_at // "") | reverse | .[] | {status, conclusion}]')
+            jq --argjson pr "$pr" --argjson runs "$runs" '. + [$pr + {review: $runs} | del(.sha)]' \
+              "$RUNNER_TEMP/open+review.json" > "$RUNNER_TEMP/tmp.json"
+            mv "$RUNNER_TEMP/tmp.json" "$RUNNER_TEMP/open+review.json"
+          done
+          api "pulls?state=closed&sort=updated&direction=desc&per_page=50" | jq --arg r "$R" \
+            '[.[] | select(.merged_at != null and .head.repo.full_name == $r) | {number, title, url: .html_url, merged_at}]' \
+            > "$RUNNER_TEMP/merged.json"
+          echo "open pull requests: $(jq length "$RUNNER_TEMP/open+review.json"); merged read: $(jq length "$RUNNER_TEMP/merged.json")"
+
+      - name: Render
+        run: |
+          set -euo pipefail
+          # The snapshot's time is the successful read's (§5).
+          jq -n --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --slurpfile open "$RUNNER_TEMP/open+review.json" --slurpfile merged "$RUNNER_TEMP/merged.json" \
+            '{checked_at: $at, products: [inputs], rulebook: {open: $open[0], merged: $merged[0]}}' \
+            "$RUNNER_TEMP"/reads/*.json > "$RUNNER_TEMP/reads.json"
+          site="$RUNNER_TEMP/site"
+          mkdir -p "$site"
+          python3 board/build.py "$RUNNER_TEMP/reads.json" "$site/index.html"
+          cp board/middleware.js board/robots.txt board/vercel.json "$site/"
+          rm -rf "$RUNNER_TEMP/reads" "$RUNNER_TEMP/reads.json" "$RUNNER_TEMP/open.json" "$RUNNER_TEMP/open+review.json"
+
+      - name: Deploy, smoke, and roll back on red
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || 'production' }}
+        run: |
+          set -euo pipefail
+          [ -n "${VERCEL_TOKEN:-}" ] || { echo "::error::No deploy key: the reviewer environment holds no VERCEL_TOKEN. Nothing is deployed; the last snapshot stands."; exit 1; }
+          case "$TARGET" in production|preview) ;; *) echo "::error::no such target"; exit 1 ;; esac
+          v() { curl -sS -H "Authorization: Bearer $VERCEL_TOKEN" -H "Content-Type: application/json" "$@"; }
+          q="teamId=$TEAM"
+          site="$RUNNER_TEMP/site"
+          # What is live now is recorded before anything moves.
+          before=$(v "https://api.vercel.com/v9/projects/$PROJECT?$q" | jq -r '.targets.production.id // empty')
+          [ -n "$before" ] || { echo "::error::the live deployment could not be recorded, so there would be nothing to roll back to. Nothing is deployed."; exit 1; }
+          echo "live before: $before"
+          # The files are sent through the API: no Git metadata, so the host
+          # cannot read this as an integration deploy (library/deploy.md).
+          jq -n --arg p "$PROJECT" --arg target "$TARGET" \
+            --rawfile index "$site/index.html" --rawfile mw "$site/middleware.js" \
+            --rawfile robots "$site/robots.txt" --rawfile vj "$site/vercel.json" \
+            '{name: "juku-build-board", project: $p, projectSettings: {framework: null},
+              files: [{file: "index.html", data: $index}, {file: "middleware.js", data: $mw},
+                      {file: "robots.txt", data: $robots}, {file: "vercel.json", data: $vj}]}
+             + (if $target == "production" then {target: "production"} else {} end)' > "$RUNNER_TEMP/deploy.json"
+          rm -rf "$site"
+          made=$(v -X POST "https://api.vercel.com/v13/deployments?$q&skipAutoDetectionConfirmation=1" -d @"$RUNNER_TEMP/deploy.json")
+          rm -f "$RUNNER_TEMP/deploy.json"
+          id=$(printf '%s' "$made" | jq -r '.id // empty')
+          [ -n "$id" ] || { echo "::error::the host refused the deployment: $(printf '%s' "$made" | jq -r '.error.code // "no code"')"; exit 1; }
+          echo "deployment: $id ($TARGET)"
+          state=""
+          for _ in $(seq 60); do
+            state=$(v "https://api.vercel.com/v13/deployments/$id?$q" | jq -r '.readyState // empty')
+            case "$state" in READY|ERROR|CANCELED) break ;; esac
+            sleep 5
+          done
+          [ "$state" = READY ] || { echo "::error::the deployment ended $state; production was not moved from $before"; exit 1; }
+          if [ "$TARGET" = preview ]; then
+            echo "preview ready: $(v "https://api.vercel.com/v13/deployments/$id?$q" | jq -r '.url') (behind the team's sign-in)"
+            exit 0
+          fi
+          # THE SMOKE: the domain answers from the new deployment, and to a
+          # stranger it shows the PIN screen and nothing of the board. The
+          # edge follows the control plane by a little, so it is asked again
+          # for up to three minutes before it is called red.
+          ok=no
+          for _ in $(seq 18); do
+            on=$(v "https://api.vercel.com/v13/deployments/$DOMAIN?$q" | jq -r '.id // empty')
+            page=$(curl -sS "https://$DOMAIN/" || true)
+            if [ "$on" = "$id" ] && grep -q "Directors only" <<< "$page" && ! grep -q "data-board" <<< "$page"; then
+              ok=yes; break
+            fi
+            sleep 10
+          done
+          if [ "$ok" = yes ]; then
+            echo "live: $id on $DOMAIN, the PIN screen alone to a stranger"
+            exit 0
+          fi
+          echo "::error::the smoke test failed on $id; promoting $before back"
+          v -X POST "https://api.vercel.com/v10/projects/$PROJECT/promote/$before?$q" -o /dev/null -w "promote: HTTP %{http_code}\n"
+          exit 1
