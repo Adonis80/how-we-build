@@ -2056,6 +2056,8 @@ PRODUCT_EGRESS = ("ask.py", "OPENROUTER", "openai-compatible")
 # (what happens, the primary's exit and verdict, the fallback's, the fallback
 # role or none, seconds left when the fallback would start, what must follow:
 # the roles asked in order, and the verdict read or None for a read that fails).
+# An exit and verdict may carry a third item, the review written with it; left
+# out, it is REVIEW_READ, a review that says what it read.
 ROUTE_CASES = (
     ("the role answers clean", (0, "clean"), (0, "clean"), FALLBACK_ROLE, 600,
      ([ORDINARY_ROLE], "clean")),
@@ -2082,7 +2084,20 @@ ROUTE_CASES = (
      ([ORDINARY_ROLE, FALLBACK_ROLE], None)),
     ("the fallback answers a verdict outside the schema", (1, ""), (0, "findings"), FALLBACK_ROLE, 600,
      ([ORDINARY_ROLE, FALLBACK_ROLE], None)),
+    # A verdict with nothing read behind it is no answer. #108's first read on
+    # 50a4688: `clean`, and a review of three dots, 15 tokens out against
+    # 129,357 in, and the gate opened on it. The same commit read again wrote
+    # 9,593 tokens.
+    ("the role answers clean with a review of three dots, as #108's first read did",
+     (0, "clean", "..."), (0, "advisory"), FALLBACK_ROLE, 600, ([ORDINARY_ROLE, FALLBACK_ROLE], "advisory")),
+    ("no fallback, and the role answers clean with a review of three dots",
+     (0, "clean", "..."), (0, "clean"), "", 600, ([ORDINARY_ROLE], None)),
+    ("neither writes a review with anything in it", (0, "clean", "..."), (0, "blocking", " "),
+     FALLBACK_ROLE, 600, ([ORDINARY_ROLE, FALLBACK_ROLE], None)),
 )
+REVIEW_READ = ("Addressed to the CTO. I read the diff against main's tip and the pages it touches, "
+               "and checked each changed line against the brief and the pages beside it. Nothing "
+               "blocking. I did not run check.sh, so the caps rest on CI. Fairly sure.")
 
 
 def route_says(block, answered, first, second, fallback, left):
@@ -2097,9 +2112,9 @@ def route_says(block, answered, first, second, fallback, left):
             ask() {{
               role=$1 model="model-of-$1" effort=high
               echo "$1" >> '{d}/asked'
-              if [ "$1" = "$ROLE" ]; then r=$P_RC; v=$P_V; else r=$F_RC; v=$F_V; fi
+              if [ "$1" = "$ROLE" ]; then r=$P_RC; v=$P_V; w=$P_W; else r=$F_RC; v=$F_V; w=$F_W; fi
               if [ -n "$v" ]; then
-                jq -cn --arg v "$v" '{{result: ({{verdict: $v, review: "words"}} | tojson), usage: {{input_tokens: 9, output_tokens: 2}}, total_cost_usd: 0.01}}' > "$out"
+                jq -cn --arg v "$v" --arg w "$w" '{{result: ({{verdict: $v, review: $w}} | tojson), usage: {{input_tokens: 9, output_tokens: 2}}, total_cost_usd: 0.01}}' > "$out"
               else
                 printf '{{"is_error":true,"subtype":"x"}}\\n' > "$out"
               fi
@@ -2114,6 +2129,8 @@ def route_says(block, answered, first, second, fallback, left):
             f.write(script)
         env = dict(os.environ, ROLE=ORDINARY_ROLE, FALLBACK=fallback, CLASS="code",
                    P_RC=str(first[0]), P_V=first[1], F_RC=str(second[0]), F_V=second[1],
+                   P_W=first[2] if len(first) > 2 else REVIEW_READ,
+                   F_W=second[2] if len(second) > 2 else REVIEW_READ,
                    GITHUB_OUTPUT=os.path.join(d, "out"), GITHUB_STEP_SUMMARY=os.path.join(d, "summary"))
         try:
             p = subprocess.run(["bash", os.path.join(d, "route.sh")], env=env, capture_output=True,
