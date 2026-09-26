@@ -20,15 +20,21 @@ answer or the key. Standard library only.
 
 No silent loss either (#115, 26 September 2026: twice a `blocking` verdict was
 published whose review stopped at "one finding below", 9,389 and 6,492 tokens
-out, while full reads of the same commits carried the findings). Every object
-in the answer that carries a verdict is found, braces in the prose around it
-notwithstanding, and the worst one speaks, as the gate's own verdict() keeps the
-worst. A refusal is kept with every other word the model wrote, however short,
-and says so if the provider cut it off for length: a refusal is never handed to
-a reader who might clear the change (#110). A clearance is taken only when it
-is the one verdict in the answer, whole, with next to nothing beside it;
+out, while full reads of the same commits carried the findings). Every
+top-level object in the answer that decodes whole and carries a verdict is
+found, braces in the prose around it notwithstanding, and the worst one speaks,
+as the gate's own verdict() keeps the worst. A refusal whose object decodes
+whole is kept with the prose the model wrote beside it, however short, and says
+so if the provider cut the answer off for length: such a refusal is never
+handed to a reader who might clear the change (#110). A clearance is taken only
+when it is the one verdict in the answer, whole, with next to nothing beside it;
 otherwise it is no answer, and its fallback reads. The job's summary gets the
-answer's shape in numbers alone, so the next stub says which way it came.
+answer's shape, so the next stub says which way it came.
+
+ITS LIMIT (#116's second read). A refusal whose own object does not decode —
+cut off inside it, or broken by a raw line break or an unescaped quote — is
+found by nothing here, is no answer, and goes to the fallback as it always
+did. Closing that is its own change.
 """
 import json
 import os
@@ -64,9 +70,12 @@ def served_is_pinned(served, pinned):
 
 
 # Words beside a clearance past this many characters, not counting whitespace
-# or fences, are the model writing its review outside its verdict rather than a
-# wrapper such as "Here it is:".
-OUTSIDE_BAR = 200
+# or fences, are the model writing outside its verdict rather than a wrapper
+# such as "Here it is:" — so a one-sentence finding beside a clearance sends
+# the read to the fallback (#116's second read: 200 let one through, and its
+# example, "Blocking: the key is printed on line 42.", is 33). A wordy wrapper
+# costs a fallback read; it never clears a change.
+OUTSIDE_BAR = 30
 
 
 def verdicts(content):
@@ -95,12 +104,6 @@ def verdicts(content):
     prose.append(content[kept:])
     around = "\n\n".join(p.strip() for p in prose if p.strip())
     return found, re.sub(r"```(?:json)?", "", around).strip()
-
-
-def verdict_text(content):
-    """The answer's first verdict object as text: fenced or wrapped in prose, it is unwrapped."""
-    found, _ = verdicts(content)
-    return json.dumps(found[0]) if found else None
 
 
 def outside(prose):
@@ -228,23 +231,28 @@ def main(argv):
 
 
 def shape(resp):
-    """The answer's shape, in numbers and the provider's finish word alone, to the job's summary."""
-    path = os.environ.get("GITHUB_STEP_SUMMARY")
+    """The answer's shape, to the job's summary alone.
+
+    Never to stderr, which the workflow's why() reads for 401, 403, 429 and 529
+    (#116's second read), and never at the cost of a verdict: whatever goes
+    wrong here is swallowed, since the answer is already decided.
+    """
     try:
+        path = os.environ.get("GITHUB_STEP_SUMMARY")
+        if not path:
+            return
         choice = resp["choices"][0]
         content = choice["message"]["content"] or ""
         finish = re.sub(r"[^a-z_]", "", str(choice.get("finish_reason") or "none").lower())[:20]
         details = (resp.get("usage") or {}).get("completion_tokens_details") or {}
+        thought = details.get("reasoning_tokens")
         found, prose = verdicts(content)
-        line = ("caller: finish %s; %d verdict object(s); answer %d characters, %d beside the "
-                "object; reasoning %s tokens\n" % (finish, len(found), len(content), len(prose),
-                                                    details.get("reasoning_tokens", "unknown")))
-    except (KeyError, IndexError, TypeError, AttributeError):
-        line = "caller: the answer had no message\n"
-    print(line.strip(), file=sys.stderr)
-    if path:
         with open(path, "a", encoding="utf-8") as f:
-            f.write(line)
+            f.write("caller: finish %s; %d verdict object(s); answer %d characters, %d beside the "
+                    "object; reasoning %s tokens\n" % (finish, len(found), len(content), len(prose),
+                                                        thought if isinstance(thought, int) else "unknown"))
+    except Exception:  # a diagnostic never costs a verdict
+        pass
 
 
 if __name__ == "__main__":

@@ -2401,11 +2401,6 @@ def _check_caller():
         if ask.served_is_pinned(served, pinned) != want:
             fault("an answer from %r %s" % (served, "refused" if want else "taken as the pinned model's"))
     verdict = '{"verdict": "clean", "review": "r"}'
-    for content, want in ((verdict, verdict), ("```json\n%s\n```" % verdict, verdict),
-                          ("Here it is: %s. Done." % verdict, verdict), ("no object", None),
-                          (None, None)):
-        if ask.verdict_text(content) != want:
-            fault("the answer %r read as %r" % (content, ask.verdict_text(content)))
 
     def reply(model=pinned, content=verdict, **more):
         r = {"model": model, "choices": [{"message": {"content": content}}],
@@ -2465,9 +2460,41 @@ def _check_caller():
             fault("%s answered %s (%s), not %s" % (what, status, got.get("subtype"), sub))
         elif re.search(r"\d", got.get("result", "")):
             fault("%s names a number, which why() may read as a provider's refusal: %r" % (what, got["result"]))
-    got, status = ask.answer(reply(content="Here it is: %s. Done." % verdict), pinned)
-    if status != 0 or got.get("result") != verdict:
-        fault("a short wrapper around the object answered %s, not the object alone" % status)
+    # However the one verdict is wrapped, it is read; with none, nothing is.
+    for content, want in ((verdict, verdict), ("```json\n%s\n```" % verdict, verdict),
+                          ("Here it is: %s. Done." % verdict, verdict), ("no object", None),
+                          (None, None)):
+        got, status = ask.answer(reply(content=content), pinned)
+        if (status, got.get("result") if status == 0 else got.get("subtype")) != \
+                ((0, want) if want else (1, "no_verdict")):
+            fault("the answer %r read as %s %r" % (content, status, got.get("result")))
+    # A one-sentence finding beside a clearance is not a wrapper (#116's second read).
+    got, status = ask.answer(reply(content=verdict + " Blocking: the key is printed on line 42."), pinned)
+    if status != 1 or got.get("subtype") != "outside":
+        fault("a clearance with a one-sentence finding beside it answered %s (%s), not no answer"
+              % (status, got.get("subtype")))
+    # The shape goes to the job's summary alone: never to stderr, where why()
+    # reads 429 as a rate limit, and never at the cost of a verdict.
+    import contextlib
+    import io
+    long_reply = reply(content=verdict + " " + "x" * 429)
+    with tempfile.TemporaryDirectory() as d:
+        summary = os.path.join(d, "summary")
+        for path in (summary, os.path.join(d, "no", "such", "dir")):
+            os.environ["GITHUB_STEP_SUMMARY"] = path
+            said = io.StringIO()
+            try:
+                with contextlib.redirect_stderr(said):
+                    ask.shape(long_reply)
+            except Exception as e:  # noqa: BLE001
+                fault("the answer's shape raised %s, which would cost a verdict" % type(e).__name__)
+            if said.getvalue():
+                fault("the answer's shape reached stderr, where why() reads its numbers: %r"
+                      % said.getvalue()[:80])
+        os.environ.pop("GITHUB_STEP_SUMMARY", None)
+        wrote = open(summary, encoding="utf-8").read() if os.path.exists(summary) else ""
+    if "1 verdict object(s)" not in wrote:
+        fault("the answer's shape did not reach the job's summary (%r)" % wrote[:80])
     got, _ = ask.answer(reply(), pinned)
     if (got.get("usage"), got.get("total_cost_usd")) != ({"input_tokens": 900, "output_tokens": 40}, 0.0021):
         fault("the tokens and cost not carried to the spend line (%s)" % got)
@@ -2494,9 +2521,10 @@ def _check_caller():
               % (p.returncode, p.stdout.strip()[:200]))
     if not bad:
         print("ok: the OpenAI-compatible caller takes an answer only from the model it pinned, reads "
-              "every verdict however it is wrapped, braces in the prose notwithstanding, and lets the "
-              "worst speak — a refusal keeps every word beside it, cut off or not; a clearance "
-              "counts only whole and alone — names a refusal, carries tokens and cost to the "
+              "every verdict object that decodes whole however it is wrapped, braces in the prose "
+              "notwithstanding, and lets the worst speak — such a refusal keeps the words beside "
+              "it, cut off or not; a clearance counts only whole and alone — writes the answer's "
+              "shape to the summary and never to stderr, names a refusal, carries tokens and cost to the "
               "spend line, puts the effort where the registry says, and refuses before any request "
               "with no credential")
     return bad
