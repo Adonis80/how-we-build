@@ -21,20 +21,23 @@ answer or the key. Standard library only.
 No silent loss either (#115, 26 September 2026: twice a `blocking` verdict was
 published whose review stopped at "one finding below", 9,389 and 6,492 tokens
 out, while full reads of the same commits carried the findings). Every
-top-level object in the answer that decodes whole and carries a verdict is
-found, braces in the prose around it notwithstanding, and the worst one speaks,
-as the gate's own verdict() keeps the worst. A refusal whose object decodes
-whole is kept with the prose the model wrote beside it, however short, and says
-so if the provider cut the answer off for length: such a refusal is never
-handed to a reader who might clear the change (#110). A clearance is taken only
-when it is the one verdict in the answer, whole, with next to nothing beside it;
-otherwise it is no answer, and its fallback reads. The job's summary gets the
-answer's shape, so the next stub says which way it came.
+object in the answer that carries a verdict is found — braces in the prose
+around it, a raw line break inside it or a wrapper object around it
+notwithstanding — and the worst speaks, as the gate's own verdict() keeps the
+worst. A refusal is never handed to a reader who might clear the change (#110):
+it keeps every other word of the answer, the other verdicts' reviews
+included, and says so if the provider cut it off for length; and an answer
+that says `"verdict": "blocking"` in the open but whose object will not decode
+(cut off inside it, or broken by an unescaped quote) is signed as a refusal
+with the whole answer for its review. A clearance is taken only when it is the
+one verdict in the answer, whole, with nothing beside it but fences; otherwise
+it is no answer, and its fallback reads. The job's summary gets the answer's
+shape, so the next stub says which way it came.
 
-ITS LIMIT (#116's second read). A refusal whose own object does not decode —
-cut off inside it, or broken by a raw line break or an unescaped quote — is
-found by nothing here, is no answer, and goes to the fallback as it always
-did. Closing that is its own change.
+ITS LIMIT (#116's third read). If #115's findings were in the model's
+reasoning rather than its answer, nothing here recovers them, and a stub is
+still published as a refusal without them: which it was is not established
+until a shape line shows it, so #115 is not closed by this file.
 """
 import json
 import os
@@ -69,24 +72,43 @@ def served_is_pinned(served, pinned):
     return bool(re.fullmatch(re.escape(pinned) + r"(-\d{8})?", served or ""))
 
 
-# Words beside a clearance past this many characters, not counting whitespace
-# or fences, are the model writing outside its verdict rather than a wrapper
-# such as "Here it is:" — so a one-sentence finding beside a clearance sends
-# the read to the fallback (#116's second read: 200 let one through, and its
-# example, "Blocking: the key is printed on line 42.", is 33). A wordy wrapper
-# costs a fallback read; it never clears a change.
-OUTSIDE_BAR = 30
+VERDICTS = ("clean", "advisory", "blocking")
+# A kept refusal's review is cut here: the workflow posts it whole as a comment,
+# which GitHub refuses past 65,536 characters (#116's third read).
+KEPT_CAP = 50000
+# `"verdict": "blocking"` in the open, its first quote not escaped: inside any
+# JSON string it could only appear escaped, so a review that quotes it does
+# not match.
+REFUSAL_SAID = re.compile(r'(?<!\\)"verdict"\s*:\s*"blocking"', re.I)
+
+
+def word(v):
+    """A verdict's word, whatever its case (#116's third read: "Blocking" is a refusal)."""
+    return str(v.get("verdict", "")).strip().lower()
+
+
+def _carrying(obj):
+    """Every object carrying a verdict, at any depth: a wrapper hides none."""
+    if isinstance(obj, dict):
+        if "verdict" in obj:
+            yield obj
+        for v in obj.values():
+            yield from _carrying(v)
+    elif isinstance(obj, list):
+        for v in obj:
+            yield from _carrying(v)
 
 
 def verdicts(content):
-    """(every JSON object carrying a verdict, in order; the text around them).
+    """(every object carrying a verdict, in order; the text around them, as written).
 
-    Each `{` is decoded where it stands, so a brace in the prose — `${{ … }}`,
-    a quoted dict — neither hides the object nor spoils it.
+    Each `{` is decoded where it stands, leniently — a raw line break inside a
+    string is read rather than refused — so a brace in the prose neither hides
+    an object nor spoils it.
     """
     if not isinstance(content, str):
         return [], ""
-    dec, found, prose, i, kept = json.JSONDecoder(), [], [], 0, 0
+    dec, found, prose, i, kept = json.JSONDecoder(strict=False), [], [], 0, 0
     while True:
         j = content.find("{", i)
         if j < 0:
@@ -96,18 +118,39 @@ def verdicts(content):
         except ValueError:
             i = j + 1
             continue
-        if isinstance(obj, dict) and "verdict" in obj:
-            found.append(obj)
+        inner = list(_carrying(obj))
+        if inner:
+            found.extend(inner)
             prose.append(content[kept:j])
             kept = end
         i = end
     prose.append(content[kept:])
-    around = "\n\n".join(p.strip() for p in prose if p.strip())
-    return found, re.sub(r"```(?:json)?", "", around).strip()
+    return found, "\n\n".join(p.strip() for p in prose if p.strip())
 
 
-def outside(prose):
-    return len(re.sub(r"\s", "", prose or "")) > OUTSIDE_BAR
+def beside(prose):
+    """What was written beside the verdict, fences and whitespace aside: weighed, never published so."""
+    return re.sub(r"\s", "", re.sub(r"```[A-Za-z]*", "", prose or ""))
+
+
+def kept_refusal(found, prose, cut, content):
+    """The refusal to sign, carrying every word of the answer it came in."""
+    refusals = [v for v in found if word(v) == "blocking"]
+    if not refusals:
+        return {"verdict": "blocking", "review": "*The answer said blocking, but its verdict object did "
+                "not decode%s. The caller signs it as a refusal and keeps the whole answer as its "
+                "review:*\n\n%s" % (", and the provider cut it off for length" if cut else "", content.strip())}
+    first = dict(refusals[0], verdict="blocking")
+    others = [str(v.get("review") or "").strip() for v in refusals[1:] + [v for v in found if word(v) != "blocking"]]
+    words = "\n\n".join(w for w in others + [prose] if w)
+    if words or cut:
+        first["review"] = "%s\n\n---\n*%s*%s" % (
+            first.get("review") or "",
+            "Written beside the verdict, and kept by the caller so the refusal carries its findings"
+            + (", as far as the answer went before the provider cut it off for length" if cut else "") + ":"
+            if words else "The provider cut this answer off for length after the words above.",
+            "\n\n" + words if words else "")
+    return first
 
 
 def build(got, provider, system, prompt, schema):
@@ -147,31 +190,28 @@ def answer(resp, pinned):
     found, prose = verdicts(content)
     # No number in a `result` below: the workflow's why() reads 401, 403, 429
     # and 529 in it as the provider's own refusals (#116's first read).
-    refusal = next((v for v in found if v.get("verdict") == "blocking"), None)
-    if refusal is not None:
-        # The worst verdict speaks, and keeps every word beside it (#110, #116).
-        said = dict(refusal)
-        if prose or cut:
-            said["review"] = ("%s\n\n---\n*%s*%s" % (
-                said.get("review") or "",
-                "Written outside the verdict object, and kept by the caller so the refusal "
-                "carries its findings" + (", as far as the answer went before the provider cut "
-                                          "it off for length" if cut else "") + ":" if prose else
-                "The provider cut this answer off for length after the words above.",
-                "\n\n" + prose if prose else ""))
-        text = json.dumps(said)
+    if any(word(v) == "blocking" for v in found) or REFUSAL_SAID.search(content or ""):
+        # The worst verdict speaks, and keeps every word of the answer (#110, #116).
+        refusal = kept_refusal(found, prose, cut, content or "")
+        review = str(refusal.get("review") or "")
+        if len(review) > KEPT_CAP:
+            refusal["review"] = review[:KEPT_CAP] + "\n\n*The rest is cut by the caller: a comment holds only so much.*"
+        text = json.dumps(refusal)
     elif cut:
         return {"is_error": True, "subtype": "truncated",
                 "result": "the model ran out of room before its answer ended, so its verdict is not taken"}, 1
     elif not found:
         return {"is_error": True, "subtype": "no_verdict",
                 "result": "the model answered no verdict object"}, 1
-    elif len(found) > 1 or outside(prose):
+    elif len(found) > 1 or beside(prose):
         return {"is_error": True, "subtype": "outside",
                 "result": "the model wrote beside its verdict object, so a verdict that would clear "
                           "the change is not taken"}, 1
+    elif word(found[0]) not in VERDICTS:
+        return {"is_error": True, "subtype": "no_verdict",
+                "result": "the model answered a verdict outside the schema"}, 1
     else:
-        text = json.dumps(found[0])
+        text = json.dumps(dict(found[0], verdict=word(found[0])))
     return {"result": text, "model": served, "provider": resp.get("provider", ""),
             "usage": {"input_tokens": usage.get("prompt_tokens"),
                       "output_tokens": usage.get("completion_tokens")},
