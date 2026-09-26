@@ -2421,27 +2421,50 @@ def _check_caller():
         if status != rc or got.get("subtype") != sub:
             fault("%s answered %s (%s), not %s (%s)" % (what, status, got.get("subtype"), rc, sub))
     # NO SILENT LOSS (#115's first reads: a `blocking` published with its
-    # findings missing). A reply cut off for length is no answer; words written
-    # outside the verdict object stay with a refusal and void a clearance; a
-    # short wrapper around the object is still just a wrapper.
+    # findings missing; #116's first read: parse before weighing a cut, and let
+    # no brace in the prose hide the object). The worst verdict speaks; a
+    # refusal keeps every word beside it, cut off or not; a clearance is taken
+    # only whole and alone; no number reaches a `result`, where why() would read
+    # 429 as the provider's own refusal.
     findings = "**1. Blocking — the page it left behind.** " + "It says the opposite. " * 20
     intro = "To the CTO. Read verdict blocking, on one finding below."
-    stub = findings + '\n\n{"verdict": "blocking", "review": "%s"}' % intro
-    got, status = ask.answer(reply(content=stub), pinned)
-    kept = json.loads(got.get("result") or "{}").get("review", "") if status == 0 else ""
-    if status != 0 or intro not in kept or "the page it left behind" not in kept:
-        fault("a refusal whose findings were written beside its object answered %s, keeping %r"
-              % (status, kept[:120]))
-    for content, what in ((findings + ' {"verdict": "clean", "review": "r"}', "a clearance written partly outside its object"),
-                          ('{"verdict": "advisory", "review": "r"}\n\n' + findings, "an advisory written partly outside its object")):
-        got, status = ask.answer(reply(content=content), pinned)
-        if status != 1 or got.get("subtype") != "outside":
-            fault("%s answered %s (%s), not refused as no answer" % (what, status, got.get("subtype")))
-    cut = reply()
-    cut["choices"][0]["finish_reason"] = "length"
-    got, status = ask.answer(cut, pinned)
-    if status != 1 or got.get("subtype") != "truncated":
-        fault("a reply cut off for length answered %s (%s), not refused as no answer" % (status, got.get("subtype")))
+    refusal = '{"verdict": "blocking", "review": "%s"}' % intro
+    clean = '{"verdict": "clean", "review": "%s"}' % ("Read whole. " * 12)
+
+    def kept(content, *words, **more):
+        got, status = ask.answer(reply(content=content, **more), pinned)
+        review = json.loads(got.get("result") or "{}").get("review", "") if status == 0 else ""
+        said = json.loads(got.get("result") or "{}").get("verdict") if status == 0 else None
+        return status == 0 and said == "blocking" and all(w in review for w in words), (status, said, review[:100])
+
+    def cut(content):
+        r = reply(content=content)
+        r["choices"][0]["finish_reason"] = "length"
+        return r
+    for content, words, what in (
+            (findings + "\n\n" + refusal, (intro, "the page it left behind"), "findings written before a refusal (#115's stub)"),
+            ("**1. Blocking — `${{ inputs.repo }}` is pasted into the script.** " + findings + "\n" + refusal,
+             ("${{ inputs.repo }}", intro), "a `${{ … }}` in the findings before a refusal"),
+            (refusal + "\n\nAnd a dict: {'a': 1}. " + findings, ("{'a': 1}", intro), "a `}` in the findings after a refusal"),
+            (refusal + " Also: the brief is stale.", ("the brief is stale",), "a short finding beside a refusal"),
+            (clean + "\n" + refusal, (intro,), "a clearance and a refusal together, where the worst speaks")):
+        ok, why = kept(content, *words)
+        if not ok:
+            fault("%s was not kept as a refusal with its words (%s)" % (what, why))
+    got, status = ask.answer(cut(refusal + "\n\n" + findings), pinned)
+    review = json.loads(got.get("result") or "{}").get("review", "") if status == 0 else ""
+    if status != 0 or "the page it left behind" not in review or "cut it off for length" not in review:
+        fault("a refusal cut off for length was not kept as one, marked as cut (%s, %r)" % (status, review[-120:]))
+    for resp, sub, what in ((reply(content=findings + " " + clean), "outside", "a clearance written beside its object"),
+                            (reply(content=clean + " " + clean), "outside", "two clearances in one answer"),
+                            (reply(content='{"verdict": "advisory", "review": "r"}\n\n' + findings), "outside", "an advisory written beside its object"),
+                            (cut(clean), "truncated", "a clearance cut off for length"),
+                            (reply(content="${{ x }} and no verdict at all"), "no_verdict", "an answer with braces and no verdict")):
+        got, status = ask.answer(resp, pinned)
+        if status != 1 or got.get("subtype") != sub:
+            fault("%s answered %s (%s), not %s" % (what, status, got.get("subtype"), sub))
+        elif re.search(r"\d", got.get("result", "")):
+            fault("%s names a number, which why() may read as a provider's refusal: %r" % (what, got["result"]))
     got, status = ask.answer(reply(content="Here it is: %s. Done." % verdict), pinned)
     if status != 0 or got.get("result") != verdict:
         fault("a short wrapper around the object answered %s, not the object alone" % status)
@@ -2471,9 +2494,9 @@ def _check_caller():
               % (p.returncode, p.stdout.strip()[:200]))
     if not bad:
         print("ok: the OpenAI-compatible caller takes an answer only from the model it pinned, reads "
-              "a verdict however it is wrapped and loses nothing written beside it — a refusal keeps "
-              "its words, a clearance written partly outside its object and a reply cut off for "
-              "length are no answer — names a refusal, carries tokens and cost to the "
+              "every verdict however it is wrapped, braces in the prose notwithstanding, and lets the "
+              "worst speak — a refusal keeps every word beside it, cut off or not; a clearance "
+              "counts only whole and alone — names a refusal, carries tokens and cost to the "
               "spend line, puts the effort where the registry says, and refuses before any request "
               "with no credential")
     return bad

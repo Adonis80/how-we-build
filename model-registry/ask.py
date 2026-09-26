@@ -20,11 +20,15 @@ answer or the key. Standard library only.
 
 No silent loss either (#115, 26 September 2026: twice a `blocking` verdict was
 published whose review stopped at "one finding below", 9,389 and 6,492 tokens
-out, while full reads of the same commits carried the findings). An answer the
-provider cut off for length is no answer. Words the model wrote outside its
-verdict object are never thrown away: a refusal keeps them, appended to its
-review, so it carries its findings; a verdict that would clear the change,
-written partly outside its object, is no answer, and its fallback reads.
+out, while full reads of the same commits carried the findings). Every object
+in the answer that carries a verdict is found, braces in the prose around it
+notwithstanding, and the worst one speaks, as the gate's own verdict() keeps the
+worst. A refusal is kept with every other word the model wrote, however short,
+and says so if the provider cut it off for length: a refusal is never handed to
+a reader who might clear the change (#110). A clearance is taken only when it
+is the one verdict in the answer, whole, with next to nothing beside it;
+otherwise it is no answer, and its fallback reads. The job's summary gets the
+answer's shape in numbers alone, so the next stub says which way it came.
 """
 import json
 import os
@@ -59,36 +63,44 @@ def served_is_pinned(served, pinned):
     return bool(re.fullmatch(re.escape(pinned) + r"(-\d{8})?", served or ""))
 
 
-# Words outside the object past this many characters, not counting whitespace
-# or fences, are the model writing its review beside its verdict rather than a
+# Words beside a clearance past this many characters, not counting whitespace
+# or fences, are the model writing its review outside its verdict rather than a
 # wrapper such as "Here it is:".
 OUTSIDE_BAR = 200
 
 
-def verdict_parts(content):
-    """(the answer's JSON object as text, what was written outside it): fenced or
-    wrapped in prose, it is unwrapped, and the prose around it is handed back."""
+def verdicts(content):
+    """(every JSON object carrying a verdict, in order; the text around them).
+
+    Each `{` is decoded where it stands, so a brace in the prose — `${{ … }}`,
+    a quoted dict — neither hides the object nor spoils it.
+    """
     if not isinstance(content, str):
-        return None, ""
-    for text in (content, re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", content)):
+        return [], ""
+    dec, found, prose, i, kept = json.JSONDecoder(), [], [], 0, 0
+    while True:
+        j = content.find("{", i)
+        if j < 0:
+            break
         try:
-            return json.dumps(json.loads(text)), ""
+            obj, end = dec.raw_decode(content, j)
         except ValueError:
-            pass
-    start, end = content.find("{"), content.rfind("}")
-    if 0 <= start < end:
-        try:
-            text = json.dumps(json.loads(content[start:end + 1]))
-        except ValueError:
-            return None, ""
-        around = (content[:start] + "\n\n" + content[end + 1:]).replace("```json", "").replace("```", "")
-        return text, around.strip()
-    return None, ""
+            i = j + 1
+            continue
+        if isinstance(obj, dict) and "verdict" in obj:
+            found.append(obj)
+            prose.append(content[kept:j])
+            kept = end
+        i = end
+    prose.append(content[kept:])
+    around = "\n\n".join(p.strip() for p in prose if p.strip())
+    return found, re.sub(r"```(?:json)?", "", around).strip()
 
 
 def verdict_text(content):
-    """The answer's JSON object as text: fenced or wrapped in prose, it is unwrapped."""
-    return verdict_parts(content)[0]
+    """The answer's first verdict object as text: fenced or wrapped in prose, it is unwrapped."""
+    found, _ = verdicts(content)
+    return json.dumps(found[0]) if found else None
 
 
 def outside(prose):
@@ -128,24 +140,35 @@ def answer(resp, pinned):
     except (KeyError, IndexError, TypeError):
         choice, content = {}, None
     usage = resp.get("usage") or {}
-    if isinstance(choice, dict) and choice.get("finish_reason") == "length":
+    cut = isinstance(choice, dict) and choice.get("finish_reason") == "length"
+    found, prose = verdicts(content)
+    # No number in a `result` below: the workflow's why() reads 401, 403, 429
+    # and 529 in it as the provider's own refusals (#116's first read).
+    refusal = next((v for v in found if v.get("verdict") == "blocking"), None)
+    if refusal is not None:
+        # The worst verdict speaks, and keeps every word beside it (#110, #116).
+        said = dict(refusal)
+        if prose or cut:
+            said["review"] = ("%s\n\n---\n*%s*%s" % (
+                said.get("review") or "",
+                "Written outside the verdict object, and kept by the caller so the refusal "
+                "carries its findings" + (", as far as the answer went before the provider cut "
+                                          "it off for length" if cut else "") + ":" if prose else
+                "The provider cut this answer off for length after the words above.",
+                "\n\n" + prose if prose else ""))
+        text = json.dumps(said)
+    elif cut:
         return {"is_error": True, "subtype": "truncated",
-                "result": "the model ran out of room before its answer ended (%s tokens out)"
-                          % usage.get("completion_tokens", "unknown")}, 1
-    text, prose = verdict_parts(content)
-    if text is None:
+                "result": "the model ran out of room before its answer ended, so its verdict is not taken"}, 1
+    elif not found:
         return {"is_error": True, "subtype": "no_verdict",
                 "result": "the model answered no verdict object"}, 1
-    if outside(prose):
-        said = json.loads(text)
-        if not isinstance(said, dict) or said.get("verdict") != "blocking":
-            return {"is_error": True, "subtype": "outside",
-                    "result": "the model wrote %d characters outside its verdict object, so its "
-                              "verdict is not taken" % len(prose)}, 1
-        said["review"] = ("%s\n\n---\n*Written outside the verdict object, and kept by the "
-                          "caller so the refusal carries its findings:*\n\n%s"
-                          % (said.get("review") or "", prose))
-        text = json.dumps(said)
+    elif len(found) > 1 or outside(prose):
+        return {"is_error": True, "subtype": "outside",
+                "result": "the model wrote beside its verdict object, so a verdict that would clear "
+                          "the change is not taken"}, 1
+    else:
+        text = json.dumps(found[0])
     return {"result": text, "model": served, "provider": resp.get("provider", ""),
             "usage": {"input_tokens": usage.get("prompt_tokens"),
                       "output_tokens": usage.get("completion_tokens")},
@@ -200,7 +223,28 @@ def main(argv):
         return out({"is_error": True, "subtype": "unreachable",
                     "result": "%s could not be reached: %s" % (got["provider"], e)}, 1)
     obj, rc = answer(resp, got["model"])
+    shape(resp)
     return out(obj, rc)
+
+
+def shape(resp):
+    """The answer's shape, in numbers and the provider's finish word alone, to the job's summary."""
+    path = os.environ.get("GITHUB_STEP_SUMMARY")
+    try:
+        choice = resp["choices"][0]
+        content = choice["message"]["content"] or ""
+        finish = re.sub(r"[^a-z_]", "", str(choice.get("finish_reason") or "none").lower())[:20]
+        details = (resp.get("usage") or {}).get("completion_tokens_details") or {}
+        found, prose = verdicts(content)
+        line = ("caller: finish %s; %d verdict object(s); answer %d characters, %d beside the "
+                "object; reasoning %s tokens\n" % (finish, len(found), len(content), len(prose),
+                                                    details.get("reasoning_tokens", "unknown")))
+    except (KeyError, IndexError, TypeError, AttributeError):
+        line = "caller: the answer had no message\n"
+    print(line.strip(), file=sys.stderr)
+    if path:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(line)
 
 
 if __name__ == "__main__":
