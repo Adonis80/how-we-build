@@ -171,12 +171,12 @@ fi
 # id the registry lists, and anything shaped like a model id from a vendor we
 # use, anywhere but model-registry/ and consensuses/, whose records are kept
 # verbatim. The ids are read from the registry, so a new model is held the day
-# it is added.
+# it is added, and case hides none of them.
 ids=$(python3 -c 'import json,sys; print("|".join(m.replace(".", "[.]") for m in json.load(open(sys.argv[1]))["models"]))' model-registry/registry.json)
 shape='claude-(opus|sonnet|haiku|fable)-[0-9][0-9a-z.-]*|(z-ai|moonshotai|qwen|deepseek|anthropic|openai|google|meta-llama|mistralai|x-ai)/[a-z0-9][a-z0-9._-]*|gpt-[0-9][0-9a-z.-]*|glm-[0-9][0-9a-z.-]*|kimi-k[0-9][0-9a-z.-]*'
 if [ -z "$ids" ]; then
   echo "FAIL: model-registry/registry.json lists no models, so nothing could be held to it."; fail=1
-elif grep -R -n -E --exclude-dir=.git --exclude-dir=model-registry --exclude-dir=consensuses "($ids|$shape)" . | cut -d: -f1,2 | sed 's/^/  /' | grep . ; then
+elif grep -R -n -i -E --exclude-dir=.git --exclude-dir=model-registry --exclude-dir=consensuses "($ids|$shape)" . | cut -d: -f1,2 | sed 's/^/  /' | grep . ; then
   echo "FAIL: the place(s) above name a model; name the role instead, and the model in model-registry/registry.json."
   fail=1
 else

@@ -1,5 +1,5 @@
 {
-  "about": "The one place a model is named (decision 0008, issue #103, on the 18 September consensus in consensuses/juku-os/). Every other file asks for a role. How to ask, inspect and switch: library/model-registry.md. A switch is one edit to this file, reviewed like any other change to the gate.",
+  "about": "The one place a model is named (decision 0008, issue #103, on the 18 September consensus in consensuses/juku-os/). Every other file asks for a role. How to ask, inspect and switch: library/model-registry.md. A switch is one edit to this file, reviewed like any other change to the gate. The reviewer roles are decision 0008's own assignment, which reverses the 22 September pairing that put the open-weight model behind Sonnet as the main backup.",
   "version": "2026-09-25.1",
   "reviewed": "2026-09-25",
   "decision": "https://github.com/Adonis80/how-we-build/issues/103",

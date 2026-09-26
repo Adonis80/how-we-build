@@ -523,8 +523,9 @@ jobs:
           role=$ROLE model=unknown effort=$EFFORT
           ask() {
             role=$1
-            { model=$(resolve "$role" model) && interface=$(resolve "$role" interface) && effort=$(resolve "$role" effort); } \
-              || { printf '{"is_error":true,"subtype":"unresolved"}\n' > "$out"; : > "$err"; return 2; }
+            { m=$(resolve "$role" model) && i=$(resolve "$role" interface) && e=$(resolve "$role" effort); } \
+              || { model=unknown effort=unknown; printf '{"is_error":true,"subtype":"unresolved"}\n' > "$out"; : > "$err"; return 2; }
+            model=$m interface=$i effort=$e
             case "$effort" in high|max) ;; *) printf '{"is_error":true,"subtype":"no_effort"}\n' > "$out"; : > "$err"; return 2 ;; esac
             echo "reading as $role: $model at effort $effort, for at most $2 s"
             case "$interface" in
