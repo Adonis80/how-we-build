@@ -19,8 +19,11 @@ run-name: Build the board (${{ github.event_name }})
 # WHY pull_request_target AND NOT pull_request. A `pull_request` run takes the
 # pull request's ref, and the `reviewer` environment admits `main` alone, so
 # every such run would be refused its keys. `pull_request_target` runs this
-# file as it stands on main, and nothing of the pull request is checked out or
-# run: its number, title, two body lines and the reviewer's check run are read
+# file as it stands on the pull request's base — main, for every pull request
+# the queue holds — and the door admits main alone; that it admits these runs,
+# and refuses one based elsewhere before any step, is shown by the first run and
+# cited, not claimed (#113's first read). Nothing of the pull request is
+# checked out or run: its number, title, two body lines and the reviewer's check run are read
 # through the API as data. A fork's pull request wakes nothing and is not
 # read, because this repository is public: only a branch here, which only a
 # writer can push, reaches the board.
@@ -50,12 +53,11 @@ permissions:
   pull-requests: read
   checks: read
 
-# One at a time, and none cancelled: a deploy is never cut off between going
-# live and its smoke test. GitHub keeps one run pending and replaces it with
-# the newest, which reads the newest sources.
-concurrency:
-  group: build-board
-  cancel-in-progress: false
+# Automatic deploys wait for his look at the first preview (step 6): a
+# dispatch deploys either way; a pull request or a verdict deploys only once
+# this reads yes, which one reviewed line flips after he has agreed.
+env:
+  LIVE: "no"
 
 jobs:
   build:
@@ -67,6 +69,13 @@ jobs:
        github.event.check_run.app.id == 5000405 &&
        github.event.check_run.name == 'juku-reviewer')
     runs-on: ubuntu-latest
+    # One at a time, and none cancelled: a deploy is never cut off between
+    # going live and its smoke test. On the job, not the workflow, so a run
+    # its `if:` skips (a fork's pull request, anyone else's check run) never
+    # joins the group and displaces a real one (#113's first read).
+    concurrency:
+      group: build-board
+      cancel-in-progress: false
     # THE DOOR. The App's key and the deploy key are readable only from main.
     # review-gate.py refuses a build that loses it.
     environment: reviewer
@@ -92,7 +101,11 @@ jobs:
           fi
           umask 077
           key="$RUNNER_TEMP/reviewer.pem"
-          trap 'rm -f "$key" "$RUNNER_TEMP/mint.json"' EXIT
+          tok=""
+          revoke() { [ -z "$tok" ] || curl -sS -o /dev/null -X DELETE -H "Authorization: token $tok" \
+            -H "Accept: application/vnd.github+json" "https://api.github.com/installation/token" || true; tok=""; }
+          # Whatever ends this step, a product's token is not left live.
+          trap 'revoke; rm -f "$key" "$RUNNER_TEMP/mint.json"' EXIT
           printf '%s\n' "$APP_KEY" > "$key"
           b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
           now=$(date +%s)
@@ -117,8 +130,6 @@ jobs:
             tok=$(jq -r '.token // empty' "$RUNNER_TEMP/mint.json")
             [ -n "$tok" ] || { echo "::error::the App would not mint a token scoped to $REPO"; exit 1; }
             echo "::add-mask::$tok"
-            revoke() { curl -sS -o /dev/null -X DELETE -H "Authorization: token $tok" \
-              -H "Accept: application/vnd.github+json" "https://api.github.com/installation/token" || true; }
             want='{"contents":"read"}'
             granted=$(jq -cS '(.permissions // {}) | del(.metadata)' "$RUNNER_TEMP/mint.json")
             if [ "$granted" != "$want" ]; then
@@ -206,15 +217,43 @@ jobs:
           TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || 'production' }}
         run: |
           set -euo pipefail
+          # HIS LOOK FIRST (step 6). Until LIVE is flipped by a one-line pull
+          # request after he has agreed the preview, only a dispatch deploys; a
+          # pull request or a verdict renders the board, proving the reads, and
+          # moves nothing.
+          if [ "$GITHUB_EVENT_NAME" != workflow_dispatch ] && [ "$LIVE" != yes ]; then
+            echo "::notice::rendered, not deployed: automatic deploys begin when LIVE is yes, after the Chairman agrees the look"
+            exit 0
+          fi
           [ -n "${VERCEL_TOKEN:-}" ] || { echo "::error::No deploy key: the reviewer environment holds no VERCEL_TOKEN. Nothing is deployed; the last snapshot stands."; exit 1; }
           case "$TARGET" in production|preview) ;; *) echo "::error::no such target"; exit 1 ;; esac
           v() { curl -sS -H "Authorization: Bearer $VERCEL_TOKEN" -H "Content-Type: application/json" "$@"; }
           q="teamId=$TEAM"
           site="$RUNNER_TEMP/site"
+          serving() { v "https://api.vercel.com/v13/deployments/$DOMAIN?$q" 2>/dev/null | jq -r '.id // empty' 2>/dev/null || true; }
           # What is live now is recorded before anything moves.
           before=$(v "https://api.vercel.com/v9/projects/$PROJECT?$q" | jq -r '.targets.production.id // empty')
           [ -n "$before" ] || { echo "::error::the live deployment could not be recorded, so there would be nothing to roll back to. Nothing is deployed."; exit 1; }
           echo "live before: $before"
+          # ROLL BACK ON EVERY RED, NOT ONLY A RED SMOKE (#113's first read). From
+          # here a production deploy may go live whatever this script does next
+          # (the host assigns the domain when the build is ready), so every exit
+          # but a passed smoke promotes the recorded deployment back, requires
+          # the host to accept it, and asks until the domain serves it again.
+          ok=no
+          rollback() {
+            [ "$TARGET" = production ] && [ "$ok" != yes ] || return 0
+            echo "::error::not confirmed live and gated; promoting $before back"
+            code=$(v -X POST "https://api.vercel.com/v10/projects/$PROJECT/promote/$before?$q" -o /dev/null -w '%{http_code}' || echo 000)
+            [[ "$code" =~ ^2 ]] || { echo "::error::ROLLBACK REFUSED: HTTP $code promoting $before. The domain may serve an unconfirmed board."; exit 1; }
+            for _ in $(seq 18); do
+              [ "$(serving)" = "$before" ] && { echo "rolled back: $DOMAIN serves $before"; exit 1; }
+              sleep 10
+            done
+            echo "::error::ROLLBACK UNCONFIRMED: $DOMAIN does not serve $before after three minutes."
+            exit 1
+          }
+          trap rollback EXIT
           # The files are sent through the API: no Git metadata, so the host
           # cannot read this as an integration deploy (library/deploy.md).
           jq -n --arg p "$PROJECT" --arg target "$TARGET" \
@@ -225,39 +264,40 @@ jobs:
                       {file: "robots.txt", data: $robots}, {file: "vercel.json", data: $vj}]}
              + (if $target == "production" then {target: "production"} else {} end)' > "$RUNNER_TEMP/deploy.json"
           rm -rf "$site"
-          made=$(v -X POST "https://api.vercel.com/v13/deployments?$q&skipAutoDetectionConfirmation=1" -d @"$RUNNER_TEMP/deploy.json")
+          made=$(v -X POST "https://api.vercel.com/v13/deployments?$q&skipAutoDetectionConfirmation=1" -d @"$RUNNER_TEMP/deploy.json" || true)
           rm -f "$RUNNER_TEMP/deploy.json"
-          id=$(printf '%s' "$made" | jq -r '.id // empty')
-          [ -n "$id" ] || { echo "::error::the host refused the deployment: $(printf '%s' "$made" | jq -r '.error.code // "no code"')"; exit 1; }
+          id=$(printf '%s' "$made" | jq -r '.id // empty' 2>/dev/null || true)
+          [ -n "$id" ] || { echo "::error::the host did not confirm the deployment: $(printf '%s' "$made" | jq -r '.error.code // "no code"' 2>/dev/null || echo "no answer")"; exit 1; }
           echo "deployment: $id ($TARGET)"
           state=""
           for _ in $(seq 60); do
-            state=$(v "https://api.vercel.com/v13/deployments/$id?$q" | jq -r '.readyState // empty')
+            state=$(v "https://api.vercel.com/v13/deployments/$id?$q" 2>/dev/null | jq -r '.readyState // empty' 2>/dev/null || true)
             case "$state" in READY|ERROR|CANCELED) break ;; esac
             sleep 5
           done
-          [ "$state" = READY ] || { echo "::error::the deployment ended $state; production was not moved from $before"; exit 1; }
+          [ "$state" = READY ] || { echo "::error::the deployment ended ${state:-unknown}"; exit 1; }
           if [ "$TARGET" = preview ]; then
-            echo "preview ready: $(v "https://api.vercel.com/v13/deployments/$id?$q" | jq -r '.url') (behind the team's sign-in)"
+            echo "preview ready: $(v "https://api.vercel.com/v13/deployments/$id?$q" | jq -r '.url // empty' 2>/dev/null || true) (behind the team's sign-in)"
             exit 0
           fi
           # THE SMOKE: the domain answers from the new deployment, and to a
-          # stranger it shows the PIN screen and nothing of the board. The
-          # edge follows the control plane by a little, so it is asked again
-          # for up to three minutes before it is called red.
-          ok=no
+          # stranger it shows the PIN screen and nothing of the board, at the
+          # root and at the page's own file name. The edge follows the control
+          # plane by a little, so a missing answer is asked again for up to
+          # three minutes; the board seen by a stranger is never asked again.
           for _ in $(seq 18); do
-            on=$(v "https://api.vercel.com/v13/deployments/$DOMAIN?$q" | jq -r '.id // empty')
-            page=$(curl -sS "https://$DOMAIN/" || true)
-            if [ "$on" = "$id" ] && grep -q "Directors only" <<< "$page" && ! grep -q "data-board" <<< "$page"; then
-              ok=yes; break
+            root=$(curl -sS "https://$DOMAIN/" || true)
+            file=$(curl -sS "https://$DOMAIN/index.html" || true)
+            if grep -q "data-board" <<< "$root$file"; then
+              echo "::error::A STRANGER WAS SERVED THE BOARD on $DOMAIN"
+              exit 1
+            fi
+            if [ "$(serving)" = "$id" ] && grep -q "Directors only" <<< "$root" && grep -q "Directors only" <<< "$file"; then
+              ok=yes
+              echo "live: $id on $DOMAIN, the PIN screen alone to a stranger"
+              exit 0
             fi
             sleep 10
           done
-          if [ "$ok" = yes ]; then
-            echo "live: $id on $DOMAIN, the PIN screen alone to a stranger"
-            exit 0
-          fi
-          echo "::error::the smoke test failed on $id; promoting $before back"
-          v -X POST "https://api.vercel.com/v10/projects/$PROJECT/promote/$before?$q" -o /dev/null -w "promote: HTTP %{http_code}\n"
+          echo "::error::the smoke test did not pass on $id within three minutes"
           exit 1

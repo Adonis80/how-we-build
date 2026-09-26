@@ -201,8 +201,9 @@ def product_row(p):
 # ---------------------------------------------------------------- Juku OS
 
 def body_line(body, key):
+    """The rest of the line after `key:`, markdown emphasis dropped (`**P2**` reads as P2)."""
     m = re.search(r"\*{0,2}%s:\*{0,2}[ \t]*([^\n]*)" % key, body or "")
-    return m.group(1).strip() if m else None
+    return m.group(1).replace("*", "").strip() if m else None
 
 
 def readiness(pr):
@@ -213,8 +214,9 @@ def readiness(pr):
     m = re.match(r"(yes|no)\b(.*)", line or "", re.I)
     if not m:
         return None, "", pri.group(1) if pri else None
-    reason = re.split(r"\*\*", m.group(2))[0]
-    reason = re.sub(r"[*`]", "", reason).strip(" \t.,:;—–-")
+    # The reason runs to the next field on the same line, if one follows.
+    reason = re.split(r"\s(?:Lead stack|Reviewed by|Priority):", m.group(2))[0]
+    reason = reason.replace("`", "").strip(" \t.,:;—–-")
     return m.group(1).lower(), reason[:240], pri.group(1) if pri else None
 
 
@@ -230,6 +232,10 @@ def pr_state(pr):
     runs = pr.get("review") or []
     if not runs:
         return "Review not recorded"
+    # The gate keeps the worst answer on the head, so the board does too: a
+    # failure anywhere on it reads as failed, whatever came after (#113's read).
+    if any(r.get("status") == "completed" and r.get("conclusion") == "failure" for r in runs):
+        return "Review check failed"
     last = runs[0]
     if last.get("status") != "completed":
         # An older success never overrides a newer pending attempt.
@@ -385,6 +391,8 @@ def _selftest():
         (pr(7, ok, review=[("in_progress", None), ("completed", "success")]), "Further review pending"),
         (pr(8, ok, review=[("completed", "success")]), "Review check passed"),
         (pr(9, ok, review=[("completed", "failure"), ("completed", "success")]), "Review check failed"),
+        (pr(11, ok, review=[("completed", "success"), ("completed", "failure")]), "Review check failed"),
+        (pr(12, "**Priority:** **P2**. **Ready:** no — **Decision needed:** which host."), "Waiting on the Chairman"),
         (pr(10, ok, review=[("completed", "neutral")]), "Review incomplete"),
     ]
     for p, want in states:
@@ -410,6 +418,9 @@ def _selftest():
                                      for i in range(12)]}}
     page = render(reads)
     hold("<script" not in page and html.escape(evil) in page, "§8: text is escaped and the page runs no script")
+    hold("<body data-board>" in page, "the marker the deploy's smoke test looks for, so a board served to a stranger is caught")
+    hold(readiness(pr(12, "**Priority:** **P2**. **Ready:** no — **Decision needed:** which host."))[2] == "P2",
+         "a bolded priority reads as its level")
     hold("UNSELECTED BODY TEXT" not in page, "§8: a pull request's body is never published beyond its two lines")
     hold("javascript:" not in page and 'href="https://github.com/Adonis80/how-we-build/pull/111"' in page,
          "§8: only this repository's pull-request links are linked")

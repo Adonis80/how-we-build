@@ -2739,13 +2739,29 @@ BOARD_HOLDS = (
     ("cancel-in-progress: false", "no deploy cut off between going live and its smoke test"),
     (".targets.production.id // empty", "what is live recorded before anything moves"),
     ('promote/$before', "a red smoke test promoting the recorded deployment back"),
+    # Every red after that, not only a red smoke (#113's first read, blocking).
+    ("trap rollback EXIT", "every exit but a passed smoke rolling back"),
+    ("[[ \"$code\" =~ ^2 ]] || {", "a rollback the host refused said so"),
+    ('[ "$(serving)" = "$before" ]', "a rollback confirmed by the domain serving the recorded deployment"),
+    ('if grep -q "data-board" <<< "$root$file"; then', "a board served to a stranger rolled back at once, never asked again"),
+    ('grep -q "Directors only" <<< "$root" && grep -q "Directors only" <<< "$file"', "the PIN screen at the root and at the page's own name"),
 )
+# The read in order: minted, its grant and reach checked, and only then a roadmap read.
+BOARD_ORDER = (BOARD_SCOPE, 'if [ "$granted" != "$want" ]; then', 'if [ "$reach" != "$REPO" ]; then',
+               "contents/roadmap.json")
+# The smoke's two markers, held on both sides: the PIN screen's words in the gate,
+# and the attribute only the board's page carries.
+BOARD_MARKS = (("board/middleware.js", "Directors only"), ("board/build.py", "<body data-board>"))
 BOARD_NEVER = (
     ("upload-artifact", "an artifact, which a public repository publishes"),
     ("github.event.pull_request.head.sha", "the pull request's own code"),
     ("github.event.pull_request.head.ref", "the pull request's own branch"),
+    ("github.head_ref", "the pull request's own branch"),
+    ("merge_commit_sha", "the pull request merged into main"),
     ("refs/pull/", "a pull request's ref"),
+    ("git fetch", "anything fetched beside main's own checkout"),
 )
+BOARD_CHECKOUT_REF = re.compile(r"^\s*ref:", re.M)
 BOARD_PRODUCT = re.compile(r"^\s*(Adonis80/[A-Za-z0-9._-]+)=\S", re.M)
 MAP_PRODUCT = re.compile(r"`https://github\.com/(Adonis80/[A-Za-z0-9._-]+)`")
 
@@ -2780,6 +2796,17 @@ def _check_board_wiring(board=None, product=None, readme=None, quiet=False):
     for word, what in BOARD_NEVER:
         if word in board:
             fault("reaches %s (`%s`)" % (what, word))
+    if BOARD_CHECKOUT_REF.search(board) or board.count("uses: actions/checkout") != 1:
+        fault("checks out something other than main's own tree, once")
+    at = [board.find(line) for line in BOARD_ORDER]
+    if -1 in at or at != sorted(at):
+        fault("reads a roadmap before its token's grant and reach are checked (%s)" % " < ".join(BOARD_ORDER))
+    for path, mark in BOARD_MARKS:
+        try:
+            if mark not in _read(path):
+                fault("smokes for %r, which %s no longer carries" % (mark, path))
+        except OSError as e:
+            fault("smokes against %s, which cannot be read: %s" % (path, e))
     if XTRACE.search(board):
         fault("traces its shell, which prints what it holds into a public log")
     if _jwt(board) is None or _jwt(board) != _jwt(product):
@@ -2789,12 +2816,24 @@ def _check_board_wiring(board=None, product=None, readme=None, quiet=False):
     if not listed or listed != mapped:
         fault("reads %s, and the README's map names %s: the board reads the map's products, all "
               "of them and nothing else" % (listed, mapped))
+    # The page's rows are the same list, by name: two copies of one truth held equal.
+    named = sorted(set(re.findall(r"^\s*Adonis80/[A-Za-z0-9._-]+=(.+?)\s*$", board, re.M)))
+    try:
+        spec = importlib.util.spec_from_file_location("board_build", "board/build.py")
+        build = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(build)
+        rows = sorted(r for r in build.ROWS if r != build.RULEBOOK)
+    except (OSError, ImportError, SyntaxError, AttributeError) as e:
+        rows = ["unreadable: %s" % e]
+    if rows != named:
+        fault("names its products %s, and board/build.py draws rows for %s" % (named, rows))
     if not bad:
         say("ok: the board's build runs only from main, behind the `%s` door, on a dispatch, this "
             "repository's own pull requests and the reviewer's check run; it reads the %d products "
             "on the README's map with a token each, contents read alone, its grant and reach "
-            "checked; it checks out nothing of a pull request, uploads nothing, and rolls back on a "
-            "red smoke test" % (KEY_ENVIRONMENT, len(listed)))
+            "checked before anything is read; it checks out nothing of a pull request, uploads "
+            "nothing, and from the moment it records what is live, every exit but a passed smoke "
+            "promotes that back and waits for the domain to serve it" % (KEY_ENVIRONMENT, len(listed)))
     return bad
 
 
@@ -2816,6 +2855,14 @@ BOARD_LOOSENINGS = (
     ("the pull request's head checked out", lambda t: t.replace("          persist-credentials: false\n", "          persist-credentials: false\n          ref: ${{ github.event.pull_request.head.sha }}\n", 1)),
     ("a deploy cut off mid-way", lambda t: t.replace("cancel-in-progress: false", "cancel-in-progress: true", 1)),
     ("a rollback to the new deployment", lambda t: t.replace("promote/$before", "promote/$id", 1)),
+    ("a rollback only on a red smoke", lambda t: t.replace("          trap rollback EXIT\n", "", 1)),
+    ("a refused rollback taken as done", lambda t: t.replace('[[ "$code" =~ ^2 ]] || {', 'true || {', 1)),
+    ("a rollback never confirmed", lambda t: t.replace('[ "$(serving)" = "$before" ]', "true", 1)),
+    ("a leaked board asked again", lambda t: t.replace('if grep -q "data-board" <<< "$root$file"; then', "if false; then", 1)),
+    ("the page's own name never smoked", lambda t: t.replace(' && grep -q "Directors only" <<< "$file"', "", 1)),
+    ("a roadmap read before the grant is checked", lambda t: t.replace(BOARD_SCOPE, 'curl -sS "https://api.github.com/repos/$REPO/contents/roadmap.json" > /dev/null\n            ' + BOARD_SCOPE, 1)),
+    ("a pull request fetched", lambda t: t.replace("      - name: Render\n", "      - run: git fetch origin pull/1/head\n      - name: Render\n", 1)),
+    ("a row the workflow does not read", lambda t: t.replace("          Adonis80/phena=Phena\n", "          Adonis80/phena=Phena Two\n", 1)),
 )
 
 
