@@ -661,8 +661,10 @@ jobs:
           # A verdict that opens the gate counts only with a review behind it:
           # at least 100 characters that are not whitespace (#109). #108's
           # first read answered `clean` over three dots, and the gate opened on
-          # it. A refusal is an answer however short, as it always was, so a
-          # terse `blocking` never hands the read to a reader who might clear it.
+          # it. A refusal is an answer however short, so a terse `blocking`
+          # never hands the read to a reader who might clear it; one with no
+          # review at all is signed a failure too, where before #110 it went
+          # unread.
           reviewed() { jq -Rse 'gsub("\\s"; "") | length >= 100' > /dev/null 2>&1; }
           # 0 an answer; 1 none; 2 `clean` or `advisory` over a short review.
           answered() {
