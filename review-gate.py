@@ -2683,6 +2683,137 @@ PRODUCT_LOOSENINGS = (
 )
 
 
+
+# THE BUILD BOARD'S BUILD (decision 0007 §6, #113). It is not a reviewer, but it
+# stands behind the same door and wears the same App: it mints a token for
+# each product on the README's map to read that product's roadmap.json, so it
+# is held as review-product.yml is — its triggers, the door, a token scoped to
+# one product with contents read and nothing else, its grant and reach
+# checked, the list of products held to the map both ways — and, because it
+# runs on pull_request_target in a public repository, nothing of a pull request
+# is checked out and a fork's wakes nothing and is not read.
+BOARD_WORKFLOW = ".github/workflows/build-board.yml"
+BOARD_TRIGGERS = ["check_run", "pull_request_target", "workflow_dispatch"]
+BOARD_SCOPE = """body=$(jq -cn --arg r "${REPO#*/}" '{repositories: [$r], permissions: {contents: "read"}}')"""
+BOARD_HOLDS = (
+    (BOARD_SCOPE, "a token scoped to one product with contents read alone"),
+    ("""want='{"contents":"read"}'""", "the grant checked against contents read alone"),
+    ('if [ "$granted" != "$want" ]; then', "a grant that is more, or less, refused"),
+    ('"https://api.github.com/installation/repositories"', "the token's reach asked of GitHub"),
+    ('if [ "$reach" != "$REPO" ]; then', "a token reaching past the one product refused"),
+    ("github.event.pull_request.head.repo.full_name == github.repository", "a fork's pull request waking nothing"),
+    ("'[.[] | select(.head.repo.full_name == $r)", "a fork's pull request left off the board"),
+    ("select(.merged_at != null and .head.repo.full_name == $r)", "a fork's merge left off the board"),
+    ("github.event.check_run.app.id == %d" % REVIEWER_APP_ID, "only the reviewer's own check run waking it"),
+    ("github.event.check_run.name == '%s'" % REVIEWER_CHECK, "only the reviewer's check run by name"),
+    ("cancel-in-progress: false", "no deploy cut off between going live and its smoke test"),
+    (".targets.production.id // empty", "what is live recorded before anything moves"),
+    ('promote/$before', "a red smoke test promoting the recorded deployment back"),
+)
+BOARD_NEVER = (
+    ("upload-artifact", "an artifact, which a public repository publishes"),
+    ("github.event.pull_request.head.sha", "the pull request's own code"),
+    ("github.event.pull_request.head.ref", "the pull request's own branch"),
+    ("refs/pull/", "a pull request's ref"),
+)
+BOARD_PRODUCT = re.compile(r"^\s*(Adonis80/[A-Za-z0-9._-]+)=\S", re.M)
+MAP_PRODUCT = re.compile(r"`https://github\.com/(Adonis80/[A-Za-z0-9._-]+)`")
+
+
+def _check_board_wiring(board=None, product=None, readme=None, quiet=False):
+    """build-board.yml, held to the door, one product per token, and the README's map."""
+    say = (lambda *a: None) if quiet else print
+    try:
+        board = _read(BOARD_WORKFLOW) if board is None else board
+        product = _read(PRODUCT_WORKFLOW) if product is None else product
+        readme = _read("README.md") if readme is None else readme
+    except OSError as e:
+        say("  wiring: %s" % e)
+        return 1
+    bad = 0
+
+    def fault(what):
+        nonlocal bad
+        say("  wiring: %s %s" % (BOARD_WORKFLOW, what))
+        bad += 1
+
+    # No `pull_request`, whose run is a branch's own file, and no clock.
+    if triggers(board) != BOARD_TRIGGERS:
+        fault("triggers on %s; it must be %s and nothing else — never a branch's own copy, never "
+              "a clock" % (triggers(board), BOARD_TRIGGERS))
+    if not USES_ENVIRONMENT.search(board):
+        fault("does not run in the `%s` environment, so the App's key and the deploy key are "
+              "readable from any branch" % KEY_ENVIRONMENT)
+    for line, what in BOARD_HOLDS:
+        if line not in board:
+            fault("has lost %s (`%s`)" % (what, line))
+    for word, what in BOARD_NEVER:
+        if word in board:
+            fault("reaches %s (`%s`)" % (what, word))
+    if XTRACE.search(board):
+        fault("traces its shell, which prints what it holds into a public log")
+    if _jwt(board) is None or _jwt(board) != _jwt(product):
+        fault("signs the App's JWT differently from %s" % PRODUCT_WORKFLOW)
+    listed = sorted(set(BOARD_PRODUCT.findall(board)))
+    mapped = sorted(set(MAP_PRODUCT.findall(readme)))
+    if not listed or listed != mapped:
+        fault("reads %s, and the README's map names %s: the board reads the map's products, all "
+              "of them and nothing else" % (listed, mapped))
+    if not bad:
+        say("ok: the board's build runs only from main, behind the `%s` door, on a dispatch, this "
+            "repository's own pull requests and the reviewer's check run; it reads the %d products "
+            "on the README's map with a token each, contents read alone, its grant and reach "
+            "checked; it checks out nothing of a pull request, uploads nothing, and rolls back on a "
+            "red smoke test" % (KEY_ENVIRONMENT, len(listed)))
+    return bad
+
+
+# Each loosening of build-board.yml that the check above must refuse.
+BOARD_LOOSENINGS = (
+    ("a pull_request trigger", lambda t: t.replace("  pull_request_target:\n", "  pull_request:\n    types: [opened]\n  pull_request_target:\n", 1)),
+    ("a clock", lambda t: t.replace("  check_run:\n", "  schedule:\n    - cron: '0 * * * *'\n  check_run:\n", 1)),
+    ("the door removed", lambda t: t.replace("    environment: reviewer\n", "", 1)),
+    ("a wider token", lambda t: t.replace(BOARD_SCOPE, BOARD_SCOPE.replace('{contents: "read"}', '{contents: "read", pull_requests: "write"}'), 1)),
+    ("the grant unchecked", lambda t: t.replace('if [ "$granted" != "$want" ]; then', "if false; then", 1)),
+    ("the reach unchecked", lambda t: t.replace('if [ "$reach" != "$REPO" ]; then', "if false; then", 1)),
+    ("a product not on the map", lambda t: t.replace("          PRODUCTS\n", "          Adonis80/elsewhere=Elsewhere\n          PRODUCTS\n", 1)),
+    ("a product on the map left out", lambda t: t.replace("          Adonis80/phena=Phena\n", "", 1)),
+    ("a fork's pull request waking it", lambda t: t.replace("github.event.pull_request.head.repo.full_name == github.repository", "true", 1)),
+    ("a fork's pull request read", lambda t: t.replace("'[.[] | select(.head.repo.full_name == $r)", "'[.[] | select(true)", 1)),
+    ("any check run waking it", lambda t: t.replace("github.event.check_run.app.id == 5000405 &&", "", 1)),
+    ("an artifact uploaded", lambda t: t.replace("      - name: Render\n", "      - uses: actions/upload-artifact@v4\n        with:\n          path: ${{ runner.temp }}\n      - name: Render\n", 1)),
+    ("a traced shell", lambda t: t.replace("set -euo pipefail", "set -euxo pipefail", 1)),
+    ("the pull request's head checked out", lambda t: t.replace("          persist-credentials: false\n", "          persist-credentials: false\n          ref: ${{ github.event.pull_request.head.sha }}\n", 1)),
+    ("a deploy cut off mid-way", lambda t: t.replace("cancel-in-progress: false", "cancel-in-progress: true", 1)),
+    ("a rollback to the new deployment", lambda t: t.replace("promote/$before", "promote/$id", 1)),
+)
+
+
+def _check_board_loosenings():
+    """build-board.yml as it stands passes; each loosening of it is refused."""
+    try:
+        text = _read(BOARD_WORKFLOW)
+    except OSError as e:
+        print("  wiring: %s" % e)
+        return 1
+    bad = _check_board_wiring(board=text)
+    if bad:
+        return bad
+    for what, loosen in BOARD_LOOSENINGS:
+        changed = loosen(text)
+        if changed == text:
+            print("  wiring: the loosening '%s' no longer applies to %s — rewrite it against the "
+                  "file as it stands, or it proves nothing" % (what, BOARD_WORKFLOW))
+            bad += 1
+        elif not _check_board_wiring(board=changed, quiet=True):
+            print("  wiring: %s with %s passes the board's hold — the guard for it is gone"
+                  % (BOARD_WORKFLOW, what))
+            bad += 1
+    if not bad:
+        print("ok: each of %d loosenings of %s was applied to the real file and refused"
+              % (len(BOARD_LOOSENINGS), BOARD_WORKFLOW))
+    return bad
+
 def _check_product_loosenings():
     """Every loosening above must turn the product wiring red, and none may miss."""
     try:
@@ -3208,6 +3339,7 @@ def _selftest():
     failed += _check_wiring()
     failed += _check_product_wiring()
     failed += _check_product_loosenings()
+    failed += _check_board_loosenings()
     failed += _check_review_loosenings()
     failed += _check_read_loosenings()
     failed += _check_class_loosenings()
