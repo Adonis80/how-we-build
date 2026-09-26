@@ -2401,11 +2401,6 @@ def _check_caller():
         if ask.served_is_pinned(served, pinned) != want:
             fault("an answer from %r %s" % (served, "refused" if want else "taken as the pinned model's"))
     verdict = '{"verdict": "clean", "review": "r"}'
-    for content, want in ((verdict, verdict), ("```json\n%s\n```" % verdict, verdict),
-                          ("Here it is: %s. Done." % verdict, verdict), ("no object", None),
-                          (None, None)):
-        if ask.verdict_text(content) != want:
-            fault("the answer %r read as %r" % (content, ask.verdict_text(content)))
 
     def reply(model=pinned, content=verdict, **more):
         r = {"model": model, "choices": [{"message": {"content": content}}],
@@ -2420,6 +2415,86 @@ def _check_caller():
         got, status = ask.answer(resp, pinned)
         if status != rc or got.get("subtype") != sub:
             fault("%s answered %s (%s), not %s (%s)" % (what, status, got.get("subtype"), rc, sub))
+    # NO SILENT LOSS (#115's first reads: a `blocking` published with its
+    # findings missing; #116's first read: parse before weighing a cut, and let
+    # no brace in the prose hide the object). The worst verdict speaks; a
+    # refusal keeps every word beside it, cut off or not; a clearance is taken
+    # only whole and alone; no number reaches a `result`, where why() would read
+    # 429 as the provider's own refusal.
+    findings = "**1. Blocking — the page it left behind.** " + "It says the opposite. " * 20
+    intro = "To the CTO. Read verdict blocking, on one finding below."
+    refusal = '{"verdict": "blocking", "review": "%s"}' % intro
+    clean = '{"verdict": "clean", "review": "%s"}' % ("Read whole. " * 12)
+
+    def kept(content, *words, **more):
+        got, status = ask.answer(reply(content=content, **more), pinned)
+        review = json.loads(got.get("result") or "{}").get("review", "") if status == 0 else ""
+        said = json.loads(got.get("result") or "{}").get("verdict") if status == 0 else None
+        return status == 0 and said == "blocking" and all(w in review for w in words), (status, said, review[:100])
+
+    def cut(content):
+        r = reply(content=content)
+        r["choices"][0]["finish_reason"] = "length"
+        return r
+    for content, words, what in (
+            (findings + "\n\n" + refusal, (intro, "the page it left behind"), "findings written before a refusal (#115's stub)"),
+            ("**1. Blocking — `${{ inputs.repo }}` is pasted into the script.** " + findings + "\n" + refusal,
+             ("${{ inputs.repo }}", intro), "a `${{ … }}` in the findings before a refusal"),
+            (refusal + "\n\nAnd a dict: {'a': 1}. " + findings, ("{'a': 1}", intro), "a `}` in the findings after a refusal"),
+            (refusal + " Also: the brief is stale.", ("the brief is stale",), "a short finding beside a refusal"),
+            (clean + "\n" + refusal, (intro,), "a clearance and a refusal together, where the worst speaks")):
+        ok, why = kept(content, *words)
+        if not ok:
+            fault("%s was not kept as a refusal with its words (%s)" % (what, why))
+    got, status = ask.answer(cut(refusal + "\n\n" + findings), pinned)
+    review = json.loads(got.get("result") or "{}").get("review", "") if status == 0 else ""
+    if status != 0 or "the page it left behind" not in review or "cut it off for length" not in review:
+        fault("a refusal cut off for length was not kept as one, marked as cut (%s, %r)" % (status, review[-120:]))
+    for resp, sub, what in ((reply(content=findings + " " + clean), "outside", "a clearance written beside its object"),
+                            (reply(content=clean + " " + clean), "outside", "two clearances in one answer"),
+                            (reply(content='{"verdict": "advisory", "review": "r"}\n\n' + findings), "outside", "an advisory written beside its object"),
+                            (cut(clean), "truncated", "a clearance cut off for length"),
+                            (reply(content="${{ x }} and no verdict at all"), "no_verdict", "an answer with braces and no verdict")):
+        got, status = ask.answer(resp, pinned)
+        if status != 1 or got.get("subtype") != sub:
+            fault("%s answered %s (%s), not %s" % (what, status, got.get("subtype"), sub))
+        elif re.search(r"\d", got.get("result", "")):
+            fault("%s names a number, which why() may read as a provider's refusal: %r" % (what, got["result"]))
+    # However the one verdict is wrapped, it is read; with none, nothing is.
+    for content, want in ((verdict, verdict), ("```json\n%s\n```" % verdict, verdict),
+                          ("Here it is: %s. Done." % verdict, verdict), ("no object", None),
+                          (None, None)):
+        got, status = ask.answer(reply(content=content), pinned)
+        if (status, got.get("result") if status == 0 else got.get("subtype")) != \
+                ((0, want) if want else (1, "no_verdict")):
+            fault("the answer %r read as %s %r" % (content, status, got.get("result")))
+    # A one-sentence finding beside a clearance is not a wrapper (#116's second read).
+    got, status = ask.answer(reply(content=verdict + " Blocking: the key is printed on line 42."), pinned)
+    if status != 1 or got.get("subtype") != "outside":
+        fault("a clearance with a one-sentence finding beside it answered %s (%s), not no answer"
+              % (status, got.get("subtype")))
+    # The shape goes to the job's summary alone: never to stderr, where why()
+    # reads 429 as a rate limit, and never at the cost of a verdict.
+    import contextlib
+    import io
+    long_reply = reply(content=verdict + " " + "x" * 429)
+    with tempfile.TemporaryDirectory() as d:
+        summary = os.path.join(d, "summary")
+        for path in (summary, os.path.join(d, "no", "such", "dir")):
+            os.environ["GITHUB_STEP_SUMMARY"] = path
+            said = io.StringIO()
+            try:
+                with contextlib.redirect_stderr(said):
+                    ask.shape(long_reply)
+            except Exception as e:  # noqa: BLE001
+                fault("the answer's shape raised %s, which would cost a verdict" % type(e).__name__)
+            if said.getvalue():
+                fault("the answer's shape reached stderr, where why() reads its numbers: %r"
+                      % said.getvalue()[:80])
+        os.environ.pop("GITHUB_STEP_SUMMARY", None)
+        wrote = open(summary, encoding="utf-8").read() if os.path.exists(summary) else ""
+    if "1 verdict object(s)" not in wrote:
+        fault("the answer's shape did not reach the job's summary (%r)" % wrote[:80])
     got, _ = ask.answer(reply(), pinned)
     if (got.get("usage"), got.get("total_cost_usd")) != ({"input_tokens": 900, "output_tokens": 40}, 0.0021):
         fault("the tokens and cost not carried to the spend line (%s)" % got)
@@ -2446,7 +2521,10 @@ def _check_caller():
               % (p.returncode, p.stdout.strip()[:200]))
     if not bad:
         print("ok: the OpenAI-compatible caller takes an answer only from the model it pinned, reads "
-              "a verdict however it is wrapped, names a refusal, carries tokens and cost to the "
+              "every verdict object that decodes whole however it is wrapped, braces in the prose "
+              "notwithstanding, and lets the worst speak — such a refusal keeps the words beside "
+              "it, cut off or not; a clearance counts only whole and alone — writes the answer's "
+              "shape to the summary and never to stderr, names a refusal, carries tokens and cost to the "
               "spend line, puts the effort where the registry says, and refuses before any request "
               "with no credential")
     return bad
