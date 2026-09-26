@@ -12,7 +12,7 @@
 
 **The unit of work**: one accepted slice, a user-visible outcome with acceptance criteria, never a screen. **"Build" is a whole instruction**: take the top `roadmap.json` item carrying his word. It never means run the build, nor is answered with a question.
 
-**The loop.** One builder session per slice, attached to the repo. A turn stays only while the work is the same, staying beats a fresh start, and the history still helps; otherwise checkpoint and start fresh. When nothing can move it stops hard: no clock, timer, schedule or automation wakes it. Words change from an advisory session by PR.
+**The loop.** One builder session at a time per repo; readiness checked before deep reading. At each boundary it weighs continuing against starting fresh: a boundary alone never ends it, degradation and hard stops do. When nothing can move it stops hard: no clock, timer, schedule or automation wakes it. Words change from an advisory session by PR.
 1. State the slice and its non-goals. A new or reworked screen follows *How a screen gets designed*; planning stops.
 2. From latest `main`, read open PRs, run the product, find the smallest seam, branch, open a draft PR, and publish its item `building` on `main` by PR.
 3. Build. Replace rather than wrap. One implementation per business rule. No speculative abstraction.
