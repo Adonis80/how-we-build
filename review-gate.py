@@ -2390,6 +2390,31 @@ def _check_caller():
         got, status = ask.answer(resp, pinned)
         if status != rc or got.get("subtype") != sub:
             fault("%s answered %s (%s), not %s (%s)" % (what, status, got.get("subtype"), rc, sub))
+    # NO SILENT LOSS (#115's first reads: a `blocking` published with its
+    # findings missing). A reply cut off for length is no answer; words written
+    # outside the verdict object stay with a refusal and void a clearance; a
+    # short wrapper around the object is still just a wrapper.
+    findings = "**1. Blocking — the page it left behind.** " + "It says the opposite. " * 20
+    intro = "To the CTO. Read verdict blocking, on one finding below."
+    stub = findings + '\n\n{"verdict": "blocking", "review": "%s"}' % intro
+    got, status = ask.answer(reply(content=stub), pinned)
+    kept = json.loads(got.get("result") or "{}").get("review", "") if status == 0 else ""
+    if status != 0 or intro not in kept or "the page it left behind" not in kept:
+        fault("a refusal whose findings were written beside its object answered %s, keeping %r"
+              % (status, kept[:120]))
+    for content, what in ((findings + ' {"verdict": "clean", "review": "r"}', "a clearance written partly outside its object"),
+                          ('{"verdict": "advisory", "review": "r"}\n\n' + findings, "an advisory written partly outside its object")):
+        got, status = ask.answer(reply(content=content), pinned)
+        if status != 1 or got.get("subtype") != "outside":
+            fault("%s answered %s (%s), not refused as no answer" % (what, status, got.get("subtype")))
+    cut = reply()
+    cut["choices"][0]["finish_reason"] = "length"
+    got, status = ask.answer(cut, pinned)
+    if status != 1 or got.get("subtype") != "truncated":
+        fault("a reply cut off for length answered %s (%s), not refused as no answer" % (status, got.get("subtype")))
+    got, status = ask.answer(reply(content="Here it is: %s. Done." % verdict), pinned)
+    if status != 0 or got.get("result") != verdict:
+        fault("a short wrapper around the object answered %s, not the object alone" % status)
     got, _ = ask.answer(reply(), pinned)
     if (got.get("usage"), got.get("total_cost_usd")) != ({"input_tokens": 900, "output_tokens": 40}, 0.0021):
         fault("the tokens and cost not carried to the spend line (%s)" % got)
@@ -2416,7 +2441,9 @@ def _check_caller():
               % (p.returncode, p.stdout.strip()[:200]))
     if not bad:
         print("ok: the OpenAI-compatible caller takes an answer only from the model it pinned, reads "
-              "a verdict however it is wrapped, names a refusal, carries tokens and cost to the "
+              "a verdict however it is wrapped and loses nothing written beside it — a refusal keeps "
+              "its words, a clearance written partly outside its object and a reply cut off for "
+              "length are no answer — names a refusal, carries tokens and cost to the "
               "spend line, puts the effort where the registry says, and refuses before any request "
               "with no credential")
     return bad
