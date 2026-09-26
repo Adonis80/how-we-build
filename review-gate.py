@@ -2037,7 +2037,8 @@ def _check_class_loosenings():
 # clears the change without a review behind it, hands the read to its fallback;
 # with no fallback, or none that answers, the step fails and the verdict is
 # `neutral`: unread, the gate red.
-# The reading block is run, not read, on ROUTE_CASES below.
+# The reading block is run, not read, on ROUTE_CASES below: one block, from
+# `reviewed()` to the verdict, as the job runs it.
 ROUTE_RESOLVE = ('EFFORT=$(resolve "$ROLE" effort) || fail "the registry could not resolve $ROLE"',
                  'FALLBACK=$(resolve "$ROLE" fallback) || fail "the registry could not resolve $ROLE"')
 ROUTE_REGISTRY = {
@@ -2116,10 +2117,15 @@ REVIEW_READ = ("Addressed to the CTO. I read the diff against main's tip and the
                "blocking. I did not run check.sh, so the caps rest on CI. Fairly sure.")
 
 
-def route_says(block, answered, first, second, fallback, left):
+def route_says(block, first, second, fallback, left):
     """Run the reading block with a stub `ask()`. (roles asked, verdict read or None), or None."""
     with tempfile.TemporaryDirectory() as d:
         body = "\n".join(l.replace("/tmp/", d + "/").replace('"$t/', '"' + d + "/") for l in block)
+        # What `read_bytes=` measures, so the block's own line runs rather than
+        # a stub's value standing in for it.
+        for f in ("prompt.txt", "system.txt"):
+            with open(os.path.join(d, f), "w", encoding="utf-8") as g:
+                g.write("x" * 50)
         stub = textwrap.dedent("""\
             set -euo pipefail
             out='{d}/resp.json'; err='{d}/err.txt'; : > "$err"
@@ -2137,10 +2143,10 @@ def route_says(block, answered, first, second, fallback, left):
               return "$r"
             }}
             limit=25 STARTED=$(( $(date +%s) - limit * 60 + {left} ))
-            left=600 read_bytes=100 began=$(date +%s)
+            left=600
             role=$ROLE model=unknown effort=high
             """).format(d=d, left=left)
-        script = stub + "\n".join(answered) + "\n" + body + '\necho "done: $verdict"\n'
+        script = stub + body + '\necho "done: $verdict"\n'
         with open(os.path.join(d, "route.sh"), "w", encoding="utf-8") as f:
             f.write(script)
         env = dict(os.environ, ROLE=ORDINARY_ROLE, FALLBACK=fallback, CLASS="code",
@@ -2168,15 +2174,18 @@ def route_faults(text, path):
     for line in ROUTE_RESOLVE + (ROUTE_REGISTRY[path], ROUTE_ASK_GUARD):
         if line not in r:
             lost.append("`%s`" % line)
-    block = _block(r, lambda l: l == ROUTE_FIRST, lambda l: l == ROUTE_LAST)
-    # `reviewed()` and then `answered()`, which asks it: the two run as one.
-    answered = _block(r, lambda l: l == REVIEW_TEST, lambda l: l == "}")
-    if block is None or answered is None or "answered() {" not in answered:
-        lost.append("a reading block from `%s` to `%s`, and `%s` then `answered()`"
-                    % (ROUTE_FIRST, ROUTE_LAST, REVIEW_TEST))
+    # ONE BLOCK, RUN WHOLE (#110's second read, advisory 1): from `reviewed()`
+    # to the verdict, so every line between the two tests and the read runs
+    # here as it runs in the job. Run as two pieces, the lines between them
+    # ran in neither, and bash takes a function's last definition: a second
+    # `reviewed()` placed there would win in the real read and pass here.
+    block = _block(r, lambda l: l == REVIEW_TEST, lambda l: l == ROUTE_LAST)
+    if block is None or "answered() {" not in block or ROUTE_FIRST not in block:
+        lost.append("one reading block from `%s`, through `answered()` and `%s`, to `%s`"
+                    % (REVIEW_TEST, ROUTE_FIRST, ROUTE_LAST))
         return lost
     for what, first, second, fallback, left, want in ROUTE_CASES:
-        got = route_says(block, answered, first, second, fallback, left)
+        got = route_says(block, first, second, fallback, left)
         if got != want:
             lost.append("when %s, the roles %s asked and %s (it was %s)"
                         % (what, want[0], "the verdict %s read" % want[1] if want[1] else
@@ -2221,6 +2230,10 @@ ROUTE_LOOSENINGS = (
     ("an empty review taken, as before #109", REVIEW_WORKFLOW, lambda t: t.replace(*REVIEW_TAKEN[REVIEW_WORKFLOW], 1)),
     ("an empty review taken, as before #109", PRODUCT_WORKFLOW, lambda t: t.replace(*REVIEW_TAKEN[PRODUCT_WORKFLOW], 1)),
     ("a bar of one character", None, lambda t: t.replace(REVIEW_TEST, REVIEW_TEST.replace(">= 100", ">= 1"), 1)),
+    # Beside the original, not in its place: before #111 the test ran
+    # `reviewed()` and the reading block as two pieces, and this line, between
+    # them, ran in neither while bash took it over the first in the real read.
+    ("a second, looser bar defined after the first", None, lambda t: t.replace("          " + READ_BEGAN + "\n", "          " + READ_BEGAN + "\n          " + REVIEW_TEST.replace(">= 100", ">= 99") + "\n", 1)),
     ("a terse refusal handed to the fallback", None, lambda t: t.replace(REFUSAL_ANSWERED, "clean|advisory|blocking)", 1)),
     ("a terse refusal failed as unread", None, lambda t: t.replace(REFUSAL_KEPT, "", 1)),
     ("another provider for a product's code", PRODUCT_WORKFLOW, lambda t: t.replace("          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}\n", "          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}\n          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}\n", 1)),
