@@ -2033,9 +2033,10 @@ def _check_class_loosenings():
 # THE ROLE, READ (decision 0008). Each reviewer resolves the class's role from
 # the registry inside the read — review.yml from the protected branch, never the
 # head it reads, and review-product.yml from this repository's checkout, which
-# the door holds to main — and asks it once. A role that does not answer with a
-# verdict hands the read to its fallback; with no fallback, or none that
-# answers, the step fails and the verdict is `neutral`: unread, the gate red.
+# the door holds to main — and asks it once. A role that gives no verdict, or
+# clears the change without a review behind it, hands the read to its fallback;
+# with no fallback, or none that answers, the step fails and the verdict is
+# `neutral`: unread, the gate red.
 # The reading block is run, not read, on ROUTE_CASES below.
 ROUTE_RESOLVE = ('EFFORT=$(resolve "$ROLE" effort) || fail "the registry could not resolve $ROLE"',
                  'FALLBACK=$(resolve "$ROLE" fallback) || fail "the registry could not resolve $ROLE"')
@@ -2056,6 +2057,8 @@ PRODUCT_EGRESS = ("ask.py", "OPENROUTER", "openai-compatible")
 # (what happens, the primary's exit and verdict, the fallback's, the fallback
 # role or none, seconds left when the fallback would start, what must follow:
 # the roles asked in order, and the verdict read or None for a read that fails).
+# An exit and verdict may carry a third item, the review written with it; left
+# out, it is REVIEW_READ, a review that says what it read.
 ROUTE_CASES = (
     ("the role answers clean", (0, "clean"), (0, "clean"), FALLBACK_ROLE, 600,
      ([ORDINARY_ROLE], "clean")),
@@ -2082,7 +2085,35 @@ ROUTE_CASES = (
      ([ORDINARY_ROLE, FALLBACK_ROLE], None)),
     ("the fallback answers a verdict outside the schema", (1, ""), (0, "findings"), FALLBACK_ROLE, 600,
      ([ORDINARY_ROLE, FALLBACK_ROLE], None)),
+    # A verdict with nothing read behind it is no answer. #108's first read on
+    # 50a4688: `clean`, and a review of three dots, 15 tokens out against
+    # 129,357 in, and the gate opened on it. The same commit read again wrote
+    # 9,593 tokens.
+    ("the role answers clean with a review of three dots, as #108's first read did",
+     (0, "clean", "..."), (0, "advisory"), FALLBACK_ROLE, 600, ([ORDINARY_ROLE, FALLBACK_ROLE], "advisory")),
+    ("no fallback, and the role answers clean with a review of three dots",
+     (0, "clean", "..."), (0, "clean"), "", 600, ([ORDINARY_ROLE], None)),
+    ("neither writes a review with anything in it", (0, "clean", "..."), (0, "advisory", " "),
+     FALLBACK_ROLE, 600, ([ORDINARY_ROLE, FALLBACK_ROLE], None)),
+    # A refusal is an answer however short (#110's first read): a terse
+    # `blocking` is never handed to a reader who might clear the commit.
+    ("the role refuses in three dots, and the fallback would answer clean",
+     (0, "blocking", "..."), (0, "clean"), FALLBACK_ROLE, 600, ([ORDINARY_ROLE], "blocking")),
+    ("no fallback, and the role refuses in three dots",
+     (0, "blocking", "..."), (0, "clean"), "", 600, ([ORDINARY_ROLE], "blocking")),
+    ("the role answers clean in three dots, and the fallback refuses in three",
+     (0, "clean", "..."), (0, "blocking", "..."), FALLBACK_ROLE, 600,
+     ([ORDINARY_ROLE, FALLBACK_ROLE], "blocking")),
+    # The bar, pinned on both sides: 100 characters that are not whitespace.
+    ("no fallback, and the role's review is one character short of the bar",
+     (0, "clean", " \n".join(["x" * 33] * 3)), (0, "clean"), "", 600, ([ORDINARY_ROLE], None)),
+    ("no fallback, and the role's review just clears the bar",
+     (0, "clean", " \n".join(["x" * 33] * 3) + "x"), (0, "clean"), "", 600,
+     ([ORDINARY_ROLE], "clean")),
 )
+REVIEW_READ = ("Addressed to the CTO. I read the diff against main's tip and the pages it touches, "
+               "and checked each changed line against the brief and the pages beside it. Nothing "
+               "blocking. I did not run check.sh, so the caps rest on CI. Fairly sure.")
 
 
 def route_says(block, answered, first, second, fallback, left):
@@ -2097,9 +2128,9 @@ def route_says(block, answered, first, second, fallback, left):
             ask() {{
               role=$1 model="model-of-$1" effort=high
               echo "$1" >> '{d}/asked'
-              if [ "$1" = "$ROLE" ]; then r=$P_RC; v=$P_V; else r=$F_RC; v=$F_V; fi
+              if [ "$1" = "$ROLE" ]; then r=$P_RC; v=$P_V; w=$P_W; else r=$F_RC; v=$F_V; w=$F_W; fi
               if [ -n "$v" ]; then
-                jq -cn --arg v "$v" '{{result: ({{verdict: $v, review: "words"}} | tojson), usage: {{input_tokens: 9, output_tokens: 2}}, total_cost_usd: 0.01}}' > "$out"
+                jq -cn --arg v "$v" --arg w "$w" '{{result: ({{verdict: $v, review: $w}} | tojson), usage: {{input_tokens: 9, output_tokens: 2}}, total_cost_usd: 0.01}}' > "$out"
               else
                 printf '{{"is_error":true,"subtype":"x"}}\\n' > "$out"
               fi
@@ -2114,6 +2145,8 @@ def route_says(block, answered, first, second, fallback, left):
             f.write(script)
         env = dict(os.environ, ROLE=ORDINARY_ROLE, FALLBACK=fallback, CLASS="code",
                    P_RC=str(first[0]), P_V=first[1], F_RC=str(second[0]), F_V=second[1],
+                   P_W=first[2] if len(first) > 2 else REVIEW_READ,
+                   F_W=second[2] if len(second) > 2 else REVIEW_READ,
                    GITHUB_OUTPUT=os.path.join(d, "out"), GITHUB_STEP_SUMMARY=os.path.join(d, "summary"))
         try:
             p = subprocess.run(["bash", os.path.join(d, "route.sh")], env=env, capture_output=True,
@@ -2136,9 +2169,11 @@ def route_faults(text, path):
         if line not in r:
             lost.append("`%s`" % line)
     block = _block(r, lambda l: l == ROUTE_FIRST, lambda l: l == ROUTE_LAST)
-    answered = _block(r, lambda l: l == "answered() {", lambda l: l == "}")
-    if block is None or answered is None:
-        lost.append("a reading block from `%s` to `%s`, and `answered()`" % (ROUTE_FIRST, ROUTE_LAST))
+    # `reviewed()` and then `answered()`, which asks it: the two run as one.
+    answered = _block(r, lambda l: l == REVIEW_TEST, lambda l: l == "}")
+    if block is None or answered is None or "answered() {" not in answered:
+        lost.append("a reading block from `%s` to `%s`, and `%s` then `answered()`"
+                    % (ROUTE_FIRST, ROUTE_LAST, REVIEW_TEST))
         return lost
     for what, first, second, fallback, left, want in ROUTE_CASES:
         got = route_says(block, answered, first, second, fallback, left)
@@ -2154,6 +2189,23 @@ def route_faults(text, path):
     return lost
 
 
+# The review behind a verdict that opens the gate (#109): one test,
+# `reviewed()`, run in `answered()` so an empty `clean` or `advisory` hands over
+# to the fallback, and on the review the gate publishes so with no fallback it
+# fails; and, per file, that last line beside the one it replaced, which took
+# any review at all. A `blocking` is exempt from both (REFUSAL_*), as it was.
+REVIEW_TEST = r'''reviewed() { jq -Rse 'gsub("\\s"; "") | length >= 100' > /dev/null 2>&1; }'''
+REVIEW_WEIGHED = ("jq -r '.result // empty' \"$out\" 2>/dev/null | jq -r '.review // empty' 2>/dev/null "
+                  "| reviewed")
+REVIEW_FAIL = 'fail "the reviewer\'s review was under 100 characters, not counting whitespace"'
+REFUSAL_KEPT = '[ "$verdict" = blocking ] || '
+REFUSAL_ANSWERED = "blocking) return 0 ;;\n              clean|advisory)"
+REVIEW_TAKEN = {
+    REVIEW_WORKFLOW: (REFUSAL_KEPT + "reviewed < /tmp/review.md || " + REVIEW_FAIL,
+                      '[ -s /tmp/review.md ] || fail "the reviewer returned no review"'),
+    PRODUCT_WORKFLOW: (REFUSAL_KEPT + 'reviewed < "$t/review.md" || ' + REVIEW_FAIL,
+                       '[ -s "$t/review.md" ] || fail "the reviewer returned no review"'),
+}
 ROUTE_LOOSENINGS = (
     ("the registry read from the head", REVIEW_WORKFLOW, lambda t: t.replace(ROUTE_REGISTRY[REVIEW_WORKFLOW], 'cp "model-registry/$f" "$reg/$f"', 1)),
     ("a role the registry cannot resolve read anyway", None, lambda t: t.replace(ROUTE_RESOLVE[0], 'EFFORT=$(resolve "$ROLE" effort) || EFFORT=high', 1)),
@@ -2164,6 +2216,12 @@ ROUTE_LOOSENINGS = (
     ("a failure forgotten when no time is left", None, lambda t: t.replace('            if [ "$left" -ge 60 ]; then\n              rc=0\n', '            rc=0\n            if [ "$left" -ge 60 ]; then\n', 1)),
     ("a failed read never named", None, lambda t: t.replace("          " + READ_ANSWERED + "\n", "", 1)),
     ("a verdict outside the schema read", None, lambda t: _in_step(t, "Read it", '            *) fail "the reviewer returned no verdict: $(why)" ;;', '            *) verdict=clean ;;')),
+    ("a verdict with no review behind it counted as an answer", None, lambda t: t.replace(REVIEW_WEIGHED, "true", 1)),
+    ("an empty review taken, as before #109", REVIEW_WORKFLOW, lambda t: t.replace(*REVIEW_TAKEN[REVIEW_WORKFLOW], 1)),
+    ("an empty review taken, as before #109", PRODUCT_WORKFLOW, lambda t: t.replace(*REVIEW_TAKEN[PRODUCT_WORKFLOW], 1)),
+    ("a bar of one character", None, lambda t: t.replace(REVIEW_TEST, REVIEW_TEST.replace(">= 100", ">= 1"), 1)),
+    ("a terse refusal handed to the fallback", None, lambda t: t.replace(REFUSAL_ANSWERED, "clean|advisory|blocking)", 1)),
+    ("a terse refusal failed as unread", None, lambda t: t.replace(REFUSAL_KEPT, "", 1)),
     ("another provider for a product's code", PRODUCT_WORKFLOW, lambda t: t.replace("          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}\n", "          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}\n          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}\n", 1)),
 )
 
