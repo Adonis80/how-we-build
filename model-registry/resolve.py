@@ -3,6 +3,8 @@
 
     resolve.py REGISTRY ROLE          every field, one `key=value` a line
     resolve.py REGISTRY ROLE FIELD    that field alone
+    resolve.py REGISTRY coder-fast --code-config  native OpenCode config, no call
+    resolve.py REGISTRY coder-fast --code         bounded edit task from stdin
     resolve.py REGISTRY --check       the registry checked whole; ok, or why not
 
 Fields: role, model, name, provider, interface, base_url, credential, effort,
@@ -15,6 +17,9 @@ model does not list — is an error and a non-zero exit, never a default.
 Standard library only: it runs on a bare runner, beside a secret.
 """
 import json
+import os
+import shutil
+import subprocess
 import re
 import sys
 
@@ -132,6 +137,54 @@ def check(reg):
     return faults
 
 
+
+def code_config(got):
+    """Native OpenCode config for a bounded editing worker; no review authority."""
+    if got["role"] != "coder-fast" or got["provider"] != "openrouter" or got["fallback"]:
+        raise Unresolved("the pilot supports coder-fast on OpenRouter without fallback only")
+    model = "openrouter/" + got["model"]
+    return {
+        "$schema": "https://opencode.ai/config.json",
+        "model": model, "small_model": model, "share": "disabled", "autoupdate": False,
+        "enabled_providers": ["openrouter"],
+        "provider": {"openrouter": {"options": {"baseURL": got["base_url"]},
+            "models": {got["model"]: {"options": {
+                "reasoning": {"effort": got["effort"]},
+                "provider": {"require_parameters": True, "data_collection": "deny"}}}}}},
+        "agent": {"juku": {"description": "Bounded code editing worker", "mode": "primary",
+            "model": model, "steps": 12,
+            "prompt": "Complete only the assigned edit. Read AGENTS.md. Do not claim tests ran. "
+                      "Report changed files and remaining work. The lead runs tests and review.",
+            "permission": {"*": "deny", "read": {"*": "allow", "*.env*": "deny"},
+                "glob": "allow", "grep": "allow", "list": "allow", "edit": "allow",
+                "external_directory": "deny"}}},
+    }
+
+
+def run_code(got, config):
+    """Call an installed OpenCode in this branch; never install or obtain secrets."""
+    if not os.environ.get(got["credential"]):
+        raise Unresolved("missing " + got["credential"] + " in this execution environment")
+    executable = shutil.which("opencode")
+    if not executable:
+        raise Unresolved("OpenCode is not installed; tested target: opencode-ai 1.18.32")
+    branch = subprocess.run(["git", "branch", "--show-current"], capture_output=True, text=True)
+    if branch.returncode or branch.stdout.strip() in ("", "main", "master"):
+        raise Unresolved("run only in a disposable checkout on a named work branch")
+    task = sys.stdin.read().strip()
+    if not task:
+        raise Unresolved("no task on stdin")
+    env = os.environ.copy()
+    env["OPENCODE_CONFIG_CONTENT"] = json.dumps(config)
+    # Native permissions are not a security sandbox. The caller must provide an
+    # isolated workspace without production credentials or customer data.
+    try:
+        return subprocess.run([executable, "--pure", "run", "--agent", "juku", "--model", config["model"],
+                               "--format", "json", task], env=env, timeout=300).returncode
+    except subprocess.TimeoutExpired:
+        raise Unresolved("five-minute pilot limit reached; preserve edits for the lead")
+
+
 def main(argv):
     if len(argv) not in (3, 4):
         print(__doc__.strip().split("\n\n")[1], file=sys.stderr)
@@ -154,6 +207,16 @@ def main(argv):
     except Unresolved as e:
         print("unresolved: %s" % e, file=sys.stderr)
         return 1
+    if len(argv) == 4 and argv[3] in ("--code-config", "--code"):
+        try:
+            config = code_config(got)
+            if argv[3] == "--code-config":
+                print(json.dumps(config, indent=2))
+                return 0
+            return run_code(got, config)
+        except (Unresolved, OSError) as e:
+            print("coder: %s" % e, file=sys.stderr)
+            return 1
     if len(argv) == 4:
         if argv[3] not in FIELDS:
             print("no field %r; the fields are %s" % (argv[3], ", ".join(FIELDS)), file=sys.stderr)
