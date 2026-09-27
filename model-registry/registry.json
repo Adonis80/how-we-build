@@ -1,7 +1,7 @@
 {
   "about": "The one place a model is named (decision 0008, issue #103, on the 18 September consensus in consensuses/juku-os/). Every other file asks for a role. How to ask, inspect and switch: library/model-registry.md. A switch is one edit to this file, reviewed like any other change to the gate. The reviewer roles are decision 0008's own assignment, which reverses the 22 September pairing that put the open-weight model behind Sonnet as the main backup.",
-  "version": "2026-09-25.1",
-  "reviewed": "2026-09-25",
+  "version": "2026-09-27.1",
+  "reviewed": "2026-09-27",
   "decision": "https://github.com/Adonis80/how-we-build/issues/103",
   "providers": {
     "anthropic": {
@@ -24,6 +24,20 @@
     }
   },
   "models": {
+    "z-ai/glm-5.2": {
+      "name": "GLM 5.2",
+      "provider": "openrouter",
+      "open_weight": true,
+      "licence": "unknown, not checked",
+      "status": "canary",
+      "efforts": [
+        "high",
+        "xhigh"
+      ],
+      "checked": "2026-09-27",
+      "source": "https://openrouter.ai/z-ai/glm-5.2",
+      "note": "Chairman requested this exact model for coding on 27 September. Canary only: live tool-use trial pending. No price assumption or automatic model substitution."
+    },
     "claude-opus-5-5": {
       "name": "Claude Opus 5.5",
       "provider": "anthropic",
@@ -120,10 +134,10 @@
       "use": "Final front-end and design review. No caller yet: a product UI change calls it in a later pull request."
     },
     "coder-fast": {
-      "model": "z-ai/glm-5.3-flash",
+      "model": "z-ai/glm-5.2",
       "effort": "high",
-      "fallback": {"model": "deepseek/deepseek-v4.1-flash", "effort": "high"},
-      "use": "Default high-volume implementation. No caller yet: the builder is a Claude or Codex session."
+      "fallback": null,
+      "use": "Bounded OpenCode editing pilot through resolve.py --code. Lead owns tests, review and deployment. Not yet proven live."
     },
     "coder-max": {
       "model": "z-ai/glm-5.3",
