@@ -14,4 +14,6 @@ Scope: every repository under this rulebook, in either stack. Open when: asking 
 
 **A product's code goes to Anthropic alone for now.** `review-product.yml` speaks only the claude-code interface, because no other provider has been cleared to read a product's private code, so an ordinary product read falls back to `reviewer-fallback` and says so on its spend line. This repository's own reads, which are public, go to `reviewer-main`.
 
-**Not built yet** (decision 0008's later steps): re-reading only what changed since the last read, the weekly model check that proposes a registry pull request, and the main coder on an open-weight model.
+**Not built yet** (decision 0008's later steps): re-reading only what changed since the last read, the weekly model check that proposes a registry pull request, and promoting the open-weight editing pilot to main builder.
+
+**Editing pilot.** With OpenCode `opencode-ai@1.18.32` installed, run `resolve.py REGISTRY coder-fast --code < task.txt` in an isolated work-branch checkout; the environment supplies `OPENROUTER_API_KEY`. `--code-config` prints native config without a call. First run: synthetic only. Limits: twelve steps, five minutes, no monetary cap; use a budget-limited key. File editing only; the lead runs tests and existing review. Native permissions are not a sandbox: no production credentials or customer data. Live use and cost are unverified; reviewer roles are unchanged.
