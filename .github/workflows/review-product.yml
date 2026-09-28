@@ -332,7 +332,7 @@ jobs:
           # code but NAMES.md, a glossary: the brief, PRODUCT.md (his
           # decisions, figures and the evidence section) and
           # design/CONSTITUTION.md (#79's fourth and sixth reads). The class
-          # moves only the effort here; the pages are picked by the slice, below.
+          # moves only the role here; the pages are picked by the slice, below.
           class=words
           risky=no
           g diff -z --name-only --no-renames "origin/$MAIN...$SHA" > "$t/changed.txt"
@@ -535,8 +535,8 @@ jobs:
             cat "$t/diff.txt"
             echo "</diff>"
             echo
-            if [ "$EFFORT" != max ]; then
-              echo "This change is read at effort $EFFORT, not max: no file it touches is in a risky"
+            if [ "$CLASS" != risky ]; then
+              echo "This change is read as $CLASS, not as risky: no file it touches is in a risky"
               echo "class by the names the rulebook's review-gate.py holds. If it does touch pricing,"
               echo "live data or schema, sign-in or permissions, a public trust boundary, deploy or"
               echo "release machinery, or the review gate, that is a finding: say which file, so its name joins the rule."
@@ -622,7 +622,7 @@ jobs:
           # The role's model at the role's effort, the tools switched off, for
           # review.yml's reasons, which review-gate.py holds flag for flag.
           schema='{"type":"object","additionalProperties":false,"required":["verdict","review"],"properties":{"verdict":{"type":"string","enum":["clean","advisory","blocking"]},"review":{"type":"string"}}}'
-          case "$EFFORT" in high|max) ;; *) fail "the registry set no effort a reviewer may read at" ;; esac
+          case "$EFFORT" in max) ;; *) fail "the registry set no effort a reviewer may read at" ;; esac
           limit=25
           [[ "${STARTED:-}" =~ ^[0-9]+$ ]] || fail "the job's start was not recorded, so the read had no deadline"
           left=$(( STARTED + limit * 60 - $(date +%s) ))
@@ -634,7 +634,7 @@ jobs:
             { m=$(resolve "$role" model) && i=$(resolve "$role" interface) && e=$(resolve "$role" effort); } \
               || { model=unknown effort=unknown; printf '{"is_error":true,"subtype":"unresolved"}\n' > "$out"; : > "$err"; return 2; }
             model=$m interface=$i effort=$e
-            case "$effort" in high|max) ;; *) printf '{"is_error":true,"subtype":"no_effort"}\n' > "$out"; : > "$err"; return 2 ;; esac
+            case "$effort" in max) ;; *) printf '{"is_error":true,"subtype":"no_effort"}\n' > "$out"; : > "$err"; return 2 ;; esac
             echo "reading as $role: $model at effort $effort, for at most $2 s"
             case "$interface" in
               claude-code)
