@@ -1,6 +1,6 @@
 {
-  "about": "The one place a model is named (decision 0008, issue #103, on the 18 September consensus in consensuses/juku-os/). Every other file asks for a role. How to ask, inspect and switch: library/model-registry.md. A switch is one edit to this file, reviewed like any other change to the gate. The reviewer roles are decision 0008's own assignment, which reverses the 22 September pairing that put the open-weight model behind Sonnet as the main backup.",
-  "version": "2026-09-25.1",
+  "about": "The one place a model is named (decision 0008, issue #103, on the 18 September consensus in consensuses/juku-os/). Every other file asks for a role. How to ask, inspect and switch: library/model-registry.md. A switch is one edit to this file, reviewed like any other change to the gate. The reviewer roles are decision 0008's own assignment, which reverses the 22 September pairing that put the open-weight model behind Sonnet as the main backup; their effort is the Chairman's ruling of 28 September 2026, every read at max.",
+  "version": "2026-09-28.1",
   "reviewed": "2026-09-25",
   "decision": "https://github.com/Adonis80/how-we-build/issues/103",
   "providers": {
@@ -97,7 +97,7 @@
   "roles": {
     "reviewer-main": {
       "model": "z-ai/glm-5.3",
-      "effort": "high",
+      "effort": "max",
       "fallback": "reviewer-fallback",
       "use": "Reads every ordinary change: pages and ordinary code (decision 0008, rule 2)."
     },
@@ -109,7 +109,7 @@
     },
     "reviewer-fallback": {
       "model": "claude-sonnet-5",
-      "effort": "high",
+      "effort": "max",
       "fallback": null,
       "use": "Reads an ordinary change when reviewer-main does not answer (decision 0008, rule 2). If it does not answer either, the commit stays unread."
     },
