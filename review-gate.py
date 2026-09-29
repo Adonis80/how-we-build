@@ -2132,7 +2132,8 @@ REVIEW_READ = ("Addressed to the CTO. I read the diff against main's tip and the
 
 
 def route_says(block, first, second, fallback, left):
-    """Run the reading block with a stub `ask()`. (roles asked, verdict read or None), or None."""
+    """Run the reading block with a stub `ask()`. (roles asked, verdict read or None), a
+    `written […]` string when the output file's verdict lines disagree with it, or None."""
     with tempfile.TemporaryDirectory() as d:
         body = "\n".join(l.replace("/tmp/", d + "/").replace('"$t/', '"' + d + "/") for l in block)
         # What `read_bytes=` measures, so the block's own line runs rather than
@@ -2174,12 +2175,21 @@ def route_says(block, first, second, fallback, left):
             p = subprocess.run(["bash", os.path.join(d, "route.sh")], env=env, capture_output=True,
                                text=True, timeout=60)
             asked = open(os.path.join(d, "asked"), encoding="utf-8").read().split()
+            out = os.path.join(d, "out")
+            written = ([l.split("=", 1)[1] for l in open(out, encoding="utf-8").read().splitlines()
+                        if l.startswith("verdict=")] if os.path.exists(out) else [])
         except (OSError, subprocess.SubprocessError):
             return None
+    # WHAT IS SIGNED IS WHAT WAS WRITTEN (#111's second read, advisory). *Sign the
+    # verdict* reads the `verdict=` line in $GITHUB_OUTPUT, not the shell's
+    # variable, so a case holds the file: one line, saying what the read said,
+    # and none at all from a read that failed.
     done = re.search(r"^done: (\w+)$", p.stdout, re.M)
     if p.returncode == 0 and done:
-        return asked, done.group(1)
-    return (asked, None) if p.returncode == 3 and "failed: " in p.stdout else None
+        return asked, done.group(1) if written == [done.group(1)] else "written %s" % written
+    if p.returncode == 3 and "failed: " in p.stdout:
+        return asked, None if not written else "written %s" % written
+    return None
 
 
 def route_faults(text, path):
@@ -2200,11 +2210,25 @@ def route_faults(text, path):
     # stub, not the file, so a second `ask()` placed above the block would win
     # in the real read and never run here. Only the reader of the diff guards
     # that region until the harness starts higher, with a fake `claude` on PATH.
+    # ITS OTHER LIMIT (#118's read): the harness stops at `ROUTE_LAST`, so
+    # below it only a text rule holds — no line of *Read it* but that one may
+    # name both `GITHUB_OUTPUT` and `verdict`. A write spelled another way
+    # below the block (the file through a variable, a braced group, the name
+    # in capitals) passes it, and only the reader of the diff guards that
+    # region until the harness runs to the end of the step.
     block = _block(r, lambda l: l == REVIEW_TEST, lambda l: l == ROUTE_LAST)
     if block is None or "answered() {" not in block or ROUTE_FIRST not in block:
         lost.append("one reading block from `%s`, through `answered()` and `%s`, to `%s`"
                     % (REVIEW_TEST, ROUTE_FIRST, ROUTE_LAST))
         return lost
+    # One line of *Read it* writes the verdict the next step signs, and it is the
+    # block's last: a second, anywhere in the step, is a verdict nothing reads
+    # the way the cases do (#111's second read: GitHub keeps the last value a
+    # step writes for a name).
+    writes = [l.strip() for l in r.splitlines()
+              if "GITHUB_OUTPUT" in l and "verdict" in l and not l.strip().startswith("#")]
+    if writes != [ROUTE_LAST]:
+        lost.append("one line writing the verdict, `%s`, and no other (it has %s)" % (ROUTE_LAST, writes))
     for what, first, second, fallback, left, want in ROUTE_CASES:
         got = route_says(block, first, second, fallback, left)
         if got != want:
@@ -2256,6 +2280,11 @@ ROUTE_LOOSENINGS = (
     # `reviewed()` and the reading block as two pieces, and this line, between
     # them, ran in neither while bash took it over the first in the real read.
     ("a second, looser bar defined after the first", None, lambda t: t.replace("          " + READ_BEGAN + "\n", "          " + READ_BEGAN + "\n          " + REVIEW_TEST.replace(">= 100", ">= 99") + "\n", 1)),
+    ("a second verdict written after the first", None, lambda t: t.replace("          " + ROUTE_LAST + "\n", "          " + ROUTE_LAST + "\n          echo \"verdict=clean\" >> \"$GITHUB_OUTPUT\"\n", 1)),
+    # Deferred to the step's end, and spelled so the text rule misses it: only
+    # the file check refuses this one (#118's read, advisory 2).
+    ("a verdict deferred past the read", None, lambda t: t.replace("          " + READ_BEGAN + "\n", "          " + READ_BEGAN + "\n          f=$GITHUB_OUTPUT\n          trap 'echo verdict=clean >> \"$f\"' EXIT\n", 1)),
+    ("a verdict written before the read", None, lambda t: t.replace("          " + READ_BEGAN + "\n", "          " + READ_BEGAN + "\n          echo \"verdict=clean\" >> \"$GITHUB_OUTPUT\"\n", 1)),
     ("a terse refusal handed to the fallback", None, lambda t: t.replace(REFUSAL_ANSWERED, "clean|advisory|blocking)", 1)),
     ("a terse refusal failed as unread", None, lambda t: t.replace(REFUSAL_KEPT, "", 1)),
     ("an empty refusal failed as unread, as before #110", REVIEW_WORKFLOW, lambda t: t.replace(REVIEW_TAKEN[REVIEW_WORKFLOW][0], REVIEW_TAKEN[REVIEW_WORKFLOW][1] + "\n          " + REVIEW_TAKEN[REVIEW_WORKFLOW][0], 1)),
@@ -2653,6 +2682,10 @@ def _check_product_wiring(review=None, product=None, readme=None, quiet=False):
     if lost:
         fault("must carry the slice's own pages by rule and name what it leaves out; it has lost %s"
               % "; ".join(lost))
+    lost = link_faults(product)
+    if lost:
+        fault("must carry the source a change imports, one hop, and print nothing of it; it has "
+              "lost %s" % "; ".join(lost))
     if _why(review) is None or _why(product) != _why(review):
         fault("does not name why a read did not happen as %s does, line for line"
               % REVIEW_WORKFLOW)
@@ -3346,12 +3379,13 @@ json.dump(said, sys.stdout)
 '''
 
 
-def _picker(text):
-    """The picker's program, as the lines between its call and `PY`, dedented."""
+def _picker(text, call=PICK_CALL):
+    """The program called by `call` (the picker's, unless another is named), as the lines
+    between its call and `PY`, dedented."""
     gather = _step_span(text, "Gather what the reviewer reads")
     lines = text[gather[0]:gather[1]].splitlines() if gather else []
     try:
-        start = next(i for i, l in enumerate(lines) if l.strip() == PICK_CALL)
+        start = next(i for i, l in enumerate(lines) if l.strip() == call)
         end = next(i for i, l in enumerate(lines) if i > start and l.strip() == "PY")
     except StopIteration:
         return None
@@ -3495,6 +3529,217 @@ def _check_pick_loosenings():
               "the PRODUCT.md sections that item names, naming every other part with its size and "
               "printing numbers alone; the picker was run on %d case(s), and each of %d loosenings "
               "was refused" % (len(PICK_CASES), len(PICK_LOOSENINGS)))
+    return bad
+
+
+# THE SOURCE THE CHANGE IMPORTS, ONE HOP (decision 0010, 1a). A product read
+# carried the diff and every file it touches, and nothing those files call, so
+# a reader judged a call it could not see. Now each touched JS, TS or Python
+# file's direct imports are carried too, resolved against the head's tree and
+# nothing else. Held as the picker is: the linker is run here, not read,
+# against the cases below, so a bare package followed, a path the tree does not
+# hold, a Python import read at the wrong level, or a summary that prints a
+# product's path into the public log each turns the check red.
+LINK_CALL = ("if timeout 60 python3 - \"$t/tree.txt\" \"$t/touched.txt\" \"$t/sources\" \"$t/linked.txt\" "
+             "2>/dev/null <<'PY'")
+LINK_TREE = 'g ls-tree -r -z --name-only "$SHA" > "$t/tree.txt"'
+LINK_MARK = ("printf '\\n===== the source the change imports by relative path, and the scripts "
+             "a page loads, one hop; callers, tests, database rules and configuration only where touched or "
+             "imported =====\\n' >> \"$pages\"")
+LINK_TAKEN = ('while IFS= read -r -d \'\' f; do case "$carried" in *" $f "*) continue ;; esac; '
+              'add "$f" || true; done < "$t/linked.txt"')
+LINK_FAILED = ('echo "the source the change imports could not be linked, so this read carries the '
+               'touched files alone"')
+LINK_TOLD = ('echo "One hop is not the boundary: a change that could not be judged for want of a '
+             'file gets a blocking finding naming it."')
+# The reader is told a failed link too, not only the log (#129's first read, 2).
+LINK_FAILED_READ = ("printf '\\n===== the source the change imports could not be linked; only the "
+                    "touched files are here =====\\n' >> \"$pages\"")
+# What feeds the linker: the touched code of the kinds it reads, from the head (#129's first read, 4b).
+LINK_KINDS = 'case "$f" in *.js|*.mjs|*.cjs|*.jsx|*.ts|*.tsx|*.py|*.html) ;; *) continue ;; esac'
+LINK_FEED = 'g show "$SHA:$f" > "$t/sources/$n" 2>/dev/null || continue'
+# The touched files' own loop, which the linked files must follow (#129's first read, 4a).
+LINK_AFTER = 'add "$f" || true\n          done < "$t/touched.txt"\n'
+LINK_HTML = ('<script src="hosting/queue.js?v=3"></script>\n<script src="/app.js"></script>\n'
+             '<script src="https://cdn.example/x.js"></script><script src="//cdn.example/y.js"></script>\n'
+             '<script type="module">import { l } from \'./hosting/lib.js\'</script>\n')
+LINK_SAID = re.compile(r"^linked: \d+ file\(s\) imported by the \d+ touched code file\(s\) read\n$")
+LINK_JS = ("import a from './a'\nimport React from 'react'\nimport { lib } from \"../lib\"\n"
+           "import gone from './gone'\nexport { u } from './util'\nconst b = require('./b')\n"
+           "const c = await import( './c' )\nimport './side.css'\n")
+LINK_PY = ("from .x import y\nfrom .. import z\nimport pkg.mod\nimport os, json as j\n"
+           "from . import (w,\n    v as vv, gone)\nfrom pkg.sub import x as xx\nfrom .... import far\n"
+           "from pkg.sub import only\n")
+# (the tree, the files touched, the touched code and its text, the files linked).
+# The tree holds `app/react.js` beside the importer so that a bare `react`
+# followed as if it were relative is caught, and `pkg/sub/z.py` is absent so
+# that `from .. import z` read one level short finds nothing.
+LINK_CASES = (
+    (["app/main.js", "app/a.js", "app/react.js", "app/b.cjs", "app/c.tsx", "app/side.css",
+      "app/util.js", "lib/index.ts", "lib/other.ts"],
+     ["app/main.js", "app/util.js"],
+     [("app/main.js", LINK_JS), ("app/util.js", "import { a } from './a.js'\n")],
+     ["app/a.js", "lib/index.ts", "app/b.cjs", "app/c.tsx", "app/side.css"]),
+    (["pkg/__init__.py", "pkg/sub/__init__.py", "pkg/sub/m.py", "pkg/sub/x.py", "pkg/z.py",
+      "pkg/mod.py", "pkg/sub/w.py", "pkg/sub/v/__init__.py", "json.py", "pkg/sub/only.py"],
+     ["pkg/sub/m.py"],
+     [("pkg/sub/m.py", LINK_PY)],
+     ["pkg/sub/x.py", "pkg/z.py", "pkg/sub/w.py", "pkg/sub/v/__init__.py", "pkg/sub/__init__.py",
+      "pkg/sub/only.py", "pkg/mod.py", "json.py"]),
+    (["app/main.ts", "app/a.ts", "README.md"], ["README.md", "app/main.ts"],
+     [("app/main.ts", "// imports nothing\n")], []),
+    (["app/main.ts", "app/a.ts"], ["app/main.ts", "app/a.ts"],
+     [("app/main.ts", "import { a } from './a'\n")], []),
+    (["README.md"], ["README.md"], [], []),
+    # `https:/cdn.example/x.js` is what a remote src collapses to if followed as a path.
+    (["the-quote.html", "hosting/queue.js", "hosting/lib.js", "app.js", "https:/cdn.example/x.js"],
+     ["the-quote.html"],
+     [("the-quote.html", LINK_HTML)], ["hosting/lib.js", "hosting/queue.js", "app.js"]),
+)
+
+
+def links(program, cases):
+    """Run the linker on each case. Per case, (exit status, what it printed, the files it linked)."""
+    with tempfile.TemporaryDirectory() as d:
+        argvs = []
+        for n, (tree, touched, sources, _) in enumerate(cases):
+            names = [os.path.join(d, "%s%d" % (k, n)) for k in ("tree", "touched", "sources", "out")]
+            os.mkdir(names[2])
+            for name, paths in ((names[0], tree), (names[1], touched),
+                                (os.path.join(names[2], "names"), [s[0] for s in sources])):
+                with open(name, "w", encoding="utf-8") as f:
+                    f.write("".join(p + "\0" for p in paths))
+            for i, (_, body) in enumerate(sources):
+                with open(os.path.join(names[2], str(i)), "w", encoding="utf-8") as f:
+                    f.write(body)
+            argvs.append(names)
+        for name, body in (("program", program), ("cases", json.dumps(argvs)),
+                           ("harness", PICK_HARNESS)):
+            with open(os.path.join(d, name), "w", encoding="utf-8") as f:
+                f.write(body)
+        try:
+            p = subprocess.run([sys.executable, os.path.join(d, "harness"), os.path.join(d, "program"),
+                                os.path.join(d, "cases")], capture_output=True, text=True, timeout=60)
+            said = json.loads(p.stdout)
+        except (OSError, subprocess.SubprocessError, ValueError):
+            return [None] * len(cases)
+        got = []
+        for (rc, printed), argv in zip(said, argvs):
+            try:
+                linked = [l for l in open(argv[3], encoding="utf-8").read().split("\0") if l]
+            except OSError:
+                linked = None
+            got.append((rc, printed, linked))
+    return got
+
+
+def link_faults(text):
+    """What a product read has lost of carrying the source the change imports, one hop."""
+    lost = []
+    gather, read = _step_span(text, "Gather what the reviewer reads"), _step_span(text, "Read it")
+    g = text[gather[0]:gather[1]] if gather else ""
+    if LINK_TREE not in g:
+        lost.append("the tree listed from the head the read is of (`%s`)" % LINK_TREE)
+    for line, why in ((LINK_MARK, "the reader told where the linked source starts and what it is not"),
+                      (LINK_TAKEN, "the linked files carried through `add`, under the same budget"),
+                      (LINK_FAILED, "a failed link said, in words that name nothing of the product's"),
+                      (LINK_FAILED_READ, "a failed link said to the reader too, not only the log"),
+                      (LINK_KINDS, "the touched code of every kind the linker reads handed to it"),
+                      (LINK_FEED, "the touched code read from the head the read is of")):
+        if line not in g:
+            lost.append("%s (`%s`)" % (why, line))
+    if LINK_TAKEN in g and (LINK_AFTER not in g or g.index(LINK_TAKEN) < g.index(LINK_AFTER)):
+        lost.append("the touched files carried before the linked ones, so the budget spends on the change first")
+    if not read or LINK_TOLD not in text[read[0]:read[1]]:
+        lost.append("the reviewer told one hop is not the boundary (`%s`)" % LINK_TOLD)
+    program = _picker(text, LINK_CALL)
+    if program is None:
+        lost.append("the linker, called as `%s` — the tree's names and the touched code, "
+                    "its errors kept out of this public log" % LINK_CALL)
+        return lost
+    runs = links(program, LINK_CASES)
+    for n, ((tree, touched, sources, want), got) in enumerate(zip(LINK_CASES, runs), 1):
+        case = "in case %d" % n
+        if got is None:
+            lost.append("a linker that can be run %s" % case)
+            continue
+        rc, printed, linked = got
+        if rc != 0 or linked is None:
+            lost.append("a link made %s (it exited %s)" % (case, rc))
+            continue
+        if not LINK_SAID.match(printed) or [p for p in tree + touched if p in printed]:
+            lost.append("a summary of numbers alone %s (it printed %r)" % (case, printed))
+        if linked != want:
+            lost.append("exactly the files imported, one hop, each once and none touched, %s "
+                        "(it linked %s, not %s)" % (case, linked, want))
+    return lost
+
+
+# Each must turn the link's hold red on review-product.yml.
+LINK_LOOSENINGS = (
+    ("a bare package followed as if relative", lambda t: t.replace(r"""(\.\.?/[^"'\n]*)\1""", r"""([^"'\n]*)\1""", 1)),
+    ("a folder's index not tried", lambda t: t.replace(' + [path + "/index" + e for e in JS])', ")", 1)),
+    ("the extensions not tried", lambda t: t.replace('first([path] + [path + e for e in JS] + ', "first([path] + ", 1)),
+    ("a path the tree does not hold linked", lambda t: t.replace("if c in tree), None)", "if c in tree), candidates[0])", 1)),
+    ("a Python import's level ignored", lambda t: t.replace('base = "/".join(here[:len(here) - (len(dots) - 1)])', 'base = "/".join(here)', 1)),
+    ("the names of `from . import` not read as modules", lambda t: t.replace("found.append(module(base, words[0]))", "pass", 1)),
+    ("an absolute from-import's names not read as modules", lambda t: t.replace('found.append(module("", dotted + "." + words[0]))', "pass", 1)),
+    ("the linker unbounded", lambda t: t.replace(LINK_CALL, LINK_CALL.replace("timeout 60 ", ""), 1)),
+    ("an absolute Python import ignored", lambda t: t.replace("found.append(module(\"\", words[0]))", "pass", 1)),
+    ("a touched file linked again", lambda t: t.replace(" and path not in touched", "", 1)),
+    ("a linked file's path printed", lambda t: t.replace("% (len(chosen), importers))", "% (len(chosen), importers), *chosen)", 1)),
+    ("the linker's errors printed", lambda t: t.replace(LINK_CALL, LINK_CALL.replace(" 2>/dev/null", ""), 1)),
+    ("the tree listed from main", lambda t: t.replace(LINK_TREE, LINK_TREE.replace('"$SHA"', '"origin/$MAIN"'), 1)),
+    ("the linked files dropped", lambda t: t.replace(LINK_TAKEN, "true", 1)),
+    ("the marker line removed", lambda t: t.replace(LINK_MARK, "true", 1)),
+    ("a failed link unsaid", lambda t: t.replace(LINK_FAILED, "true", 1)),
+    ("the reviewer not told", lambda t: t.replace(LINK_TOLD, 'echo "."', 1)),
+    ("a failed link unsaid to the reader", lambda t: t.replace(LINK_FAILED_READ, "true", 1)),
+    ("Python not handed to the linker", lambda t: t.replace(LINK_KINDS, LINK_KINDS.replace("|*.py", ""), 1)),
+    ("a page not handed to the linker", lambda t: t.replace(LINK_KINDS, LINK_KINDS.replace("|*.html", ""), 1)),
+    ("the touched code read from main", lambda t: t.replace(LINK_FEED, LINK_FEED.replace('"$SHA:$f"', '"origin/$MAIN:$f"'), 1)),
+    ("a page's own script src ignored", lambda t: t.replace("for quote, src in SRC.findall(text):", "for quote, src in []:", 1)),
+    ("a remote script followed", lambda t: t.replace(' or ":" in src.split("/")[0]:', ":", 1)),
+    ("the linked files carried before the touched ones", lambda t: _link_first(t)),
+)
+
+
+def _link_first(t):
+    """The linker's block moved ahead of the touched files' own loop."""
+    start = t.find('          carried=" roadmap.json PRODUCT.md "\n')
+    end = t.find(LINK_AFTER, start)
+    link_end = t.find('          rm -rf "$t/tree.txt"', end)
+    if min(start, end, link_end) < 0:
+        return t
+    loop = t[start:end + len(LINK_AFTER)]
+    return t[:start] + t[end + len(LINK_AFTER):link_end] + loop + t[link_end:]
+
+
+def _check_link_loosenings():
+    """Every loosening above, applied to review-product.yml, must be refused."""
+    try:
+        product = _read(PRODUCT_WORKFLOW)
+    except OSError as e:
+        print("  wiring: %s" % e)
+        return 1
+    if link_faults(product):
+        return 1  # the wiring checks say what
+    bad = 0
+    for what, loosen in LINK_LOOSENINGS:
+        changed = loosen(product)
+        if changed == product:
+            print("  wiring: the loosening '%s' no longer applies to %s — rewrite it against the "
+                  "file as it stands, or it proves nothing" % (what, PRODUCT_WORKFLOW))
+            bad += 1
+        elif not link_faults(changed):
+            print("  wiring: %s with %s passes the link's hold — the guard for it is gone"
+                  % (PRODUCT_WORKFLOW, what))
+            bad += 1
+    if not bad:
+        print("ok: a product read carries, beside the files a change touches, the source they "
+              "import directly, one hop, resolved against the head's tree alone and printing "
+              "numbers alone; the linker was run on %d case(s), and each of %d loosenings was "
+              "refused" % (len(LINK_CASES), len(LINK_LOOSENINGS)))
     return bad
 
 
@@ -3789,6 +4034,7 @@ def _selftest():
     failed += _check_registry()
     failed += _check_caller()
     failed += _check_pick_loosenings()
+    failed += _check_link_loosenings()
     return 1 if failed else 0
 
 
