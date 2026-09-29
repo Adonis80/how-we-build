@@ -337,14 +337,16 @@ jobs:
       # inside the step that holds the Chairman's Claude token, so a bad
       # release's install script would have run beside it. Now it is one exact
       # version, whose platform binary is pinned to the same version and which
-      # has no other dependency, installed in a step that holds no secret. The
-      # version is the one that ran every read since it was published on 22
-      # September 2026, and before this merged, run 35856891823 installed it with
-      # this line on this runner image and found every flag the read passes.
+      # has no other dependency, installed in a step that holds no secret. It
+      # moved from 2.1.280 to 2.1.285 on 29 September 2026 (#130): 2.1.280 did
+      # not know Sonnet 5.5, and a full-size replica of a risky read failed on it
+      # at compaction, then answered whole on 2.1.285. 2.1.280's install was
+      # proved on this runner image by run 35856891823.
       # review-gate.py refuses a build that unpins it or moves it
       # back beside the token. Like the read, it may fail without stopping the
       # job: a failed install must reach the badge as `neutral`, never as a job
-      # that dies unseen. Moving to a newer version is this one line.
+      # that dies unseen. Moving it moves this line, review-product.yml's, and
+      # the loosenings in review-gate.py that name it.
       - name: Install the reviewer's tool
         if: steps.gather.outputs.too_big == 'no'
         continue-on-error: true
