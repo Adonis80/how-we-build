@@ -164,9 +164,9 @@ jobs:
           # proposer writes. Codex's P1 on #38.
           git show "origin/${{ github.event.repository.default_branch }}:AGENTS.md" > /tmp/brief.txt
           echo "brief bytes: $(wc -c < /tmp/brief.txt)"
-          # THE CLASS, FROM THE DIFF THE REVIEWER READS, and the effort it is
-          # read at: decision 0005 keeps max for the risky classes, and pages
-          # and ordinary code are read at high. Pages are `.md` files, less the brief
+          # THE CLASS, FROM THE DIFF THE REVIEWER READS, and the role that
+          # reads it; every read is at max, whatever its class (his ruling, 28
+          # September 2026). Pages are `.md` files, less the brief
           # (AGENTS.md, at any depth: it instructs the reviewer or an agent),
           # the pages whose words are law here (HOW-WE-BUILD.md, CHARTER.md,
           # RICH-DATA.md's data rules, and a product's PRODUCT.md: a
@@ -191,8 +191,8 @@ jobs:
           # changes or backfills, sign-in or permissions, customer or personal
           # data, secrets or credentials, a public trust boundary, or deploy
           # and release — and so is any file whose kind the list does not know.
-          # One risky file makes the change risky, read by reviewer-risky at
-          # max; the rest is read by reviewer-main at high, told so, and asked
+          # One risky file makes the change risky, read by reviewer-risky; the
+          # rest is read by reviewer-main, told so, and asked
           # to name a risky file the names missed. review-gate.py says why each
           # name is there.
           # review-gate.py runs this block against a list of changes, and holds
@@ -213,7 +213,7 @@ jobs:
               *) class=code ;;
             esac
             case "${f,,}" in
-              agents.md|*/agents.md|check.sh|*/check.sh|review-gate.py|*/review-gate.py|model-registry/*|*/model-registry/*|.*|*/.*) risky=yes ;;
+              agents.md|*/agents.md|check.sh|*/check.sh|review-gate.py|*/review-gate.py|board/build.py|model-registry/*|*/model-registry/*|.*|*/.*) risky=yes ;;
               *.md) ;;
               *pric*|*payment*|*billing*|*invoice*|*checkout*|*quote*) risky=yes ;;
               *.sql|*migration*|*schema*|supabase/*|*/supabase/*|*backfill*|*purge*|*truncate*|*wipe*|*seed*) risky=yes ;;
@@ -411,8 +411,8 @@ jobs:
               echo "with its size and left out. If judging it needed a left-out file or a deeper read,"
               echo "that is a finding: say which."
             fi
-            if [ "$EFFORT" != max ]; then
-              echo "This change is read at effort $EFFORT, not max: no file it touches is in a risky"
+            if [ "$CLASS" != risky ]; then
+              echo "This change is read as $CLASS, not as risky: no file it touches is in a risky"
               echo "class by the names the rulebook's review-gate.py holds. If it does touch pricing,"
               echo "live data or schema, sign-in or permissions, a public trust boundary, deploy or"
               echo "release machinery, or the review gate, that is a finding: say which file, so its name joins the rule."
@@ -500,8 +500,8 @@ jobs:
           }
 
           # The effort the role reads at, as the registry sets it and
-          # review-gate.py holds it: max for reviewer-risky, high for the
-          # ordinary roles (decision 0005). The claude-code interface runs on a
+          # review-gate.py holds it: max, for every role (his ruling, 28
+          # September 2026). The claude-code interface runs on a
           # Claude subscription token from `claude setup-token`, which Anthropic
           # sanctions for the unmodified Claude Code binary reading this
           # variable — not for a hand-written call to the Messages API, whatever
@@ -512,7 +512,7 @@ jobs:
           # a hostile diff says can make a tool run. The openai-compatible
           # interface is one HTTP call, which has no tools to switch off.
           schema='{"type":"object","additionalProperties":false,"required":["verdict","review"],"properties":{"verdict":{"type":"string","enum":["clean","advisory","blocking"]},"review":{"type":"string"}}}'
-          case "$EFFORT" in high|max) ;; *) fail "the registry set no effort a reviewer may read at" ;; esac
+          case "$EFFORT" in max) ;; *) fail "the registry set no effort a reviewer may read at" ;; esac
           limit=25
           [[ "${STARTED:-}" =~ ^[0-9]+$ ]] || fail "the job's start was not recorded, so the read had no deadline"
           left=$(( STARTED + limit * 60 - $(date +%s) ))
@@ -527,7 +527,7 @@ jobs:
             { m=$(resolve "$role" model) && i=$(resolve "$role" interface) && e=$(resolve "$role" effort); } \
               || { model=unknown effort=unknown; printf '{"is_error":true,"subtype":"unresolved"}\n' > "$out"; : > "$err"; return 2; }
             model=$m interface=$i effort=$e
-            case "$effort" in high|max) ;; *) printf '{"is_error":true,"subtype":"no_effort"}\n' > "$out"; : > "$err"; return 2 ;; esac
+            case "$effort" in max) ;; *) printf '{"is_error":true,"subtype":"no_effort"}\n' > "$out"; : > "$err"; return 2 ;; esac
             echo "reading as $role: $model at effort $effort, for at most $2 s"
             case "$interface" in
               claude-code)

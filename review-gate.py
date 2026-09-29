@@ -130,21 +130,17 @@ RESOLVER = "model-registry/resolve.py"
 ORDINARY_ROLE = "reviewer-main"
 RISKY_ROLE = "reviewer-risky"
 FALLBACK_ROLE = "reviewer-fallback"
-# And the effort a role reads at is its class's. Decision 0005 (issue #75, 23
-# September 2026), in its own words: "Effort. Build at medium, high after one
-# failed attempt, max only for reviews of the risky classes." A change touching
-# a risky class is read at RISKY_EFFORT; pages and ordinary code at
-# ORDINARY_EFFORT. The registry sets each role's effort; this file refuses a
-# registry that sets them otherwise. The class is worked out in each workflow
-# and held below, at CLASS_FIRST.
-RISKY_EFFORT = "max"
-# Why high and not medium, since the decision names only what risky reads get
-# (#79's seventh read): his ruling of 18 September holds the reviewer at least
-# as strong as the lead that builds, and the lead builds at medium and steps to
-# high after one failed attempt. At high, a read stays at or above the lead's
-# own effort; at medium it could fall below it. The CTO's reading.
-# Not yet proved on a live read: review.yml's class block names the first run.
-ORDINARY_EFFORT = "high"
+# And every read is at one effort, whatever its class: his ruling of 28
+# September 2026 ("models now"), in his words, "every read at max". It
+# supersedes decision 0005's "max only for reviews of the risky classes"
+# (issue #75, 23 September 2026), and with it the CTO's reading that held
+# pages and ordinary code at high, a step above a lead then building at
+# medium. The class still names the role, and so the model (and, in
+# review.yml, what a read is given); it no longer moves the effort. The
+# registry sets each role's effort; this file refuses a registry that sets any
+# reviewer role otherwise, and each reviewer refuses to read at any other. The
+# class is worked out in each workflow and held below, at CLASS_FIRST.
+REVIEW_EFFORT = "max"
 
 # The badge. `juku-reviewer`, created on the Chairman's account 19 September 2026;
 # installation 162987297. The id is the
@@ -292,7 +288,9 @@ REVIEWERS = {
 # change to any of them is a change to the gate however it is dressed. Narrowing
 # it to named files buys nothing and would have to be argued back the first time
 # a fifth file mattered.
-GATE_FILES = ("check.sh", "review-gate.py")
+# board/build.py joins them (#113's fourth read): check.sh runs its selftest
+# before the verdict, so a change to it is a change to what the gate runs.
+GATE_FILES = ("check.sh", "review-gate.py", "board/build.py")
 GATE_DIRS = (".github/workflows/", "model-registry/")
 
 
@@ -1426,7 +1424,9 @@ def _check_read_loosenings():
 
 # THE CLASS A CHANGE IS READ AT, AND WHAT A READ OF IT IS GIVEN. #77's reads
 # ran out of time twice at max, each preloading every file in this repository
-# (#70's slice 2), and decision 0005 keeps max for the risky classes alone. So
+# (#70's slice 2), and decision 0005 kept max for the risky classes alone,
+# until his ruling of 28 September 2026 put every read at max: the class now
+# picks the role, and so the model, and never the effort. So
 # each reviewer works out a class from the diff it reads: `words` when every
 # file the change touches is a page, `code` otherwise, and `risky` when any
 # file it touches is in one of the six risky classes. The brief, AGENTS.md at
@@ -1448,8 +1448,8 @@ def _check_read_loosenings():
 # the changes below, from its first line to the one output that hands the
 # effort to the read, so any line added inside it is run too.
 #
-# RISKY, BY NAME (#86). Max is kept for the six classes decision 0005 and the
-# operating page's step 5 name, and ordinary code is read at high with
+# RISKY, BY NAME (#86). The six classes decision 0005 and the operating page's
+# step 5 name are read by reviewer-risky, and ordinary code by reviewer-main with
 # everything it was given before. A file is risky by its path, lower-cased, so
 # a name's case cannot hide it: the gate's own files and the brief whatever
 # their extension, then, for anything that is not a page, a name that says
@@ -1458,7 +1458,7 @@ def _check_read_loosenings():
 # data), or deploy and release (every script, and what a build installs). A
 # page is never risky by its name: a screen spec called garment-pricing.md is
 # words about pricing, and the diff shows what it says. The names are a rule,
-# not a proof, so a read at high is told it was not read at max, and a reader
+# not a proof, so an ordinary read is told it was not read as risky, and a reader
 # that finds a risky change the names missed says so as a finding — which
 # puts the name in this list. Replayed before it merged, on the files each
 # merged pull request touched: of Hemz OS's last 72, 46 read risky and 26
@@ -1470,7 +1470,7 @@ CLASS_CODE = ("AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|des
 CLASS_ARMS = (CLASS_CODE, "*.md) ;;", "*) class=code ;;")
 RISK_CASE = 'case "${f,,}" in'
 # The six classes, as the arms that name them, in the order they are tried.
-RISK_GATE = ("agents.md|*/agents.md|check.sh|*/check.sh|review-gate.py|*/review-gate.py|"
+RISK_GATE = ("agents.md|*/agents.md|check.sh|*/check.sh|review-gate.py|*/review-gate.py|board/build.py|"
              "model-registry/*|*/model-registry/*|.*|*/.*) risky=yes ;;")
 RISK_PRICING = "*pric*|*payment*|*billing*|*invoice*|*checkout*|*quote*) risky=yes ;;"
 RISK_DATA = ("*.sql|*migration*|*schema*|supabase/*|*/supabase/*|*backfill*|*purge*|*truncate*|"
@@ -1507,14 +1507,15 @@ CLASS_LIST = {
 # The read is handed the class's role and nothing else; the effort and the
 # model are resolved from the registry inside the read, never passed in.
 ROLE_IN = "ROLE: ${{ steps.gather.outputs.role }}"
-EFFORT_GUARD = ('case "$EFFORT" in high|max) ;; *) fail "the registry set no effort a reviewer may '
-                'read at" ;; esac')
+EFFORT_GUARD = ('case "$EFFORT" in %s) ;; *) fail "the registry set no effort a reviewer may '
+                'read at" ;; esac' % REVIEW_EFFORT)
 READ_EFFORT = '--effort "$effort"'
 READ_MODEL = '--model "$model"'
-# A read below max is told so, in both reviewers, and asked to say if a file it
+# An ordinary read is told so, in both reviewers, and asked to say if a file it
 # was shown is in a risky class after all: without it, a name the list missed
-# is read at high in silence.
-RISK_TOLD = ('if [ "$EFFORT" != %s ]; then' % RISKY_EFFORT,
+# is read by reviewer-main, not reviewer-risky, in silence. It was keyed on the
+# effort while the two classes read at two; with one effort, on the class.
+RISK_TOLD = ('if [ "$CLASS" != risky ]; then',
              'echo "release machinery, or the review gate, that is a finding: say which file, so its '
              'name joins the rule."')
 # review.yml's pages: a change to pages alone is given the pages it touches, the
@@ -1666,6 +1667,7 @@ CLASS_CASES = (
     (["docs/AGENTS.md"], "risky"),
     (["README.md", "check.sh"], "risky"),
     (["review-gate.py"], "risky"),
+    (["board/build.py"], "risky"),
     ([".github/workflows/review.yml"], "risky"),
     ([".github/copilot-instructions.md"], "risky"),
     ([".claude/skills/steward/SKILL.md"], "risky"),
@@ -1674,7 +1676,7 @@ CLASS_CASES = (
     (["page.md.sh"], "risky"),
     (["page.md\nx.sh"], "risky"),
     (["supabase/migrations/0001_init.sql", "README.md"], "risky"),
-    # Ordinary code, and pages whose names sound risky, stay at high.
+    # Ordinary code, and pages whose names sound risky, stay ordinary.
     (["roadmap.json", "PRODUCT.md"], "code"),
     (["the-workshop.html", "hosting/queue.js"], "code"),
     (["hosting/test-orders.mjs"], "code"),
@@ -1850,8 +1852,8 @@ def class_faults(text, path):
     if [f for f in (_call(text) or []) if f.startswith("--model")] != [READ_MODEL + " \\"]:
         lost.append("`%s` as the call's one model" % READ_MODEL)
     if not all(line in r for line in RISK_TOLD):
-        lost.append("a read below %s told so and asked to name a risky file (`%s`)"
-                    % (RISKY_EFFORT, "`, `".join(RISK_TOLD)))
+        lost.append("an ordinary read told so and asked to name a risky file (`%s`)"
+                    % "`, `".join(RISK_TOLD))
     # What the read cost: counted before the call, timed around it, and handed
     # on before a failed read is named, so a read that ran out of time says too.
     held = [l.strip() for l in r.splitlines()]
@@ -1947,11 +1949,12 @@ CLASS_LOOSENINGS = (
     ("names split on a line break", None, lambda t: t.replace("diff -z --name-only --no-renames", "diff --name-only --no-renames", 1)),
     ("the role never handed on", None, lambda t: t.replace("          " + CLASS_OUT + "\n", "", 1)),
     ("the role handed on twice", None, lambda t: _in_step(t, "Gather what the reviewer reads", CLASS_OUT, CLASS_OUT + '\n          echo "role=%s" >> "$GITHUB_OUTPUT"' % ORDINARY_ROLE)),
-    ("an effort handed on by the class", None, lambda t: _in_step(t, "Gather what the reviewer reads", CLASS_OUT, CLASS_OUT + '\n          echo "effort=%s" >> "$GITHUB_OUTPUT"' % RISKY_EFFORT)),
+    ("an effort handed on by the class", None, lambda t: _in_step(t, "Gather what the reviewer reads", CLASS_OUT, CLASS_OUT + '\n          echo "effort=%s" >> "$GITHUB_OUTPUT"' % REVIEW_EFFORT)),
     ("the role not the class's", None, lambda t: t.replace(ROLE_IN, "ROLE: " + ORDINARY_ROLE, 1)),
-    ("an effort handed to the read", None, lambda t: t.replace("          " + ROLE_IN + "\n", "          %s\n          EFFORT: %s\n" % (ROLE_IN, ORDINARY_EFFORT), 1)),
+    ("an effort handed to the read", None, lambda t: t.replace("          " + ROLE_IN + "\n", "          %s\n          EFFORT: %s\n" % (ROLE_IN, REVIEW_EFFORT), 1)),
     ("an effort unchecked", None, lambda t: t.replace(EFFORT_GUARD, "true", 1)),
-    ("an effort written into the call", None, lambda t: t.replace(READ_EFFORT + " \\", "--effort " + ORDINARY_EFFORT + " \\", 1)),
+    ("a read let in below max again", None, lambda t: t.replace(EFFORT_GUARD, EFFORT_GUARD.replace("in %s)" % REVIEW_EFFORT, "in high|%s)" % REVIEW_EFFORT, 1), 1)),
+    ("an effort written into the call", None, lambda t: t.replace(READ_EFFORT + " \\", "--effort " + REVIEW_EFFORT + " \\", 1)),
     ("a model written into the call", None, lambda t: t.replace(READ_MODEL + " \\", "--model a-model-named-here \\", 1)),
     ("code given pages alone", REVIEW_WORKFLOW, lambda t: t.replace("code:*|risky:*) ;;", "code:*.md|risky:*) ;;", 1)),
     ("a risky change given pages alone", REVIEW_WORKFLOW, lambda t: t.replace("code:*|risky:*) ;;", "code:*) ;;", 1)),
@@ -1986,7 +1989,8 @@ CLASS_LOOSENINGS = (
     ("a name's case trusted", None, lambda t: t.replace(RISK_CASE, 'case "$f" in', 1)),
     ("the risk never raised", None, lambda t: t.replace("          " + CLASS_RISKY + "\n", "", 1)),
     ("the risk found and dropped", None, lambda t: t.replace(CLASS_RISKY, '[ "$risky" = yes ] || class=risky', 1)),
-    ("the read below max not told", None, lambda t: _in_step(t, "Read it", RISK_TOLD[1], 'echo "."')),
+    ("an ordinary read not told", None, lambda t: _in_step(t, "Read it", RISK_TOLD[1], 'echo "."')),
+    ("an ordinary read told only below an effort no read is at", None, lambda t: _in_step(t, "Read it", RISK_TOLD[0], 'if [ "$EFFORT" != %s ]; then' % REVIEW_EFFORT)),
     ("what the read cost never counted", None, lambda t: _in_step(t, "Read it", READ_TOOK[1], "true")),
     ("what the read cost counted after a failure is named", None, lambda t: _in_step(t, "Read it", "          %s\n" % READ_TOOK[0], "          %s\n          %s\n" % (READ_ANSWERED, READ_TOOK[0]))),
     ("what the read cost never passed on", None, lambda t: _in_step(t, "Sign the verdict", "SPENT: ${{ steps.read.outputs.spent }}", "SPENT: none")),
@@ -2020,12 +2024,13 @@ def _check_class_loosenings():
     if not bad:
         print("ok: each reviewer hands a change to its class's role, %s for pages and ordinary "
               "code and %s for the risky classes and any kind of file the list does not know, "
-              "worked out from the diff it reads, and a read below %s is told so; the class was "
+              "worked out from the diff it reads, and each reads at %s alone, an ordinary read told "
+              "it was not read as risky; the class was "
               "run on %d change(s), review.yml gives any change "
               "but pages every file and pages alone the pages they touch, the README's map, "
               "HOW-WE-BUILD.md and check.sh (its loop run on %d), each verdict says what its read "
               "cost, and each of %d loosenings was refused"
-              % (ORDINARY_ROLE, RISKY_ROLE, RISKY_EFFORT, len(CLASS_CASES), len(PAGES_CASES),
+              % (ORDINARY_ROLE, RISKY_ROLE, REVIEW_EFFORT, len(CLASS_CASES), len(PAGES_CASES),
                  len(CLASS_LOOSENINGS)))
     return bad
 
@@ -2046,8 +2051,8 @@ ROUTE_REGISTRY = {
                      '> "$reg/$f" || fail "the protected branch holds no model-registry/$f"',
     PRODUCT_WORKFLOW: 'reg="$GITHUB_WORKSPACE/model-registry"',
 }
-ROUTE_ASK_GUARD = ('case "$effort" in high|max) ;; *) printf \'{"is_error":true,"subtype":"no_effort"}\\n\' '
-                   '> "$out"; : > "$err"; return 2 ;; esac')
+ROUTE_ASK_GUARD = ('case "$effort" in %s) ;; *) printf \'{"is_error":true,"subtype":"no_effort"}\\n\' '
+                   '> "$out"; : > "$err"; return 2 ;; esac' % REVIEW_EFFORT)
 ROUTE_FIRST = "fell_back=no"
 ROUTE_LAST = 'echo "verdict=$verdict" >> "$GITHUB_OUTPUT"'
 # A product's code is private, and no provider but Anthropic has been cleared to
@@ -2253,6 +2258,7 @@ ROUTE_LOOSENINGS = (
     ("the registry read from the head", REVIEW_WORKFLOW, lambda t: t.replace(ROUTE_REGISTRY[REVIEW_WORKFLOW], 'cp "model-registry/$f" "$reg/$f"', 1)),
     ("a role the registry cannot resolve read anyway", None, lambda t: t.replace(ROUTE_RESOLVE[0], 'EFFORT=$(resolve "$ROLE" effort) || EFFORT=high', 1)),
     ("an effort the ask never checks", None, lambda t: t.replace(ROUTE_ASK_GUARD, "true", 1)),
+    ("a fallback let in below max again", None, lambda t: t.replace(ROUTE_ASK_GUARD, ROUTE_ASK_GUARD.replace("in %s)" % REVIEW_EFFORT, "in high|%s)" % REVIEW_EFFORT, 1), 1)),
     ("the fallback never asked", None, lambda t: t.replace('ask "$FALLBACK" "$left" || rc=$?', "true", 1)),
     ("the fallback asked after an answer", None, lambda t: t.replace('{ [ "$rc" -ne 0 ] || ! answered; }', "true", 1)),
     ("an answer with no verdict taken", None, lambda t: t.replace('{ [ "$rc" -ne 0 ] || ! answered; }', '[ "$rc" -ne 0 ]', 1)),
@@ -2315,7 +2321,7 @@ def _check_route_loosenings():
 
 # THE REGISTRY ITSELF (decision 0008). model-registry/resolve.py checks it whole;
 # this holds what the gate needs of it: the three reviewer roles, each at the
-# effort its class is owed, reviewer-main with a fallback and the others with
+# one effort every read is owed, reviewer-main with a fallback and the others with
 # none, the roles a product reads by on the one interface a product's code may
 # go to, and a switch that is one edit to the one file.
 def _check_registry():
@@ -2336,18 +2342,17 @@ def _check_registry():
         return bad
     for f in resolve.check(reg):
         fault(f)
-    owed = ((ORDINARY_ROLE, ORDINARY_EFFORT, True), (FALLBACK_ROLE, ORDINARY_EFFORT, False),
-            (RISKY_ROLE, RISKY_EFFORT, False))
+    owed = ((ORDINARY_ROLE, True), (FALLBACK_ROLE, False), (RISKY_ROLE, False))
     got = {}
-    for role, effort, falls in owed:
+    for role, falls in owed:
         try:
             got[role] = resolve.resolve(reg, role)
         except resolve.Unresolved as e:
             fault(str(e))
             continue
-        if got[role]["effort"] != effort or got[role]["effort_checked"] != "yes":
-            fault("%s reads at %r; its class is owed %s, on an effort its model is known to take"
-                  % (role, got[role]["effort"], effort))
+        if got[role]["effort"] != REVIEW_EFFORT or got[role]["effort_checked"] != "yes":
+            fault("%s reads at %r; every read is owed %s, on an effort its model is known to take"
+                  % (role, got[role]["effort"], REVIEW_EFFORT))
         if bool(got[role]["fallback"]) != falls:
             fault("%s %s" % (role, "has no fallback, so an outage parks every ordinary change"
                              if falls else "falls back to %r; nothing may stand behind it"
@@ -2386,10 +2391,10 @@ def _check_registry():
         except resolve.Unresolved:
             pass
     if not bad:
-        print("ok: the registry resolves %s at %s with %s behind it, and %s at %s with nothing "
-              "behind it; a switch is one edit to %s, and an unknown role or a blocked model "
-              "fails closed" % (ORDINARY_ROLE, ORDINARY_EFFORT, FALLBACK_ROLE, RISKY_ROLE,
-                                RISKY_EFFORT, REGISTRY))
+        print("ok: the registry resolves %s with %s behind it, and %s with nothing behind it, "
+              "all three at %s; a switch is one edit to %s, and an unknown role or a blocked "
+              "model fails closed" % (ORDINARY_ROLE, FALLBACK_ROLE, RISKY_ROLE, REVIEW_EFFORT,
+                                      REGISTRY))
     return bad
 
 
@@ -2422,11 +2427,6 @@ def _check_caller():
         if ask.served_is_pinned(served, pinned) != want:
             fault("an answer from %r %s" % (served, "refused" if want else "taken as the pinned model's"))
     verdict = '{"verdict": "clean", "review": "r"}'
-    for content, want in ((verdict, verdict), ("```json\n%s\n```" % verdict, verdict),
-                          ("Here it is: %s. Done." % verdict, verdict), ("no object", None),
-                          (None, None)):
-        if ask.verdict_text(content) != want:
-            fault("the answer %r read as %r" % (content, ask.verdict_text(content)))
 
     def reply(model=pinned, content=verdict, **more):
         r = {"model": model, "choices": [{"message": {"content": content}}],
@@ -2441,6 +2441,86 @@ def _check_caller():
         got, status = ask.answer(resp, pinned)
         if status != rc or got.get("subtype") != sub:
             fault("%s answered %s (%s), not %s (%s)" % (what, status, got.get("subtype"), rc, sub))
+    # NO SILENT LOSS (#115's first reads: a `blocking` published with its
+    # findings missing; #116's first read: parse before weighing a cut, and let
+    # no brace in the prose hide the object). The worst verdict speaks; a
+    # refusal keeps every word beside it, cut off or not; a clearance is taken
+    # only whole and alone; no number reaches a `result`, where why() would read
+    # 429 as the provider's own refusal.
+    findings = "**1. Blocking — the page it left behind.** " + "It says the opposite. " * 20
+    intro = "To the CTO. Read verdict blocking, on one finding below."
+    refusal = '{"verdict": "blocking", "review": "%s"}' % intro
+    clean = '{"verdict": "clean", "review": "%s"}' % ("Read whole. " * 12)
+
+    def kept(content, *words, **more):
+        got, status = ask.answer(reply(content=content, **more), pinned)
+        review = json.loads(got.get("result") or "{}").get("review", "") if status == 0 else ""
+        said = json.loads(got.get("result") or "{}").get("verdict") if status == 0 else None
+        return status == 0 and said == "blocking" and all(w in review for w in words), (status, said, review[:100])
+
+    def cut(content):
+        r = reply(content=content)
+        r["choices"][0]["finish_reason"] = "length"
+        return r
+    for content, words, what in (
+            (findings + "\n\n" + refusal, (intro, "the page it left behind"), "findings written before a refusal (#115's stub)"),
+            ("**1. Blocking — `${{ inputs.repo }}` is pasted into the script.** " + findings + "\n" + refusal,
+             ("${{ inputs.repo }}", intro), "a `${{ … }}` in the findings before a refusal"),
+            (refusal + "\n\nAnd a dict: {'a': 1}. " + findings, ("{'a': 1}", intro), "a `}` in the findings after a refusal"),
+            (refusal + " Also: the brief is stale.", ("the brief is stale",), "a short finding beside a refusal"),
+            (clean + "\n" + refusal, (intro,), "a clearance and a refusal together, where the worst speaks")):
+        ok, why = kept(content, *words)
+        if not ok:
+            fault("%s was not kept as a refusal with its words (%s)" % (what, why))
+    got, status = ask.answer(cut(refusal + "\n\n" + findings), pinned)
+    review = json.loads(got.get("result") or "{}").get("review", "") if status == 0 else ""
+    if status != 0 or "the page it left behind" not in review or "cut it off for length" not in review:
+        fault("a refusal cut off for length was not kept as one, marked as cut (%s, %r)" % (status, review[-120:]))
+    for resp, sub, what in ((reply(content=findings + " " + clean), "outside", "a clearance written beside its object"),
+                            (reply(content=clean + " " + clean), "outside", "two clearances in one answer"),
+                            (reply(content='{"verdict": "advisory", "review": "r"}\n\n' + findings), "outside", "an advisory written beside its object"),
+                            (cut(clean), "truncated", "a clearance cut off for length"),
+                            (reply(content="${{ x }} and no verdict at all"), "no_verdict", "an answer with braces and no verdict")):
+        got, status = ask.answer(resp, pinned)
+        if status != 1 or got.get("subtype") != sub:
+            fault("%s answered %s (%s), not %s" % (what, status, got.get("subtype"), sub))
+        elif re.search(r"\d", got.get("result", "")):
+            fault("%s names a number, which why() may read as a provider's refusal: %r" % (what, got["result"]))
+    # However the one verdict is wrapped, it is read; with none, nothing is.
+    for content, want in ((verdict, verdict), ("```json\n%s\n```" % verdict, verdict),
+                          ("Here it is: %s. Done." % verdict, verdict), ("no object", None),
+                          (None, None)):
+        got, status = ask.answer(reply(content=content), pinned)
+        if (status, got.get("result") if status == 0 else got.get("subtype")) != \
+                ((0, want) if want else (1, "no_verdict")):
+            fault("the answer %r read as %s %r" % (content, status, got.get("result")))
+    # A one-sentence finding beside a clearance is not a wrapper (#116's second read).
+    got, status = ask.answer(reply(content=verdict + " Blocking: the key is printed on line 42."), pinned)
+    if status != 1 or got.get("subtype") != "outside":
+        fault("a clearance with a one-sentence finding beside it answered %s (%s), not no answer"
+              % (status, got.get("subtype")))
+    # The shape goes to the job's summary alone: never to stderr, where why()
+    # reads 429 as a rate limit, and never at the cost of a verdict.
+    import contextlib
+    import io
+    long_reply = reply(content=verdict + " " + "x" * 429)
+    with tempfile.TemporaryDirectory() as d:
+        summary = os.path.join(d, "summary")
+        for path in (summary, os.path.join(d, "no", "such", "dir")):
+            os.environ["GITHUB_STEP_SUMMARY"] = path
+            said = io.StringIO()
+            try:
+                with contextlib.redirect_stderr(said):
+                    ask.shape(long_reply)
+            except Exception as e:  # noqa: BLE001
+                fault("the answer's shape raised %s, which would cost a verdict" % type(e).__name__)
+            if said.getvalue():
+                fault("the answer's shape reached stderr, where why() reads its numbers: %r"
+                      % said.getvalue()[:80])
+        os.environ.pop("GITHUB_STEP_SUMMARY", None)
+        wrote = open(summary, encoding="utf-8").read() if os.path.exists(summary) else ""
+    if "1 verdict object(s)" not in wrote:
+        fault("the answer's shape did not reach the job's summary (%r)" % wrote[:80])
     got, _ = ask.answer(reply(), pinned)
     if (got.get("usage"), got.get("total_cost_usd")) != ({"input_tokens": 900, "output_tokens": 40}, 0.0021):
         fault("the tokens and cost not carried to the spend line (%s)" % got)
@@ -2467,7 +2547,10 @@ def _check_caller():
               % (p.returncode, p.stdout.strip()[:200]))
     if not bad:
         print("ok: the OpenAI-compatible caller takes an answer only from the model it pinned, reads "
-              "a verdict however it is wrapped, names a refusal, carries tokens and cost to the "
+              "every verdict object that decodes whole however it is wrapped, braces in the prose "
+              "notwithstanding, and lets the worst speak — such a refusal keeps the words beside "
+              "it, cut off or not; a clearance counts only whole and alone — writes the answer's "
+              "shape to the summary and never to stderr, names a refusal, carries tokens and cost to the "
               "spend line, puts the effort where the registry says, and refuses before any request "
               "with no credential")
     return bad
@@ -2589,6 +2672,10 @@ def _check_product_wiring(review=None, product=None, readme=None, quiet=False):
     if lost:
         fault("must carry the slice's own pages by rule and name what it leaves out; it has lost %s"
               % "; ".join(lost))
+    lost = link_faults(product)
+    if lost:
+        fault("must carry the source a change imports, one hop, and print nothing of it; it has "
+              "lost %s" % "; ".join(lost))
     if _why(review) is None or _why(product) != _why(review):
         fault("does not name why a read did not happen as %s does, line for line"
               % REVIEW_WORKFLOW)
@@ -2830,12 +2917,13 @@ json.dump(said, sys.stdout)
 '''
 
 
-def _picker(text):
-    """The picker's program, as the lines between its call and `PY`, dedented."""
+def _picker(text, call=PICK_CALL):
+    """The program called by `call` (the picker's, unless another is named), as the lines
+    between its call and `PY`, dedented."""
     gather = _step_span(text, "Gather what the reviewer reads")
     lines = text[gather[0]:gather[1]].splitlines() if gather else []
     try:
-        start = next(i for i, l in enumerate(lines) if l.strip() == PICK_CALL)
+        start = next(i for i, l in enumerate(lines) if l.strip() == call)
         end = next(i for i, l in enumerate(lines) if i > start and l.strip() == "PY")
     except StopIteration:
         return None
@@ -2979,6 +3067,217 @@ def _check_pick_loosenings():
               "the PRODUCT.md sections that item names, naming every other part with its size and "
               "printing numbers alone; the picker was run on %d case(s), and each of %d loosenings "
               "was refused" % (len(PICK_CASES), len(PICK_LOOSENINGS)))
+    return bad
+
+
+# THE SOURCE THE CHANGE IMPORTS, ONE HOP (decision 0010, 1a). A product read
+# carried the diff and every file it touches, and nothing those files call, so
+# a reader judged a call it could not see. Now each touched JS, TS or Python
+# file's direct imports are carried too, resolved against the head's tree and
+# nothing else. Held as the picker is: the linker is run here, not read,
+# against the cases below, so a bare package followed, a path the tree does not
+# hold, a Python import read at the wrong level, or a summary that prints a
+# product's path into the public log each turns the check red.
+LINK_CALL = ("if timeout 60 python3 - \"$t/tree.txt\" \"$t/touched.txt\" \"$t/sources\" \"$t/linked.txt\" "
+             "2>/dev/null <<'PY'")
+LINK_TREE = 'g ls-tree -r -z --name-only "$SHA" > "$t/tree.txt"'
+LINK_MARK = ("printf '\\n===== the source the change imports by relative path, and the scripts "
+             "a page loads, one hop; callers, tests, database rules and configuration only where touched or "
+             "imported =====\\n' >> \"$pages\"")
+LINK_TAKEN = ('while IFS= read -r -d \'\' f; do case "$carried" in *" $f "*) continue ;; esac; '
+              'add "$f" || true; done < "$t/linked.txt"')
+LINK_FAILED = ('echo "the source the change imports could not be linked, so this read carries the '
+               'touched files alone"')
+LINK_TOLD = ('echo "One hop is not the boundary: a change that could not be judged for want of a '
+             'file gets a blocking finding naming it."')
+# The reader is told a failed link too, not only the log (#129's first read, 2).
+LINK_FAILED_READ = ("printf '\\n===== the source the change imports could not be linked; only the "
+                    "touched files are here =====\\n' >> \"$pages\"")
+# What feeds the linker: the touched code of the kinds it reads, from the head (#129's first read, 4b).
+LINK_KINDS = 'case "$f" in *.js|*.mjs|*.cjs|*.jsx|*.ts|*.tsx|*.py|*.html) ;; *) continue ;; esac'
+LINK_FEED = 'g show "$SHA:$f" > "$t/sources/$n" 2>/dev/null || continue'
+# The touched files' own loop, which the linked files must follow (#129's first read, 4a).
+LINK_AFTER = 'add "$f" || true\n          done < "$t/touched.txt"\n'
+LINK_HTML = ('<script src="hosting/queue.js?v=3"></script>\n<script src="/app.js"></script>\n'
+             '<script src="https://cdn.example/x.js"></script><script src="//cdn.example/y.js"></script>\n'
+             '<script type="module">import { l } from \'./hosting/lib.js\'</script>\n')
+LINK_SAID = re.compile(r"^linked: \d+ file\(s\) imported by the \d+ touched code file\(s\) read\n$")
+LINK_JS = ("import a from './a'\nimport React from 'react'\nimport { lib } from \"../lib\"\n"
+           "import gone from './gone'\nexport { u } from './util'\nconst b = require('./b')\n"
+           "const c = await import( './c' )\nimport './side.css'\n")
+LINK_PY = ("from .x import y\nfrom .. import z\nimport pkg.mod\nimport os, json as j\n"
+           "from . import (w,\n    v as vv, gone)\nfrom pkg.sub import x as xx\nfrom .... import far\n"
+           "from pkg.sub import only\n")
+# (the tree, the files touched, the touched code and its text, the files linked).
+# The tree holds `app/react.js` beside the importer so that a bare `react`
+# followed as if it were relative is caught, and `pkg/sub/z.py` is absent so
+# that `from .. import z` read one level short finds nothing.
+LINK_CASES = (
+    (["app/main.js", "app/a.js", "app/react.js", "app/b.cjs", "app/c.tsx", "app/side.css",
+      "app/util.js", "lib/index.ts", "lib/other.ts"],
+     ["app/main.js", "app/util.js"],
+     [("app/main.js", LINK_JS), ("app/util.js", "import { a } from './a.js'\n")],
+     ["app/a.js", "lib/index.ts", "app/b.cjs", "app/c.tsx", "app/side.css"]),
+    (["pkg/__init__.py", "pkg/sub/__init__.py", "pkg/sub/m.py", "pkg/sub/x.py", "pkg/z.py",
+      "pkg/mod.py", "pkg/sub/w.py", "pkg/sub/v/__init__.py", "json.py", "pkg/sub/only.py"],
+     ["pkg/sub/m.py"],
+     [("pkg/sub/m.py", LINK_PY)],
+     ["pkg/sub/x.py", "pkg/z.py", "pkg/sub/w.py", "pkg/sub/v/__init__.py", "pkg/sub/__init__.py",
+      "pkg/sub/only.py", "pkg/mod.py", "json.py"]),
+    (["app/main.ts", "app/a.ts", "README.md"], ["README.md", "app/main.ts"],
+     [("app/main.ts", "// imports nothing\n")], []),
+    (["app/main.ts", "app/a.ts"], ["app/main.ts", "app/a.ts"],
+     [("app/main.ts", "import { a } from './a'\n")], []),
+    (["README.md"], ["README.md"], [], []),
+    # `https:/cdn.example/x.js` is what a remote src collapses to if followed as a path.
+    (["the-quote.html", "hosting/queue.js", "hosting/lib.js", "app.js", "https:/cdn.example/x.js"],
+     ["the-quote.html"],
+     [("the-quote.html", LINK_HTML)], ["hosting/lib.js", "hosting/queue.js", "app.js"]),
+)
+
+
+def links(program, cases):
+    """Run the linker on each case. Per case, (exit status, what it printed, the files it linked)."""
+    with tempfile.TemporaryDirectory() as d:
+        argvs = []
+        for n, (tree, touched, sources, _) in enumerate(cases):
+            names = [os.path.join(d, "%s%d" % (k, n)) for k in ("tree", "touched", "sources", "out")]
+            os.mkdir(names[2])
+            for name, paths in ((names[0], tree), (names[1], touched),
+                                (os.path.join(names[2], "names"), [s[0] for s in sources])):
+                with open(name, "w", encoding="utf-8") as f:
+                    f.write("".join(p + "\0" for p in paths))
+            for i, (_, body) in enumerate(sources):
+                with open(os.path.join(names[2], str(i)), "w", encoding="utf-8") as f:
+                    f.write(body)
+            argvs.append(names)
+        for name, body in (("program", program), ("cases", json.dumps(argvs)),
+                           ("harness", PICK_HARNESS)):
+            with open(os.path.join(d, name), "w", encoding="utf-8") as f:
+                f.write(body)
+        try:
+            p = subprocess.run([sys.executable, os.path.join(d, "harness"), os.path.join(d, "program"),
+                                os.path.join(d, "cases")], capture_output=True, text=True, timeout=60)
+            said = json.loads(p.stdout)
+        except (OSError, subprocess.SubprocessError, ValueError):
+            return [None] * len(cases)
+        got = []
+        for (rc, printed), argv in zip(said, argvs):
+            try:
+                linked = [l for l in open(argv[3], encoding="utf-8").read().split("\0") if l]
+            except OSError:
+                linked = None
+            got.append((rc, printed, linked))
+    return got
+
+
+def link_faults(text):
+    """What a product read has lost of carrying the source the change imports, one hop."""
+    lost = []
+    gather, read = _step_span(text, "Gather what the reviewer reads"), _step_span(text, "Read it")
+    g = text[gather[0]:gather[1]] if gather else ""
+    if LINK_TREE not in g:
+        lost.append("the tree listed from the head the read is of (`%s`)" % LINK_TREE)
+    for line, why in ((LINK_MARK, "the reader told where the linked source starts and what it is not"),
+                      (LINK_TAKEN, "the linked files carried through `add`, under the same budget"),
+                      (LINK_FAILED, "a failed link said, in words that name nothing of the product's"),
+                      (LINK_FAILED_READ, "a failed link said to the reader too, not only the log"),
+                      (LINK_KINDS, "the touched code of every kind the linker reads handed to it"),
+                      (LINK_FEED, "the touched code read from the head the read is of")):
+        if line not in g:
+            lost.append("%s (`%s`)" % (why, line))
+    if LINK_TAKEN in g and (LINK_AFTER not in g or g.index(LINK_TAKEN) < g.index(LINK_AFTER)):
+        lost.append("the touched files carried before the linked ones, so the budget spends on the change first")
+    if not read or LINK_TOLD not in text[read[0]:read[1]]:
+        lost.append("the reviewer told one hop is not the boundary (`%s`)" % LINK_TOLD)
+    program = _picker(text, LINK_CALL)
+    if program is None:
+        lost.append("the linker, called as `%s` — the tree's names and the touched code, "
+                    "its errors kept out of this public log" % LINK_CALL)
+        return lost
+    runs = links(program, LINK_CASES)
+    for n, ((tree, touched, sources, want), got) in enumerate(zip(LINK_CASES, runs), 1):
+        case = "in case %d" % n
+        if got is None:
+            lost.append("a linker that can be run %s" % case)
+            continue
+        rc, printed, linked = got
+        if rc != 0 or linked is None:
+            lost.append("a link made %s (it exited %s)" % (case, rc))
+            continue
+        if not LINK_SAID.match(printed) or [p for p in tree + touched if p in printed]:
+            lost.append("a summary of numbers alone %s (it printed %r)" % (case, printed))
+        if linked != want:
+            lost.append("exactly the files imported, one hop, each once and none touched, %s "
+                        "(it linked %s, not %s)" % (case, linked, want))
+    return lost
+
+
+# Each must turn the link's hold red on review-product.yml.
+LINK_LOOSENINGS = (
+    ("a bare package followed as if relative", lambda t: t.replace(r"""(\.\.?/[^"'\n]*)\1""", r"""([^"'\n]*)\1""", 1)),
+    ("a folder's index not tried", lambda t: t.replace(' + [path + "/index" + e for e in JS])', ")", 1)),
+    ("the extensions not tried", lambda t: t.replace('first([path] + [path + e for e in JS] + ', "first([path] + ", 1)),
+    ("a path the tree does not hold linked", lambda t: t.replace("if c in tree), None)", "if c in tree), candidates[0])", 1)),
+    ("a Python import's level ignored", lambda t: t.replace('base = "/".join(here[:len(here) - (len(dots) - 1)])', 'base = "/".join(here)', 1)),
+    ("the names of `from . import` not read as modules", lambda t: t.replace("found.append(module(base, words[0]))", "pass", 1)),
+    ("an absolute from-import's names not read as modules", lambda t: t.replace('found.append(module("", dotted + "." + words[0]))', "pass", 1)),
+    ("the linker unbounded", lambda t: t.replace(LINK_CALL, LINK_CALL.replace("timeout 60 ", ""), 1)),
+    ("an absolute Python import ignored", lambda t: t.replace("found.append(module(\"\", words[0]))", "pass", 1)),
+    ("a touched file linked again", lambda t: t.replace(" and path not in touched", "", 1)),
+    ("a linked file's path printed", lambda t: t.replace("% (len(chosen), importers))", "% (len(chosen), importers), *chosen)", 1)),
+    ("the linker's errors printed", lambda t: t.replace(LINK_CALL, LINK_CALL.replace(" 2>/dev/null", ""), 1)),
+    ("the tree listed from main", lambda t: t.replace(LINK_TREE, LINK_TREE.replace('"$SHA"', '"origin/$MAIN"'), 1)),
+    ("the linked files dropped", lambda t: t.replace(LINK_TAKEN, "true", 1)),
+    ("the marker line removed", lambda t: t.replace(LINK_MARK, "true", 1)),
+    ("a failed link unsaid", lambda t: t.replace(LINK_FAILED, "true", 1)),
+    ("the reviewer not told", lambda t: t.replace(LINK_TOLD, 'echo "."', 1)),
+    ("a failed link unsaid to the reader", lambda t: t.replace(LINK_FAILED_READ, "true", 1)),
+    ("Python not handed to the linker", lambda t: t.replace(LINK_KINDS, LINK_KINDS.replace("|*.py", ""), 1)),
+    ("a page not handed to the linker", lambda t: t.replace(LINK_KINDS, LINK_KINDS.replace("|*.html", ""), 1)),
+    ("the touched code read from main", lambda t: t.replace(LINK_FEED, LINK_FEED.replace('"$SHA:$f"', '"origin/$MAIN:$f"'), 1)),
+    ("a page's own script src ignored", lambda t: t.replace("for quote, src in SRC.findall(text):", "for quote, src in []:", 1)),
+    ("a remote script followed", lambda t: t.replace(' or ":" in src.split("/")[0]:', ":", 1)),
+    ("the linked files carried before the touched ones", lambda t: _link_first(t)),
+)
+
+
+def _link_first(t):
+    """The linker's block moved ahead of the touched files' own loop."""
+    start = t.find('          carried=" roadmap.json PRODUCT.md "\n')
+    end = t.find(LINK_AFTER, start)
+    link_end = t.find('          rm -rf "$t/tree.txt"', end)
+    if min(start, end, link_end) < 0:
+        return t
+    loop = t[start:end + len(LINK_AFTER)]
+    return t[:start] + t[end + len(LINK_AFTER):link_end] + loop + t[link_end:]
+
+
+def _check_link_loosenings():
+    """Every loosening above, applied to review-product.yml, must be refused."""
+    try:
+        product = _read(PRODUCT_WORKFLOW)
+    except OSError as e:
+        print("  wiring: %s" % e)
+        return 1
+    if link_faults(product):
+        return 1  # the wiring checks say what
+    bad = 0
+    for what, loosen in LINK_LOOSENINGS:
+        changed = loosen(product)
+        if changed == product:
+            print("  wiring: the loosening '%s' no longer applies to %s — rewrite it against the "
+                  "file as it stands, or it proves nothing" % (what, PRODUCT_WORKFLOW))
+            bad += 1
+        elif not link_faults(changed):
+            print("  wiring: %s with %s passes the link's hold — the guard for it is gone"
+                  % (PRODUCT_WORKFLOW, what))
+            bad += 1
+    if not bad:
+        print("ok: a product read carries, beside the files a change touches, the source they "
+              "import directly, one hop, resolved against the head's tree alone and printing "
+              "numbers alone; the linker was run on %d case(s), and each of %d loosenings was "
+              "refused" % (len(LINK_CASES), len(LINK_LOOSENINGS)))
     return bad
 
 
@@ -3211,6 +3510,8 @@ def _selftest():
     # rather than only through the cases above.
     bad += hold(touches_the_gate(["README.md", "check.sh", ".github/workflows/x.yml"]),
                 [".github/workflows/x.yml", "check.sh"], "which files are the gate")
+    bad += hold(touches_the_gate(["board/build.py", "board/vercel.json"]), ["board/build.py"],
+                "the board's build is the gate, its other files are not (#113's fifth read)")
     bad += hold(touches_the_gate(["design/ARCHITECT.md", "AGENTS.md"]), [], "and which are not")
     # THE RETIRED ROUTES ARE HELD SHUT, not merely deleted. A later session
     # restoring a prose reader would have to get past these: the gate reads check
@@ -3266,6 +3567,7 @@ def _selftest():
     failed += _check_registry()
     failed += _check_caller()
     failed += _check_pick_loosenings()
+    failed += _check_link_loosenings()
     return 1 if failed else 0
 
 
