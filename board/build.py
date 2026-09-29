@@ -3,15 +3,19 @@
 
 What the page shows and may claim is decision 0007 and its addendum
 (https://github.com/Adonis80/how-we-build/issues/97); the section marks below
-(§n, An) are its clauses. `.github/workflows/build-board.yml` makes the reads
-and deploys the page with board/'s gate. This file fetches nothing and prints
+(§n, An) are its clauses. Nothing on main makes the reads or deploys the page
+yet: the workflow that is to do both is #117, not merged, and until it lands a
+refresh is run by hand. This file fetches nothing and prints
 nothing a source holds: a fault names a product and a key, never a value,
 because the log it lands in is public and the roadmaps are not.
 
     python3 board/build.py <reads.json> <index.html>
     python3 board/build.py --selftest
 
-The reads, as the workflow writes them:
+Write both files outside the checkout: either one inside it is a `git add`
+away from putting a private roadmap in this public repository.
+
+The reads, in the shape #117's workflow is to write them:
 
     {"checked_at": "2026-09-26T17:40:00Z",
      "products": [{"name": "Hemz OS", "last_edited": "<ISO time>",
@@ -90,23 +94,31 @@ def items_of(name, road):
     return out
 
 
+def asks_him(text):
+    """§3's prefix, with "Decision needed: none" (step 6's own words) asking nothing."""
+    text = (text or "").lstrip()
+    return text.startswith(DECISION) and not re.match(r"none\b", text[len(DECISION):].strip(" *"), re.I)
+
+
 def needs_decision(it):
-    return (it.get("gate") or "").lstrip().startswith(DECISION)
+    return asks_him(it.get("gate"))
 
 
-def milestones(road):
-    """§8: the milestone sentence and whether `reached_on` is set; nothing else."""
+def milestones(name, road):
+    """§8: the milestone sentence and whether `reached_on` is set; nothing else.
+    A milestone in a shape this cannot read is refused, never dropped (#113's read)."""
     found = []
     for key, val in road.items():
         if "milestone" not in key.lower():
             continue
-        for m in (val if isinstance(val, list) else [val]):
-            if not isinstance(m, dict):
-                continue
+        if isinstance(val, dict) and isinstance(val.get("items"), list):
+            val = val["items"]
+        for i, m in enumerate(val if isinstance(val, list) else [val]):
             words = next((m[k] for k in ("milestone", "sentence", "text", "what", "reminder", "title", "plain")
-                          if isinstance(m.get(k), str) and m[k].strip()), None)
-            if words:
-                found.append((words, bool(m.get("reached_on"))))
+                          if isinstance(m.get(k), str) and m[k].strip()), None) if isinstance(m, dict) else None
+            if not words:
+                raise Unreadable("%s: %s[%d] has no sentence this page reads" % (name, key, i))
+            found.append((words, bool(m.get("reached_on"))))
     return found
 
 
@@ -124,8 +136,9 @@ def headline(items):
     if hand:
         more = " and %d more" % (len(hand) - 1) if len(hand) > 1 else ""
         return '<span class="dot" aria-hidden="true"></span>In hand: %s%s' % (e(hand[0]["title"]), more)
-    nxt = next((it for it in items if it["status"] == "next"), None) or \
-        next((it for it in items if it["status"] == "agreed"), None)
+    free = [it for it in items if not needs_decision(it)]
+    nxt = next((it for it in free if it["status"] == "next"), None) or \
+        next((it for it in free if it["status"] == "agreed"), None)
     line = "No work recorded as in hand"
     return line + (". Next eligible: %s" % e(nxt["title"]) if nxt else ".")
 
@@ -188,7 +201,7 @@ def product_row(p):
         counts += ' · <b class="ask">%d need%s your decision</b>' % (n["decisions"], "" if n["decisions"] > 1 else "s")
     money = "".join('<li>%s <span class="%s">%s</span></li>' % (e(w), "hit" if r else "open",
                                                              "Reached" if r else "Not reached yet")
-                    for w, r in milestones(p["roadmap"]))
+                    for w, r in milestones(p["name"], p["roadmap"]))
     body = (group("Needs your decision", asks) + group("In hand", by("building")) +
             group("Up next", by("next")) + group("Agreed and queued", by("agreed")) +
             group("Suggested", by("proposed")) + group("Done", by("done")) +
@@ -219,11 +232,11 @@ def readiness(pr):
     pri = field(pr.get("body"), "Priority", r"(P[1-4])\b")
     m = field(pr.get("body"), "Ready", r"(yes|no)\b(.*)")
     if not m:
-        return None, "", pri.group(1) if pri else None
+        return None, "", pri.group(1).upper() if pri else None
     # The reason runs to the next field on the same line, if one follows.
     reason = re.split(r"\s(?:Lead stack|Reviewed by|Priority):", m.group(2))[0]
     reason = reason.replace("`", "").strip(" \t.,:;—–-")
-    return m.group(1).lower(), reason[:240], pri.group(1) if pri else None
+    return m.group(1).lower(), reason[:240], pri.group(1).upper() if pri else None
 
 
 def pr_state(pr):
@@ -232,7 +245,8 @@ def pr_state(pr):
     if ready is None:
         return "Readiness not recorded"
     if ready == "no":
-        return "Waiting on the Chairman" if DECISION in reason else "Parked"
+        at = reason.find(DECISION)
+        return "Waiting on the Chairman" if at >= 0 and asks_him(reason[at:]) else "Parked"
     if pr.get("draft"):
         return "Draft"
     runs = pr.get("review") or []
@@ -292,7 +306,8 @@ def rulebook_row(rb):
     body = ((('<section><h3>Needs your decision <span class="n">%d</span></h3>%s</section>'
               % (len(waiting), "".join(pr_html(pr) for pr in waiting))) if waiting else "") +
             ('<section><h3>The queue <span class="n">%d</span></h3>%s</section>'
-             % (len(open_), "".join(pr_html(pr) for pr in open_ if pr not in waiting)) if open_ else "") +
+             % (len(open_) - len(waiting), "".join(pr_html(pr) for pr in open_ if pr not in waiting))
+             if len(open_) > len(waiting) else "") +
             ('<section><h3>Merged, newest first</h3><ul class="hist">%s</ul></section>' % hist if hist else ""))
     return row(RULEBOOK, "", counts, line, body), len(waiting)
 
@@ -364,11 +379,11 @@ def _selftest():
                      "proof": None, "next": "Next " + i, "decided_on": "2026-09-07", "decided_by": "Chairman"}, **kw)
 
     road = {"_what_this_is": "x", "items": [
-        it("A1", "done"), it("P1", "done"), it("P2", "done"), it("P3", "proposed"),
-        it("P7", "building"), it("P4", "building"), it("P5", "building"), it("A2", "building"),
-        it("P6", "agreed"), it("A3", "agreed")]}
+        it("X1", "done"), it("X2", "done"), it("X3", "done"), it("X4", "proposed"),
+        it("X5", "building"), it("X6", "building"), it("X7", "building"), it("X8", "building"),
+        it("X9", "agreed"), it("X10", "agreed")]}
     n = tally(items_of("Myst", road))
-    # §2 on Myst's own shape of 26 September: three done of nine agreed, one suggested.
+    # §2 on a made-up roadmap of Myst's size: three done of nine agreed, one suggested.
     hold((n["done"], n["agreed_total"], n["proposed"], n["queued"]) == (3, 9, 1, 2),
          "§2: agreed work counts done, building, next and agreed; proposed stands apart")
     # §3: the prefix alone, on any status, and nothing that merely names him.
@@ -414,19 +429,19 @@ def _selftest():
 
     evil = "<script>alert(1)</script>"
     reads = {"checked_at": "2026-09-26T17:40:00Z",
-             "products": [{"name": "Hemz OS", "last_edited": "2026-09-25T17:04:07Z",
-                           "roadmap": {"items": [it("P1", "building", title=evil)],
+             "products": [{"name": "Hemz OS", "last_edited": "2026-09-25T17:00:00Z",
+                           "roadmap": {"items": [it("H1", "building", title=evil)],
                                        "money_milestones": [{"milestone": "Revenue passes one thousand a month.",
                                                              "reached_on": None}]}},
-                          {"name": "Myst", "last_edited": "2026-09-21T22:14:34Z", "roadmap": road},
-                          {"name": "Phena", "last_edited": "2026-09-24T23:59:43Z", "roadmap": {"items": []}}],
+                          {"name": "Myst", "last_edited": "2026-09-21T22:00:00Z", "roadmap": road},
+                          {"name": "Phena", "last_edited": "2026-09-24T23:00:00Z", "roadmap": {"items": []}}],
              "rulebook": {"open": [pr(111, ok + "\nUNSELECTED BODY TEXT", review=[("completed", "success")]),
                                    dict(pr(112, ok), url="javascript:alert(1)")],
                           "merged": [dict(pr(100 + i, ""), merged_at="2026-09-%02dT10:00:00Z" % (10 + i))
                                      for i in range(12)]}}
     page = render(reads)
     hold("<script" not in page and html.escape(evil) in page, "§8: text is escaped and the page runs no script")
-    hold("<body data-board>" in page, "the marker the deploy's smoke test looks for, so a board served to a stranger is caught")
+    hold("<body data-board>" in page, "the marker #117's smoke test is to look for, so a board served to a stranger is caught")
     hold(readiness(pr(12, "**Priority:** **P2**. **Ready:** no — **Decision needed:** which host."))[2] == "P2",
          "a bolded priority reads as its level")
     hold("UNSELECTED BODY TEXT" not in page, "§8: a pull request's body is never published beyond its two lines")
@@ -444,6 +459,22 @@ def _selftest():
     hold([page.index('<span class="name">%s</span>' % r) for r in ROWS] ==
          sorted(page.index('<span class="name">%s</span>' % r) for r in ROWS), "§1: four rows, Juku OS first")
     hold(page.count('name="product"') == 4, "§9: one shared name, so one product opens at a time")
+    hold(readiness(pr(14, "**Priority:** p1. **Ready:** yes."))[2] == "P1", "a lower-case priority reads, and sorts, as its level")
+    hold(pr_state(pr(15, "**Priority:** P3. **Ready:** no — Decision needed: none.")) == "Parked" and
+         not needs_decision({"gate": "Decision needed: none"}), "\"Decision needed: none\" asks him nothing")
+    hold("Next eligible: Item 2" in headline(items_of("X", {"items": [it("1", "next", gate="Decision needed: which host."),
+                                                                      it("2", "agreed")]})),
+         "next eligible never names an item waiting on him")
+    q = render(dict(reads, rulebook={"open": [pr(31, "**Priority:** P2. **Ready:** no — Decision needed: which host."),
+                                              pr(32, ok)], "merged": []}))
+    hold('The queue <span class="n">1</span>' in q, "the queue counts only what it lists, not what waits on him")
+    try:
+        milestones("Myst", {"money_milestones": [{"reached": "2026-09-01"}]})
+        bad.append("a money milestone with no sentence was dropped rather than refused")
+    except Unreadable as x:
+        hold("Myst" in str(x) and "money_milestones[0]" in str(x), "a milestone it cannot read names its key")
+    hold(milestones("Myst", {"money_milestones": {"items": [{"milestone": "M", "reached_on": "2026-09-01"}]}}) ==
+         [("M", True)], "a milestone list wrapped in `items` reads")
     for broken, what in (({"items": {}}, "no `items` list"), ({"items": [{"title": "t", "gate": 3}]}, ".gate is not text"),
                          ({"items": [{"status": "done"}]}, "has no title")):
         try:
@@ -460,7 +491,7 @@ def _selftest():
         print("  board: " + b)
     if not bad:
         print("ok: the board renders decision 0007 from its reads — §1's four rows, §2's denominator, §3's "
-              "prefix, §5's snapshot, %d of §7's readiness states, the queue's order and §8's contract — "
+              "prefix, §5's snapshot, %d cases of §7's readiness states, the queue's order and §8's contract — "
               "and refuses a roadmap it cannot read, naming the key and never the value" % len(states))
     return 1 if bad else 0
 
