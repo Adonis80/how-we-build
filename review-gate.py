@@ -3064,7 +3064,18 @@ LINK_TAKEN = ('while IFS= read -r -d \'\' f; do case "$carried" in *" $f "*) con
 LINK_FAILED = ('echo "the source the change imports could not be linked, so this read carries the '
                'touched files alone"')
 LINK_TOLD = ('echo "One hop is not the boundary: a change that could not be judged for want of a '
-             'file is not clean."')
+             'file gets a blocking finding naming it."')
+# The reader is told a failed link too, not only the log (#129's first read, 2).
+LINK_FAILED_READ = ("printf '\\n===== the source the change imports could not be linked; only the "
+                    "touched files are here =====\\n' >> \"$pages\"")
+# What feeds the linker: the touched code of the kinds it reads, from the head (#129's first read, 4b).
+LINK_KINDS = 'case "$f" in *.js|*.mjs|*.cjs|*.jsx|*.ts|*.tsx|*.py|*.html) ;; *) continue ;; esac'
+LINK_FEED = 'g show "$SHA:$f" > "$t/sources/$n" 2>/dev/null || continue'
+# The touched files' own loop, which the linked files must follow (#129's first read, 4a).
+LINK_AFTER = 'add "$f" || true\n          done < "$t/touched.txt"\n'
+LINK_HTML = ('<script src="hosting/queue.js?v=3"></script>\n<script src="/app.js"></script>\n'
+             '<script src="https://cdn.example/x.js"></script><script src="//cdn.example/y.js"></script>\n'
+             '<script type="module">import { l } from \'./hosting/lib.js\'</script>\n')
 LINK_SAID = re.compile(r"^linked: \d+ file\(s\) imported by the \d+ touched code file\(s\) read\n$")
 LINK_JS = ("import a from './a'\nimport React from 'react'\nimport { lib } from \"../lib\"\n"
            "import gone from './gone'\nexport { u } from './util'\nconst b = require('./b')\n"
@@ -3092,6 +3103,10 @@ LINK_CASES = (
     (["app/main.ts", "app/a.ts"], ["app/main.ts", "app/a.ts"],
      [("app/main.ts", "import { a } from './a'\n")], []),
     (["README.md"], ["README.md"], [], []),
+    # `https:/cdn.example/x.js` is what a remote src collapses to if followed as a path.
+    (["the-quote.html", "hosting/queue.js", "hosting/lib.js", "app.js", "https:/cdn.example/x.js"],
+     ["the-quote.html"],
+     [("the-quote.html", LINK_HTML)], ["hosting/lib.js", "hosting/queue.js", "app.js"]),
 )
 
 
@@ -3139,11 +3154,13 @@ def link_faults(text):
         lost.append("the tree listed from the head the read is of (`%s`)" % LINK_TREE)
     for line, why in ((LINK_MARK, "the reader told where the linked source starts and what it is not"),
                       (LINK_TAKEN, "the linked files carried through `add`, under the same budget"),
-                      (LINK_FAILED, "a failed link said, in words that name nothing of the product's")):
+                      (LINK_FAILED, "a failed link said, in words that name nothing of the product's"),
+                      (LINK_FAILED_READ, "a failed link said to the reader too, not only the log"),
+                      (LINK_KINDS, "the touched code of every kind the linker reads handed to it"),
+                      (LINK_FEED, "the touched code read from the head the read is of")):
         if line not in g:
             lost.append("%s (`%s`)" % (why, line))
-    touched = 'carried=" roadmap.json PRODUCT.md "'
-    if LINK_TAKEN in g and touched in g and g.index(LINK_TAKEN) < g.index(touched):
+    if LINK_TAKEN in g and (LINK_AFTER not in g or g.index(LINK_TAKEN) < g.index(LINK_AFTER)):
         lost.append("the touched files carried before the linked ones, so the budget spends on the change first")
     if not read or LINK_TOLD not in text[read[0]:read[1]]:
         lost.append("the reviewer told one hop is not the boundary (`%s`)" % LINK_TOLD)
@@ -3187,7 +3204,25 @@ LINK_LOOSENINGS = (
     ("the marker line removed", lambda t: t.replace(LINK_MARK, "true", 1)),
     ("a failed link unsaid", lambda t: t.replace(LINK_FAILED, "true", 1)),
     ("the reviewer not told", lambda t: t.replace(LINK_TOLD, 'echo "."', 1)),
+    ("a failed link unsaid to the reader", lambda t: t.replace(LINK_FAILED_READ, "true", 1)),
+    ("Python not handed to the linker", lambda t: t.replace(LINK_KINDS, LINK_KINDS.replace("|*.py", ""), 1)),
+    ("a page not handed to the linker", lambda t: t.replace(LINK_KINDS, LINK_KINDS.replace("|*.html", ""), 1)),
+    ("the touched code read from main", lambda t: t.replace(LINK_FEED, LINK_FEED.replace('"$SHA:$f"', '"origin/$MAIN:$f"'), 1)),
+    ("a page's own script src ignored", lambda t: t.replace("for quote, src in SRC.findall(text):", "for quote, src in []:", 1)),
+    ("a remote script followed", lambda t: t.replace(' or ":" in src.split("/")[0]:', ":", 1)),
+    ("the linked files carried before the touched ones", lambda t: _link_first(t)),
 )
+
+
+def _link_first(t):
+    """The linker's block moved ahead of the touched files' own loop."""
+    start = t.find('          carried=" roadmap.json PRODUCT.md "\n')
+    end = t.find(LINK_AFTER, start)
+    link_end = t.find('          rm -rf "$t/tree.txt"', end)
+    if min(start, end, link_end) < 0:
+        return t
+    loop = t[start:end + len(LINK_AFTER)]
+    return t[:start] + t[end + len(LINK_AFTER):link_end] + loop + t[link_end:]
 
 
 def _check_link_loosenings():
