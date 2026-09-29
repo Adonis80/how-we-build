@@ -1,6 +1,6 @@
 {
-  "about": "The one place a model is named (decision 0008, issue #103, on the 18 September consensus in consensuses/juku-os/). Every other file asks for a role. How to ask, inspect and switch: library/model-registry.md. A switch is one edit to this file, reviewed like any other change to the gate. The reviewer roles are decision 0008's own assignment, which reverses the 22 September pairing that put the open-weight model behind Sonnet as the main backup; their effort is the Chairman's ruling of 28 September 2026, every read at max.",
-  "version": "2026-09-28.1",
+  "about": "The one place a model is named (decision 0008, issue #103, on the 18 September consensus in consensuses/juku-os/). Every other file asks for a role. How to ask, inspect and switch: library/model-registry.md. A switch is one edit to this file, reviewed like any other change to the gate. The reviewer roles are decision 0008's own assignment, which reverses the 22 September pairing that put the open-weight model behind Sonnet as the main backup; their effort is the Chairman's ruling of 28 September 2026, every read at max. The max-subagent role is what every product's max subagent file is set to, his ruling of the same day (library/max-subagent.md).",
+  "version": "2026-09-29.1",
   "reviewed": "2026-09-25",
   "decision": "https://github.com/Adonis80/how-we-build/issues/103",
   "providers": {
@@ -148,6 +148,12 @@
       "effort": "high",
       "fallback": {"model": "z-ai/glm-5.3-flash", "effort": "high"},
       "use": "Fast terminal and tool-use agent work. No caller yet."
+    },
+    "max-subagent": {
+      "model": "claude-opus-5-5",
+      "effort": "max",
+      "fallback": null,
+      "use": "The effort ladder's max step: the project subagent every product carries as .claude/agents/max-subagent.md, whose model and effort are this role's (library/max-subagent.md; his ruling, 28 September 2026). No fallback: a product's file names one model."
     }
   }
 }
