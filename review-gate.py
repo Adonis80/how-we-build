@@ -95,6 +95,7 @@ import json
 import importlib.util
 import os
 import re
+import concurrent.futures
 import subprocess
 import sys
 import tempfile
@@ -2820,15 +2821,24 @@ BOARD_HOLDS = (
     ("github.event.check_run.app.id == %d" % REVIEWER_APP_ID, "only the reviewer's own check run waking it"),
     ("github.event.check_run.name == '%s'" % REVIEWER_CHECK, "only the reviewer's check run by name"),
     ("cancel-in-progress: false", "no deploy cut off between going live and its smoke test"),
-    (".targets.production.id // empty", "what is live recorded before anything moves"),
-    ('promote/$before', "a red smoke test promoting the recorded deployment back"),
-    # Every red after that, not only a red smoke (#113's first read, blocking).
-    ("trap rollback EXIT", "every exit but a passed smoke rolling back"),
-    ("[[ \"$code\" =~ ^2 ]] || {", "a rollback the host refused said so"),
-    ('[ "$(serving)" = "$before" ]', "a rollback confirmed by the domain serving the recorded deployment"),
-    ('if grep -q "data-board" <<< "$root$file"; then', "a board served to a stranger rolled back at once, never asked again"),
-    ('grep -q "Directors only" <<< "$root" && grep -q "Directors only" <<< "$file"', "the PIN screen at the root and at the page's own name"),
+    # What the fake host below cannot tell apart, because it answers both alike.
+    ("for p in / /index.html; do", "a stranger asked at the root and at the page's own name"),
+    # #117's second read, 5 and 7.
+    ("persist-credentials: false", "no token left in the checkout"),
+    ("check_name=%s&app_id=%d&" % (REVIEWER_CHECK, REVIEWER_APP_ID), "the reviewer's own check runs read, by its name and App"),
+    # And each run kept only if it is the reviewer's, as check_run_verdict keeps
+    # it, not on the query's word (#113's fourth read).
+    ('select(.app.id == %d and .name == "%s" and .head_sha == $sha)' % (REVIEWER_APP_ID, REVIEWER_CHECK),
+     "each check run on the board held to the reviewer's App, name and head"),
+    ("        default: preview\n", "a dispatch that is a preview unless production is chosen"),
+    # #117's second read, 6: the render takes the time the clock stamped.
+    ('jq -n --arg at "$AT"', "the snapshot's time taken from before the first read"),
 )
+# The snapshot's stamp, before the first product is read (#117's second read, 6).
+BOARD_STAMP = 'echo "checked_at='
+# Read, and nothing else, for the whole workflow; one group, on the job (#117's second read, 5).
+BOARD_PERMISSIONS = re.compile(r"^permissions:\n((?:  .*\n)+)", re.M)
+BOARD_JOB_CONCURRENCY = "    concurrency:\n      group: build-board\n      cancel-in-progress: false\n"
 # The read in order: minted, its grant and reach checked, and only then a roadmap read.
 BOARD_ORDER = (BOARD_SCOPE, 'if [ "$granted" != "$want" ]; then', 'if [ "$reach" != "$REPO" ]; then',
                "contents/roadmap.json")
@@ -2847,6 +2857,221 @@ BOARD_NEVER = (
 BOARD_CHECKOUT_REF = re.compile(r"^\s*ref:", re.M)
 BOARD_PRODUCT = re.compile(r"^\s*(Adonis80/[A-Za-z0-9._-]+)=\S", re.M)
 MAP_PRODUCT = re.compile(r"`https://github\.com/(Adonis80/[A-Za-z0-9._-]+)`")
+
+
+# THE DEPLOY, RUN AGAINST A FAKE HOST (#117's second read, 4). Reading the
+# rollback for its spelling held it no better than reading the wake did: two
+# reads in a row found a path it did not cover. So the step's own shell is
+# lifted out of the file and run, path by path, against a `curl` that answers
+# as the host and the domain would from a state file, with `sleep` and `date`
+# on a clock of its own, so a wait costs no time here and a deadline is still
+# a deadline. The job's timeout is enforced by the fake too: a step that would
+# have been cut off by it, a request with no time limit, or a call the fake does
+# not know comes out as a fault, never as a pass. What the host really answers
+# is unproved until the first run (the shapes here are library/deploy.md's).
+BOARD_DEPLOY = "Deploy, smoke, and roll back on red"
+BOARD_FAKE_CURL = r"""#!/usr/bin/env bash
+# Stands in for curl: the host's API and the two addresses a stranger asks.
+S="$FAKE"
+refuse() { printf '%s\n' "the fake host refuses: $1" >> "$S/refused"; exit 97; }
+case " $* " in *" --max-time "*) ;; *) refuse "a request with no time limit: curl $*" ;; esac
+now=$(( $(cat "$S/clock") + 1 ))
+echo "$now" > "$S/clock"
+[ "$now" -le "$JOB_END" ] || refuse "the job's timeout would have cut this off"
+method=GET url="" out="" fmt="" data="" auth=no
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -X) method=$2; shift ;;
+    -o) out=$2; shift ;;
+    -w) fmt=$2; shift ;;
+    -d) data=$2; shift ;;
+    -H) case "$2" in Authorization:*) auth=yes ;; esac; shift ;;
+    --max-time) shift ;;
+    https://*) url=$1 ;;
+  esac
+  shift
+done
+echo "$method $url" >> "$S/calls"
+reply() {
+  if [ -n "$out" ]; then printf '%s' "$2" > "$out"; else printf '%s' "$2"; fi
+  [ -z "$fmt" ] || printf '%b' "${fmt//'%{http_code}'/$1}"
+  [ "$1" != 000 ] || exit 28
+}
+pin='<html><body><p>Directors only</p></body></html>'
+board='<html><body data-board><p>NOT-FOR-THE-LOG</p></body></html>'
+serving=$(cat "$S/serving")
+path=${url%%\?*}
+case "$method $path" in
+  "GET https://api.vercel.com/v13/deployments/$DOMAIN")
+    [ "${FAKE_SERVING:-ok}" = ok ] || { reply 500 '{}'; exit 0; }
+    reply 200 "{\"id\":\"$serving\"}" ;;
+  "POST https://api.vercel.com/v13/deployments")
+    case "$data" in @*) grep -q '"target"' "${data#@}" && refuse "a deployment given a target, which the host would put on the domain by itself" ;; *) refuse "a deployment with no files" ;; esac
+    echo "$FAKE_NEW" > "$S/new"
+    reply 200 '{"id":"dpl_new","readyState":"QUEUED"}' ;;
+  "GET https://api.vercel.com/v13/deployments/dpl_new")
+    reply 200 "{\"id\":\"dpl_new\",\"readyState\":\"$(cat "$S/new")\",\"url\":\"juku-build-board-x1.vercel.app\"}" ;;
+  "GET https://api.vercel.com/v13/deployments/dpl_copy")
+    reply 200 '{"id":"dpl_copy","readyState":"READY","originalDeploymentId":"dpl_new"}' ;;
+  "GET https://api.vercel.com/v13/deployments/dpl_before")
+    reply 200 '{"id":"dpl_before","readyState":"READY"}' ;;
+  "PATCH https://api.vercel.com/v12/deployments/dpl_new/cancel")
+    [ "${FAKE_CANCEL:-ok}" = ok ] || { reply 400 '{}'; exit 0; }
+    echo CANCELED > "$S/new"; reply 200 '{"readyState":"CANCELED"}' ;;
+  "DELETE https://api.vercel.com/v13/deployments/dpl_new")
+    echo DELETED > "$S/new"; reply 200 '{"state":"DELETED"}' ;;
+  "POST https://api.vercel.com/v10/projects/$PROJECT/promote/dpl_new")
+    [ "${FAKE_PROMOTE:-ok}" = ok ] || { reply 409 '{}'; exit 0; }
+    [ "$(cat "$S/new")" = READY ] || refuse "a promote of a deployment that is not READY"
+    [ "${FAKE_DOMAIN:-pin}" = never ] || echo dpl_copy > "$S/serving"
+    reply 201 '' ;;
+  "POST https://api.vercel.com/v10/projects/$PROJECT/promote/dpl_before")
+    case "${FAKE_ROLLBACK:-ok}" in refused) reply 409 '{}'; exit 0 ;; ok) echo dpl_before > "$S/serving" ;; esac
+    reply 201 '' ;;
+  "GET https://$DOMAIN/"|"GET https://$DOMAIN/index.html")
+    [ "$auth" = no ] || refuse "a stranger's request carrying a key"
+    [ "$serving" = dpl_copy ] || { reply 200 "$pin"; exit 0; }
+    case "${FAKE_DOMAIN:-pin}" in board) reply 200 "$board" ;; blank) reply 502 'bad gateway' ;; *) reply 200 "$pin" ;; esac ;;
+  "GET https://juku-build-board-x1.vercel.app/"|"GET https://juku-build-board-x1.vercel.app/index.html")
+    [ "$auth" = no ] || refuse "a stranger's request carrying a key"
+    [ "$(cat "$S/new")" = READY ] || { reply 404 'gone'; exit 0; }
+    case "${FAKE_PREVIEW:-wall}" in
+      wall) reply 401 '<html>Authentication Required</html>' ;;
+      pin) reply 200 "$pin" ;;
+      board) reply 200 "$board" ;;
+      none) reply 000 '' ;;
+    esac ;;
+  *) refuse "$method $url" ;;
+esac
+"""
+BOARD_FAKE_SLEEP = """#!/usr/bin/env bash
+echo $(( $(cat "$FAKE/clock") + ${1%s} )) > "$FAKE/clock"
+[ "$(cat "$FAKE/clock")" -le "$JOB_END" ] || { echo "the fake host refuses: the job's timeout would have cut this off" >> "$FAKE/refused"; exit 97; }
+"""
+BOARD_FAKE_DATE = """#!/usr/bin/env bash
+if [ "$*" = "+%s" ]; then cat "$FAKE/clock"; else exec /bin/date "$@"; fi
+"""
+# (what, environment, exit, what the domain serves after, the new deployment's
+# end state, what the log must say, what it must not). The two that pass carry
+# as much weight as the rest: without them a step that always exits 1 would
+# satisfy every other line. The paths #117's second read named come first.
+BOARD_DEPLOY_CASES = (
+    ("a production deploy that passes", {}, 0, "dpl_copy", "READY", "live: dpl_new", None),
+    ("the domain shows a stranger the board", {"FAKE_DOMAIN": "board"}, 1, "dpl_before", "READY",
+     "rolled back: roadmap.juku.pro serves dpl_before", None),
+    ("the domain never serves it", {"FAKE_DOMAIN": "never"}, 1, "dpl_before", "READY",
+     "rolled back: roadmap.juku.pro serves dpl_before", None),
+    ("it is never READY: the wait gives up and cancels it", {"FAKE_READY": "BUILDING"}, 1, "dpl_before",
+     "CANCELED", "cancelled: dpl_new", "promote"),
+    ("the promote is refused", {"FAKE_PROMOTE": "no"}, 1, "dpl_before", "READY", "PROMOTE REFUSED", None),
+    ("the rollback is accepted and never lands", {"FAKE_DOMAIN": "board", "FAKE_ROLLBACK": "stuck"}, 1,
+     "dpl_copy", "READY", "ROLLBACK UNCONFIRMED", None),
+    # A rollback begun at the deadline still has its three minutes in the job.
+    ("the domain never shows the PIN screen, and the rollback never lands",
+     {"FAKE_DOMAIN": "blank", "FAKE_ROLLBACK": "stuck"}, 1, "dpl_copy", "READY", "ROLLBACK UNCONFIRMED", None),
+    ("the rollback is refused", {"FAKE_DOMAIN": "board", "FAKE_ROLLBACK": "refused"}, 1, "dpl_copy",
+     "READY", "ROLLBACK REFUSED", None),
+    ("a preview for his look", {"TARGET": "preview"}, 0, "dpl_before", "READY",
+     "https://juku-build-board-x1.vercel.app", "promote"),
+    ("an automatic run before his look", {"GITHUB_EVENT_NAME": "pull_request_target"}, 0,
+     "dpl_before", "none", "rendered, not deployed", "deployment:"),
+    ("the preview shows a stranger the board", {"FAKE_PREVIEW": "board"}, 1, "dpl_before", "DELETED",
+     "A STRANGER WAS SERVED THE BOARD at the preview", "promote"),
+    ("the preview shows a stranger the board, asked for as a preview",
+     {"TARGET": "preview", "FAKE_PREVIEW": "board"}, 1, "dpl_before", "DELETED",
+     "deleted: dpl_new", "juku-build-board-x1.vercel.app"),
+    ("the preview never answers", {"FAKE_PREVIEW": "none"}, 1, "dpl_before", "DELETED",
+     "neither the sign-in wall nor the PIN screen", "promote"),
+    ("it is never READY, and the cancel is refused", {"FAKE_READY": "BUILDING", "FAKE_CANCEL": "no"}, 1,
+     "dpl_before", "BUILDING", "CANCEL REFUSED", "promote"),
+    ("its build fails", {"FAKE_READY": "ERROR"}, 1, "dpl_before", "ERROR", "ended ERROR", "promote"),
+    ("what the domain serves cannot be recorded", {"FAKE_SERVING": "no"}, 1, "dpl_before", "none",
+     "could not be recorded", "deployment:"),
+    ("too little of the job is left", {"LATE": "yes"}, 1, "dpl_before", "none", "too little of the job",
+     "deployment:"),
+)
+_board_runs = {}
+
+
+def board_deploy_faults(text):
+    """Run the deploy step against the fake host, every path at once. Its faults, or [].
+
+    The paths run side by side, each in its own directory on its own clock,
+    and a step already run is not run again: most loosenings leave it alone.
+    """
+    span = _step_span(text, BOARD_DEPLOY)
+    script = wake_script(text[span[0]:span[1]]) if span else None
+    if script is None:
+        return ["has no deploy step named %r whose shell can be run whole" % BOARD_DEPLOY]
+    m = TIMEOUT.search(text)
+    if not m:
+        return ["sets no timeout-minutes, so nothing bounds the deploy's rollback"]
+    job = int(m.group(1)) * 60
+    key = (script, job)
+    if key not in _board_runs:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            runs = pool.map(lambda case: _board_deploy_case(script, job, case), BOARD_DEPLOY_CASES)
+            _board_runs[key] = [f for faults in runs for f in faults]
+    return _board_runs[key]
+
+
+def _board_deploy_case(script, job, case):
+    what, env, want_rc, want_serving, want_new, says, never = case
+    start = 1000000
+    # A minute spent reading before the deploy began; in the late case, all
+    # but five of the job's minutes.
+    clock = start + (job - 300 if env.get("LATE") else 60)
+    with tempfile.TemporaryDirectory() as d:
+        binned, fake, run = (os.path.join(d, n) for n in ("bin", "fake", "run"))
+        for n in (binned, fake, os.path.join(run, "site")):
+            os.makedirs(n)
+        for name, body in (("curl", BOARD_FAKE_CURL), ("sleep", BOARD_FAKE_SLEEP), ("date", BOARD_FAKE_DATE)):
+            with open(os.path.join(binned, name), "w", encoding="utf-8") as f:
+                f.write(body)
+            os.chmod(os.path.join(binned, name), 0o755)
+        for name, body in (("clock", clock), ("serving", "dpl_before"), ("new", "none"), ("calls", ""),
+                           ("refused", "")):
+            with open(os.path.join(fake, name), "w", encoding="utf-8") as f:
+                f.write("%s\n" % body if body != "" else "")
+        for name in ("index.html", "middleware.js", "robots.txt", "vercel.json"):
+            with open(os.path.join(run, "site", name), "w", encoding="utf-8") as f:
+                f.write("x")
+        e = {k: v for k, v in os.environ.items() if not k.startswith("FAKE_")}
+        e.update({"PATH": binned + os.pathsep + os.environ.get("PATH", ""), "FAKE": fake,
+                  # The job's clock started before this one, at the checkout.
+                  "JOB_END": str(start + job - 30), "RUNNER_TEMP": run, "STARTED": str(start),
+                  "GITHUB_EVENT_NAME": "workflow_dispatch", "LIVE": "no", "TARGET": "production",
+                  "VERCEL_TOKEN": "not-a-token", "TEAM": "team_x", "PROJECT": "prj_x",
+                  "DOMAIN": "roadmap.juku.pro", "FAKE_NEW": env.get("FAKE_READY", "READY")})
+        e.update({k: v for k, v in env.items() if k != "LATE"})
+        try:
+            p = subprocess.run(["bash", "-c", script], env=e, capture_output=True, text=True, timeout=60)
+        except (OSError, subprocess.SubprocessError) as exc:
+            return ["on '%s' could not be run (%s)" % (what, exc)]
+
+        def state(name):
+            with open(os.path.join(fake, name), encoding="utf-8") as f:
+                return f.read().strip()
+        log = p.stdout + p.stderr
+        faults = []
+        if state("refused"):
+            faults.append("on '%s' made a call the host would refuse or the job would not have lived to "
+                          "make: %s" % (what, state("refused").splitlines()[0]))
+        if p.returncode != want_rc:
+            faults.append("on '%s' exited %d, not %d" % (what, p.returncode, want_rc))
+        if state("serving") != want_serving:
+            faults.append("on '%s' left the domain serving %s, not %s" % (what, state("serving"), want_serving))
+        if state("new") != want_new:
+            faults.append("on '%s' left its deployment %s, not %s" % (what, state("new"), want_new))
+        if says not in log:
+            faults.append("on '%s' never says %r" % (what, says))
+        if never and never in (log if never != "promote" else state("calls")):
+            faults.append("on '%s' %s %r" % (what, "called" if never == "promote" else "says", never))
+        if "NOT-FOR-THE-LOG" in log:
+            faults.append("on '%s' printed the board into the log" % what)
+        if int(state("clock")) > start + job - 30:
+            faults.append("on '%s' ran past the job's timeout" % what)
+        return faults
 
 
 def _check_board_wiring(board=None, product=None, readme=None, quiet=False):
@@ -2892,6 +3117,22 @@ def _check_board_wiring(board=None, product=None, readme=None, quiet=False):
             fault("smokes against %s, which cannot be read: %s" % (path, e))
     if XTRACE.search(board):
         fault("traces its shell, which prints what it holds into a public log")
+    perms = BOARD_PERMISSIONS.search(board)
+    if (not perms or len(re.findall(r"^\s*permissions:", board, re.M)) != 1
+            or not all(re.match(r"^  [a-z-]+: read$", l) for l in perms.group(1).splitlines())):
+        fault("asks for more than read: one `permissions:` block, for the workflow, every line of it read")
+    if re.search(r"^concurrency:", board, re.M) or BOARD_JOB_CONCURRENCY not in board:
+        fault("keeps its concurrency group on the workflow, or not at all; it belongs on the job, so a "
+              "skipped run never joins it")
+    unbounded = [l.strip() for l in board.splitlines() if re.search(r"\bcurl\s", l)
+                 and not l.strip().startswith("#") and "--max-time" not in l]
+    if unbounded:
+        fault("makes a request with no time limit (`%s`)" % unbounded[0])
+    stamp, read = board.find(BOARD_STAMP), board.find("contents/roadmap.json")
+    if stamp == -1 or read == -1 or stamp > read:
+        fault("stamps the snapshot's time after the first product is read, or not at all")
+    for f in board_deploy_faults(board):
+        fault("deploy step %s" % f)
     if _jwt(board) is None or _jwt(board) != _jwt(product):
         fault("signs the App's JWT differently from %s" % PRODUCT_WORKFLOW)
     listed = sorted(set(BOARD_PRODUCT.findall(board)))
@@ -2915,8 +3156,10 @@ def _check_board_wiring(board=None, product=None, readme=None, quiet=False):
             "repository's own pull requests and the reviewer's check run; it reads the %d products "
             "on the README's map with a token each, contents read alone, its grant and reach "
             "checked before anything is read; it checks out nothing of a pull request, uploads "
-            "nothing, and from the moment it records what is live, every exit but a passed smoke "
-            "promotes that back and waits for the domain to serve it" % (KEY_ENVIRONMENT, len(listed)))
+            "nothing, and its deploy, run against a fake host on %d paths, promotes only a preview "
+            "it has smoked, cancels or deletes one that fails, and puts back what the domain served "
+            "on every red after the promote, inside the job's time"
+            % (KEY_ENVIRONMENT, len(listed), len(BOARD_DEPLOY_CASES)))
     return bad
 
 
@@ -2938,11 +3181,43 @@ BOARD_LOOSENINGS = (
     ("the pull request's head checked out", lambda t: t.replace("          persist-credentials: false\n", "          persist-credentials: false\n          ref: ${{ github.event.pull_request.head.sha }}\n", 1)),
     ("a deploy cut off mid-way", lambda t: t.replace("cancel-in-progress: false", "cancel-in-progress: true", 1)),
     ("a rollback to the new deployment", lambda t: t.replace("promote/$before", "promote/$id", 1)),
-    ("a rollback only on a red smoke", lambda t: t.replace("          trap rollback EXIT\n", "", 1)),
-    ("a refused rollback taken as done", lambda t: t.replace('[[ "$code" =~ ^2 ]] || {', 'true || {', 1)),
-    ("a rollback never confirmed", lambda t: t.replace('[ "$(serving)" = "$before" ]', "true", 1)),
-    ("a leaked board asked again", lambda t: t.replace('if grep -q "data-board" <<< "$root$file"; then', "if false; then", 1)),
-    ("the page's own name never smoked", lambda t: t.replace(' && grep -q "Directors only" <<< "$file"', "", 1)),
+    ("nothing put back on a red", lambda t: t.replace("          trap cleanup EXIT\n", "", 1)),
+    ("a refused rollback taken as done", lambda t: t.replace('[[ "$code" =~ ^2 ]] || { echo "::error::ROLLBACK REFUSED', 'true || { echo "::error::ROLLBACK REFUSED', 1)),
+    ("a rollback never confirmed", lambda t: t.replace('serves "$before" && {', "true && {", 1)),
+    ("a leaked board asked again", lambda t: t.replace('if grep -q "data-board" <<< "$body"; then return 2; fi', "if false; then return 2; fi", 1)),
+    ("the page's own name never smoked", lambda t: t.replace("for p in / /index.html; do", "for p in /; do", 1)),
+    # #117's second read, 1: the host never moves the domain, and what it
+    # served is what is put back.
+    ("the domain left to the host", lambda t: t.replace("projectSettings: {framework: null},", 'projectSettings: {framework: null}, target: "production",', 1)),
+    ("what is live read from the project", lambda t: t.replace("before=$(serving)", """before=$(v "https://api.vercel.com/v9/projects/$PROJECT?$q" | jq -r '.targets.production.id // empty')""", 1)),
+    ("a smoke passed on any deployment", lambda t: t.replace('if [ "$g" -eq 0 ] && serves "$id"; then', 'if [ "$g" -eq 0 ]; then', 1)),
+    ("a promote refused and carried on", lambda t: t.replace('[[ "$code" =~ ^2 ]] || { echo "::error::PROMOTE REFUSED', 'true || { echo "::error::PROMOTE REFUSED', 1)),
+    ("a wait given up and left building", lambda t: t.replace('case "$state" in ERROR|CANCELED) exit 1 ;; esac', "exit 1", 1)),
+    ("a refused cancel taken as done", lambda t: t.replace('[[ "$code" =~ ^2 ]] || { echo "::error::CANCEL REFUSED', 'true || { echo "::error::CANCEL REFUSED', 1)),
+    # 2: the preview smoked as a stranger, deleted on red, named only after.
+    ("the preview never smoked", lambda t: t.replace('gated "$host" wall && g=0 || g=$?', "g=0", 1)),
+    ("a failed preview kept", lambda t: t.replace('v -X DELETE "https://api.vercel.com/v13/deployments/$id?$q"', 'v "https://api.vercel.com/v13/deployments/$id?$q"', 1)),
+    ("the preview named before its smoke", lambda t: t.replace("          g=1\n", '          echo "preview: https://$host"\n          g=1\n', 1)),
+    # 3: a time limit on every request and a deadline on every wait.
+    ("a host request with no time limit", lambda t: t.replace("v() { curl -sS --max-time 20 ", "v() { curl -sS ", 1)),
+    ("a read with no time limit", lambda t: t.replace("api() { curl -sSf --max-time 30 ", "api() { curl -sSf ", 1)),
+    ("a wait with no deadline", lambda t: t.replace('while [ "$(date +%s)" -lt "$by" ]; do\n            state=', "while true; do\n            state=", 1)),
+    ("waits that leave no time to roll back", lambda t: t.replace("          limit=9\n", "          limit=14\n", 1)),
+    ("a rollback given longer than the job", lambda t: t.replace("local back=$(( $(date +%s) + 180 ))", "local back=$(( $(date +%s) + 600 ))", 1)),
+    # 5.
+    ("a write permission", lambda t: t.replace("  checks: read\n", "  checks: read\n  statuses: write\n", 1)),
+    ("a job asking for its own permissions", lambda t: t.replace("    runs-on: ubuntu-latest\n", "    runs-on: ubuntu-latest\n    permissions:\n      contents: write\n", 1)),
+    ("the concurrency group on the workflow", lambda t: t.replace(BOARD_JOB_CONCURRENCY, "", 1).replace("\njobs:\n", "\nconcurrency:\n  group: build-board\n  cancel-in-progress: false\n\njobs:\n", 1)),
+    ("credentials left in the checkout", lambda t: t.replace("persist-credentials: false", "persist-credentials: true", 1)),
+    ("another App's check runs read", lambda t: t.replace("&app_id=%d&" % REVIEWER_APP_ID, "&app_id=15368&", 1)),
+    ("check runs of another name read", lambda t: t.replace("check_name=%s&" % REVIEWER_CHECK, "check_name=review&", 1)),
+    ("another App's run kept on the board", lambda t: t.replace("select(.app.id == %d and " % REVIEWER_APP_ID, "select(", 1)),
+    ("a run of another name kept on the board", lambda t: t.replace(' and .name == "%s"' % REVIEWER_CHECK, "", 1)),
+    ("a run on another head kept on the board", lambda t: t.replace(" and .head_sha == $sha)", ")", 1)),
+    # 6 and 7.
+    ("the snapshot stamped at the render", lambda t: t.replace('jq -n --arg at "$AT"', 'jq -n --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"', 1)),
+    ("the stamp after the first read", lambda t: t.replace(BOARD_STAMP, "true", 1).replace("          rm -f \"$road\"\n", "          rm -f \"$road\"\n          " + BOARD_STAMP + "x\" >> \"$GITHUB_OUTPUT\"\n", 1)),
+    ("a dispatch that deploys production by default", lambda t: t.replace("        default: preview\n", "        default: production\n", 1)),
     ("a roadmap read before the grant is checked", lambda t: t.replace(BOARD_SCOPE, 'curl -sS "https://api.github.com/repos/$REPO/contents/roadmap.json" > /dev/null\n            ' + BOARD_SCOPE, 1)),
     ("a pull request fetched", lambda t: t.replace("      - name: Render\n", "      - run: git fetch origin pull/1/head\n      - name: Render\n", 1)),
     ("a row the workflow does not read", lambda t: t.replace("          Adonis80/phena=Phena\n", "          Adonis80/phena=Phena Two\n", 1)),
