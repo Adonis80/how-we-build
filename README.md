@@ -14,12 +14,24 @@ The whole map: what exists, where it lives, one line on what it is for, and the 
 
 A repository not listed here is not under this rulebook.
 
+## Where each product's plan lives
+
+One line per product: where its plan is, and how it reaches the build board (decision 0010, 29 September 2026). A product with no `roadmap.json` is not a product with no plan: its plan is where this line says.
+
+- **Juku OS** (this rulebook) — no `roadmap.json`. Its plan is its open pull requests, queued ready first, then by priority, then oldest (`library/changing-the-rulebook-merge.md`). On the board: the first row, from those pull requests, their `Priority:` and `Ready:` lines and their review check.
+- **Hemz OS** — [`roadmap.json`](https://github.com/Adonis80/Hemz-OS/blob/main/roadmap.json) on `main`. On the board: its row, from that file's items and money milestones.
+- **Myst** — [`roadmap.json`](https://github.com/Adonis80/myst/blob/main/roadmap.json) on `main`. On the board: its row, from that file's items.
+- **Phena** — [`roadmap.json`](https://github.com/Adonis80/phena/blob/main/roadmap.json) on `main`. On the board: its row, from that file's items and money milestones.
+
+A product joins this map in the pull request that adds it to the list above. How the board is built: `library/build-board.md`.
+
 A Project's instructions are its template, whole: `library/project-template-product.md`, or `library/project-template-juku-os.md` for the Juku OS Project.
 
 ## What every product carries
 
 How a change reaches every product: it is made here once and then lands everywhere — a change to how we build not by anyone remembering, but because every session is sent to this list at its start (by the first line of its `AGENTS.md`, and by its Project's instructions) and a repo that lacks something on it makes itself current in its next pull request. One line each, as of 28 September 2026; the why of each lives in the pull request that added it.
 
+- Free checks and a self-review before any paid read, and on every change the line `Personal data or payments affected: yes/no — reason` (decision 0010, 29 September 2026). Detail: `library/reviewer-asking.md`.
 - `AGENTS.md` ending with `## Review guidelines`, under 500 words; a check green only when the reviewer has read the current commit; the reviewer `review-gate.py` names. Detail: `library/carries-reviewer.md`.
 - Product reads asked from here through `review-product.yml`, and a model switched in one edit (met: `model-registry/`). Detail: `library/carries-review-route.md`.
 - Open pull requests moved on before new work; a session that cannot move says so once and stops hard, with the clock tools denied; a consultant that cannot be reached never holds up a slice; a `roadmap.json` fit for a one-word *build*. Detail: `library/carries-sessions.md`.
