@@ -236,7 +236,8 @@ def readiness(pr):
     # The reason runs to the next field on the same line, if one follows.
     reason = re.split(r"\s(?:Lead stack|Reviewed by|Priority):", m.group(2))[0]
     reason = reason.replace("`", "").strip(" \t.,:;—–-")
-    return m.group(1).lower(), reason[:240], pri.group(1).upper() if pri else None
+    # Whole here: §3 is tested on all of it, and it is cut only where shown (#113's fifth read).
+    return m.group(1).lower(), reason, pri.group(1).upper() if pri else None
 
 
 def pr_state(pr):
@@ -280,7 +281,7 @@ def pr_html(pr):
     ready, reason, pri = readiness(pr)
     state = pr_state(pr)
     facts = [("Priority", pri or "Not recorded"),
-             ("Ready", (ready + (" — " + reason if reason else "")) if ready else "Not recorded")]
+             ("Ready", (ready + (" — " + reason[:240] if reason else "")) if ready else "Not recorded")]
     dl = "".join("<dt>%s</dt><dd>%s</dd>" % (e(k), e(v)) for k, v in facts)
     where = link(pr.get("url"), "Where the work is")
     return ('<details class="item pr"><summary><span class="id">#%d</span><span class="t">%s</span>'
@@ -428,6 +429,8 @@ def _selftest():
         (pr(14, ok, review=[("completed", "neutral"), ("completed", "success")]), "Review check passed"),
         (pr(15, ok, review=[("completed", "cancelled"), ("completed", "success")]), "Review check passed"),
         (pr(16, ok, review=[("in_progress", None), ("completed", "neutral")]), "Review pending"),
+        (pr(17, "**Priority:** P2. **Ready:** no — " + "waiting on the host's answer. " * 10 +
+            "Decision needed: which host."), "Waiting on the Chairman"),
     ]
     for p, want in states:
         hold(pr_state(p) == want, "§7: #%d should read %r, reads %r" % (p["number"], want, pr_state(p)))

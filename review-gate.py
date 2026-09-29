@@ -3273,6 +3273,8 @@ def _selftest():
     # rather than only through the cases above.
     bad += hold(touches_the_gate(["README.md", "check.sh", ".github/workflows/x.yml"]),
                 [".github/workflows/x.yml", "check.sh"], "which files are the gate")
+    bad += hold(touches_the_gate(["board/build.py", "board/vercel.json"]), ["board/build.py"],
+                "the board's build is the gate, its other files are not (#113's fifth read)")
     bad += hold(touches_the_gate(["design/ARCHITECT.md", "AGENTS.md"]), [], "and which are not")
     # THE RETIRED ROUTES ARE HELD SHUT, not merely deleted. A later session
     # restoring a prose reader would have to get past these: the gate reads check

@@ -205,7 +205,7 @@ python3 review-gate.py --selftest || fail_gate=1
 [ "${fail_gate:-0}" -eq 0 ] || { echo "FAIL: the review gate no longer matches the reviewer's answers, or has drifted from the workflows — see the cases above."; fail=1; }
 # The build board's build (decision 0007): what the page may say, run on
 # made-up roadmaps, since the real ones are private and never reach this log.
-python3 board/build.py --selftest || { echo "FAIL: board/build.py no longer renders the board as decision 0007 says — see the case above."; fail=1; }
+python3 -I board/build.py --selftest || { echo "FAIL: board/build.py no longer renders the board as decision 0007 says — see the case above."; fail=1; }
 # WHICH EVENTS THE GATE RUNS ON, WRITTEN AS WHAT IT SKIPS RATHER THAN WHAT IT
 # CATCHES. This read `pull_request|pull_request_review`, and this change removed
 # the second of those triggers from check.yml, leaving that arm unreachable.
