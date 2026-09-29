@@ -2130,7 +2130,8 @@ REVIEW_READ = ("Addressed to the CTO. I read the diff against main's tip and the
 
 
 def route_says(block, first, second, fallback, left):
-    """Run the reading block with a stub `ask()`. (roles asked, verdict read or None), or None."""
+    """Run the reading block with a stub `ask()`. (roles asked, verdict read or None), a
+    `written […]` string when the output file's verdict lines disagree with it, or None."""
     with tempfile.TemporaryDirectory() as d:
         body = "\n".join(l.replace("/tmp/", d + "/").replace('"$t/', '"' + d + "/") for l in block)
         # What `read_bytes=` measures, so the block's own line runs rather than
@@ -2172,12 +2173,21 @@ def route_says(block, first, second, fallback, left):
             p = subprocess.run(["bash", os.path.join(d, "route.sh")], env=env, capture_output=True,
                                text=True, timeout=60)
             asked = open(os.path.join(d, "asked"), encoding="utf-8").read().split()
+            out = os.path.join(d, "out")
+            written = ([l.split("=", 1)[1] for l in open(out, encoding="utf-8").read().splitlines()
+                        if l.startswith("verdict=")] if os.path.exists(out) else [])
         except (OSError, subprocess.SubprocessError):
             return None
+    # WHAT IS SIGNED IS WHAT WAS WRITTEN (#111's second read, advisory). *Sign the
+    # verdict* reads the `verdict=` line in $GITHUB_OUTPUT, not the shell's
+    # variable, so a case holds the file: one line, saying what the read said,
+    # and none at all from a read that failed.
     done = re.search(r"^done: (\w+)$", p.stdout, re.M)
     if p.returncode == 0 and done:
-        return asked, done.group(1)
-    return (asked, None) if p.returncode == 3 and "failed: " in p.stdout else None
+        return asked, done.group(1) if written == [done.group(1)] else "written %s" % written
+    if p.returncode == 3 and "failed: " in p.stdout:
+        return asked, None if not written else "written %s" % written
+    return None
 
 
 def route_faults(text, path):
@@ -2198,11 +2208,25 @@ def route_faults(text, path):
     # stub, not the file, so a second `ask()` placed above the block would win
     # in the real read and never run here. Only the reader of the diff guards
     # that region until the harness starts higher, with a fake `claude` on PATH.
+    # ITS OTHER LIMIT (#118's read): the harness stops at `ROUTE_LAST`, so
+    # below it only a text rule holds — no line of *Read it* but that one may
+    # name both `GITHUB_OUTPUT` and `verdict`. A write spelled another way
+    # below the block (the file through a variable, a braced group, the name
+    # in capitals) passes it, and only the reader of the diff guards that
+    # region until the harness runs to the end of the step.
     block = _block(r, lambda l: l == REVIEW_TEST, lambda l: l == ROUTE_LAST)
     if block is None or "answered() {" not in block or ROUTE_FIRST not in block:
         lost.append("one reading block from `%s`, through `answered()` and `%s`, to `%s`"
                     % (REVIEW_TEST, ROUTE_FIRST, ROUTE_LAST))
         return lost
+    # One line of *Read it* writes the verdict the next step signs, and it is the
+    # block's last: a second, anywhere in the step, is a verdict nothing reads
+    # the way the cases do (#111's second read: GitHub keeps the last value a
+    # step writes for a name).
+    writes = [l.strip() for l in r.splitlines()
+              if "GITHUB_OUTPUT" in l and "verdict" in l and not l.strip().startswith("#")]
+    if writes != [ROUTE_LAST]:
+        lost.append("one line writing the verdict, `%s`, and no other (it has %s)" % (ROUTE_LAST, writes))
     for what, first, second, fallback, left, want in ROUTE_CASES:
         got = route_says(block, first, second, fallback, left)
         if got != want:
@@ -2254,6 +2278,11 @@ ROUTE_LOOSENINGS = (
     # `reviewed()` and the reading block as two pieces, and this line, between
     # them, ran in neither while bash took it over the first in the real read.
     ("a second, looser bar defined after the first", None, lambda t: t.replace("          " + READ_BEGAN + "\n", "          " + READ_BEGAN + "\n          " + REVIEW_TEST.replace(">= 100", ">= 99") + "\n", 1)),
+    ("a second verdict written after the first", None, lambda t: t.replace("          " + ROUTE_LAST + "\n", "          " + ROUTE_LAST + "\n          echo \"verdict=clean\" >> \"$GITHUB_OUTPUT\"\n", 1)),
+    # Deferred to the step's end, and spelled so the text rule misses it: only
+    # the file check refuses this one (#118's read, advisory 2).
+    ("a verdict deferred past the read", None, lambda t: t.replace("          " + READ_BEGAN + "\n", "          " + READ_BEGAN + "\n          f=$GITHUB_OUTPUT\n          trap 'echo verdict=clean >> \"$f\"' EXIT\n", 1)),
+    ("a verdict written before the read", None, lambda t: t.replace("          " + READ_BEGAN + "\n", "          " + READ_BEGAN + "\n          echo \"verdict=clean\" >> \"$GITHUB_OUTPUT\"\n", 1)),
     ("a terse refusal handed to the fallback", None, lambda t: t.replace(REFUSAL_ANSWERED, "clean|advisory|blocking)", 1)),
     ("a terse refusal failed as unread", None, lambda t: t.replace(REFUSAL_KEPT, "", 1)),
     ("an empty refusal failed as unread, as before #110", REVIEW_WORKFLOW, lambda t: t.replace(REVIEW_TAKEN[REVIEW_WORKFLOW][0], REVIEW_TAKEN[REVIEW_WORKFLOW][1] + "\n          " + REVIEW_TAKEN[REVIEW_WORKFLOW][0], 1)),
