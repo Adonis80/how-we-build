@@ -6,8 +6,7 @@
 # an index row that opens its first page on words that page does not say,
 # anything that looks like a secret (naming the place, never the value), a
 # model named anywhere but the registry, a review gate that no longer matches the reviewer's answers or has drifted from
-# the workflows that fetch them, a build board that no longer renders as
-# decision 0007 says, and, in a pull request, a commit no reviewer
+# the workflows that fetch them, and, in a pull request, a commit no reviewer
 # has read clean — unread, or read and left a blocking finding on. Nothing else. A read by anybody the
 # gate does not count is unread, not a shape of its own.
 # A third shape, "read clean by a reviewer the rulebook does not allow to
@@ -198,9 +197,9 @@ fi
 # The gate's own rule is machine-checked before anything asks GitHub: one
 # implementation, held against the reviewer's real answers, the states a read
 # can arrive in, the fakes that once passed a looser test, the routes the gate
-# has stopped reading, and the five workflow files — the check, the reviewer,
-# the wake it calls, the door's standing proof and the product reviewer — which
-# must still agree with the register and with each other.
+# has stopped reading, and the six workflow files — the check, the reviewer,
+# the wake it calls, the door's standing proof, the product reviewer and the
+# board's build — which must still agree with the register and with each other.
 python3 review-gate.py --selftest || fail_gate=1
 [ "${fail_gate:-0}" -eq 0 ] || { echo "FAIL: the review gate no longer matches the reviewer's answers, or has drifted from the workflows — see the cases above."; fail=1; }
 # The build board's build (decision 0007): what the page may say, run on
