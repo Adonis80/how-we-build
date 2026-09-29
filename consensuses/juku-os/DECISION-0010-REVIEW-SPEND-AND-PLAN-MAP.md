@@ -71,3 +71,19 @@ workflow behaviour and the review records.
 | Split-routing | nobody yet | opens only if 1–5 leave the budget broken |
 
 Astra's audit runs after each item merges. Agreement here does not certify an unseen implementation.
+
+## Filing notes (CTO, 29 September 2026; not part of the consensus, whose words above stand as agreed)
+
+- **The freeze lift.** The Chairman's ruling reached the code session that filed this in these words: *"the Chairman lifted the 10 October freeze for its items only"*. It covers every item in the owner table and nothing else.
+- **Astra's audit is outside the gate.** It is advisory to the CTO, like any consultant's finding (`library/consultant.md`). The gate still counts one reviewer's read alone; no audit, sign-off or comment from Astra clears a commit.
+- **Ruling 1 adds, it does not replace.** Today the front page's *Products under this rulebook* names each product's repository and the files to open; it does not say where each product's plan lives or how it reaches the board. The map adds that line per product. Juku OS's line restates the queue rule `library/changing-the-rulebook-merge.md` already holds (no `roadmap.json`; the queue is the open pull requests) and changes nothing in it.
+- **Ruling 2's address is a setting, not a file.** `board/middleware.js` already gates every path on every host of the Vercel project `juku-build-board`, so no file in `board/` changes. The work is the domain `roadmaps.juku.pro` on that project, redirecting to `roadmap.juku.pro` so one PIN cookie serves both, and one DNS record at Cloudflare. #99 is closed (taken over by #113), so #117 carries the record of it; `library/build-board.md` cites the address only once a request has shown it serving the PIN screen.
+- **Where each item lands in this repository.**
+
+  | Item | Lands in |
+  |---|---|
+  | Plan map | `README.md`, *Products under this rulebook* |
+  | Board, "s" address | #113 and #117; `library/build-board.md` once shown |
+  | Free checks and self-review first | `library/reviewer-asking.md`, and one line in the README's *What every product carries* |
+  | Behaviour declaration | the same carries line, and the reviewer's prompt in `review.yml` and `review-product.yml` |
+  | Product read bundle (1a) | `review-product.yml`, the product reader alone; `review.yml`'s routing unchanged |
