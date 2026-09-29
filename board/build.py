@@ -105,20 +105,19 @@ def needs_decision(it):
 
 
 def milestones(name, road):
-    """§8: the milestone sentence and whether `reached_on` is set; nothing else.
-    A milestone in a shape this cannot read is refused, never dropped (#113's read)."""
+    """§8: each money milestone's sentence (`when`) and whether `reached_on` is set; nothing else.
+    Read in the one shape the products keep, `money_milestones.items`, and refused in any
+    other, never dropped (#113's read): a milestone missing from his board is a false line."""
+    if "money_milestones" not in road:
+        return []
+    mm = road["money_milestones"]
+    if not isinstance(mm, dict) or not isinstance(mm.get("items"), list):
+        raise Unreadable("%s: money_milestones has no `items` list" % name)
     found = []
-    for key, val in road.items():
-        if "milestone" not in key.lower():
-            continue
-        if isinstance(val, dict) and isinstance(val.get("items"), list):
-            val = val["items"]
-        for i, m in enumerate(val if isinstance(val, list) else [val]):
-            words = next((m[k] for k in ("milestone", "sentence", "text", "what", "reminder", "title", "plain")
-                          if isinstance(m.get(k), str) and m[k].strip()), None) if isinstance(m, dict) else None
-            if not words:
-                raise Unreadable("%s: %s[%d] has no sentence this page reads" % (name, key, i))
-            found.append((words, bool(m.get("reached_on"))))
+    for i, m in enumerate(mm["items"]):
+        if not isinstance(m, dict) or not isinstance(m.get("when"), str) or not m["when"].strip():
+            raise Unreadable("%s: money_milestones.items[%d].when is not text" % (name, i))
+        found.append((m["when"], bool(m.get("reached_on"))))
     return found
 
 
@@ -431,8 +430,8 @@ def _selftest():
     reads = {"checked_at": "2026-09-26T17:40:00Z",
              "products": [{"name": "Hemz OS", "last_edited": "2026-09-25T17:00:00Z",
                            "roadmap": {"items": [it("H1", "building", title=evil)],
-                                       "money_milestones": [{"milestone": "Revenue passes one thousand a month.",
-                                                             "reached_on": None}]}},
+                                       "money_milestones": {"items": [{"id": "M1", "when": "Revenue passes one thousand a month.",
+                                                                       "reached_on": None}]}}},
                           {"name": "Myst", "last_edited": "2026-09-21T22:00:00Z", "roadmap": road},
                           {"name": "Phena", "last_edited": "2026-09-24T23:00:00Z", "roadmap": {"items": []}}],
              "rulebook": {"open": [pr(111, ok + "\nUNSELECTED BODY TEXT", review=[("completed", "success")]),
@@ -468,13 +467,16 @@ def _selftest():
     q = render(dict(reads, rulebook={"open": [pr(31, "**Priority:** P2. **Ready:** no — Decision needed: which host."),
                                               pr(32, ok)], "merged": []}))
     hold('The queue <span class="n">1</span>' in q, "the queue counts only what it lists, not what waits on him")
-    try:
-        milestones("Myst", {"money_milestones": [{"reached": "2026-09-01"}]})
-        bad.append("a money milestone with no sentence was dropped rather than refused")
-    except Unreadable as x:
-        hold("Myst" in str(x) and "money_milestones[0]" in str(x), "a milestone it cannot read names its key")
-    hold(milestones("Myst", {"money_milestones": {"items": [{"milestone": "M", "reached_on": "2026-09-01"}]}}) ==
-         [("M", True)], "a milestone list wrapped in `items` reads")
+    for shape, what in (({"money_milestones": [{"when": "M"}]}, "money_milestones has no `items` list"),
+                        ({"money_milestones": {"items": [{"reached_on": "2026-09-01"}]}},
+                         "money_milestones.items[0].when is not text")):
+        try:
+            milestones("Myst", shape)
+            bad.append("a money milestone in a shape it cannot read was dropped rather than refused (%s)" % what)
+        except Unreadable as x:
+            hold("Myst" in str(x) and what in str(x), "a milestone it cannot read names its key: %s" % x)
+    hold(milestones("Myst", {"money_milestones": {"items": [{"when": "M", "reached_on": "2026-09-01"}]}}) ==
+         [("M", True)] and milestones("Myst", {"items": []}) == [], "a reached milestone reads; none is none")
     for broken, what in (({"items": {}}, "no `items` list"), ({"items": [{"title": "t", "gate": 3}]}, ".gate is not text"),
                          ({"items": [{"status": "done"}]}, "has no title")):
         try:
