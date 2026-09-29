@@ -2648,6 +2648,10 @@ def _check_product_wiring(review=None, product=None, readme=None, quiet=False):
     if lost:
         fault("must carry the slice's own pages by rule and name what it leaves out; it has lost %s"
               % "; ".join(lost))
+    lost = link_faults(product)
+    if lost:
+        fault("must carry the source a change imports, one hop, and print nothing of it; it has "
+              "lost %s" % "; ".join(lost))
     if _why(review) is None or _why(product) != _why(review):
         fault("does not name why a read did not happen as %s does, line for line"
               % REVIEW_WORKFLOW)
@@ -2889,12 +2893,13 @@ json.dump(said, sys.stdout)
 '''
 
 
-def _picker(text):
-    """The picker's program, as the lines between its call and `PY`, dedented."""
+def _picker(text, call=PICK_CALL):
+    """The program called by `call` (the picker's, unless another is named), as the lines
+    between its call and `PY`, dedented."""
     gather = _step_span(text, "Gather what the reviewer reads")
     lines = text[gather[0]:gather[1]].splitlines() if gather else []
     try:
-        start = next(i for i, l in enumerate(lines) if l.strip() == PICK_CALL)
+        start = next(i for i, l in enumerate(lines) if l.strip() == call)
         end = next(i for i, l in enumerate(lines) if i > start and l.strip() == "PY")
     except StopIteration:
         return None
@@ -3038,6 +3043,178 @@ def _check_pick_loosenings():
               "the PRODUCT.md sections that item names, naming every other part with its size and "
               "printing numbers alone; the picker was run on %d case(s), and each of %d loosenings "
               "was refused" % (len(PICK_CASES), len(PICK_LOOSENINGS)))
+    return bad
+
+
+# THE SOURCE THE CHANGE IMPORTS, ONE HOP (decision 0010, 1a). A product read
+# carried the diff and every file it touches, and nothing those files call, so
+# a reader judged a call it could not see. Now each touched JS, TS or Python
+# file's direct imports are carried too, resolved against the head's tree and
+# nothing else. Held as the picker is: the linker is run here, not read,
+# against the cases below, so a bare package followed, a path the tree does not
+# hold, a Python import read at the wrong level, or a summary that prints a
+# product's path into the public log each turns the check red.
+LINK_CALL = ("if python3 - \"$t/tree.txt\" \"$t/touched.txt\" \"$t/sources\" \"$t/linked.txt\" "
+             "2>/dev/null <<'PY'")
+LINK_TREE = 'g ls-tree -r -z --name-only "$SHA" > "$t/tree.txt"'
+LINK_MARK = ("printf '\\n===== the source the change imports, one hop; its callers, tests, database "
+             "rules and configuration are not here =====\\n' >> \"$pages\"")
+LINK_TAKEN = ('while IFS= read -r -d \'\' f; do case "$carried" in *" $f "*) continue ;; esac; '
+              'add "$f" || true; done < "$t/linked.txt"')
+LINK_FAILED = ('echo "the source the change imports could not be linked, so this read carries the '
+               'touched files alone"')
+LINK_TOLD = ('echo "One hop is not the boundary: a change that could not be judged for want of a '
+             'file is not clean."')
+LINK_SAID = re.compile(r"^linked: \d+ file\(s\) imported by the \d+ touched code file\(s\) read\n$")
+LINK_JS = ("import a from './a'\nimport React from 'react'\nimport { lib } from \"../lib\"\n"
+           "import gone from './gone'\nexport { u } from './util'\nconst b = require('./b')\n"
+           "const c = await import( './c' )\nimport './side.css'\n")
+LINK_PY = ("from .x import y\nfrom .. import z\nimport pkg.mod\nimport os, json as j\n"
+           "from . import (w,\n    v as vv, gone)\nfrom pkg.sub import x as xx\nfrom .... import far\n")
+# (the tree, the files touched, the touched code and its text, the files linked).
+# The tree holds `app/react.js` beside the importer so that a bare `react`
+# followed as if it were relative is caught, and `pkg/sub/z.py` is absent so
+# that `from .. import z` read one level short finds nothing.
+LINK_CASES = (
+    (["app/main.js", "app/a.js", "app/react.js", "app/b.cjs", "app/c.tsx", "app/side.css",
+      "app/util.js", "lib/index.ts", "lib/other.ts"],
+     ["app/main.js", "app/util.js"],
+     [("app/main.js", LINK_JS), ("app/util.js", "import { a } from './a.js'\n")],
+     ["app/a.js", "lib/index.ts", "app/b.cjs", "app/c.tsx", "app/side.css"]),
+    (["pkg/__init__.py", "pkg/sub/__init__.py", "pkg/sub/m.py", "pkg/sub/x.py", "pkg/z.py",
+      "pkg/mod.py", "pkg/sub/w.py", "pkg/sub/v/__init__.py", "json.py"],
+     ["pkg/sub/m.py"],
+     [("pkg/sub/m.py", LINK_PY)],
+     ["pkg/sub/x.py", "pkg/z.py", "pkg/sub/w.py", "pkg/sub/v/__init__.py", "pkg/sub/__init__.py",
+      "pkg/mod.py", "json.py"]),
+    (["app/main.ts", "app/a.ts", "README.md"], ["README.md", "app/main.ts"],
+     [("app/main.ts", "// imports nothing\n")], []),
+    (["app/main.ts", "app/a.ts"], ["app/main.ts", "app/a.ts"],
+     [("app/main.ts", "import { a } from './a'\n")], []),
+    (["README.md"], ["README.md"], [], []),
+)
+
+
+def links(program, cases):
+    """Run the linker on each case. Per case, (exit status, what it printed, the files it linked)."""
+    with tempfile.TemporaryDirectory() as d:
+        argvs = []
+        for n, (tree, touched, sources, _) in enumerate(cases):
+            names = [os.path.join(d, "%s%d" % (k, n)) for k in ("tree", "touched", "sources", "out")]
+            os.mkdir(names[2])
+            for name, paths in ((names[0], tree), (names[1], touched),
+                                (os.path.join(names[2], "names"), [s[0] for s in sources])):
+                with open(name, "w", encoding="utf-8") as f:
+                    f.write("".join(p + "\0" for p in paths))
+            for i, (_, body) in enumerate(sources):
+                with open(os.path.join(names[2], str(i)), "w", encoding="utf-8") as f:
+                    f.write(body)
+            argvs.append(names)
+        for name, body in (("program", program), ("cases", json.dumps(argvs)),
+                           ("harness", PICK_HARNESS)):
+            with open(os.path.join(d, name), "w", encoding="utf-8") as f:
+                f.write(body)
+        try:
+            p = subprocess.run([sys.executable, os.path.join(d, "harness"), os.path.join(d, "program"),
+                                os.path.join(d, "cases")], capture_output=True, text=True, timeout=60)
+            said = json.loads(p.stdout)
+        except (OSError, subprocess.SubprocessError, ValueError):
+            return [None] * len(cases)
+        got = []
+        for (rc, printed), argv in zip(said, argvs):
+            try:
+                linked = [l for l in open(argv[3], encoding="utf-8").read().split("\0") if l]
+            except OSError:
+                linked = None
+            got.append((rc, printed, linked))
+    return got
+
+
+def link_faults(text):
+    """What a product read has lost of carrying the source the change imports, one hop."""
+    lost = []
+    gather, read = _step_span(text, "Gather what the reviewer reads"), _step_span(text, "Read it")
+    g = text[gather[0]:gather[1]] if gather else ""
+    if LINK_TREE not in g:
+        lost.append("the tree listed from the head the read is of (`%s`)" % LINK_TREE)
+    for line, why in ((LINK_MARK, "the reader told where the linked source starts and what it is not"),
+                      (LINK_TAKEN, "the linked files carried through `add`, under the same budget"),
+                      (LINK_FAILED, "a failed link said, in words that name nothing of the product's")):
+        if line not in g:
+            lost.append("%s (`%s`)" % (why, line))
+    touched = 'carried=" roadmap.json PRODUCT.md "'
+    if LINK_TAKEN in g and touched in g and g.index(LINK_TAKEN) < g.index(touched):
+        lost.append("the touched files carried before the linked ones, so the budget spends on the change first")
+    if not read or LINK_TOLD not in text[read[0]:read[1]]:
+        lost.append("the reviewer told one hop is not the boundary (`%s`)" % LINK_TOLD)
+    program = _picker(text, LINK_CALL)
+    if program is None:
+        lost.append("the linker, called as `%s` — the tree's names and the touched code, "
+                    "its errors kept out of this public log" % LINK_CALL)
+        return lost
+    runs = links(program, LINK_CASES)
+    for n, ((tree, touched, sources, want), got) in enumerate(zip(LINK_CASES, runs), 1):
+        case = "in case %d" % n
+        if got is None:
+            lost.append("a linker that can be run %s" % case)
+            continue
+        rc, printed, linked = got
+        if rc != 0 or linked is None:
+            lost.append("a link made %s (it exited %s)" % (case, rc))
+            continue
+        if not LINK_SAID.match(printed) or [p for p in tree + touched if p in printed]:
+            lost.append("a summary of numbers alone %s (it printed %r)" % (case, printed))
+        if linked != want:
+            lost.append("exactly the files imported, one hop, each once and none touched, %s "
+                        "(it linked %s, not %s)" % (case, linked, want))
+    return lost
+
+
+# Each must turn the link's hold red on review-product.yml.
+LINK_LOOSENINGS = (
+    ("a bare package followed as if relative", lambda t: t.replace(r"""(\.\.?/[^"'\n]*)\1""", r"""([^"'\n]*)\1""", 1)),
+    ("a folder's index not tried", lambda t: t.replace(' + [path + "/index" + e for e in JS])', ")", 1)),
+    ("the extensions not tried", lambda t: t.replace('first([path] + [path + e for e in JS] + ', "first([path] + ", 1)),
+    ("a path the tree does not hold linked", lambda t: t.replace("if c in tree), None)", "if c in tree), candidates[0])", 1)),
+    ("a Python import's level ignored", lambda t: t.replace('base = "/".join(here[:len(here) - (len(dots) - 1)])', 'base = "/".join(here)', 1)),
+    ("the names of `from . import` not read as modules", lambda t: t.replace("found.append(module(base, words[0]))", "pass", 1)),
+    ("an absolute Python import ignored", lambda t: t.replace("found.append(module(\"\", words[0]))", "pass", 1)),
+    ("a touched file linked again", lambda t: t.replace(" and path not in touched", "", 1)),
+    ("a linked file's path printed", lambda t: t.replace("% (len(chosen), importers))", "% (len(chosen), importers), *chosen)", 1)),
+    ("the linker's errors printed", lambda t: t.replace(LINK_CALL, LINK_CALL.replace(" 2>/dev/null", ""), 1)),
+    ("the tree listed from main", lambda t: t.replace(LINK_TREE, LINK_TREE.replace('"$SHA"', '"origin/$MAIN"'), 1)),
+    ("the linked files dropped", lambda t: t.replace(LINK_TAKEN, "true", 1)),
+    ("the marker line removed", lambda t: t.replace(LINK_MARK, "true", 1)),
+    ("a failed link unsaid", lambda t: t.replace(LINK_FAILED, "true", 1)),
+    ("the reviewer not told", lambda t: t.replace(LINK_TOLD, 'echo "."', 1)),
+)
+
+
+def _check_link_loosenings():
+    """Every loosening above, applied to review-product.yml, must be refused."""
+    try:
+        product = _read(PRODUCT_WORKFLOW)
+    except OSError as e:
+        print("  wiring: %s" % e)
+        return 1
+    if link_faults(product):
+        return 1  # the wiring checks say what
+    bad = 0
+    for what, loosen in LINK_LOOSENINGS:
+        changed = loosen(product)
+        if changed == product:
+            print("  wiring: the loosening '%s' no longer applies to %s — rewrite it against the "
+                  "file as it stands, or it proves nothing" % (what, PRODUCT_WORKFLOW))
+            bad += 1
+        elif not link_faults(changed):
+            print("  wiring: %s with %s passes the link's hold — the guard for it is gone"
+                  % (PRODUCT_WORKFLOW, what))
+            bad += 1
+    if not bad:
+        print("ok: a product read carries, beside the files a change touches, the source they "
+              "import directly, one hop, resolved against the head's tree alone and printing "
+              "numbers alone; the linker was run on %d case(s), and each of %d loosenings was "
+              "refused" % (len(LINK_CASES), len(LINK_LOOSENINGS)))
     return bad
 
 
@@ -3325,6 +3502,7 @@ def _selftest():
     failed += _check_registry()
     failed += _check_caller()
     failed += _check_pick_loosenings()
+    failed += _check_link_loosenings()
     return 1 if failed else 0
 
 
