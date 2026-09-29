@@ -2,7 +2,7 @@
 
 The rulebook for every product Dhayan's AI studio builds. This repository says **how** we work; each product's repository says **what** we build. It is public: no secrets, prices or customer data, and any session in either stack reads it with no setup.
 
-**How a session reads it (his ruling, 25 September 2026).** Load `HOW-WE-BUILD.md` whole, then this page, which is a map: the products, what every product carries, and the library index. Open a library page only when its trigger fires, and only that page. Nothing is read whole to be safe. `CHARTER.md` is the reasoning, opened by the section a page cites; `RICH-DATA.md` is read on its trigger below; `AGENTS.md` is the reviewer's brief, opened only to change it. What each file is for is in `library/rulebook-files.md`.
+**How a session reads it (his ruling, 25 September 2026).** Load `HOW-WE-BUILD.md` whole, then this page, which is a map: the products, where each one's plan lives, what every product carries, and the library index. Open a library page only when its trigger fires, and only that page. Nothing is read whole to be safe. `CHARTER.md` is the reasoning, opened by the section a page cites; `RICH-DATA.md` is read on its trigger below; `AGENTS.md` is the reviewer's brief, opened only to change it. What each file is for is in `library/rulebook-files.md`.
 
 ## Products under this rulebook
 
@@ -14,12 +14,24 @@ The whole map: what exists, where it lives, one line on what it is for, and the 
 
 A repository not listed here is not under this rulebook.
 
+## Where each product's plan lives
+
+One line per product: where its plan is, and how it reaches the build board ([decision 0010](consensuses/juku-os/DECISION-0010-REVIEW-SPEND-AND-PLAN-MAP.md), 29 September 2026). A product with no `roadmap.json` is not a product with no plan: its plan is where this line says.
+
+- **Juku OS** (this rulebook) — no `roadmap.json`. Its plan is its open pull requests, queued ready first, then by priority, then oldest (`library/changing-the-rulebook-merge.md`). On the board: the first row, from those pull requests, their `Priority:` and `Ready:` lines and their review check.
+- **Hemz OS** — [`roadmap.json`](https://github.com/Adonis80/Hemz-OS/blob/main/roadmap.json) on `main`. On the board: its row, from that file's items and money milestones.
+- **Myst** — [`roadmap.json`](https://github.com/Adonis80/myst/blob/main/roadmap.json) on `main`. On the board: its row, from that file's items.
+- **Phena** — [`roadmap.json`](https://github.com/Adonis80/phena/blob/main/roadmap.json) on `main`. On the board: its row, from that file's items and money milestones.
+
+A product joins this map in the pull request that adds it to *Products under this rulebook*. How the board is built: `library/build-board.md`.
+
 A Project's instructions are its template, whole: `library/project-template-product.md`, or `library/project-template-juku-os.md` for the Juku OS Project.
 
 ## What every product carries
 
-How a change reaches every product: it is made here once and then lands everywhere — a change to how we build not by anyone remembering, but because every session is sent to this list at its start (by the first line of its `AGENTS.md`, and by its Project's instructions) and a repo that lacks something on it makes itself current in its next pull request. One line each, as of 28 September 2026; the why of each lives in the pull request that added it.
+How a change reaches every product: it is made here once and then lands everywhere — a change to how we build not by anyone remembering, but because every session is sent to this list at its start (by the first line of its `AGENTS.md`, and by its Project's instructions) and a repo that lacks something on it makes itself current in its next pull request. One line each, as of 29 September 2026; the why of each lives in the pull request that added it.
 
+- Free checks and a self-review before any paid read, and on every change the line `Personal data or payments affected: yes/no — reason` ([decision 0010](consensuses/juku-os/DECISION-0010-REVIEW-SPEND-AND-PLAN-MAP.md), 29 September 2026). Detail: `library/reviewer-asking.md`.
 - `AGENTS.md` ending with `## Review guidelines`, under 500 words; a check green only when the reviewer has read the current commit; the reviewer `review-gate.py` names. Detail: `library/carries-reviewer.md`.
 - Product reads asked from here through `review-product.yml`, and a model switched in one edit (met: `model-registry/`). Detail: `library/carries-review-route.md`.
 - Open pull requests moved on before new work; a session that cannot move says so once and stops hard, with the clock tools denied; a consultant that cannot be reached never holds up a slice; a `roadmap.json` fit for a one-word *build*. Detail: `library/carries-sessions.md`.
@@ -77,4 +89,4 @@ or fetch `https://raw.githubusercontent.com/Adonis80/how-we-build/main/HOW-WE-BU
 
 ## Changing the rulebook
 
-By pull request only; `main` is protected; the CTO settles and merges without the Chairman. **Tidying is frozen (his ruling, 25 September 2026):** no page moves, splits or rewording for tidiness unless something is broken, and one session's word changes to this repository go in one pull request, read once. **The whole repository is frozen until 10 October 2026 (his ruling, 26 September, settled with the consultant that day):** no pull request here of any kind — no rule, page, check, reviewer change, decision record or consultancy — except one that names a specific product task that was attempted, the failure observed, and the smallest repair that lets that task continue; an anticipated difficulty, an advisory finding or a preference does not qualify. Open work here parks. He lifted it once, on 28 September, for every read at max ([#123](https://github.com/Adonis80/how-we-build/pull/123)) and the effort ladder ([#124](https://github.com/Adonis80/how-we-build/pull/124)), in his words *"Lift the 10 October freeze for this one change only"*; both pull requests quote his rulings whole. The week's measure is product: one agreed Hemz OS journey usable and accepted by him by 3 October, within his spending ceiling, with spend on the journey and spend on anything else reported as two numbers. The word cap is in `library/changing-the-rulebook.md`; the queue, the gate and the merge in `library/changing-the-rulebook-merge.md`.
+By pull request only; `main` is protected; the CTO settles and merges without the Chairman. **Tidying is frozen (his ruling, 25 September 2026):** no page moves, splits or rewording for tidiness unless something is broken, and one session's word changes to this repository go in one pull request, read once. **The whole repository is frozen until 10 October 2026 (his ruling, 26 September, settled with the consultant that day):** no pull request here of any kind — no rule, page, check, reviewer change, decision record or consultancy — except one that names a specific product task that was attempted, the failure observed, and the smallest repair that lets that task continue; an anticipated difficulty, an advisory finding or a preference does not qualify. Open work here parks. He lifted it once, on 28 September, for every read at max ([#123](https://github.com/Adonis80/how-we-build/pull/123)) and the effort ladder ([#124](https://github.com/Adonis80/how-we-build/pull/124)), in his words *"Lift the 10 October freeze for this one change only"*; both pull requests quote his rulings whole. He lifted it again on 29 September for the items of [decision 0010](consensuses/juku-os/DECISION-0010-REVIEW-SPEND-AND-PLAN-MAP.md) only, its owner table naming each; his ruling reached the code session that filed it as *"the Chairman lifted the 10 October freeze for its items only"*. The week's measure is product: one agreed Hemz OS journey usable and accepted by him by 3 October, within his spending ceiling, with spend on the journey and spend on anything else reported as two numbers. The word cap is in `library/changing-the-rulebook.md`; the queue, the gate and the merge in `library/changing-the-rulebook-merge.md`.
