@@ -1,5 +1,5 @@
 {
-  "about": "The one place a model is named (decision 0008, issue #103, on the 18 September consensus in consensuses/juku-os/). Every other file asks for a role. How to ask, inspect and switch: library/model-registry.md. A switch is one edit to this file, reviewed like any other change to the gate. The reviewer roles are decision 0008's own assignment, except that no reader is the lead's own model: since the Chairman's ruling of 29 September 2026 Sonnet 5.5 at max reads every change GLM does not, the risky classes and GLM's fallback both, and Opus reads nothing. Decision 0008's assignment reverses the 22 September pairing that put the open-weight model behind Sonnet as the main backup; their effort is the Chairman's ruling of 28 September 2026, every read at max. The max-subagent role is what every product's max subagent file is set to, his ruling of the same day (library/max-subagent.md).",
+  "about": "The one place a model is named (decision 0008, issue #103, on the 18 September consensus in consensuses/juku-os/). Every other file asks for a role. How to ask, inspect and switch: library/model-registry.md. A switch is one edit to this file, reviewed like any other change to the gate. The reviewer roles are decision 0008's own assignment, except that no reader is the lead's own model: since the Chairman's ruling of 29 September 2026 Sonnet 5.5 at max reads every change GLM does not, the risky classes and GLM's fallback both, and Opus reads nothing. Decision 0008's assignment reverses the 22 September pairing that put the open-weight model behind Sonnet as the main backup. The reviewer roles' effort is the Chairman's ruling of 28 September 2026, every read at max. The max-subagent role is what every product's max subagent file is set to, his ruling of the same day (library/max-subagent.md).",
   "version": "2026-09-29.2",
   "reviewed": "2026-09-25",
   "decision": "https://github.com/Adonis80/how-we-build/issues/103",
@@ -49,7 +49,7 @@
       "status": "active",
       "efforts": ["low", "medium", "high", "xhigh", "max"],
       "checked": "2026-09-29",
-      "source": "Anthropic's current Sonnet id as the build session's environment lists it on 29 September 2026; efforts as the pinned Claude Code tool gives them for its Claude models; the first read on it proves the id"
+      "source": "Proved before it merged (#130's first read): on 29 September 2026 the pinned Claude Code 2.1.280, called with the reviewer's own flags (-p, --effort max, --tools \"\", --restricted, --output-format json, --json-schema), accepted this id at max, answered success in the schema, and reported claude-sonnet-5-5 in modelUsage; the same run on the Opus 5.5 id was the control. Run on the build session's credential on his account, not the reviewer environment's token, and the effort the tool applied per turn was not visible"
     },
     "z-ai/glm-5.3": {
       "name": "GLM 5.3",
