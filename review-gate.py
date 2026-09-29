@@ -1044,6 +1044,15 @@ PRODUCT_BRIEF = 'g show "origin/$MAIN:AGENTS.md" > "$t/brief.txt"'
 PRODUCT_DIFF = 'g diff "origin/$MAIN...$SHA" > "$t/diff.txt"'
 PRODUCT_HEAD = ('[ "$head" = "$SHA" ]', '[ "$fetched" = "$SHA" ]')
 PRODUCT_REACH = ('"https://api.github.com/installation/repositories"', 'if [ "$reach" != "$REPO" ]; then')
+# A second round reads only what changed since this reviewer's last read
+# (decision 0010, item 4), so it is refused unless that commit is in the pull
+# request's history, main did not come in between, and this App signed a read
+# of it; and it still reads at the whole change's class.
+PRODUCT_SINCE = ('g merge-base --is-ancestor "$SINCE" "$SHA"',
+                 '[ "$(g merge-base "origin/$MAIN" "$SINCE")" = "$(g merge-base "origin/$MAIN" "$SHA")" ]',
+                 '(.app.id|tostring) == $app and .head_sha == $sha',
+                 '(.conclusion == "success" or .conclusion == "failure")',
+                 '[ -s "$t/before.md" ]')
 # What the token was granted, checked against exactly what was asked for
 # (#68's twelfth read), in that order: wanted, then read from GitHub's answer.
 PRODUCT_GRANT = ("""want='{"checks":"write","contents":"read","pull_requests":"write"}'""",
@@ -2607,6 +2616,10 @@ def _check_product_wiring(review=None, product=None, readme=None, quiet=False):
         if line not in product:
             fault("no longer asks GitHub what its token reaches and refuses a mismatch (`%s`)"
                   % line)
+    for line in PRODUCT_SINCE:
+        if line not in product:
+            fault("no longer refuses a second round built on no signed read of this pull request "
+                  "(`%s`), so a read of a few lines could clear a change nobody read whole" % line)
     # And what it was granted, checked rather than printed (#68's twelfth read).
     for line in PRODUCT_GRANT:
         if line not in product:
@@ -2740,6 +2753,11 @@ PRODUCT_LOOSENINGS = (
     ("the brief from the head", lambda t: t.replace('g show "origin/$MAIN:AGENTS.md"', 'g show "$SHA:AGENTS.md"', 1)),
     ("the diff against the base", lambda t: t.replace(PRODUCT_DIFF, 'g diff "$BASE...$SHA" > "$t/diff.txt"  # .base.sha', 1)),
     ("the head never checked", lambda t: t.replace(PRODUCT_HEAD[0], "true", 1)),
+    ("a second round from any commit", lambda t: t.replace(PRODUCT_SINCE[0], "true", 1)),
+    ("a second round across a merge of main", lambda t: t.replace(PRODUCT_SINCE[1], "true", 1)),
+    ("a second round on anybody's run", lambda t: t.replace(PRODUCT_SINCE[2], ".head_sha == $sha", 1)),
+    ("a second round on a read that did not happen", lambda t: t.replace(PRODUCT_SINCE[3], "true", 1)),
+    ("a second round with no earlier read", lambda t: t.replace(PRODUCT_SINCE[4], "true", 1)),
     ("the fetched head never checked", lambda t: t.replace(PRODUCT_HEAD[1], "true", 1)),
     ("the token's reach never asked", lambda t: t.replace(PRODUCT_REACH[0], '"https://api.github.com/user/repos"', 1)),
     ("the install beside a secret", lambda t: t.replace("        run: npm install -g @anthropic-ai/claude-code@", "        env:\n          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}\n        run: npm install -g @anthropic-ai/claude-code@", 1)),
