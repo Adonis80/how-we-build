@@ -213,7 +213,7 @@ jobs:
               *) class=code ;;
             esac
             case "${f,,}" in
-              agents.md|*/agents.md|check.sh|*/check.sh|review-gate.py|*/review-gate.py|model-registry/*|*/model-registry/*|.*|*/.*) risky=yes ;;
+              agents.md|*/agents.md|check.sh|*/check.sh|review-gate.py|*/review-gate.py|board/build.py|model-registry/*|*/model-registry/*|.*|*/.*) risky=yes ;;
               *.md) ;;
               *pric*|*payment*|*billing*|*invoice*|*checkout*|*quote*) risky=yes ;;
               *.sql|*migration*|*schema*|supabase/*|*/supabase/*|*backfill*|*purge*|*truncate*|*wipe*|*seed*) risky=yes ;;

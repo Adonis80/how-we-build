@@ -288,7 +288,9 @@ REVIEWERS = {
 # change to any of them is a change to the gate however it is dressed. Narrowing
 # it to named files buys nothing and would have to be argued back the first time
 # a fifth file mattered.
-GATE_FILES = ("check.sh", "review-gate.py")
+# board/build.py joins them (#113's fourth read): check.sh runs its selftest
+# before the verdict, so a change to it is a change to what the gate runs.
+GATE_FILES = ("check.sh", "review-gate.py", "board/build.py")
 GATE_DIRS = (".github/workflows/", "model-registry/")
 
 
@@ -1468,7 +1470,7 @@ CLASS_CODE = ("AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|des
 CLASS_ARMS = (CLASS_CODE, "*.md) ;;", "*) class=code ;;")
 RISK_CASE = 'case "${f,,}" in'
 # The six classes, as the arms that name them, in the order they are tried.
-RISK_GATE = ("agents.md|*/agents.md|check.sh|*/check.sh|review-gate.py|*/review-gate.py|"
+RISK_GATE = ("agents.md|*/agents.md|check.sh|*/check.sh|review-gate.py|*/review-gate.py|board/build.py|"
              "model-registry/*|*/model-registry/*|.*|*/.*) risky=yes ;;")
 RISK_PRICING = "*pric*|*payment*|*billing*|*invoice*|*checkout*|*quote*) risky=yes ;;"
 RISK_DATA = ("*.sql|*migration*|*schema*|supabase/*|*/supabase/*|*backfill*|*purge*|*truncate*|"
@@ -1665,6 +1667,7 @@ CLASS_CASES = (
     (["docs/AGENTS.md"], "risky"),
     (["README.md", "check.sh"], "risky"),
     (["review-gate.py"], "risky"),
+    (["board/build.py"], "risky"),
     ([".github/workflows/review.yml"], "risky"),
     ([".github/copilot-instructions.md"], "risky"),
     ([".claude/skills/steward/SKILL.md"], "risky"),
@@ -3482,6 +3485,8 @@ def _selftest():
     # rather than only through the cases above.
     bad += hold(touches_the_gate(["README.md", "check.sh", ".github/workflows/x.yml"]),
                 [".github/workflows/x.yml", "check.sh"], "which files are the gate")
+    bad += hold(touches_the_gate(["board/build.py", "board/vercel.json"]), ["board/build.py"],
+                "the board's build is the gate, its other files are not (#113's fifth read)")
     bad += hold(touches_the_gate(["design/ARCHITECT.md", "AGENTS.md"]), [], "and which are not")
     # THE RETIRED ROUTES ARE HELD SHUT, not merely deleted. A later session
     # restoring a prose reader would have to get past these: the gate reads check
