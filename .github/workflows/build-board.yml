@@ -186,7 +186,7 @@ jobs:
               || { echo "::error::$REPO's roadmap.json is not a JSON object"; exit 1; }
             jq -n --arg name "$NAME" --arg edited "$edited" --slurpfile road "$road" \
               '{name: $name, last_edited: $edited, roadmap: $road[0]}' > "$RUNNER_TEMP/reads/${REPO#*/}.json"
-            echo "read $NAME: $(wc -c < "$road") bytes, last edited $edited"
+            echo "read $NAME: $(wc -c < "$road") bytes"
             rm -f "$road"
           done <<'PRODUCTS'
           Adonis80/Hemz-OS=Hemz OS
@@ -248,7 +248,9 @@ jobs:
       - name: Deploy, smoke, and roll back on red
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || 'production' }}
+          # A dispatch's own target, empty included, so the case below refuses
+          # anything but the two (#117's third read, 7); never production by default.
+          TARGET: ${{ github.event_name != 'workflow_dispatch' && 'production' || inputs.target }}
           STARTED: ${{ steps.clock.outputs.started }}
         run: |
           set -euo pipefail

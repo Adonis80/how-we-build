@@ -3974,8 +3974,9 @@ def _selftest():
                 [".github/workflows/x.yml", "check.sh"], "which files are the gate")
     bad += hold(touches_the_gate(["board/build.py", "board/vercel.json"]), ["board/build.py"],
                 "the board's build is the gate, its other files are not (#113's fifth read)")
-    # Every file the gate counts as itself is read as risky, so the two lists
-    # cannot drift (#113's sixth read): each needs a class case of its own.
+    # Every file the gate counts as itself is read as risky, so `GATE_FILES`
+    # cannot drift from the class (#113's sixth read): each needs a class case
+    # of its own. `GATE_DIRS` is held by the class's own directory arms.
     bad += hold(sorted(f for f in GATE_FILES if ([f], "risky") not in CLASS_CASES), [],
                 "every gate file has a class case that reads it as risky")
     bad += hold(touches_the_gate(["design/ARCHITECT.md", "AGENTS.md"]), [], "and which are not")
