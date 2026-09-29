@@ -1669,6 +1669,7 @@ CLASS_CASES = (
     (["README.md", "check.sh"], "risky"),
     (["review-gate.py"], "risky"),
     (["board/build.py"], "risky"),
+    (["check.sh"], "risky"),
     ([".github/workflows/review.yml"], "risky"),
     ([".github/copilot-instructions.md"], "risky"),
     ([".claude/skills/steward/SKILL.md"], "risky"),
@@ -3726,6 +3727,12 @@ def _selftest():
     # rather than only through the cases above.
     bad += hold(touches_the_gate(["README.md", "check.sh", ".github/workflows/x.yml"]),
                 [".github/workflows/x.yml", "check.sh"], "which files are the gate")
+    bad += hold(touches_the_gate(["board/build.py", "board/vercel.json"]), ["board/build.py"],
+                "the board's build is the gate, its other files are not (#113's fifth read)")
+    # Every file the gate counts as itself is read as risky, so the two lists
+    # cannot drift (#113's sixth read): each needs a class case of its own.
+    bad += hold(sorted(f for f in GATE_FILES if ([f], "risky") not in CLASS_CASES), [],
+                "every gate file has a class case that reads it as risky")
     bad += hold(touches_the_gate(["design/ARCHITECT.md", "AGENTS.md"]), [], "and which are not")
     # THE RETIRED ROUTES ARE HELD SHUT, not merely deleted. A later session
     # restoring a prose reader would have to get past these: the gate reads check
