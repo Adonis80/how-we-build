@@ -29,6 +29,7 @@ first. Of a body, only its `Priority:` and `Ready:` lines are published (§8).
 """
 import html
 import json
+import os
 import re
 import sys
 from datetime import datetime, timezone
@@ -96,7 +97,7 @@ def items_of(name, road):
 
 def asks_him(text):
     """§3's prefix, with "Decision needed: none" (step 6's own words) asking nothing."""
-    text = (text or "").lstrip()
+    text = (text or "").replace("*", "").lstrip()
     return text.startswith(DECISION) and not re.match(r"none\b", text[len(DECISION):].strip(" *"), re.I)
 
 
@@ -159,7 +160,7 @@ STATUS_WORD = {"done": "Done", "building": "In hand", "next": "Up next", "agreed
 
 def item_html(it):
     status = it["status"] or ""
-    word = STATUS_WORD.get(status, "Status not recorded")
+    word = STATUS_WORD.get(status, "Status not one the board reads")
     agreed = "Suggested on" if status == "proposed" else "Agreed on"
     who = it.get("decided_by")
     who = ("the " + who) if who in ("CTO", "Chairman") else who
@@ -204,7 +205,7 @@ def product_row(p):
     body = (group("Needs your decision", asks) + group("In hand", by("building")) +
             group("Up next", by("next")) + group("Agreed and queued", by("agreed")) +
             group("Suggested", by("proposed")) + group("Done", by("done")) +
-            group("Status not recorded", unknown) +
+            group("Status not one the board reads", unknown) +
             ('<section><h3>Money milestone</h3><ul class="money">%s</ul></section>' % money if money else "") +
             '<p class="edited">Roadmap last edited %s</p>' % e(when(p["last_edited"])))
     return row(name, bar(n), counts, headline(items), body), n["decisions"]
@@ -251,16 +252,16 @@ def pr_state(pr):
     runs = pr.get("review") or []
     if not runs:
         return "Review not recorded"
-    # The gate keeps the worst answer on the head, so the board does too: a
-    # failure anywhere on it reads as failed, whatever came after (#113's read).
-    if any(r.get("status") == "completed" and r.get("conclusion") == "failure" for r in runs):
+    # As the gate reads them (check_run_verdict): only a completed success or
+    # failure is a verdict, and a failure anywhere on the head wins (#113's reads).
+    said = [r.get("conclusion") for r in runs if r.get("status") == "completed"
+            and r.get("conclusion") in ("success", "failure")]
+    if "failure" in said:
         return "Review check failed"
-    last = runs[0]
-    if last.get("status") != "completed":
-        # An older success never overrides a newer pending attempt.
-        return "Further review pending" if any(r.get("status") == "completed" for r in runs[1:]) else "Review pending"
-    return {"success": "Review check passed", "failure": "Review check failed"}.get(last.get("conclusion"),
-                                                                                  "Review incomplete")
+    pending = any(r.get("status") != "completed" for r in runs)
+    if said:
+        return "Further review pending" if pending and runs[0].get("status") != "completed" else "Review check passed"
+    return "Review pending" if pending else "Review incomplete"
 
 
 def queue_order(prs):
@@ -289,7 +290,14 @@ def pr_html(pr):
 
 
 def rulebook_row(rb):
-    open_ = queue_order([pr for pr in rb.get("open") or [] if isinstance(pr, dict) and "number" in pr])
+    # Refused rather than shown as "0 open", as a product's broken roadmap is (#113's fourth read).
+    if not isinstance(rb, dict) or not all(isinstance(rb.get(k), list) for k in ("open", "merged")):
+        raise Unreadable("%s: the reads hold no `open` and `merged` lists" % RULEBOOK)
+    for k in ("open", "merged"):
+        for i, pr in enumerate(rb[k]):
+            if not isinstance(pr, dict) or not isinstance(pr.get("number"), int):
+                raise Unreadable("%s: %s[%d] has no number" % (RULEBOOK, k, i))
+    open_ = queue_order(list(rb["open"]))
     merged = sorted([pr for pr in rb.get("merged") or [] if isinstance(pr, dict) and pr.get("merged_at")],
                     key=lambda pr: pr["merged_at"], reverse=True)[:MERGED_SHOWN]
     waiting = [pr for pr in open_ if pr_state(pr) == "Waiting on the Chairman"]
@@ -342,7 +350,7 @@ def render(reads):
         if p.get("name") not in ROWS or p["name"] == RULEBOOK:
             raise Unreadable("a product named outside the board's rows")
         rows[p["name"]], asked[p["name"]] = product_row(p)
-    rows[RULEBOOK], asked[RULEBOOK] = rulebook_row(reads.get("rulebook") or {})
+    rows[RULEBOOK], asked[RULEBOOK] = rulebook_row(reads.get("rulebook"))
     missing = [n for n in ROWS if n not in rows]
     if missing:
         raise Unreadable("no reads for %s" % ", ".join(missing))
@@ -416,6 +424,10 @@ def _selftest():
         (pr(13, "A `Ready:` line is a pointer, and `Priority:` a level.\n**Priority:** P3. **Ready:** yes.",
             review=[("completed", "success")]), "Review check passed"),
         (pr(10, ok, review=[("completed", "neutral")]), "Review incomplete"),
+        # As the gate reads them: a neutral, cancelled or timed-out run is no verdict (#113's fourth read).
+        (pr(14, ok, review=[("completed", "neutral"), ("completed", "success")]), "Review check passed"),
+        (pr(15, ok, review=[("completed", "cancelled"), ("completed", "success")]), "Review check passed"),
+        (pr(16, ok, review=[("in_progress", None), ("completed", "neutral")]), "Review pending"),
     ]
     for p, want in states:
         hold(pr_state(p) == want, "§7: #%d should read %r, reads %r" % (p["number"], want, pr_state(p)))
@@ -477,6 +489,28 @@ def _selftest():
             hold("Myst" in str(x) and what in str(x), "a milestone it cannot read names its key: %s" % x)
     hold(milestones("Myst", {"money_milestones": {"items": [{"when": "M", "reached_on": "2026-09-01"}]}}) ==
          [("M", True)] and milestones("Myst", {"items": []}) == [], "a reached milestone reads; none is none")
+    hold(needs_decision({"gate": "**Decision needed:** the price."}),
+         "§3: a bolded prefix asks him in a gate as in a pull request's Ready line")
+    for rb, what in ((None, "no `open` and `merged` lists"), ({"open": [], "merged": {}}, "no `open` and `merged` lists"),
+                     ({"open": [{"title": "t"}], "merged": []}, "open[0] has no number")):
+        try:
+            render(dict(reads, rulebook=rb))
+            bad.append("the rulebook's reads, broken (%s), were shown" % what)
+        except Unreadable as x:
+            hold(what in str(x), "the rulebook's broken reads are refused: %s" % x)
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    for inside in (os.path.join(here, "reads.json"), os.path.join(here, ".github", "index.html"), here):
+        hold(inside_checkout(inside), "a path inside the checkout is refused: %s" % os.path.relpath(inside, here))
+    hold(not inside_checkout(os.path.join(os.path.dirname(here), "elsewhere", "index.html")),
+         "a path outside the checkout is written")
+    try:
+        with open(os.path.join(here, "README.md"), encoding="utf-8") as f:
+            section = f.read().split("## Products under this rulebook", 1)[1].split("\n## ", 1)[0]
+        mapped = tuple(re.findall(r"^- \*\*([^*]+)\*\* — ", section, re.M))
+        hold(sorted(mapped) == sorted(ROWS[1:]),
+             "ROWS names the README's products, no more and no fewer; §1 sets their order (got %s)" % (mapped,))
+    except (OSError, IndexError):
+        bad.append("the README's product map could not be read to hold ROWS to it")
     for broken, what in (({"items": {}}, "no `items` list"), ({"items": [{"title": "t", "gate": 3}]}, ".gate is not text"),
                          ({"items": [{"status": "done"}]}, "has no title")):
         try:
@@ -498,11 +532,22 @@ def _selftest():
     return 1 if bad else 0
 
 
+def inside_checkout(path):
+    """True when `path` resolves inside this repository (#113's fourth read, 3)."""
+    root = os.path.realpath(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    p = os.path.realpath(path)
+    return p == root or p.startswith(root + os.sep)
+
+
 def main(argv):
     if argv[1:] == ["--selftest"]:
         return _selftest()
     if len(argv) != 3:
-        print("usage: build.py <reads.json> <index.html> | --selftest")
+        print("usage: build.py <reads.json> <index.html> | --selftest  (both outside the checkout)")
+        return 2
+    if any(inside_checkout(a) for a in argv[1:]):
+        print("::error::the reads and the page are written outside this checkout, never in it: "
+              "a private roadmap here is one `git add` from a public repository. Nothing was read.")
         return 2
     try:
         with open(argv[1], encoding="utf-8") as f:
