@@ -49,7 +49,7 @@
       "status": "active",
       "efforts": ["low", "medium", "high", "xhigh", "max"],
       "checked": "2026-09-29",
-      "source": "Proved before it merged (#130's first read): on 29 September 2026 the pinned Claude Code 2.1.280, called with the reviewer's own flags (-p, --effort max, --tools \"\", --restricted, --output-format json, --json-schema), accepted this id at max, answered success in the schema, and reported claude-sonnet-5-5 in modelUsage; the same run on the Opus 5.5 id was the control. Run on the build session's credential on his account, not the reviewer environment's token, and the effort the tool applied per turn was not visible"
+      "source": "Proved before it merged (#130's two reads): on 29 September 2026 a replica of a full risky read (this pull request's diff and every .md/.sh/.py/.yml file whole, 651,863 bytes; review.yml's system prompt and schema; -p --model claude-sonnet-5-5 --effort max --tools \"\" --restricted --strict-mcp-config --disable-slash-commands --no-session-persistence --permission-prompts none --output-format json --json-schema --system-prompt) failed on Claude Code 2.1.280, which does not know the model (unrecognized_model at compaction; no verdict after 1,009 s), and answered on 2.1.285: success, verdict advisory, 1,330 s, USD 4.10. So both reviewers pin 2.1.285 and give a read 40 minutes. Run on the build session's credential on his account, not the reviewer environment's token"
     },
     "z-ai/glm-5.3": {
       "name": "GLM 5.3",

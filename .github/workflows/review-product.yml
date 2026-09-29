@@ -116,7 +116,7 @@ jobs:
     # THE DOOR. Without this line the App's key is readable from any branch.
     # review-gate.py refuses a build that loses it.
     environment: reviewer
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: What was asked
         id: asked
@@ -614,7 +614,7 @@ jobs:
       - name: Install the reviewer's tool
         if: steps.gather.outputs.too_big == 'no'
         continue-on-error: true
-        run: npm install -g @anthropic-ai/claude-code@2.1.280
+        run: npm install -g @anthropic-ai/claude-code@2.1.285
 
       - name: Read it
         id: read
@@ -750,7 +750,7 @@ jobs:
           # review.yml's reasons, which review-gate.py holds flag for flag.
           schema='{"type":"object","additionalProperties":false,"required":["verdict","review"],"properties":{"verdict":{"type":"string","enum":["clean","advisory","blocking"]},"review":{"type":"string"}}}'
           case "$EFFORT" in max) ;; *) fail "the registry set no effort a reviewer may read at" ;; esac
-          limit=25
+          limit=40
           [[ "${STARTED:-}" =~ ^[0-9]+$ ]] || fail "the job's start was not recorded, so the read had no deadline"
           left=$(( STARTED + limit * 60 - $(date +%s) ))
           [ "$left" -ge 60 ] || fail "no time was left to read before minute $limit of the job"
