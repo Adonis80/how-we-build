@@ -3,9 +3,9 @@
 
 What the page shows and may claim is decision 0007 and its addendum
 (https://github.com/Adonis80/how-we-build/issues/97); the section marks below
-(§n, An) are its clauses. Nothing on main makes the reads or deploys the page
-yet: the workflow that is to do both is #117, not merged, and until it lands a
-refresh is run by hand. This file fetches nothing and prints
+(§n, An) are its clauses. `.github/workflows/build-board.yml` makes the reads
+and hands them here; a refresh by hand writes the same shape. This file
+fetches nothing and prints
 nothing a source holds: a fault names a product and a key, never a value,
 because the log it lands in is public and the roadmaps are not.
 

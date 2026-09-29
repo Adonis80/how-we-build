@@ -54,7 +54,7 @@ for f in $allowed; do
   case "$f" in
     design) [ -d "$f" ] || { echo "FAIL: '$f' is missing, or is not a directory; the root list is a fixed set."; fail=1; } ;;
     # The build board (decision 0007): its gate's three files and the build that renders it, and nothing else. No roadmap data lives here.
-    board) [ ! -e "$f" ] || { [ -d "$f" ] && [ "$(ls -A board | tr '\n' ' ')" = "build.py middleware.js robots.txt vercel.json " ]; } || { echo "FAIL: 'board/' holds only build.py, middleware.js, robots.txt and vercel.json."; fail=1; } ;;
+    board) { [ -d "$f" ] && [ "$(ls -A board | tr '\n' ' ')" = "build.py middleware.js robots.txt vercel.json " ]; } || { echo "FAIL: 'board/' holds only build.py, middleware.js, robots.txt and vercel.json."; fail=1; } ;;
     # Git keeps no empty directory, so an absent library is the empty one, and
     # the README's index holds it to the list both ways instead (2c).
     library) [ ! -e "$f" ] || [ -d "$f" ] || { echo "FAIL: '$f' is not a directory."; fail=1; } ;;
@@ -198,8 +198,9 @@ fi
 # The gate's own rule is machine-checked before anything asks GitHub: one
 # implementation, held against the reviewer's real answers, the states a read
 # can arrive in, the fakes that once passed a looser test, the routes the gate
-# has stopped reading, and the five workflow files — the check, the reviewer,
-# the wake it calls, the door's standing proof and the product reviewer — which
+# has stopped reading, and the six workflow files — the check, the reviewer,
+# the wake it calls, the door's standing proof, the product reviewer and the
+# board's build — which
 # must still agree with the register and with each other.
 python3 review-gate.py --selftest || fail_gate=1
 [ "${fail_gate:-0}" -eq 0 ] || { echo "FAIL: the review gate no longer matches the reviewer's answers, or has drifted from the workflows — see the cases above."; fail=1; }
