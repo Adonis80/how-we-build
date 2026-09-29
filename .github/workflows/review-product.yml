@@ -512,7 +512,7 @@ jobs:
             printf '%s\0' "$f" >> "$t/sources/names"
             n=$((n + 1))
           done < "$t/touched.txt"
-          if python3 - "$t/tree.txt" "$t/touched.txt" "$t/sources" "$t/linked.txt" 2>/dev/null <<'PY'
+          if timeout 60 python3 - "$t/tree.txt" "$t/touched.txt" "$t/sources" "$t/linked.txt" 2>/dev/null <<'PY'
           import os, posixpath, re, sys
           tree_file, touched_file, source_dir, out_file = sys.argv[1:5]
 
@@ -545,6 +545,10 @@ jobs:
               for dots, dotted, what in PY_FROM.findall(text):
                   if not dots:
                       found.append(module("", dotted))
+                      for name in what.strip("() \t\n").split(","):
+                          words = name.split()
+                          if words and words[0].isidentifier():
+                              found.append(module("", dotted + "." + words[0]))
                       continue
                   if len(dots) - 1 > len(here):
                       continue
@@ -593,7 +597,7 @@ jobs:
           PY
           then
             if [ -s "$t/linked.txt" ]; then
-              printf '\n===== the source the change imports, one hop; its callers, tests, database rules and configuration are not here =====\n' >> "$pages"
+              printf '\n===== the source the change imports by relative path, and the scripts a page loads, one hop; callers, tests, database rules and configuration only where touched or imported =====\n' >> "$pages"
               while IFS= read -r -d '' f; do case "$carried" in *" $f "*) continue ;; esac; add "$f" || true; done < "$t/linked.txt"
             fi
           else
@@ -662,8 +666,9 @@ jobs:
             echo "title opens with and the PRODUCT.md sections that item names; every other part of"
             echo "them is named below with its size and left out. If judging it needed a"
             echo "left-out part, that is a finding: say which."
-            echo "Beside the files this change touches, this read carries the source they import"
-            echo "directly, one hop. If judging the change needs its callers, its tests, database"
+            echo "Beside the files this change touches, this read carries the source they import by"
+            echo "relative path, and a page's own scripts, one hop, under a marker below when there is"
+            echo "any; aliases and packages are not followed. If judging the change needs its callers, its tests, database"
             echo "rules or configuration, or a connection imports cannot show, name the file."
             echo "One hop is not the boundary: a change that could not be judged for want of a file gets a blocking finding naming it."
             echo "A file named as left out is a lead, never proof that the rest is complete."

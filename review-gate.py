@@ -3057,11 +3057,12 @@ def _check_pick_loosenings():
 # against the cases below, so a bare package followed, a path the tree does not
 # hold, a Python import read at the wrong level, or a summary that prints a
 # product's path into the public log each turns the check red.
-LINK_CALL = ("if python3 - \"$t/tree.txt\" \"$t/touched.txt\" \"$t/sources\" \"$t/linked.txt\" "
+LINK_CALL = ("if timeout 60 python3 - \"$t/tree.txt\" \"$t/touched.txt\" \"$t/sources\" \"$t/linked.txt\" "
              "2>/dev/null <<'PY'")
 LINK_TREE = 'g ls-tree -r -z --name-only "$SHA" > "$t/tree.txt"'
-LINK_MARK = ("printf '\\n===== the source the change imports, one hop; its callers, tests, database "
-             "rules and configuration are not here =====\\n' >> \"$pages\"")
+LINK_MARK = ("printf '\\n===== the source the change imports by relative path, and the scripts "
+             "a page loads, one hop; callers, tests, database rules and configuration only where touched or "
+             "imported =====\\n' >> \"$pages\"")
 LINK_TAKEN = ('while IFS= read -r -d \'\' f; do case "$carried" in *" $f "*) continue ;; esac; '
               'add "$f" || true; done < "$t/linked.txt"')
 LINK_FAILED = ('echo "the source the change imports could not be linked, so this read carries the '
@@ -3084,7 +3085,8 @@ LINK_JS = ("import a from './a'\nimport React from 'react'\nimport { lib } from 
            "import gone from './gone'\nexport { u } from './util'\nconst b = require('./b')\n"
            "const c = await import( './c' )\nimport './side.css'\n")
 LINK_PY = ("from .x import y\nfrom .. import z\nimport pkg.mod\nimport os, json as j\n"
-           "from . import (w,\n    v as vv, gone)\nfrom pkg.sub import x as xx\nfrom .... import far\n")
+           "from . import (w,\n    v as vv, gone)\nfrom pkg.sub import x as xx\nfrom .... import far\n"
+           "from pkg.sub import only\n")
 # (the tree, the files touched, the touched code and its text, the files linked).
 # The tree holds `app/react.js` beside the importer so that a bare `react`
 # followed as if it were relative is caught, and `pkg/sub/z.py` is absent so
@@ -3096,11 +3098,11 @@ LINK_CASES = (
      [("app/main.js", LINK_JS), ("app/util.js", "import { a } from './a.js'\n")],
      ["app/a.js", "lib/index.ts", "app/b.cjs", "app/c.tsx", "app/side.css"]),
     (["pkg/__init__.py", "pkg/sub/__init__.py", "pkg/sub/m.py", "pkg/sub/x.py", "pkg/z.py",
-      "pkg/mod.py", "pkg/sub/w.py", "pkg/sub/v/__init__.py", "json.py"],
+      "pkg/mod.py", "pkg/sub/w.py", "pkg/sub/v/__init__.py", "json.py", "pkg/sub/only.py"],
      ["pkg/sub/m.py"],
      [("pkg/sub/m.py", LINK_PY)],
      ["pkg/sub/x.py", "pkg/z.py", "pkg/sub/w.py", "pkg/sub/v/__init__.py", "pkg/sub/__init__.py",
-      "pkg/mod.py", "json.py"]),
+      "pkg/sub/only.py", "pkg/mod.py", "json.py"]),
     (["app/main.ts", "app/a.ts", "README.md"], ["README.md", "app/main.ts"],
      [("app/main.ts", "// imports nothing\n")], []),
     (["app/main.ts", "app/a.ts"], ["app/main.ts", "app/a.ts"],
@@ -3198,6 +3200,8 @@ LINK_LOOSENINGS = (
     ("a path the tree does not hold linked", lambda t: t.replace("if c in tree), None)", "if c in tree), candidates[0])", 1)),
     ("a Python import's level ignored", lambda t: t.replace('base = "/".join(here[:len(here) - (len(dots) - 1)])', 'base = "/".join(here)', 1)),
     ("the names of `from . import` not read as modules", lambda t: t.replace("found.append(module(base, words[0]))", "pass", 1)),
+    ("an absolute from-import's names not read as modules", lambda t: t.replace('found.append(module("", dotted + "." + words[0]))', "pass", 1)),
+    ("the linker unbounded", lambda t: t.replace(LINK_CALL, LINK_CALL.replace("timeout 60 ", ""), 1)),
     ("an absolute Python import ignored", lambda t: t.replace("found.append(module(\"\", words[0]))", "pass", 1)),
     ("a touched file linked again", lambda t: t.replace(" and path not in touched", "", 1)),
     ("a linked file's path printed", lambda t: t.replace("% (len(chosen), importers))", "% (len(chosen), importers), *chosen)", 1)),
