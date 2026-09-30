@@ -1234,7 +1234,7 @@ READ_MARGIN = 5
 READ_START = 'echo "started=$(date +%s)" >> "$GITHUB_OUTPUT"'
 READ_LEFT = 'left=$(( STARTED + limit * 60 - $(date +%s) ))'
 # (what the steps before the read did, how long ago the job started or what was
-# recorded, whether the read may begin). `limit` is 25 in both files.
+# recorded, whether the read may begin). `limit` is the same in both files.
 DEADLINE_CASES = (
     ("the job has just started", 0, True),
     ("the steps before ran to minute 20", 20 * 60, True),
