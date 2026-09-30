@@ -2332,9 +2332,10 @@ def _check_route_loosenings():
 
 # THE REGISTRY ITSELF (decision 0008). model-registry/resolve.py checks it whole;
 # this holds what the gate needs of it: the three reviewer roles, each at the
-# one effort every read is owed, reviewer-main with a fallback and the others with
-# none, the roles a product reads by on the one interface a product's code may
-# go to, and a switch that is one edit to the one file.
+# one effort every read is owed, reviewer-main and reviewer-risky each with
+# reviewer-fallback behind it and the fallback with none, the fallback on the
+# one interface a product's code may go to, since every product read ends on
+# it, and a switch that is one edit to the one file.
 def _check_registry():
     bad = 0
 

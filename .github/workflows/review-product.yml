@@ -642,8 +642,8 @@ jobs:
           # THE ROLE, RESOLVED FROM THE REGISTRY in this repository's checkout,
           # which is main: the door admits no other ref (decision 0008). The
           # product never names a model, and cannot pick its own reviewer. Only
-          # the claude-code interface is spoken here (see `ask()`), so an
-          # ordinary product read falls back until another provider is cleared
+          # the claude-code interface is spoken here (see `ask()`), so every
+          # product read falls back until another provider is cleared
           # for a product's private code.
           reg="$GITHUB_WORKSPACE/model-registry"
           resolve() { python3 "$reg/resolve.py" "$reg/registry.json" "$@"; }
