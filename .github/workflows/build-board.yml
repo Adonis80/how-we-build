@@ -266,7 +266,7 @@ jobs:
           [ -n "${VERCEL_TOKEN:-}" ] || { echo "::error::No deploy key: the reviewer environment holds no VERCEL_TOKEN. Nothing is deployed; the last snapshot stands."; exit 1; }
           case "$TARGET" in production|preview) ;; *) echo "::error::no such target"; exit 1 ;; esac
           if [ "$TARGET" = production ] && [ "$LIVE" != yes ]; then
-            echo "::error::production waits for his look: LIVE is not yes, so only a preview is deployed. Nothing is deployed."
+            echo "::error::production waits for his look: LIVE is not yes, so nothing is deployed; dispatch a preview instead."
             exit 1
           fi
           # EVERY REQUEST HAS A TIME LIMIT, AND EVERY WAIT A DEADLINE counted
