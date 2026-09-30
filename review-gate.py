@@ -1234,11 +1234,11 @@ READ_MARGIN = 5
 READ_START = 'echo "started=$(date +%s)" >> "$GITHUB_OUTPUT"'
 READ_LEFT = 'left=$(( STARTED + limit * 60 - $(date +%s) ))'
 # (what the steps before the read did, how long ago the job started or what was
-# recorded, whether the read may begin). `limit` is 25 in both files.
+# recorded, whether the read may begin). `limit` is the same in both files.
 DEADLINE_CASES = (
     ("the job has just started", 0, True),
     ("the steps before ran to minute 20", 20 * 60, True),
-    ("they ran to within a minute of the deadline", 25 * 60 - 30, False),
+    ("they ran to within a minute of the deadline", 40 * 60 - 30, False),
     ("they ran past it", 60 * 60, False),
     ("no start was recorded", "", False),
     ("the start is not a number", "1+1", False),
@@ -1377,8 +1377,8 @@ def read_faults(text):
 # Each must turn the hold red on both reviewers' files, or the hold is decoration.
 READ_LOOSENINGS = (
     ("the read unbounded", lambda t: t.replace(READ_CALL, "claude -p \\", 1)),
-    ("a read the job cuts off first", lambda t: t.replace("          limit=25\n", "          limit=28\n", 1)),
-    ("no limit set", lambda t: t.replace("          limit=25\n", "", 1)),
+    ("a read the job cuts off first", lambda t: t.replace("          limit=40\n", "          limit=43\n", 1)),
+    ("no limit set", lambda t: t.replace("          limit=40\n", "", 1)),
     ("a time-out not named", lambda t: _in_step(t, "Read it", 'if [ "$rc" -eq 124 ]; then', 'if [ "$rc" -eq 125 ]; then')),
     ("a missing tool not named", lambda t: _in_step(t, "Read it", 'elif [ "$rc" -eq 127 ]; then', 'elif false; then')),
     ("a reason that can break a line", lambda t: _in_step(t, "Read it", "| tr -cd 'a-z_' ||", "||")),
@@ -2773,7 +2773,7 @@ PRODUCT_LOOSENINGS = (
     ("settings files read", lambda t: t.replace("--restricted \\\n", "", 1)),
     ("MCP servers from elsewhere", lambda t: t.replace("--strict-mcp-config \\\n", "", 1)),
     ("a model named in the call", lambda t: t.replace(READ_MODEL, "--model a-model-named-here", 1)),
-    ("the tool unpinned", lambda t: t.replace("claude-code@2.1.280", "claude-code", 1)),
+    ("the tool unpinned", lambda t: t.replace("claude-code@2.1.285", "claude-code", 1)),
     ("a different version", lambda t: re.sub(r"claude-code@(\d+)\.(\d+)\.(\d+)", "claude-code@9.9.9", t, 1)),
     ("the brief from the head", lambda t: t.replace('g show "origin/$MAIN:AGENTS.md"', 'g show "$SHA:AGENTS.md"', 1)),
     ("the diff against the base", lambda t: t.replace(PRODUCT_DIFF, 'g diff "$BASE...$SHA" > "$t/diff.txt"  # .base.sha', 1)),
@@ -2782,8 +2782,8 @@ PRODUCT_LOOSENINGS = (
     ("the token's reach never asked", lambda t: t.replace(PRODUCT_REACH[0], '"https://api.github.com/user/repos"', 1)),
     ("the install beside a secret", lambda t: t.replace("        run: npm install -g @anthropic-ai/claude-code@", "        env:\n          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}\n        run: npm install -g @anthropic-ai/claude-code@", 1)),
     ("a secret above the steps", lambda t: t.replace("    environment: reviewer\n", "    environment: reviewer\n    env:\n      KEY: ${{ secrets.REVIEWER_APP_KEY }}\n", 1)),
-    ("a second, unpinned install", lambda t: t.replace("run: npm install -g @anthropic-ai/claude-code@2.1.280", "run: npm install -g @anthropic-ai/claude-code@2.1.280 && npm install -g @anthropic-ai/claude-code", 1)),
-    ("a cancel-in-progress setting alone", lambda t: t.replace("    timeout-minutes: 30\n", "    timeout-minutes: 30\n    cancel-in-progress: true\n", 1)),
+    ("a second, unpinned install", lambda t: t.replace("run: npm install -g @anthropic-ai/claude-code@2.1.285", "run: npm install -g @anthropic-ai/claude-code@2.1.285 && npm install -g @anthropic-ai/claude-code", 1)),
+    ("a cancel-in-progress setting alone", lambda t: t.replace("    timeout-minutes: 45\n", "    timeout-minutes: 45\n    cancel-in-progress: true\n", 1)),
     ("the base fetched beside the right diff", lambda t: t.replace(PRODUCT_DIFF, PRODUCT_DIFF + "  # .base.sha", 1)),
     ("a different size ceiling", lambda t: t.replace('"$bytes" -gt 600000', '"$bytes" -gt 900000', 1)),
     ("no product at all", lambda t: t.replace("          - Adonis80/Hemz-OS\n", "", 1).replace("            Adonis80/Hemz-OS) ;;\n", "", 1)),
@@ -2820,8 +2820,8 @@ PRODUCT_LOOSENINGS = (
     ("a flag dropped from the call", lambda t: t.replace("            --no-session-persistence \\\n", "", 1)),
     ("a flag added to the call", lambda t: t.replace("            --output-format json \\\n", "            --output-format json \\\n            --verbose \\\n", 1)),
     ("a flag's value changed", lambda t: t.replace("--permission-prompts none", "--permission-prompts ask", 1)),
-    ("a different time limit", lambda t: t.replace("    timeout-minutes: 30\n", "    timeout-minutes: 90\n", 1)),
-    ("a different read limit", lambda t: t.replace("          limit=25\n", "          limit=20\n", 1)),
+    ("a different time limit", lambda t: t.replace("    timeout-minutes: 45\n", "    timeout-minutes: 90\n", 1)),
+    ("a different read limit", lambda t: t.replace("          limit=40\n", "          limit=20\n", 1)),
     ("a reason worded otherwise", lambda t: _in_step(t, "Read it", "the reviewer was rate-limited or overloaded", "the reviewer was busy")),
     # What the token was granted (#68's twelfth read).
     ("the grant printed, not checked", lambda t: t.replace(PRODUCT_GRANT[2], "if false; then", 1)),

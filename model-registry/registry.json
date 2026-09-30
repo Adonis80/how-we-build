@@ -1,6 +1,6 @@
 {
-  "about": "The one place a model is named (decision 0008, issue #103, on the 18 September consensus in consensuses/juku-os/). Every other file asks for a role. How to ask, inspect and switch: library/model-registry.md. A switch is one edit to this file, reviewed like any other change to the gate. The reviewer roles are decision 0008's own assignment, which reverses the 22 September pairing that put the open-weight model behind Sonnet as the main backup; their effort is the Chairman's ruling of 28 September 2026, every read at max. The max-subagent role is what every product's max subagent file is set to, his ruling of the same day (library/max-subagent.md).",
-  "version": "2026-09-29.1",
+  "about": "The one place a model is named (decision 0008, issue #103, on the 18 September consensus in consensuses/juku-os/). Every other file asks for a role. How to ask, inspect and switch: library/model-registry.md. A switch is one edit to this file, reviewed like any other change to the gate, unless the pinned reviewer tool does not know the new model: then the pin moves in both reviewers too, proved first on a full-size read (#130). The reviewer roles are decision 0008's own assignment, except that no reader is the lead's own model: since the Chairman's ruling of 29 September 2026 Sonnet 5.5 at max reads every change GLM does not, the risky classes and GLM's fallback both, and Opus reads nothing. Decision 0008's assignment reverses the 22 September pairing that put the open-weight model behind Sonnet as the main backup. The reviewer roles' effort is the Chairman's ruling of 28 September 2026, every read at max. The max-subagent role is what every product's max subagent file is set to, his ruling of the same day (library/max-subagent.md).",
+  "version": "2026-09-29.2",
   "reviewed": "2026-09-25",
   "decision": "https://github.com/Adonis80/how-we-build/issues/103",
   "providers": {
@@ -41,6 +41,15 @@
       "efforts": ["low", "medium", "high", "xhigh", "max"],
       "checked": "2026-09-25",
       "source": "The reviewer every read ran on from 18 to 25 September 2026 (review-gate.py's REVIEWER_MODEL until decision 0008)"
+    },
+    "claude-sonnet-5-5": {
+      "name": "Claude Sonnet 5.5",
+      "provider": "anthropic",
+      "open_weight": false,
+      "status": "active",
+      "efforts": ["low", "medium", "high", "xhigh", "max"],
+      "checked": "2026-09-29",
+      "source": "Proved before it merged (#130's two reads): on 29 September 2026 a replica of a full risky read (this pull request's diff and every .md/.sh/.py/.yml file whole, 651,863 bytes; review.yml's system prompt and schema; -p --model claude-sonnet-5-5 --effort max --tools \"\" --restricted --strict-mcp-config --disable-slash-commands --no-session-persistence --permission-prompts none --output-format json --json-schema --system-prompt) failed on Claude Code 2.1.280, which does not know the model (unrecognized_model at compaction; no verdict after 1,009 s), and answered on 2.1.285: success, verdict advisory, 1,330 s, USD 4.10. The 2.1.280 run saw a 200,000-token window for this model and compacted; the 2.1.285 run saw 1,000,000, took all 484,810 input tokens into context whole (cache creation), logged nothing, and did not compact. So both reviewers pin 2.1.285 and give a read 40 minutes. Run on the build session's credential on his account, not the reviewer environment's token"
     },
     "z-ai/glm-5.3": {
       "name": "GLM 5.3",
@@ -102,16 +111,16 @@
       "use": "Reads every ordinary change: pages and ordinary code (decision 0008, rule 2)."
     },
     "reviewer-risky": {
-      "model": "claude-opus-5-5",
+      "model": "claude-sonnet-5-5",
       "effort": "max",
       "fallback": null,
-      "use": "Reads every change in a risky class, always whole (decision 0008, rule 1). No fallback: if it does not answer, the commit stays unread."
+      "use": "Reads every change in a risky class, always whole (decision 0008, rule 1), on Sonnet 5.5 at max, never the lead's own model (his ruling, 29 September 2026). No fallback: if it does not answer, the commit stays unread."
     },
     "reviewer-fallback": {
-      "model": "claude-sonnet-5",
+      "model": "claude-sonnet-5-5",
       "effort": "max",
       "fallback": null,
-      "use": "Reads an ordinary change when reviewer-main does not answer (decision 0008, rule 2). If it does not answer either, the commit stays unread."
+      "use": "Reads an ordinary change when reviewer-main does not answer (decision 0008, rule 2), on Sonnet 5.5 at max, the default whenever GLM is not the reader (his ruling, 29 September 2026). If it does not answer either, the commit stays unread."
     },
     "reviewer-frontend": {
       "model": "moonshotai/kimi-k3",
