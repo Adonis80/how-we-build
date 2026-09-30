@@ -111,7 +111,7 @@ jobs:
     # THE DOOR. Without this line the key is readable from any branch and the
     # badge is worth nothing. review-gate.py refuses a build that loses it.
     environment: reviewer
-    timeout-minutes: 45
+    timeout-minutes: 55
     steps:
       - name: The commit under review
         id: head
@@ -515,7 +515,11 @@ jobs:
           # interface is one HTTP call, which has no tools to switch off.
           schema='{"type":"object","additionalProperties":false,"required":["verdict","review"],"properties":{"verdict":{"type":"string","enum":["clean","advisory","blocking"]},"review":{"type":"string"}}}'
           case "$EFFORT" in max) ;; *) fail "the registry set no effort a reviewer may read at" ;; esac
-          limit=40
+          # Minute 50 of a 55-minute job: since his ruling of 30 September 2026 a
+          # risky read has a fallback, and the half it leaves the fallback must
+          # hold a whole read on it (#130's replica took 22 minutes). The job
+          # stays under the hour the App's token, minted before the read, lives.
+          limit=50
           [[ "${STARTED:-}" =~ ^[0-9]+$ ]] || fail "the job's start was not recorded, so the read had no deadline"
           left=$(( STARTED + limit * 60 - $(date +%s) ))
           [ "$left" -ge 60 ] || fail "no time was left to read before minute $limit of the job"
