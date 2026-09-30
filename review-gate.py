@@ -123,9 +123,10 @@ DEFAULT_REVIEWER = "claude"
 # and model-registry/registry.json on the protected branch resolves the role to
 # a model, a provider and an effort. A switch is one edit to that file, which is
 # in the gate's own risky class. _check_registry() holds what the roles owe:
-# ordinary changes to ORDINARY_ROLE, with FALLBACK_ROLE behind it when it does
-# not answer; risky ones to RISKY_ROLE, with nothing behind it. Neither
-# answering leaves the commit unread: the gate never fails open.
+# ordinary changes to ORDINARY_ROLE and risky ones to RISKY_ROLE, each with
+# FALLBACK_ROLE behind it when it does not answer (the risky one since his
+# ruling of 30 September 2026). Neither answering leaves the commit unread: the
+# gate never fails open.
 REGISTRY = "model-registry/registry.json"
 RESOLVER = "model-registry/resolve.py"
 ORDINARY_ROLE = "reviewer-main"
@@ -1238,7 +1239,7 @@ READ_LEFT = 'left=$(( STARTED + limit * 60 - $(date +%s) ))'
 DEADLINE_CASES = (
     ("the job has just started", 0, True),
     ("the steps before ran to minute 20", 20 * 60, True),
-    ("they ran to within a minute of the deadline", 40 * 60 - 30, False),
+    ("they ran to within a minute of the deadline", 50 * 60 - 30, False),
     ("they ran past it", 60 * 60, False),
     ("no start was recorded", "", False),
     ("the start is not a number", "1+1", False),
@@ -1377,8 +1378,8 @@ def read_faults(text):
 # Each must turn the hold red on both reviewers' files, or the hold is decoration.
 READ_LOOSENINGS = (
     ("the read unbounded", lambda t: t.replace(READ_CALL, "claude -p \\", 1)),
-    ("a read the job cuts off first", lambda t: t.replace("          limit=40\n", "          limit=43\n", 1)),
-    ("no limit set", lambda t: t.replace("          limit=40\n", "", 1)),
+    ("a read the job cuts off first", lambda t: t.replace("          limit=50\n", "          limit=53\n", 1)),
+    ("no limit set", lambda t: t.replace("          limit=50\n", "", 1)),
     ("a time-out not named", lambda t: _in_step(t, "Read it", 'if [ "$rc" -eq 124 ]; then', 'if [ "$rc" -eq 125 ]; then')),
     ("a missing tool not named", lambda t: _in_step(t, "Read it", 'elif [ "$rc" -eq 127 ]; then', 'elif false; then')),
     ("a reason that can break a line", lambda t: _in_step(t, "Read it", "| tr -cd 'a-z_' ||", "||")),
@@ -2352,7 +2353,7 @@ def _check_registry():
         return bad
     for f in resolve.check(reg):
         fault(f)
-    owed = ((ORDINARY_ROLE, True), (FALLBACK_ROLE, False), (RISKY_ROLE, False))
+    owed = ((ORDINARY_ROLE, True), (FALLBACK_ROLE, False), (RISKY_ROLE, True))
     got = {}
     for role, falls in owed:
         try:
@@ -2364,16 +2365,17 @@ def _check_registry():
             fault("%s reads at %r; every read is owed %s, on an effort its model is known to take"
                   % (role, got[role]["effort"], REVIEW_EFFORT))
         if bool(got[role]["fallback"]) != falls:
-            fault("%s %s" % (role, "has no fallback, so an outage parks every ordinary change"
+            fault("%s %s" % (role, "has no fallback, so an outage parks every change it reads"
                              if falls else "falls back to %r; nothing may stand behind it"
                              % got[role]["fallback"]))
-    if got.get(ORDINARY_ROLE, {}).get("fallback") not in (None, FALLBACK_ROLE):
-        fault("%s falls back to %r, not %s" % (ORDINARY_ROLE, got[ORDINARY_ROLE]["fallback"],
-                                               FALLBACK_ROLE))
-    for role in (FALLBACK_ROLE, RISKY_ROLE):
-        if role in got and got[role]["interface"] != "claude-code":
-            fault("%s is served through %s; a product's read speaks claude-code alone, so it would "
-                  "have no reader" % (role, got[role]["interface"]))
+    for role in (ORDINARY_ROLE, RISKY_ROLE):
+        if got.get(role, {}).get("fallback") not in (None, "", FALLBACK_ROLE):
+            fault("%s falls back to %r, not %s" % (role, got[role]["fallback"], FALLBACK_ROLE))
+    # A product's read speaks claude-code alone, so the fallback is the reader
+    # every product read ends on.
+    if FALLBACK_ROLE in got and got[FALLBACK_ROLE]["interface"] != "claude-code":
+        fault("%s is served through %s; a product's read speaks claude-code alone, so it would "
+              "have no reader" % (FALLBACK_ROLE, got[FALLBACK_ROLE]["interface"]))
     # One edit, one file: the ordinary role moved to another model in a copy of
     # the registry, and nothing else, is what the resolver then answers.
     if ORDINARY_ROLE in got and FALLBACK_ROLE in got:
@@ -2401,10 +2403,9 @@ def _check_registry():
         except resolve.Unresolved:
             pass
     if not bad:
-        print("ok: the registry resolves %s with %s behind it, and %s with nothing behind it, "
-              "all three at %s; a switch is one edit to %s, and an unknown role or a blocked "
-              "model fails closed" % (ORDINARY_ROLE, FALLBACK_ROLE, RISKY_ROLE, REVIEW_EFFORT,
-                                      REGISTRY))
+        print("ok: the registry resolves %s and %s, each with %s behind it, all three at %s; a "
+              "switch is one edit to %s, and an unknown role or a blocked model fails closed"
+              % (ORDINARY_ROLE, RISKY_ROLE, FALLBACK_ROLE, REVIEW_EFFORT, REGISTRY))
     return bad
 
 
@@ -2783,7 +2784,7 @@ PRODUCT_LOOSENINGS = (
     ("the install beside a secret", lambda t: t.replace("        run: npm install -g @anthropic-ai/claude-code@", "        env:\n          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}\n        run: npm install -g @anthropic-ai/claude-code@", 1)),
     ("a secret above the steps", lambda t: t.replace("    environment: reviewer\n", "    environment: reviewer\n    env:\n      KEY: ${{ secrets.REVIEWER_APP_KEY }}\n", 1)),
     ("a second, unpinned install", lambda t: t.replace("run: npm install -g @anthropic-ai/claude-code@2.1.285", "run: npm install -g @anthropic-ai/claude-code@2.1.285 && npm install -g @anthropic-ai/claude-code", 1)),
-    ("a cancel-in-progress setting alone", lambda t: t.replace("    timeout-minutes: 45\n", "    timeout-minutes: 45\n    cancel-in-progress: true\n", 1)),
+    ("a cancel-in-progress setting alone", lambda t: t.replace("    timeout-minutes: 55\n", "    timeout-minutes: 55\n    cancel-in-progress: true\n", 1)),
     ("the base fetched beside the right diff", lambda t: t.replace(PRODUCT_DIFF, PRODUCT_DIFF + "  # .base.sha", 1)),
     ("a different size ceiling", lambda t: t.replace('"$bytes" -gt 600000', '"$bytes" -gt 900000', 1)),
     ("no product at all", lambda t: t.replace("          - Adonis80/Hemz-OS\n", "", 1).replace("            Adonis80/Hemz-OS) ;;\n", "", 1)),
@@ -2820,8 +2821,8 @@ PRODUCT_LOOSENINGS = (
     ("a flag dropped from the call", lambda t: t.replace("            --no-session-persistence \\\n", "", 1)),
     ("a flag added to the call", lambda t: t.replace("            --output-format json \\\n", "            --output-format json \\\n            --verbose \\\n", 1)),
     ("a flag's value changed", lambda t: t.replace("--permission-prompts none", "--permission-prompts ask", 1)),
-    ("a different time limit", lambda t: t.replace("    timeout-minutes: 45\n", "    timeout-minutes: 90\n", 1)),
-    ("a different read limit", lambda t: t.replace("          limit=40\n", "          limit=20\n", 1)),
+    ("a different time limit", lambda t: t.replace("    timeout-minutes: 55\n", "    timeout-minutes: 90\n", 1)),
+    ("a different read limit", lambda t: t.replace("          limit=50\n", "          limit=20\n", 1)),
     ("a reason worded otherwise", lambda t: _in_step(t, "Read it", "the reviewer was rate-limited or overloaded", "the reviewer was busy")),
     # What the token was granted (#68's twelfth read).
     ("the grant printed, not checked", lambda t: t.replace(PRODUCT_GRANT[2], "if false; then", 1)),
