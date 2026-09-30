@@ -2867,6 +2867,10 @@ BOARD_HOLDS = (
     ('select(.app.id == %d and .name == "%s" and .head_sha == $sha)' % (REVIEWER_APP_ID, REVIEWER_CHECK),
      "each check run on the board held to the reviewer's App, name and head"),
     ("        default: preview\n", "a dispatch that is a preview unless production is chosen"),
+    # #117's fourth read, 4c: the fake sets TARGET itself, so the line that
+    # sets it is held here.
+    ("TARGET: ${{ github.event_name != 'workflow_dispatch' && 'production' || inputs.target }}",
+     "a dispatch's own target, never production by default"),
     # #117's second read, 6: the render takes the time the clock stamped.
     ('jq -n --arg at "$AT"', "the snapshot's time taken from before the first read"),
 )
@@ -2883,6 +2887,8 @@ BOARD_ORDER = (BOARD_SCOPE, 'if [ "$granted" != "$want" ]; then', 'if [ "$reach"
 BOARD_MARKS = (("board/middleware.js", "Directors only"), ("board/build.py", "<body data-board>"))
 BOARD_NEVER = (
     ("upload-artifact", "an artifact, which a public repository publishes"),
+    # #117's fourth read, 4b.
+    ("GITHUB_STEP_SUMMARY", "a run's summary, which a public repository publishes"),
     ("github.event.pull_request.head.sha", "the pull request's own code"),
     ("github.event.pull_request.head.ref", "the pull request's own branch"),
     ("github.head_ref", "the pull request's own branch"),
@@ -2929,10 +2935,13 @@ while [ $# -gt 0 ]; do
 done
 echo "$method $url" >> "$S/calls"
 reply() {
+  local f
   if [ -n "$out" ]; then printf '%s' "$2" > "$out"; else printf '%s' "$2"; fi
-  [ -z "$fmt" ] || printf '%b' "${fmt//'%{http_code}'/$1}"
+  f=${fmt//'%{http_code}'/$1}
+  [ -z "$fmt" ] || printf '%b' "${f//'%{redirect_url}'/${3:-}}"
   [ "$1" != 000 ] || exit 28
 }
+sso='https://vercel.com/sso-api?url=https%3A%2F%2Fjuku-build-board-x1.vercel.app%2F&nonce=n1'
 pin='<html><body><p>Directors only</p></body></html>'
 board='<html><body data-board><p>NOT-FOR-THE-LOG</p></body></html>'
 serving=$(cat "$S/serving")
@@ -2967,12 +2976,20 @@ case "$method $path" in
   "GET https://$DOMAIN/"|"GET https://$DOMAIN/index.html")
     [ "$auth" = no ] || refuse "a stranger's request carrying a key"
     [ "$serving" = dpl_copy ] || { reply 200 "$pin"; exit 0; }
-    case "${FAKE_DOMAIN:-pin}" in board) reply 200 "$board" ;; blank) reply 502 'bad gateway' ;; *) reply 200 "$pin" ;; esac ;;
+    case "${FAKE_DOMAIN:-pin}" in
+      board) reply 200 "$board" ;;
+      blank) reply 502 'bad gateway' ;;
+      wall) reply 302 '' "$sso" ;;
+      *) reply 200 "$pin" ;;
+    esac ;;
   "GET https://juku-build-board-x1.vercel.app/"|"GET https://juku-build-board-x1.vercel.app/index.html")
     [ "$auth" = no ] || refuse "a stranger's request carrying a key"
     [ "$(cat "$S/new")" = READY ] || { reply 404 'gone'; exit 0; }
+    # The host's sign-in wall, as run 36715901351 found it: a redirect.
     case "${FAKE_PREVIEW:-wall}" in
-      wall) reply 401 '<html>Authentication Required</html>' ;;
+      wall) reply 302 '' "$sso" ;;
+      elsewhere) reply 302 '' 'https://vercel.com.example/sso-api?url=x' ;;
+      denied) reply 401 '<html>Authentication Required</html>' ;;
       pin) reply 200 "$pin" ;;
       board) reply 200 "$board" ;;
       none) reply 000 '' ;;
@@ -3007,10 +3024,21 @@ BOARD_DEPLOY_CASES = (
      {"FAKE_DOMAIN": "blank", "FAKE_ROLLBACK": "stuck"}, 1, "dpl_copy", "READY", "ROLLBACK UNCONFIRMED", None),
     ("the rollback is refused", {"FAKE_DOMAIN": "board", "FAKE_ROLLBACK": "refused"}, 1, "dpl_copy",
      "READY", "ROLLBACK REFUSED", None),
-    ("a preview for his look", {"TARGET": "preview"}, 0, "dpl_before", "READY",
+    ("a preview for his look", {"TARGET": "preview", "LIVE": "no"}, 0, "dpl_before", "READY",
      "https://juku-build-board-x1.vercel.app", "promote"),
-    ("an automatic run before his look", {"GITHUB_EVENT_NAME": "pull_request_target"}, 0,
+    ("an automatic run before his look", {"GITHUB_EVENT_NAME": "pull_request_target", "LIVE": "no"}, 0,
      "dpl_before", "none", "rendered, not deployed", "deployment:"),
+    # #117's fourth read, 2: a production dispatch waits for his look too.
+    ("a production dispatch before his look", {"LIVE": "no"}, 1, "dpl_before", "none",
+     "production waits for his look", "deployment:"),
+    # Run 36714764680: only the host's own sign-in redirect is its wall, and
+    # only at a preview.
+    ("the preview redirects a stranger somewhere else", {"FAKE_PREVIEW": "elsewhere"}, 1, "dpl_before",
+     "DELETED", "neither the sign-in wall nor the PIN screen", "promote"),
+    ("the preview refuses a stranger without the host's sign-in", {"FAKE_PREVIEW": "denied"}, 1,
+     "dpl_before", "DELETED", "neither the sign-in wall nor the PIN screen", "promote"),
+    ("the domain shows a stranger the host's sign-in, not the PIN screen", {"FAKE_DOMAIN": "wall"}, 1,
+     "dpl_before", "READY", "rolled back: roadmap.juku.pro serves dpl_before", None),
     ("the preview shows a stranger the board", {"FAKE_PREVIEW": "board"}, 1, "dpl_before", "DELETED",
      "A STRANGER WAS SERVED THE BOARD at the preview", "promote"),
     ("the preview shows a stranger the board, asked for as a preview",
@@ -3076,7 +3104,7 @@ def _board_deploy_case(script, job, case):
         e.update({"PATH": binned + os.pathsep + os.environ.get("PATH", ""), "FAKE": fake,
                   # The job's clock started before this one, at the checkout.
                   "JOB_END": str(start + job - 30), "RUNNER_TEMP": run, "STARTED": str(start),
-                  "GITHUB_EVENT_NAME": "workflow_dispatch", "LIVE": "no", "TARGET": "production",
+                  "GITHUB_EVENT_NAME": "workflow_dispatch", "LIVE": "yes", "TARGET": "production",
                   "VERCEL_TOKEN": "not-a-token", "TEAM": "team_x", "PROJECT": "prj_x",
                   "DOMAIN": "roadmap.juku.pro", "FAKE_NEW": env.get("FAKE_READY", "READY")})
         e.update({k: v for k, v in env.items() if k != "LATE"})
@@ -3254,6 +3282,13 @@ BOARD_LOOSENINGS = (
     ("the snapshot stamped at the render", lambda t: t.replace('jq -n --arg at "$AT"', 'jq -n --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"', 1)),
     ("the stamp after the first read", lambda t: t.replace(BOARD_STAMP, "true", 1).replace("          rm -f \"$road\"\n", "          rm -f \"$road\"\n          " + BOARD_STAMP + "x\" >> \"$GITHUB_OUTPUT\"\n", 1)),
     ("a dispatch that deploys production by default", lambda t: t.replace("        default: preview\n", "        default: production\n", 1)),
+    # #117's fourth read, 2 and 4b-c, and run 36714764680.
+    ("a production dispatch before his look", lambda t: t.replace('if [ "$TARGET" = production ] && [ "$LIVE" != yes ]; then', "if false; then", 1)),
+    ("every run's target production", lambda t: t.replace("TARGET: ${{ github.event_name != 'workflow_dispatch' && 'production' || inputs.target }}", "TARGET: production", 1)),
+    ("a run summary written", lambda t: t.replace('          echo "open pull requests:', '          echo "rendered" >> "$GITHUB_STEP_SUMMARY"\n          echo "open pull requests:', 1)),
+    ("any redirect taken as the wall", lambda t: t.replace('[[ "$loc" == "https://vercel.com/sso-api?"* ]]', "true", 1)),
+    ("a redirect's address matched loosely", lambda t: t.replace('[[ "$loc" == "https://vercel.com/sso-api?"* ]]', '[[ "$loc" == *"sso-api"* ]]', 1)),
+    ("the host's sign-in taken as gated at the domain", lambda t: t.replace('{ [ "$2" = wall ] && [[', "{ [[", 1)),
     ("a roadmap read before the grant is checked", lambda t: t.replace(BOARD_SCOPE, 'curl -sS "https://api.github.com/repos/$REPO/contents/roadmap.json" > /dev/null\n            ' + BOARD_SCOPE, 1)),
     ("a pull request fetched", lambda t: t.replace("      - name: Render\n", "      - run: git fetch origin pull/1/head\n      - name: Render\n", 1)),
     ("a row the workflow does not read", lambda t: t.replace("          Adonis80/phena=Phena\n", "          Adonis80/phena=Phena Two\n", 1)),

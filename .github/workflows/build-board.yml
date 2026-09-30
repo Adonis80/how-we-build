@@ -37,14 +37,14 @@ run-name: Build the board (${{ github.event_name }})
 # deleted. review-gate.py runs this step against a fake host, path by path.
 #
 # THIS LOG IS PUBLIC AND THE ROADMAPS ARE NOT. Nothing a product holds is
-# printed: byte counts and conclusions only. No artifact is uploaded, because
-# a public repository's artifacts are public too.
+# printed: byte counts and conclusions only. No artifact is uploaded and no
+# run summary written, because a public repository's are public too.
 
 on:
   workflow_dispatch:
     inputs:
       target:
-        description: preview, a look first; production, the board itself.
+        description: preview, a look first; production, the board itself, once LIVE is yes.
         required: true
         # A preview unless production is chosen (#117's second read, 7).
         default: preview
@@ -63,8 +63,8 @@ permissions:
   pull-requests: read
   checks: read
 
-# Automatic deploys wait for his look at the first preview (step 6): a
-# dispatch deploys either way; a pull request or a verdict deploys only once
+# Production waits for his look at the first preview (step 6): a preview
+# dispatch deploys either way; production, dispatched or automatic, only once
 # this reads yes, which one reviewed line flips after he has agreed.
 env:
   LIVE: "no"
@@ -255,15 +255,20 @@ jobs:
         run: |
           set -euo pipefail
           # HIS LOOK FIRST (step 6). Until LIVE is flipped by a one-line pull
-          # request after he has agreed the preview, only a dispatch deploys; a
-          # pull request or a verdict renders the board, proving the reads, and
-          # moves nothing.
+          # request after he has agreed the preview, only a preview is deployed;
+          # a pull request or a verdict renders the board, proving the reads, and
+          # moves nothing, and a production dispatch is refused (#117's fourth
+          # read, 2).
           if [ "$GITHUB_EVENT_NAME" != workflow_dispatch ] && [ "$LIVE" != yes ]; then
             echo "::notice::rendered, not deployed: automatic deploys begin when LIVE is yes, after the Chairman agrees the look"
             exit 0
           fi
           [ -n "${VERCEL_TOKEN:-}" ] || { echo "::error::No deploy key: the reviewer environment holds no VERCEL_TOKEN. Nothing is deployed; the last snapshot stands."; exit 1; }
           case "$TARGET" in production|preview) ;; *) echo "::error::no such target"; exit 1 ;; esac
+          if [ "$TARGET" = production ] && [ "$LIVE" != yes ]; then
+            echo "::error::production waits for his look: LIVE is not yes, so only a preview is deployed. Nothing is deployed."
+            exit 1
+          fi
           # EVERY REQUEST HAS A TIME LIMIT, AND EVERY WAIT A DEADLINE counted
           # from the job's start (#117's second read, 3): the waits end at
           # minute `limit` of the job, so a rollback begun then still has its
@@ -277,18 +282,22 @@ jobs:
           site="$RUNNER_TEMP/site"
           # What a stranger is shown at host $1, at the root and at the page's
           # own name: 0, gated at both; 1, not yet; 2, the board. $2 = wall lets
-          # the host's sign-in wall count as gated, which only a preview has.
+          # the host's sign-in wall count as gated, which only a preview has:
+          # a redirect to the host's own sign-in, and no other, as run
+          # 36715901351 found it answering a stranger (#117, 30 September).
           # The page is grepped and never printed.
           gated() {
-            local p out code body seen=0
+            local p out last code loc body seen=0
             for p in / /index.html; do
-              out=$(curl -sS --max-time 20 -w '\n%{http_code}' "https://$1$p" 2>/dev/null || true)
-              code=${out##*$'\n'}
+              out=$(curl -sS --max-time 20 -w '\n%{http_code} %{redirect_url}' "https://$1$p" 2>/dev/null || true)
+              last=${out##*$'\n'}
+              code=${last%% *}
+              loc=${last#* }
               body=${out%$'\n'*}
               if grep -q "data-board" <<< "$body"; then return 2; fi
               case "$code" in
                 200) grep -q "Directors only" <<< "$body" || seen=1 ;;
-                401|403) [ "$2" = wall ] || seen=1 ;;
+                302|307) { [ "$2" = wall ] && [[ "$loc" == "https://vercel.com/sso-api?"* ]]; } || seen=1 ;;
                 *) seen=1 ;;
               esac
             done
