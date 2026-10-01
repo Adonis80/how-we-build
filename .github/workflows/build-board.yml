@@ -244,12 +244,17 @@ jobs:
           fi
           code=$(curl -sS --max-time 30 -o "$RUNNER_TEMP/activity.json" -w '%{http_code}' \
             -H "Authorization: Bearer $OPENROUTER_KEY" "https://openrouter.ai/api/v1/activity") || code=000
-          if [ "$code" = 200 ] && jq -e '.data | type == "array"' "$RUNNER_TEMP/activity.json" > /dev/null 2>&1; then
-            jq '{days: [.data[] | {date, usage}]}' "$RUNNER_TEMP/activity.json" > "$RUNNER_TEMP/spend.json"
+          # Whole or not at all: an answer jq cannot map leaves the card's own
+          # "not read" in place, never a stopped board (#134's first read, 1).
+          if [ "$code" = 200 ] && jq '{days: [.data[] | {date, usage}]}' "$RUNNER_TEMP/activity.json" \
+              > "$RUNNER_TEMP/spend.tmp" 2> /dev/null; then
+            mv "$RUNNER_TEMP/spend.tmp" "$RUNNER_TEMP/spend.json"
             echo "spend: OpenRouter answered with $(jq '.days | length' "$RUNNER_TEMP/spend.json") rows"
           else
-            echo "::warning::OpenRouter's activity was not read (HTTP $code): the spend card says not reported."
+            echo '{"unread": true}' > "$RUNNER_TEMP/spend.json"
+            echo "::warning::OpenRouter's activity was not read (HTTP $code): the spend card says so."
           fi
+          rm -f "$RUNNER_TEMP/spend.tmp"
           rm -f "$RUNNER_TEMP/activity.json"
 
       - name: Render

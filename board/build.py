@@ -22,7 +22,11 @@ The reads, in the shape #117's workflow is to write them:
                    "roadmap": <roadmap.json on main, parsed>}, ...],
      "rulebook": {"open": [{"number", "title", "body", "draft", "created_at",
                             "url", "review": [{"status", "conclusion"}, ...]}],
-                  "merged": [{"number", "title", "url", "merged_at"}, ...]}}
+                  "merged": [{"number", "title", "url", "merged_at"}, ...]},
+     "spend": {"days": [{"date": "YYYY-MM-DD", "usage": <USD>}, ...]}}
+
+`spend` is OpenRouter's daily activity; null when no key is connected, and
+{"unread": true} when a key is but the read failed. The card says which.
 
 `review` is the juku-reviewer check runs on the pull request's head, newest
 first. Of a body, only its `Priority:` and `Ready:` lines are published (§8).
@@ -367,7 +371,9 @@ def spend_card(spend, checked_at):
                                         DAY.match(r["date"]) and isinstance(r.get("usage"), (int, float)) and
                                         not isinstance(r.get("usage"), bool) for r in rows)
     if not ok:
-        why = "OpenRouter is not connected" if spend is None else "OpenRouter's answer was not in a shape the board reads"
+        why = ("No OpenRouter key is connected" if spend is None else
+               "OpenRouter's spend was not read this time" if isinstance(spend, dict) and spend.get("unread") else
+               "OpenRouter's answer was not in a shape the board reads")
         return ('<section class="spend st-none" aria-label="OpenRouter spend"><div class="sp-head">'
                 '<span class="sp-title">OpenRouter spend</span><span class="sp-chip">Not reported</span></div>'
                 '<p class="sp-proj">%s.</p><p class="sp-basis">The budget is $%d for %s; nothing is shown '
@@ -599,11 +605,13 @@ def _selftest():
     hold("st-hot" in hot and "Projected $24 at month end" in hot, "running hot: ahead of the month, within budget at the recent rate")
     over = card([d(1, 10.0), d(12, 7.0), d(13, 7.0)])
     hold("st-over" in over and "Projected $54 · $14 over budget" in over, "overshooting names how far over")
-    hold("st-none" in card(None) and "OpenRouter is not connected" in card(None) and "$" + "0" not in card(None),
-         "no read is said, never shown as nothing spent")
+    hold("st-none" in card(None) and "No OpenRouter key is connected" in card(None) and "$" + "0" not in card(None),
+         "no key is said, never shown as nothing spent")
+    hold("was not read this time" in spend_card({"unread": True}, at),
+         "a key whose read failed is told apart from no key at all")
     hold("not in a shape the board reads" in card([{"date": "2026-09-01", "usage": "5"}]),
          "an answer it cannot read is said, never guessed at")
-    hold('class="spend' in page and "OpenRouter is not connected" in page, "the board carries the card, read or not")
+    hold('class="spend' in page and "No OpenRouter key is connected" in page, "the board carries the card, read or not")
     hold("<body data-board>" in page, "the marker #117's smoke test is to look for, so a board served to a stranger is caught")
     hold(readiness(pr(12, "**Priority:** **P2**. **Ready:** no — **Decision needed:** which host."))[2] == "P2",
          "a bolded priority reads as its level")
