@@ -2868,6 +2868,7 @@ BOARD_HOLDS = (
     ('select(.app.id == %d and .name == "%s" and .head_sha == $sha)' % (REVIEWER_APP_ID, REVIEWER_CHECK),
      "each check run on the board held to the reviewer's App, name and head"),
     ("        default: preview\n", "a dispatch that is a preview unless production is chosen"),
+    ("      NEXT: juku-build-board-next.vercel.app\n", "the one fixed name every preview lands at"),
     ('-H "Authorization: Bearer $OPENROUTER_KEY" "https://openrouter.ai/api/v1/activity")',
      "the spend card's key used for its one read, OpenRouter's daily activity"),
     # #117's fourth read, 4c: the fake sets TARGET itself, so the line that
@@ -2982,7 +2983,12 @@ case "$method $path" in
     [ "$TARGET" = preview ] || refuse "the fixed preview name given to a production run"
     [ "$(cat "$S/new")" = READY ] || refuse "the fixed preview name given before the smoke"
     [ "${FAKE_ALIAS:-ok}" = ok ] || { reply 403 '{}'; exit 0; }
-    reply 200 '{}' ;;
+    echo yes > "$S/aliased"; reply 200 '{}' ;;
+  "GET https://$NEXT/"|"GET https://$NEXT/index.html")
+    [ "$auth" = no ] || refuse "a stranger's request carrying a key"
+    [ -f "$S/aliased" ] || refuse "the fixed preview name asked before it was given"
+    [ "$(cat "$S/new")" = READY ] || { reply 404 'gone'; exit 0; }
+    case "${FAKE_NEXT:-wall}" in board) reply 200 "$board" ;; *) reply 302 '' "$sso" ;; esac ;;
   "GET https://$DOMAIN/"|"GET https://$DOMAIN/index.html")
     [ "$auth" = no ] || refuse "a stranger's request carrying a key"
     [ "$serving" = dpl_copy ] || { reply 200 "$pin"; exit 0; }
@@ -3036,6 +3042,10 @@ BOARD_DEPLOY_CASES = (
      "READY", "ROLLBACK REFUSED", None),
     ("a preview for his look", {"TARGET": "preview", "LIVE": "no"}, 0, "dpl_before", "READY",
      "preview ready at the fixed address: https://juku-build-board-next.vercel.app", "promote"),
+    ("the fixed address shows a stranger the board", {"TARGET": "preview", "LIVE": "no", "FAKE_NEXT": "board"}, 1,
+     "dpl_before", "DELETED", "A STRANGER WAS SERVED THE BOARD at the fixed address", "promote"),
+    ("a preview that is never ready takes no fixed name", {"TARGET": "preview", "LIVE": "no", "FAKE_READY": "BUILDING"}, 1,
+     "dpl_before", "CANCELED", "cancelled: dpl_new", "fixed address"),
     ("a preview whose fixed name is refused", {"TARGET": "preview", "LIVE": "no", "FAKE_ALIAS": "no"}, 0,
      "dpl_before", "READY", "the fixed preview address was refused", "promote"),
     ("an automatic run before his look", {"GITHUB_EVENT_NAME": "pull_request_target", "LIVE": "no"}, 0,
@@ -3307,6 +3317,7 @@ BOARD_LOOSENINGS = (
     ("a key made with the spend card's key", lambda t: t.replace('          rm -f "$RUNNER_TEMP/activity.json"\n', '          rm -f "$RUNNER_TEMP/activity.json"\n          curl -sS --max-time 30 -X POST -H "Authorization: Bearer $OPENROUTER_KEY" "https://openrouter.ai/api/v1/keys" -d \'{"name":"x"}\'\n', 1)),
     ("a second OpenRouter read", lambda t: t.replace('          rm -f "$RUNNER_TEMP/activity.json"\n', '          rm -f "$RUNNER_TEMP/activity.json"\n          curl -sS --max-time 30 -H "Authorization: Bearer $OPENROUTER_KEY" "https://openrouter.ai/api/v1/credits"\n', 1)),
     ("the spend card's key read from elsewhere", lambda t: t.replace('"https://openrouter.ai/api/v1/activity")', '"https://openrouter.ai/api/v1/credits")', 1)),
+    ("the fixed name never smoked", lambda t: t.replace('gated "$NEXT" wall && g=0 || g=$?', "g=0", 1)),
     ("a run summary written", lambda t: t.replace('          echo "open pull requests:', '          echo "rendered" >> "$GITHUB_STEP_SUMMARY"\n          echo "open pull requests:', 1)),
     ("any redirect taken as the wall", lambda t: t.replace('[[ "$loc" == "https://vercel.com/sso-api?"* ]]', "true", 1)),
     ("a redirect's address matched loosely", lambda t: t.replace('[[ "$loc" == "https://vercel.com/sso-api?"* ]]', '[[ "$loc" == *"sso-api"* ]]', 1)),
