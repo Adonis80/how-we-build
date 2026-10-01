@@ -90,6 +90,7 @@ the real ones and the fakes on every run of check.sh — no network, no GitHub, 
 it fails the build before a loose rule can pass a commit.
 """
 
+import glob
 import io
 import json
 import importlib.util
@@ -2867,6 +2868,8 @@ BOARD_HOLDS = (
     ('select(.app.id == %d and .name == "%s" and .head_sha == $sha)' % (REVIEWER_APP_ID, REVIEWER_CHECK),
      "each check run on the board held to the reviewer's App, name and head"),
     ("        default: preview\n", "a dispatch that is a preview unless production is chosen"),
+    ('-H "Authorization: Bearer $OPENROUTER_KEY" "https://openrouter.ai/api/v1/activity")',
+     "the spend card's key used for its one read, OpenRouter's daily activity"),
     # #117's fourth read, 4c: the fake sets TARGET itself, so the line that
     # sets it is held here.
     ("TARGET: ${{ github.event_name != 'workflow_dispatch' && 'production' || inputs.target }}",
@@ -2889,6 +2892,8 @@ BOARD_NEVER = (
     ("upload-artifact", "an artifact, which a public repository publishes"),
     # #117's fourth read, 4b.
     ("GITHUB_STEP_SUMMARY", "a run's summary, which a public repository publishes"),
+    # The spend card's key is a management key (his, 1 October 2026): one read, never a key made.
+    ("openrouter.ai/api/v1/keys", "OpenRouter's keys, which the management key could make or change"),
     ("github.event.pull_request.head.sha", "the pull request's own code"),
     ("github.event.pull_request.head.ref", "the pull request's own branch"),
     ("github.head_ref", "the pull request's own branch"),
@@ -3181,6 +3186,13 @@ def _check_board_wiring(board=None, product=None, readme=None, quiet=False):
             fault("smokes against %s, which cannot be read: %s" % (path, e))
     if XTRACE.search(board):
         fault("traces its shell, which prints what it holds into a public log")
+    # The spend card's management key: one read in this file, and in no other (#134's first read, 3).
+    if board.count("openrouter.ai") != 1:
+        fault("asks OpenRouter %d times; the spend card's key makes one read, its daily activity"
+              % board.count("openrouter.ai"))
+    for other in sorted(glob.glob(".github/workflows/*.yml")):
+        if other != BOARD_WORKFLOW and "secrets.OPENROUTER_KEY" in _read(other):
+            fault("shares the spend card's management key with %s" % other)
     perms = BOARD_PERMISSIONS.search(board)
     if (not perms or len(re.findall(r"^\s*permissions:", board, re.M)) != 1
             or not all(re.match(r"^  [a-z-]+: read$", l) for l in perms.group(1).splitlines())):
@@ -3285,6 +3297,9 @@ BOARD_LOOSENINGS = (
     # #117's fourth read, 2 and 4b-c, and run 36714764680.
     ("a production dispatch before his look", lambda t: t.replace('if [ "$TARGET" = production ] && [ "$LIVE" != yes ]; then', "if false; then", 1)),
     ("every run's target production", lambda t: t.replace("TARGET: ${{ github.event_name != 'workflow_dispatch' && 'production' || inputs.target }}", "TARGET: production", 1)),
+    ("a key made with the spend card's key", lambda t: t.replace('          rm -f "$RUNNER_TEMP/activity.json"\n', '          rm -f "$RUNNER_TEMP/activity.json"\n          curl -sS --max-time 30 -X POST -H "Authorization: Bearer $OPENROUTER_KEY" "https://openrouter.ai/api/v1/keys" -d \'{"name":"x"}\'\n', 1)),
+    ("a second OpenRouter read", lambda t: t.replace('          rm -f "$RUNNER_TEMP/activity.json"\n', '          rm -f "$RUNNER_TEMP/activity.json"\n          curl -sS --max-time 30 -H "Authorization: Bearer $OPENROUTER_KEY" "https://openrouter.ai/api/v1/credits"\n', 1)),
+    ("the spend card's key read from elsewhere", lambda t: t.replace('"https://openrouter.ai/api/v1/activity")', '"https://openrouter.ai/api/v1/credits")', 1)),
     ("a run summary written", lambda t: t.replace('          echo "open pull requests:', '          echo "rendered" >> "$GITHUB_STEP_SUMMARY"\n          echo "open pull requests:', 1)),
     ("any redirect taken as the wall", lambda t: t.replace('[[ "$loc" == "https://vercel.com/sso-api?"* ]]', "true", 1)),
     ("a redirect's address matched loosely", lambda t: t.replace('[[ "$loc" == "https://vercel.com/sso-api?"* ]]', '[[ "$loc" == *"sso-api"* ]]', 1)),

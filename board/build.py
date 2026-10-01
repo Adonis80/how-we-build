@@ -22,7 +22,11 @@ The reads, in the shape #117's workflow is to write them:
                    "roadmap": <roadmap.json on main, parsed>}, ...],
      "rulebook": {"open": [{"number", "title", "body", "draft", "created_at",
                             "url", "review": [{"status", "conclusion"}, ...]}],
-                  "merged": [{"number", "title", "url", "merged_at"}, ...]}}
+                  "merged": [{"number", "title", "url", "merged_at"}, ...]},
+     "spend": {"days": [{"date": "YYYY-MM-DD", "usage": <USD>}, ...]}}
+
+`spend` is OpenRouter's daily activity; null when no key is connected, and
+{"unread": true} when a key is but the read failed. The card says which.
 
 `review` is the juku-reviewer check runs on the pull request's head, newest
 first. Of a body, only its `Priority:` and `Ready:` lines are published (§8).
@@ -32,7 +36,7 @@ import json
 import os
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 try:
     from zoneinfo import ZoneInfo
@@ -338,6 +342,72 @@ def rulebook_row(rb):
     return row(RULEBOOK, nobar, counts, line, body), len(waiting)
 
 
+# ---------------------------------------------------------------- spend
+
+# THE SPEND CARD (his ruling, 1 October 2026: "lift the freeze for the spend card";
+# budget "$40", for all projects). OpenRouter is prepaid, so the cycle is the
+# calendar month. A split per project later is this one setting.
+BUDGET_USD = 40
+DAY = re.compile(r"^\d{4}-\d{2}-\d{2}")
+usd = lambda x: int(x + 0.5)                            # half up: $22.50 is $23, never banker's $22
+
+
+def spend_card(spend, checked_at):
+    """The Track card: spend this month against the budget and the month gone.
+
+    OpenRouter's activity covers completed UTC days, so this month's spend is to
+    yesterday and its share of the month counts completed days. The projection
+    runs the last seven completed days' rate to the month's end; anything the
+    reads cannot support says so rather than show a number.
+    """
+    now = datetime.fromisoformat(str(checked_at).replace("Z", "+00:00")).astimezone(timezone.utc)
+    first = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    nxt = (first.replace(day=28) + timedelta(days=4)).replace(day=1)
+    days_in, gone = (nxt - first).days, now.day - 1
+    month = MONTHS[now.month - 1]
+    left = "%d day%s left in %s" % (days_in - gone, "" if days_in - gone == 1 else "s", month)
+    rows = spend.get("days") if isinstance(spend, dict) else None
+    ok = isinstance(rows, list) and all(isinstance(r, dict) and isinstance(r.get("date"), str) and
+                                        DAY.match(r["date"]) and isinstance(r.get("usage"), (int, float)) and
+                                        not isinstance(r.get("usage"), bool) for r in rows)
+    if not ok:
+        why = ("No OpenRouter key is connected" if spend is None else
+               "OpenRouter's spend was not read this time" if isinstance(spend, dict) and spend.get("unread") else
+               "OpenRouter's answer was not in a shape the board reads")
+        return ('<section class="spend st-none" aria-label="OpenRouter spend"><div class="sp-head">'
+                '<span class="sp-title">OpenRouter spend</span><span class="sp-chip">Not reported</span></div>'
+                '<p class="sp-proj">%s.</p><p class="sp-basis">The budget is $%d for %s; nothing is shown '
+                'as spent until it is read.</p><div class="sp-foot"><span>%s</span></div></section>'
+                % (e(why), BUDGET_USD, e(month), e(left)))
+    day = lambda r: datetime.strptime(r["date"][:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    spent = sum(r["usage"] for r in rows if first <= day(r) < today)
+    last7 = sum(r["usage"] for r in rows if today - timedelta(days=7) <= day(r) < today)
+    projected = spent + last7 / 7.0 * (days_in - gone)
+    share, time = 100.0 * spent / BUDGET_USD, 100.0 * gone / days_in
+    if projected > BUDGET_USD:
+        state, chip = "over", "Overshooting"
+        proj = "Projected $%d · $%d over budget" % (usd(projected), usd(projected - BUDGET_USD))
+    elif share > time:
+        state, chip, proj = "hot", "Running hot", "Projected $%d at month end" % usd(projected)
+    else:
+        state, chip, proj = "ok", "On track", "Projected $%d at month end" % usd(projected)
+    fill = min(share, 100.0)
+    past = max(0.0, fill - time)
+    through = when((today - timedelta(days=1)).isoformat()) if gone else None
+    return ('<section class="spend st-%s" aria-label="OpenRouter spend"><div class="sp-head"><span class="sp-title">'
+            'OpenRouter spend</span><span class="sp-chip">%s</span></div><div class="sp-big">$%d '
+            '<span>/ $%d budget</span></div><div class="sp-track" role="img" aria-label="%d%% of the budget '
+            'spent, %d%% of %s gone"><span class="sp-fill" style="width:%.2f%%"></span><span class="sp-past" '
+            'style="left:%.2f%%;width:%.2f%%"></span><span class="sp-mark" style="left:%.2f%%"></span></div>'
+            '<div class="sp-legend"><span>%d%% spent</span><span>%d%% of %s</span></div><p class="sp-proj">%s</p>'
+            '<p class="sp-basis">At the last seven days\' rate</p><div class="sp-foot"><span>%s</span><span>%s</span>'
+            '</div></section>'
+            % (state, chip, usd(spent), BUDGET_USD, usd(share), usd(time), e(month), fill - past, fill - past,
+               past, time, usd(share), usd(time), e(month), e(proj), e(left),
+               e("Spent to the end of %s" % through) if through else e("Nothing completed yet this month")))
+
+
 # ---------------------------------------------------------------- the page
 
 def row(name, bar_html, counts, line, body):
@@ -369,6 +439,13 @@ summary{cursor:pointer;list-style:none}summary::-webkit-details-marker{display:n
 .inner{margin:0 0 6px}.inner .node::after{width:7px;height:7px;top:18px;left:2px}.inner .node::before{display:none}
 .nav{display:flex;justify-content:space-between;gap:8px;margin-top:14px}.nav button{font:inherit;font-size:13px;color:var(--ink2);background:none;border:1px solid var(--line);border-radius:999px;padding:8px 14px;min-height:40px;cursor:pointer}.nav button:disabled{visibility:hidden}
 @media (prefers-reduced-motion:reduce){.tl .item>summary::after{transition:none}}
+.spend{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin:0 0 16px;--st:var(--mint)}.spend.st-hot{--st:#f2c46d}.spend.st-over{--st:#f39b86}.spend.st-none{--st:var(--ink3)}
+.sp-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}.sp-title{font-weight:600}.sp-chip{font-size:13px;color:var(--st)}.sp-chip::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--st);margin-right:7px;vertical-align:middle}
+.sp-big{font-size:34px;font-weight:500;letter-spacing:-.02em;margin:8px 0 10px}.sp-big span{font-size:14px;color:var(--ink2);font-weight:400}
+.sp-track{position:relative;height:8px;border-radius:4px;background:var(--grey)}.sp-fill,.sp-past{position:absolute;top:0;bottom:0;border-radius:4px}.sp-fill{left:0;background:var(--st)}.st-hot .sp-fill,.st-over .sp-fill{opacity:.4}.sp-past{background:var(--st)}
+.sp-mark{position:absolute;top:-5px;bottom:-5px;width:2px;margin-left:-1px;background:var(--ink);box-shadow:0 0 0 2px var(--bg)}
+.sp-legend{display:flex;justify-content:space-between;font-family:var(--mono);font-size:12px;color:var(--ink2);margin-top:8px}.sp-proj{color:var(--st);font-weight:500;margin:12px 0 0}.sp-basis{color:var(--ink2);font-size:13px;margin:2px 0 0}
+.sp-foot{display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px 12px;border-top:1px solid var(--line);margin-top:14px;padding-top:10px;font-size:12px;color:var(--ink3)}
 a{color:var(--cyan)}ul{margin:0;padding-left:18px}.hist li,.money li{margin:6px 0;color:var(--ink2)}.hit{color:var(--mint)}.open{color:var(--ink3)}.edited{margin-top:16px}"""
 
 
@@ -414,7 +491,7 @@ def render(reads):
             '<style>%s</style></head>\n<body data-board><main class="wrap">'
             '<div class="eyebrow">Juku OS · Build board</div><h1>Where everything stands</h1>'
             '<p class="lede">%s</p><p class="snap">Snapshot checked %s. Changes after this time may not appear.</p>'
-            '%s</main><script>%s</script></body></html>\n' % (CSS, e(lede), e(checked), "".join(rows[n] for n in ROWS),
+            '%s%s</main><script>%s</script></body></html>\n' % (CSS, e(lede), e(checked), spend_card(reads.get("spend"), reads["checked_at"]), "".join(rows[n] for n in ROWS),
                                                             BOARD_JS))
 
 
@@ -516,6 +593,25 @@ def _selftest():
     hold(myst.count('<details class="more">') == 10 and "Plain X5</p><details class=\"more\"><summary>More" in myst,
          "each item opens to its sentence, then to its detail behind More")
     hold("No roadmap: its plan is its open pull requests" in page, "Juku OS says why it carries no bar")
+    # The spend card (his ruling, 1 October 2026), on 16 September of a 30-day month: 15 days gone.
+    at = "2026-09-16T12:00:00Z"
+    d = lambda n, usd: {"date": "2026-09-%02d" % n, "usage": usd}
+    card = lambda days: spend_card(None if days is None else {"days": days}, at)
+    ok_ = card([d(1, 5.0), d(9, 2.0), d(10, 2.0), d(15, 3.0), dict(d(16, 50.0)), {"date": "2026-08-31", "usage": 9.0}])
+    hold("st-ok" in ok_ and "$12 <span>/ $40" in ok_ and "30% spent" in ok_ and "50% of September" in ok_ and
+         "Projected $27 at month end" in ok_ and "15 days left in September" in ok_,
+         "the card: this month's completed days only, against the month gone, at seven days' rate")
+    hot = card([d(1, 22.0), d(14, 0.5)])
+    hold("st-hot" in hot and "Projected $24 at month end" in hot, "running hot: ahead of the month, within budget at the recent rate")
+    over = card([d(1, 10.0), d(12, 7.0), d(13, 7.0)])
+    hold("st-over" in over and "Projected $54 · $14 over budget" in over, "overshooting names how far over")
+    hold("st-none" in card(None) and "No OpenRouter key is connected" in card(None) and "$" + "0" not in card(None),
+         "no key is said, never shown as nothing spent")
+    hold("was not read this time" in spend_card({"unread": True}, at),
+         "a key whose read failed is told apart from no key at all")
+    hold("not in a shape the board reads" in card([{"date": "2026-09-01", "usage": "5"}]),
+         "an answer it cannot read is said, never guessed at")
+    hold('class="spend' in page and "No OpenRouter key is connected" in page, "the board carries the card, read or not")
     hold("<body data-board>" in page, "the marker #117's smoke test is to look for, so a board served to a stranger is caught")
     hold(readiness(pr(12, "**Priority:** **P2**. **Ready:** no — **Decision needed:** which host."))[2] == "P2",
          "a bolded priority reads as its level")
