@@ -419,19 +419,18 @@ def spend_card(spend, checked_at):
 # ---------------------------------------------------------------- the page
 
 def row(name, bar_html, counts, line, body, progress="", seq=""):
-    """Closed, a row of the list; open, the project view he approved: the crumb back to
-    the board, the name with its ‹ › beside it, overall progress, and the timeline."""
-    return ('<details class="row" name="product"><summary><span class="crumb">‹ Build board / Project</span>'
-            '<span class="name">%s</span>%s<span class="counts">%s</span><span class="line">%s</span></summary>'
-            '<div class="depth"><div class="ph"><h2 class="pname">%s</h2><div class="pnav"></div></div>'
-            '<p class="psub">%s</p>%s<h3 class="seq">%s</h3>%s</div></details>'
-            % (e(name), bar_html, counts, line, e(name), counts, progress, e(seq), body))
+    """One project page, the view he approved (1 October 2026): its name with ‹ › beside
+    it, what it counts and what is in hand, overall progress, and its timeline. The board
+    is these pages side by side, swiped or stepped through; render() adds the ‹ ›."""
+    return ('<div class="crumb">Build board / Project</div><div class="ph"><h2 class="pname">%s</h2>{NAV}</div>'
+            '<p class="psub">%s</p><p class="pline">%s</p>%s<h3 class="seq">%s</h3>%s'
+            % (e(name), counts, line, progress, e(seq), body))
 
 
 CSS = """:root{color-scheme:dark;--bg:#06070f;--bg2:#0a0b14;--panel:rgba(255,255,255,.035);--panel2:rgba(255,255,255,.06);--line:rgba(255,255,255,.1);--ink:#f2f4f7;--ink2:#a4adb8;--ink3:#6b7684;--cyan:#53eafd;--cyan-glow:rgba(103,232,249,.35);--mint:#5ee9b5;--grey:#3a4350;--dash:#4a5563;--sans:"Geist",system-ui,-apple-system,"Segoe UI",sans-serif;--mono:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,monospace;--r:10px}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);background-image:radial-gradient(ellipse 80% 50% at 50% -10%,rgba(83,234,253,.07),transparent 60%);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.5;padding-inline:16px;padding-block:22px 56px;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
 .wrap{max-width:720px;margin:0 auto}.eyebrow,.id,.n,.st,.edited,.said{font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--ink3)}.eyebrow{letter-spacing:.22em;text-transform:uppercase}
-h1{font-size:clamp(26px,6.5vw,34px);font-weight:600;letter-spacing:-.02em;line-height:1.15;margin:6px 0 10px}.lede{color:var(--ink2);margin:0 0 6px}.snap{font-family:var(--mono);font-size:12px;color:var(--ink3);margin:0 0 22px}
+h1{font-size:clamp(26px,6.5vw,34px);font-weight:600;letter-spacing:-.02em;line-height:1.15;margin:6px 0 10px}.lede{color:var(--ink);margin:10px 0 4px}.snap{font-family:var(--mono);font-size:12px;color:var(--ink3);margin:0 0 22px}
 .row{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);margin:0 0 12px}.row[open]{background:var(--panel2)}
 summary{cursor:pointer;list-style:none}summary::-webkit-details-marker{display:none}summary:focus-visible{outline:2px solid var(--cyan);outline-offset:2px;border-radius:var(--r)}
 .row>summary{display:grid;gap:8px;padding:16px}.name{font-size:18px;font-weight:600}.counts{color:var(--ink2);font-size:13px}.line{color:var(--ink)}
@@ -441,11 +440,12 @@ summary{cursor:pointer;list-style:none}summary::-webkit-details-marker{display:n
 .item{border:1px solid var(--line);border-radius:8px;margin:0 0 8px;background:var(--bg2)}.item>summary{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;padding:10px 12px}.item .t{flex:1 1 60%}.item .st{margin-left:auto}
 .body{padding:0 12px 12px;color:var(--ink2)}.plain{color:var(--ink);margin:0 0 8px}dl{margin:0}dt{font-size:12px;color:var(--ink3);margin-top:8px}dd{margin:2px 0 0}.none{color:var(--ink3)}
 .nobar{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--ink3);border-top:1px dashed var(--dash);padding-top:6px}
-.crumb{display:none}.row[open]{background:var(--bg);border-radius:20px;border-color:var(--line)}.row[open]>summary{padding:22px 20px 0}
-.row[open]>summary>:not(.crumb){display:none}.row[open]>summary .crumb{display:block;font-family:var(--mono);font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink2)}
-.row[open] .depth{border-top:0;padding:18px 20px 22px}
+.tabs{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:0 0 12px}.tabs::-webkit-scrollbar{display:none}.tabs a{flex:none;font-size:14px;color:var(--ink2);text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:8px 14px}.tabs a.on{color:var(--bg);background:var(--ink);border-color:var(--ink)}
+.pages{display:flex;align-items:flex-start;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;transition:height .25s;margin:0 -16px;padding:0 16px;scroll-padding:0 16px;gap:16px}.pages::-webkit-scrollbar{display:none}
+.page{flex:0 0 100%;min-width:0;scroll-snap-align:start;scroll-snap-stop:always;background:var(--bg);border:1px solid var(--line);border-radius:20px;padding:22px 20px 24px}
+.crumb{font-family:var(--mono);font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink2);margin-bottom:18px}.pline{color:var(--ink);margin:6px 0 0}
 .ph{display:flex;align-items:center;justify-content:space-between;gap:12px}.pname{font-size:clamp(30px,8vw,40px);font-weight:600;letter-spacing:-.03em;line-height:1.1;margin:0}.psub{color:var(--ink2);margin:8px 0 0}
-.pnav{display:flex;gap:8px;flex:none}.pnav button{width:44px;height:44px;border-radius:50%;border:1px solid rgba(255,255,255,.18);background:none;color:var(--ink);font-size:20px;line-height:1;cursor:pointer}.pnav button:disabled{opacity:.25;cursor:default}
+.pnav{display:flex;gap:8px;flex:none}.step{display:grid;place-items:center;width:44px;height:44px;border-radius:50%;border:1px solid rgba(255,255,255,.18);color:var(--ink);font-size:22px;line-height:1;text-decoration:none}.step.off{opacity:.2}
 .pprog{display:flex;justify-content:space-between;gap:12px;color:var(--ink2);margin:26px 0 10px}.pnum{font-family:var(--mono);color:var(--ink);white-space:nowrap}
 .seq{font-family:var(--mono);font-size:12px;font-weight:400;letter-spacing:.16em;color:var(--ink2);margin:30px 0 4px}
 .tl{list-style:none;margin:8px 0 0;padding:0}.node{position:relative;padding-left:30px}
@@ -459,7 +459,7 @@ summary{cursor:pointer;list-style:none}summary::-webkit-details-marker{display:n
 .tl dl{display:grid;grid-template-columns:84px 1fr;gap:10px 16px;border-top:1px solid var(--line);margin-top:12px;padding-top:14px}.tl dt{font-size:15px;color:var(--ink3);margin:0}.tl dd{font-size:15px;color:var(--ink);margin:0}
 .node.pr>.item>summary{flex-wrap:wrap;row-gap:0}.node.pr>.item>summary .t{flex:1 1 calc(100% - 40px)}.node.pr>.item>summary::after{order:2}.node.pr>.item>summary .st{order:3;flex-basis:100%;text-align:left;padding-bottom:4px}
 .inner{margin:0 0 8px}.inner .node{padding-left:22px}.inner .node::after{width:7px;height:7px;top:25px;left:2px}.inner .node::before{display:none}
-@media (prefers-reduced-motion:reduce){.tl .item>summary::after{transition:none}}
+@media (prefers-reduced-motion:reduce){.tl .item>summary::after,.pages{transition:none}}
 .spend{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px 20px;margin:0 0 16px;--st:var(--mint)}.spend.st-hot{--st:#f2c46d}.spend.st-over{--st:#f39b86}.spend.st-none{--st:var(--ink3)}
 .sp-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}.sp-title{font-size:17px;font-weight:600}.sp-chip{white-space:nowrap;font-size:14px;color:var(--st)}.sp-chip::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--st);margin-right:8px;vertical-align:middle}
 .sp-big{font-size:44px;font-weight:400;letter-spacing:-.02em;line-height:1;margin:22px 0 22px}.sp-big span{font-size:16px;color:var(--ink2);letter-spacing:0;margin-left:8px}
@@ -473,17 +473,17 @@ a{color:var(--cyan)}ul{margin:0;padding-left:18px}.hist li,.money li{margin:6px 
 # Two conveniences on top of what opens without it (§9): a swipe, or the buttons,
 # moves to the next or previous product, and a second tap on an open item's title
 # opens its detail rather than closing it. Fixed text: nothing from a source reaches it.
-BOARD_JS = """(function(){var rows=[].slice.call(document.querySelectorAll('details.row'));
-function go(i){var n=rows[i];if(!n)return;n.open=true;n.scrollIntoView({block:'start',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'})}
-rows.forEach(function(r,i){var d=r.querySelector('.depth'),x=null,y=0;if(!d)return;
-d.addEventListener('touchstart',function(ev){x=ev.touches[0].clientX;y=ev.touches[0].clientY},{passive:true});
-d.addEventListener('touchend',function(ev){if(x===null)return;var dx=ev.changedTouches[0].clientX-x,dy=ev.changedTouches[0].clientY-y;x=null;
-if(Math.abs(dx)>60&&Math.abs(dx)>2*Math.abs(dy))go(dx<0?i+1:i-1)},{passive:true});
-var nav=d.querySelector('.pnav');[[i-1,'\u2039'],[i+1,'\u203A']].forEach(function(s){var b=document.createElement('button'),t=rows[s[0]];
-b.type='button';b.textContent=s[1];if(t)b.setAttribute('aria-label','Open '+t.querySelector('.name').textContent);else{b.disabled=true;b.setAttribute('aria-hidden','true')}
-b.addEventListener('click',function(){go(s[0])});nav.appendChild(b)})});
+BOARD_JS = """(function(){var box=document.querySelector('.pages');if(!box)return;var pages=[].slice.call(box.children),
+tabs=[].slice.call(document.querySelectorAll('.tabs a')),cur=-1;
+function fit(){var i=Math.round(box.scrollLeft/box.clientWidth);i=Math.max(0,Math.min(pages.length-1,i));box.style.height=pages[i].offsetHeight+'px';
+if(i!==cur){cur=i;tabs.forEach(function(a,k){a.classList.toggle('on',k===i)})}}
+box.addEventListener('scroll',function(){window.requestAnimationFrame(fit)},{passive:true});
+if(window.ResizeObserver)pages.forEach(function(p){new ResizeObserver(fit).observe(p)});window.addEventListener('resize',fit);
+[].forEach.call(document.querySelectorAll('a.step,.tabs a'),function(a){a.addEventListener('click',function(ev){var p=document.getElementById(a.getAttribute('href').slice(1));
+if(!p)return;ev.preventDefault();box.scrollTo({left:p.offsetLeft-box.offsetLeft,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
+var top=document.querySelector('.tabs').getBoundingClientRect().top;if(top<0)window.scrollBy(0,top-8)})});
 [].forEach.call(document.querySelectorAll('.tl .item>summary'),function(s){s.addEventListener('click',function(ev){var it=s.parentNode,
-m=it.querySelector(':scope>.body>.more');if(!m)return;if(it.open&&!m.open){ev.preventDefault();m.open=true}else if(it.open)m.open=false})})})();"""
+m=it.querySelector(':scope>.body>.more');if(!m)return;if(it.open&&!m.open){ev.preventDefault();m.open=true}else if(it.open)m.open=false})});fit()})();"""
 
 
 def render(reads):
@@ -503,6 +503,17 @@ def render(reads):
                                                 ", ".join("%s %d" % (n, asked[n]) for n in ROWS if asked[n]))
     else:
         lede = "No decisions are recorded as waiting on you."
+    # THE BOARD IS THE PAGES (his ruling, 1 October 2026: "just build the UIs we agreed"):
+    # the spend card, then one project page at a time, swiped sideways or stepped with
+    # ‹ ›. Each step is a link to the next page, so it all moves without script too.
+    ids = ["p-%d" % i for i in range(len(ROWS))]
+    step = lambda i, ch, word: ('<a class="step" href="#%s" aria-label="%s %s">%s</a>' % (ids[i], word, e(ROWS[i]), ch)
+                                if 0 <= i < len(ROWS) else '<span class="step off" aria-hidden="true">%s</span>' % ch)
+    tabs = "".join('<a href="#%s"%s>%s</a>' % (ids[i], ' class="on"' if i == 0 else "", e(n)) for i, n in enumerate(ROWS))
+    pages = "".join('<section class="page" id="%s" aria-label="%s">%s</section>'
+                    % (ids[i], e(n), rows[n].replace("{NAV}", '<nav class="pnav">%s%s</nav>'
+                                                    % (step(i - 1, "‹", "Back to"), step(i + 1, "›", "On to"))))
+                    for i, n in enumerate(ROWS))
     return ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">\n'
             '<meta name="robots" content="noindex,nofollow"><meta name="theme-color" content="#06070f">\n'
@@ -510,10 +521,11 @@ def render(reads):
             '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n'
             '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">\n'
             '<style>%s</style></head>\n<body data-board><main class="wrap">'
-            '<div class="eyebrow">Juku OS · Build board</div><h1>Where everything stands</h1>'
+            '<div class="eyebrow">Juku OS · Build board</div>'
             '<p class="lede">%s</p><p class="snap">Snapshot checked %s. Changes after this time may not appear.</p>'
-            '%s%s</main><script>%s</script></body></html>\n' % (CSS, e(lede), e(checked), spend_card(reads.get("spend"), reads["checked_at"]), "".join(rows[n] for n in ROWS),
-                                                            BOARD_JS))
+            '%s<nav class="tabs" aria-label="Projects">%s</nav><div class="pages">%s</div></main><script>%s</script>'
+            '</body></html>\n' % (CSS, e(lede), e(checked), spend_card(reads.get("spend"), reads["checked_at"]),
+                                   tabs, pages, BOARD_JS))
 
 
 # ---------------------------------------------------------------- selftest
@@ -601,8 +613,8 @@ def _selftest():
          "§8: text is escaped, and the page's one script is the board's own fixed text")
     hold("</" not in BOARD_JS, "the board's script carries nothing that could close its tag")
     # The timeline (his ruling, 1 October 2026), on Myst's made-up roadmap.
-    myst = page[page.index('<span class="name">Myst</span>'):page.index('<span class="name">Phena</span>')]
-    myst = myst[myst.index('<div class="depth">'):]
+    myst = page[page.index('<h2 class="pname">Myst</h2>'):page.index('<h2 class="pname">Phena</h2>')]
+    myst = myst[myst.index('<h3 class="seq">'):]
     hold('<span class="t">3 done</span>' in myst and myst.index("3 done") < myst.index("Item X1") <
          myst.index("Item X2") < myst.index("Item X3") < myst.index("Item X5"),
          "the timeline folds what is done into one line, first, in source order")
@@ -613,7 +625,7 @@ def _selftest():
          "in hand, then queued, on the line; suggested set apart after it")
     hold(myst.count('<details class="more">') == 10 and "Plain X5</p><details class=\"more\"><summary>More" in myst,
          "each item opens to its sentence, then to its detail behind More")
-    hold("No roadmap: its plan is its open pull requests" in page, "Juku OS says why it carries no bar")
+    hold("Its plan is its open pull requests" in page, "Juku OS says why it carries no bar")
     # The spend card (his ruling, 1 October 2026), on 16 September of a 30-day month: 15 days gone.
     at = "2026-09-16T12:00:00Z"
     d = lambda n, usd: {"date": "2026-09-%02d" % n, "usage": usd}
@@ -648,9 +660,11 @@ def _selftest():
     hold("3 of 9 agreed done · 1 suggested" in page, "§1: a row's counts")
     hold("<dt>Agreed</dt><dd>the Chairman · 7 September 2026</dd>" in page or LONDON is None,
          "§4: `decided_on` is labelled agreed on, as an absolute date")
-    hold([page.index('<span class="name">%s</span>' % r) for r in ROWS] ==
-         sorted(page.index('<span class="name">%s</span>' % r) for r in ROWS), "§1: four rows, Juku OS first")
-    hold(page.count('name="product"') == 4, "§9: one shared name, so one product opens at a time")
+    hold([page.index('<h2 class="pname">%s</h2>' % r) for r in ROWS] ==
+         sorted(page.index('<h2 class="pname">%s</h2>' % r) for r in ROWS), "§1: four projects, Juku OS first")
+    hold(page.count('<section class="page"') == 4 and 'href="#p-1" aria-label="On to Hemz OS"' in page and
+         '<span class="step off" aria-hidden="true">‹</span>' in page and "{NAV}" not in page,
+         "the board is four project pages, each stepping to its neighbours by a link that needs no script")
     hold(readiness(pr(14, "**Priority:** p1. **Ready:** yes."))[2] == "P1", "a lower-case priority reads, and sorts, as its level")
     hold(pr_state(pr(15, "**Priority:** P3. **Ready:** no — Decision needed: none.")) == "Parked" and
          not needs_decision({"gate": "Decision needed: none"}), "\"Decision needed: none\" asks him nothing")
