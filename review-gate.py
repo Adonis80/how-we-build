@@ -2978,6 +2978,11 @@ case "$method $path" in
   "POST https://api.vercel.com/v10/projects/$PROJECT/promote/dpl_before")
     case "${FAKE_ROLLBACK:-ok}" in refused) reply 409 '{}'; exit 0 ;; ok) echo dpl_before > "$S/serving" ;; esac
     reply 201 '' ;;
+  "POST https://api.vercel.com/v2/deployments/dpl_new/aliases")
+    [ "$TARGET" = preview ] || refuse "the fixed preview name given to a production run"
+    [ "$(cat "$S/new")" = READY ] || refuse "the fixed preview name given before the smoke"
+    [ "${FAKE_ALIAS:-ok}" = ok ] || { reply 403 '{}'; exit 0; }
+    reply 200 '{}' ;;
   "GET https://$DOMAIN/"|"GET https://$DOMAIN/index.html")
     [ "$auth" = no ] || refuse "a stranger's request carrying a key"
     [ "$serving" = dpl_copy ] || { reply 200 "$pin"; exit 0; }
@@ -3030,7 +3035,9 @@ BOARD_DEPLOY_CASES = (
     ("the rollback is refused", {"FAKE_DOMAIN": "board", "FAKE_ROLLBACK": "refused"}, 1, "dpl_copy",
      "READY", "ROLLBACK REFUSED", None),
     ("a preview for his look", {"TARGET": "preview", "LIVE": "no"}, 0, "dpl_before", "READY",
-     "https://juku-build-board-x1.vercel.app", "promote"),
+     "preview ready at the fixed address: https://juku-build-board-next.vercel.app", "promote"),
+    ("a preview whose fixed name is refused", {"TARGET": "preview", "LIVE": "no", "FAKE_ALIAS": "no"}, 0,
+     "dpl_before", "READY", "the fixed preview address was refused", "promote"),
     ("an automatic run before his look", {"GITHUB_EVENT_NAME": "pull_request_target", "LIVE": "no"}, 0,
      "dpl_before", "none", "rendered, not deployed", "deployment:"),
     # #117's fourth read, 2: a production dispatch waits for his look too.
@@ -3111,7 +3118,7 @@ def _board_deploy_case(script, job, case):
                   "JOB_END": str(start + job - 30), "RUNNER_TEMP": run, "STARTED": str(start),
                   "GITHUB_EVENT_NAME": "workflow_dispatch", "LIVE": "yes", "TARGET": "production",
                   "VERCEL_TOKEN": "not-a-token", "TEAM": "team_x", "PROJECT": "prj_x",
-                  "DOMAIN": "roadmap.juku.pro", "FAKE_NEW": env.get("FAKE_READY", "READY")})
+                  "DOMAIN": "roadmap.juku.pro", "NEXT": "juku-build-board-next.vercel.app", "FAKE_NEW": env.get("FAKE_READY", "READY")})
         e.update({k: v for k, v in env.items() if k != "LATE"})
         try:
             p = subprocess.run(["bash", "-c", script], env=e, capture_output=True, text=True, timeout=60)
