@@ -158,7 +158,10 @@ STATUS_WORD = {"done": "Done", "building": "In hand", "next": "Up next", "agreed
                "proposed": "Suggested"}
 
 
-def item_html(it):
+def item_html(it, open_=False):
+    """One timeline node, three taps deep (his ruling, 1 October 2026): the title; then
+    the plain sentence; then what has to be true first, what would prove it, what next,
+    and who agreed it. Native <details> both times, so it all opens without script."""
     status = it["status"] or ""
     word = STATUS_WORD.get(status, "Status not one the board reads")
     agreed = "Suggested on" if status == "proposed" else "Agreed on"
@@ -173,17 +176,23 @@ def item_html(it):
     if it.get("decided_on"):
         said = '<p class="said">%s %s%s</p>' % (agreed, e(day(it["decided_on"])), " by " + e(who) if who else "")
     ident = '<span class="id">%s</span>' % e(it["id"]) if it.get("id") else ""
-    return ('<details class="item s-%s"><summary>%s<span class="t">%s</span><span class="st">%s</span></summary>'
-            '<div class="body">%s<dl>%s</dl>%s</div></details>'
-            % (e(status or "none"), ident, e(it["title"]), e(word),
-               '<p class="plain">%s</p>' % e(it["plain"]) if it.get("plain") else "", dl, said))
+    plain = '<p class="plain">%s</p>' % e(it["plain"]) if it.get("plain") else ""
+    return ('<li class="node s-%s"><details class="item"%s><summary>%s<span class="t">%s</span>'
+            '<span class="st">%s</span></summary><div class="body">%s<details class="more"><summary>More'
+            '</summary><dl>%s</dl>%s</details></div></details></li>'
+            % (e(status or "none"), " open" if open_ else "", ident, e(it["title"]), e(word), plain, dl, said))
 
 
-def group(title, items, extra=""):
+def timeline(cls, items, first_open=None):
     if not items:
         return ""
-    return '<section><h3>%s <span class="n">%d</span></h3>%s%s</section>' % (
-        e(title), len(items), "".join(item_html(it) for it in items), extra)
+    return '<ol class="tl %s">%s</ol>' % (cls, "".join(item_html(it, it is first_open) for it in items))
+
+
+def group(title, items, cls="apart"):
+    if not items:
+        return ""
+    return '<section><h3>%s <span class="n">%d</span></h3>%s</section>' % (e(title), len(items), timeline(cls, items))
 
 
 def product_row(p):
@@ -202,9 +211,17 @@ def product_row(p):
     money = "".join('<li>%s <span class="%s">%s</span></li>' % (e(w), "hit" if r else "open",
                                                              "Reached" if r else "Not reached yet")
                     for w, r in milestones(p["name"], p["roadmap"]))
-    body = (group("Needs your decision", asks) + group("In hand", by("building")) +
-            group("Up next", by("next")) + group("Agreed and queued", by("agreed")) +
-            group("Suggested", by("proposed")) + group("Done", by("done")) +
+    # The timeline (his ruling, 1 October 2026): his decisions first, apart; then one
+    # line holding everything done, folded, in source order; then in hand (the first
+    # open at its sentence), up next and queued on one line; suggested set apart.
+    done, live = by("done"), by("building") + by("next") + by("agreed")
+    fold = ('<li class="node s-done fold"><details class="item"><summary><span class="t">%d done</span>'
+            '<span class="st">Done</span></summary>%s</details></li>'
+            % (len(done), timeline("inner", done))) if done else ""
+    spine = ('<ol class="tl">%s%s</ol>' % (fold, "".join(
+        item_html(it, it is (by("building") or [None])[0]) for it in live))) if fold or live else ""
+    body = (group("Needs your decision", asks, "asks") + spine +
+            group("Suggested", by("proposed")) +
             group("Status not one the board reads", unknown) +
             ('<section><h3>Money milestone</h3><ul class="money">%s</ul></section>' % money if money else "") +
             '<p class="edited">Roadmap last edited %s</p>' % e(when(p["last_edited"])))
@@ -317,7 +334,8 @@ def rulebook_row(rb):
              % (len(open_) - len(waiting), "".join(pr_html(pr) for pr in open_ if pr not in waiting))
              if len(open_) > len(waiting) else "") +
             ('<section><h3>Merged, newest first</h3><ul class="hist">%s</ul></section>' % hist if hist else ""))
-    return row(RULEBOOK, "", counts, line, body), len(waiting)
+    nobar = '<div class="nobar">No roadmap: its plan is its open pull requests</div>'
+    return row(RULEBOOK, nobar, counts, line, body), len(waiting)
 
 
 # ---------------------------------------------------------------- the page
@@ -339,9 +357,35 @@ summary{cursor:pointer;list-style:none}summary::-webkit-details-marker{display:n
 .bar{display:flex;height:6px;border-radius:3px;background:rgba(255,255,255,.05);overflow:hidden}.bar span{display:block;height:100%}.bar .done{background:var(--mint)}.bar .hand{background:var(--cyan)}.bar .queued{background:var(--grey)}
 .depth{padding:0 16px 16px;border-top:1px solid var(--line)}section{margin-top:16px}h3{font-size:12px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:var(--ink2);margin:0 0 8px}
 .item{border:1px solid var(--line);border-radius:8px;margin:0 0 8px;background:var(--bg2)}.item>summary{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;padding:10px 12px}.item .t{flex:1 1 60%}.item .st{margin-left:auto}
-.s-done{border-left:3px solid var(--mint)}.s-building{border-left:3px solid var(--cyan)}.s-next,.s-agreed{border-left:3px solid var(--grey)}.s-proposed{border:1px dashed var(--dash)}
 .body{padding:0 12px 12px;color:var(--ink2)}.plain{color:var(--ink);margin:0 0 8px}dl{margin:0}dt{font-size:12px;color:var(--ink3);margin-top:8px}dd{margin:2px 0 0}.none{color:var(--ink3)}
+.nobar{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--ink3);border-top:1px dashed var(--dash);padding-top:6px}
+.tl{list-style:none;margin:16px 0 0;padding:0}.node{position:relative;padding-left:26px}
+.node::before{content:"";position:absolute;left:5px;top:22px;bottom:-22px;width:1px;background:var(--grey)}.node:last-child::before{display:none}.s-done::before{background:var(--mint)}
+.node::after{content:"";position:absolute;left:0;top:16px;width:11px;height:11px;border-radius:50%;background:var(--grey)}.node.s-done::after{background:var(--mint)}.node.s-building::after{background:var(--cyan);box-shadow:0 0 10px var(--cyan-glow)}
+.fold::after{box-shadow:0 0 0 2px var(--bg),0 0 0 3px var(--mint)}.apart>.node::before,.asks>.node::before{display:none}.apart>.node::after{background:none;border:1px dashed var(--dash)}.asks>.node::after{background:none;border:2px solid var(--cyan)}
+.tl .item{border:0;background:none;margin:0;border-radius:0}.tl .item>summary{display:flex;align-items:center;gap:10px;min-height:44px;padding:4px 0}.tl .item>summary::after{content:"›";color:var(--ink3);font-size:18px;width:14px;text-align:center;transition:transform .2s}.tl .item[open]>summary::after{transform:rotate(90deg)}
+.tl .t{flex:1;font-weight:500}.tl .st{margin-left:0;text-transform:uppercase}.node.s-done>.item>summary .st{color:var(--mint)}.node.s-building>.item>summary .st{color:var(--cyan)}.tl .id{display:none}
+.tl .body{padding:0 0 10px;color:var(--ink2)}.more>summary{display:inline-block;font-size:13px;color:var(--cyan);padding:6px 0;min-height:32px}.more>summary::after{content:" ›"}.more[open]>summary{display:none}.more dl{border-top:1px solid var(--line);padding-top:4px}
+.inner{margin:0 0 6px}.inner .node::after{width:7px;height:7px;top:18px;left:2px}.inner .node::before{display:none}
+.nav{display:flex;justify-content:space-between;gap:8px;margin-top:14px}.nav button{font:inherit;font-size:13px;color:var(--ink2);background:none;border:1px solid var(--line);border-radius:999px;padding:8px 14px;min-height:40px;cursor:pointer}.nav button:disabled{visibility:hidden}
+@media (prefers-reduced-motion:reduce){.tl .item>summary::after{transition:none}}
 a{color:var(--cyan)}ul{margin:0;padding-left:18px}.hist li,.money li{margin:6px 0;color:var(--ink2)}.hit{color:var(--mint)}.open{color:var(--ink3)}.edited{margin-top:16px}"""
+
+
+# Two conveniences on top of what opens without it (§9): a swipe, or the buttons,
+# moves to the next or previous product, and a second tap on an open item's title
+# opens its detail rather than closing it. Fixed text: nothing from a source reaches it.
+BOARD_JS = """(function(){var rows=[].slice.call(document.querySelectorAll('details.row'));
+function go(i){var n=rows[i];if(!n)return;n.open=true;n.scrollIntoView({block:'start',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'})}
+rows.forEach(function(r,i){var d=r.querySelector('.depth'),x=null,y=0;if(!d)return;
+d.addEventListener('touchstart',function(ev){x=ev.touches[0].clientX;y=ev.touches[0].clientY},{passive:true});
+d.addEventListener('touchend',function(ev){if(x===null)return;var dx=ev.changedTouches[0].clientX-x,dy=ev.changedTouches[0].clientY-y;x=null;
+if(Math.abs(dx)>60&&Math.abs(dx)>2*Math.abs(dy))go(dx<0?i+1:i-1)},{passive:true});
+var nav=document.createElement('div');nav.className='nav';[[i-1,'\u2039 '],[i+1,'']].forEach(function(s){var b=document.createElement('button'),t=rows[s[0]];
+b.type='button';if(t){var nm=t.querySelector('.name').textContent;b.textContent=s[1]?s[1]+nm:nm+' \u203A';b.setAttribute('aria-label','Open '+nm)}else b.disabled=true;
+b.addEventListener('click',function(){go(s[0])});nav.appendChild(b)});d.appendChild(nav)});
+[].forEach.call(document.querySelectorAll('.tl .item>summary'),function(s){s.addEventListener('click',function(ev){var it=s.parentNode,
+m=it.querySelector(':scope>.body>.more');if(!m)return;if(it.open&&!m.open){ev.preventDefault();m.open=true}else if(it.open)m.open=false})})})();"""
 
 
 def render(reads):
@@ -370,7 +414,8 @@ def render(reads):
             '<style>%s</style></head>\n<body data-board><main class="wrap">'
             '<div class="eyebrow">Juku OS · Build board</div><h1>Where everything stands</h1>'
             '<p class="lede">%s</p><p class="snap">Snapshot checked %s. Changes after this time may not appear.</p>'
-            '%s</main></body></html>\n' % (CSS, e(lede), e(checked), "".join(rows[n] for n in ROWS)))
+            '%s</main><script>%s</script></body></html>\n' % (CSS, e(lede), e(checked), "".join(rows[n] for n in ROWS),
+                                                            BOARD_JS))
 
 
 # ---------------------------------------------------------------- selftest
@@ -454,7 +499,23 @@ def _selftest():
                           "merged": [dict(pr(100 + i, ""), merged_at="2026-09-%02dT10:00:00Z" % (10 + i))
                                      for i in range(12)]}}
     page = render(reads)
-    hold("<script" not in page and html.escape(evil) in page, "§8: text is escaped and the page runs no script")
+    hold(page.count("<script") == 1 and "<script>%s</script>" % BOARD_JS in page and html.escape(evil) in page,
+         "§8: text is escaped, and the page's one script is the board's own fixed text")
+    hold("</" not in BOARD_JS, "the board's script carries nothing that could close its tag")
+    # The timeline (his ruling, 1 October 2026), on Myst's made-up roadmap.
+    myst = page[page.index('<span class="name">Myst</span>'):page.index('<span class="name">Phena</span>')]
+    myst = myst[myst.index('<div class="depth">'):]
+    hold('<span class="t">3 done</span>' in myst and myst.index("3 done") < myst.index("Item X1") <
+         myst.index("Item X2") < myst.index("Item X3") < myst.index("Item X5"),
+         "the timeline folds what is done into one line, first, in source order")
+    hold(myst.count('<details class="item" open>') == 1 and
+         myst.index('<details class="item" open>') < myst.index("Item X5") < myst.index("Item X6"),
+         "the first item in hand opens at its sentence; nothing else does")
+    hold(myst.index("Item X8") < myst.index("Item X9") < myst.index('<ol class="tl apart">') < myst.index("Item X4"),
+         "in hand, then queued, on the line; suggested set apart after it")
+    hold(myst.count('<details class="more">') == 10 and "Plain X5</p><details class=\"more\"><summary>More" in myst,
+         "each item opens to its sentence, then to its detail behind More")
+    hold("No roadmap: its plan is its open pull requests" in page, "Juku OS says why it carries no bar")
     hold("<body data-board>" in page, "the marker #117's smoke test is to look for, so a board served to a stranger is caught")
     hold(readiness(pr(12, "**Priority:** **P2**. **Ready:** no — **Decision needed:** which host."))[2] == "P2",
          "a bolded priority reads as its level")
