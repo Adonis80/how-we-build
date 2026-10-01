@@ -162,29 +162,28 @@ STATUS_WORD = {"done": "Done", "building": "In hand", "next": "Up next", "agreed
                "proposed": "Suggested"}
 
 
+def facts(rows):
+    """The detail's label and value grid; an empty field is left out, never shown blank."""
+    return "<dl>%s</dl>" % "".join("<dt>%s</dt><dd>%s</dd>" % (e(k), v) for k, v in rows if v)
+
+
 def item_html(it, open_=False):
-    """One timeline node, three taps deep (his ruling, 1 October 2026): the title; then
-    the plain sentence; then what has to be true first, what would prove it, what next,
-    and who agreed it. Native <details> both times, so it all opens without script."""
+    """One timeline node, three taps deep (his ruling, 1 October 2026, on the design he
+    approved): the title; then the plain sentence; then Proof, Gate, Next and who agreed
+    it, as a label and value grid. Native <details> both times: it opens without script."""
     status = it["status"] or ""
     word = STATUS_WORD.get(status, "Status not one the board reads")
-    agreed = "Suggested on" if status == "proposed" else "Agreed on"
     who = it.get("decided_by")
     who = ("the " + who) if who in ("CTO", "Chairman") else who
-    rows = [("What has to be true first", it.get("gate")),
-            ("What would prove it done", it.get("proof")),
-            ("What it makes possible next", it.get("next"))]
-    dl = "".join("<dt>%s</dt><dd>%s</dd>" % (e(k), e(v) if v else '<span class="none">Not written</span>')
-                 for k, v in rows)
-    said = ""
-    if it.get("decided_on"):
-        said = '<p class="said">%s %s%s</p>' % (agreed, e(day(it["decided_on"])), " by " + e(who) if who else "")
-    ident = '<span class="id">%s</span>' % e(it["id"]) if it.get("id") else ""
+    agreed = " · ".join(e(x) for x in (who, day(it["decided_on"]) if it.get("decided_on") else None) if x)
+    grid = facts([("Proof", e(it.get("proof") or "")), ("Gate", e(it.get("gate") or "")),
+                  ("Next", e(it.get("next") or "")), ("Suggested" if status == "proposed" else "Agreed", agreed)])
     plain = '<p class="plain">%s</p>' % e(it["plain"]) if it.get("plain") else ""
+    ident = '<span class="id">%s</span>' % e(it["id"]) if it.get("id") else ""
     return ('<li class="node s-%s"><details class="item"%s><summary>%s<span class="t">%s</span>'
             '<span class="st">%s</span></summary><div class="body">%s<details class="more"><summary>More'
-            '</summary><dl>%s</dl>%s</details></div></details></li>'
-            % (e(status or "none"), " open" if open_ else "", ident, e(it["title"]), e(word), plain, dl, said))
+            '</summary>%s</details></div></details></li>'
+            % (e(status or "none"), " open" if open_ else "", ident, e(it["title"]), e(word), plain, grid))
 
 
 def timeline(cls, items, first_open=None):
@@ -196,7 +195,13 @@ def timeline(cls, items, first_open=None):
 def group(title, items, cls="apart"):
     if not items:
         return ""
-    return '<section><h3>%s <span class="n">%d</span></h3>%s</section>' % (e(title), len(items), timeline(cls, items))
+    head = '<h3>%s <span class="n">%d</span></h3>' % (e(title), len(items)) if title else ""
+    return '<section class="%s-set">%s%s</section>' % (cls, head, timeline(cls, items))
+
+
+def fold(count, word, inner):
+    return ('<li class="node s-done fold"><details class="item"><summary><span class="t">%d %s</span>'
+            '<span class="st">%s</span></summary>%s</details></li>' % (count, word, word.capitalize(), inner))
 
 
 def product_row(p):
@@ -219,17 +224,16 @@ def product_row(p):
     # line holding everything done, folded, in source order; then in hand (the first
     # open at its sentence), up next and queued on one line; suggested set apart.
     done, live = by("done"), by("building") + by("next") + by("agreed")
-    fold = ('<li class="node s-done fold"><details class="item"><summary><span class="t">%d done</span>'
-            '<span class="st">Done</span></summary>%s</details></li>'
-            % (len(done), timeline("inner", done))) if done else ""
-    spine = ('<ol class="tl">%s%s</ol>' % (fold, "".join(
-        item_html(it, it is (by("building") or [None])[0]) for it in live))) if fold or live else ""
-    body = (group("Needs your decision", asks, "asks") + spine +
-            group("Suggested", by("proposed")) +
+    spine = ('<ol class="tl">%s%s</ol>' % (fold(len(done), "done", timeline("inner", done)) if done else "", "".join(
+        item_html(it, it is (by("building") or [None])[0]) for it in live))) if done or live else ""
+    total = n["agreed_total"]
+    progress = ('<div class="pprog"><span>Overall progress</span><span class="pnum">%d%% · %d/%d done</span></div>%s'
+                % (round(100.0 * n["done"] / total) if total else 0, n["done"], total, bar(n)))
+    body = (group("Needs your decision", asks, "asks") + spine + group("", by("proposed")) +
             group("Status not one the board reads", unknown) +
             ('<section><h3>Money milestone</h3><ul class="money">%s</ul></section>' % money if money else "") +
             '<p class="edited">Roadmap last edited %s</p>' % e(when(p["last_edited"])))
-    return row(name, bar(n), counts, headline(items), body), n["decisions"]
+    return row(name, bar(n), counts, headline(items), body, progress, "Roadmap · in sequence"), n["decisions"]
 
 
 # ---------------------------------------------------------------- Juku OS
@@ -298,17 +302,21 @@ def link(url, words):
     return '<a href="%s">%s</a>' % (e(url), words) if isinstance(url, str) and PR_LINK.match(url) else ""
 
 
-def pr_html(pr):
-    ready, reason, pri = readiness(pr)
-    state = pr_state(pr)
-    facts = [("Priority", pri or "Not recorded"),
-             ("Ready", (ready + (" — " + reason[:240] if reason else "")) if ready else "Not recorded")]
-    dl = "".join("<dt>%s</dt><dd>%s</dd>" % (e(k), e(v)) for k, v in facts)
-    where = link(pr.get("url"), "Where the work is")
-    return ('<details class="item pr"><summary><span class="id">#%d</span><span class="t">%s</span>'
-            '<span class="st">%s%s</span></summary><div class="body"><dl>%s</dl>%s</div></details>'
-            % (int(pr["number"]), e(pr.get("title")), e(state), " · " + e(pri) if pri else "", dl,
-               '<p class="said">%s</p>' % where if where else ""))
+def pr_html(pr, merged=False):
+    """A pull request on the same line: its title and state; one tap for Priority, Ready and the link."""
+    where = link(pr.get("url"), "Where the work is ↗")
+    if merged:
+        grid = facts([("Merged", e(when(pr["merged_at"]))), ("Link", where)])
+        st, cls = "Merged", "done"
+    else:
+        ready, reason, pri = readiness(pr)
+        grid = facts([("Priority", e(pri or "Not recorded")),
+                      ("Ready", e((ready + (" — " + reason[:240] if reason else "")) if ready else "Not recorded")),
+                      ("Link", where)])
+        st, cls = pr_state(pr) + (" · " + pri if pri else ""), "next"
+    return ('<li class="node s-%s pr"><details class="item"><summary><span class="id">#%d</span>'
+            '<span class="t">#%d %s</span><span class="st">%s</span></summary><div class="body">%s</div></details></li>'
+            % (cls, int(pr["number"]), int(pr["number"]), e(pr.get("title")), e(st), grid))
 
 
 def rulebook_row(rb):
@@ -323,23 +331,22 @@ def rulebook_row(rb):
     merged = sorted([pr for pr in rb.get("merged") or [] if isinstance(pr, dict) and pr.get("merged_at")],
                     key=lambda pr: pr["merged_at"], reverse=True)[:MERGED_SHOWN]
     waiting = [pr for pr in open_ if pr_state(pr) == "Waiting on the Chairman"]
+    queue = [pr for pr in open_ if pr not in waiting]
     ready = next((pr for pr in open_ if readiness(pr)[0] == "yes"), None)
     line = ("Next ready: #%d %s" % (int(ready["number"]), e(ready.get("title")))) if ready else \
         "No pull request recorded as ready."
     counts = "%d open pull request%s" % (len(open_), "" if len(open_) == 1 else "s")
     if waiting:
         counts += ' · <b class="ask">%d need%s your decision</b>' % (len(waiting), "" if len(waiting) > 1 else "s")
-    hist = "".join('<li><span class="id">#%d</span> %s <span class="st">merged %s</span> %s</li>'
-                   % (int(pr["number"]), e(pr.get("title")), e(when(pr["merged_at"])), link(pr.get("url"), "Where the work is"))
-                   for pr in merged)
-    body = ((('<section><h3>Needs your decision <span class="n">%d</span></h3>%s</section>'
-              % (len(waiting), "".join(pr_html(pr) for pr in waiting))) if waiting else "") +
-            ('<section><h3>The queue <span class="n">%d</span></h3>%s</section>'
-             % (len(open_) - len(waiting), "".join(pr_html(pr) for pr in open_ if pr not in waiting))
-             if len(open_) > len(waiting) else "") +
-            ('<section><h3>Merged, newest first</h3><ul class="hist">%s</ul></section>' % hist if hist else ""))
+    asks = ('<section class="asks-set"><h3>Needs your decision <span class="n">%d</span></h3><ol class="tl asks">%s</ol>'
+            '</section>' % (len(waiting), "".join(pr_html(pr) for pr in waiting))) if waiting else ""
+    inner = '<ol class="tl inner">%s</ol>' % "".join(pr_html(pr, merged=True) for pr in merged)
+    spine = ('<ol class="tl">%s%s</ol>' % (fold(len(merged), "merged", inner) if merged else "",
+                                           "".join(pr_html(pr) for pr in queue))) if merged or queue else ""
+    progress = ('<div class="pprog"><span>Its plan is its open pull requests</span>'
+                '<span class="pnum">%d queued</span></div>' % len(queue))
     nobar = '<div class="nobar">No roadmap: its plan is its open pull requests</div>'
-    return row(RULEBOOK, nobar, counts, line, body), len(waiting)
+    return row(RULEBOOK, nobar, counts, line, asks + spine, progress, "Pull requests · in sequence"), len(waiting)
 
 
 # ---------------------------------------------------------------- spend
@@ -365,7 +372,10 @@ def spend_card(spend, checked_at):
     nxt = (first.replace(day=28) + timedelta(days=4)).replace(day=1)
     days_in, gone = (nxt - first).days, now.day - 1
     month = MONTHS[now.month - 1]
-    left = "%d day%s left in %s" % (days_in - gone, "" if days_in - gone == 1 else "s", month)
+    left = "%d day%s to reset" % (days_in - gone, "" if days_in - gone == 1 else "s")
+    local = now.astimezone(LONDON) if LONDON else now
+    stamp = "updated %d %s, %s" % (local.day, MONTHS[local.month - 1][:3], local.strftime("%H:%M"))
+    last_day = "%d %s" % (days_in, month)
     rows = spend.get("days") if isinstance(spend, dict) else None
     ok = isinstance(rows, list) and all(isinstance(r, dict) and isinstance(r.get("date"), str) and
                                         DAY.match(r["date"]) and isinstance(r.get("usage"), (int, float)) and
@@ -375,10 +385,10 @@ def spend_card(spend, checked_at):
                "OpenRouter's spend was not read this time" if isinstance(spend, dict) and spend.get("unread") else
                "OpenRouter's answer was not in a shape the board reads")
         return ('<section class="spend st-none" aria-label="OpenRouter spend"><div class="sp-head">'
-                '<span class="sp-title">OpenRouter spend</span><span class="sp-chip">Not reported</span></div>'
-                '<p class="sp-proj">%s.</p><p class="sp-basis">The budget is $%d for %s; nothing is shown '
-                'as spent until it is read.</p><div class="sp-foot"><span>%s</span></div></section>'
-                % (e(why), BUDGET_USD, e(month), e(left)))
+                '<span class="sp-title">OpenRouter</span><span class="sp-chip">Data incomplete</span></div>'
+                '<div class="sp-big">? <span>/ $%d budget</span></div><p class="sp-proj">%s</p><p class="sp-basis">'
+                'Nothing is shown as spent until it is read.</p><div class="sp-foot"><span>%s</span><span>%s</span>'
+                '</div></section>' % (BUDGET_USD, e(why), e(left), e(stamp)))
     day = lambda r: datetime.strptime(r["date"][:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)
     spent = sum(r["usage"] for r in rows if first <= day(r) < today)
@@ -389,31 +399,33 @@ def spend_card(spend, checked_at):
         state, chip = "over", "Overshooting"
         proj = "Projected $%d · $%d over budget" % (usd(projected), usd(projected - BUDGET_USD))
     elif share > time:
-        state, chip, proj = "hot", "Running hot", "Projected $%d at month end" % usd(projected)
+        state, chip, proj = "hot", "Running hot", "Projected $%d by %s" % (usd(projected), last_day)
     else:
-        state, chip, proj = "ok", "On track", "Projected $%d at month end" % usd(projected)
+        state, chip, proj = "ok", "On track", "Projected $%d by %s" % (usd(projected), last_day)
     fill = min(share, 100.0)
     past = max(0.0, fill - time)
-    through = when((today - timedelta(days=1)).isoformat()) if gone else None
     return ('<section class="spend st-%s" aria-label="OpenRouter spend"><div class="sp-head"><span class="sp-title">'
-            'OpenRouter spend</span><span class="sp-chip">%s</span></div><div class="sp-big">$%d '
+            'OpenRouter</span><span class="sp-chip">%s</span></div><div class="sp-big">$%d '
             '<span>/ $%d budget</span></div><div class="sp-track" role="img" aria-label="%d%% of the budget '
             'spent, %d%% of %s gone"><span class="sp-fill" style="width:%.2f%%"></span><span class="sp-past" '
             'style="left:%.2f%%;width:%.2f%%"></span><span class="sp-mark" style="left:%.2f%%"></span></div>'
-            '<div class="sp-legend"><span>%d%% spent</span><span>%d%% of %s</span></div><p class="sp-proj">%s</p>'
-            '<p class="sp-basis">At the last seven days\' rate</p><div class="sp-foot"><span>%s</span><span>%s</span>'
-            '</div></section>'
+            '<div class="sp-legend"><span class="sp-pct">%d%% spent</span><span>%d%% of cycle</span></div>'
+            '<p class="sp-proj">%s</p><p class="sp-basis">Based on the last 7 days</p><div class="sp-foot">'
+            '<span>%s</span><span>%s</span></div></section>'
             % (state, chip, usd(spent), BUDGET_USD, usd(share), usd(time), e(month), fill - past, fill - past,
-               past, time, usd(share), usd(time), e(month), e(proj), e(left),
-               e("Spent to the end of %s" % through) if through else e("Nothing completed yet this month")))
+               past, time, usd(share), usd(time), e(proj), e(left), e(stamp)))
 
 
 # ---------------------------------------------------------------- the page
 
-def row(name, bar_html, counts, line, body):
-    return ('<details class="row" name="product"><summary><span class="name">%s</span>%s'
-            '<span class="counts">%s</span><span class="line">%s</span></summary>'
-            '<div class="depth">%s</div></details>' % (e(name), bar_html, counts, line, body))
+def row(name, bar_html, counts, line, body, progress="", seq=""):
+    """Closed, a row of the list; open, the project view he approved: the crumb back to
+    the board, the name with its ‹ › beside it, overall progress, and the timeline."""
+    return ('<details class="row" name="product"><summary><span class="crumb">‹ Build board / Project</span>'
+            '<span class="name">%s</span>%s<span class="counts">%s</span><span class="line">%s</span></summary>'
+            '<div class="depth"><div class="ph"><h2 class="pname">%s</h2><div class="pnav"></div></div>'
+            '<p class="psub">%s</p>%s<h3 class="seq">%s</h3>%s</div></details>'
+            % (e(name), bar_html, counts, line, e(name), counts, progress, e(seq), body))
 
 
 CSS = """:root{color-scheme:dark;--bg:#06070f;--bg2:#0a0b14;--panel:rgba(255,255,255,.035);--panel2:rgba(255,255,255,.06);--line:rgba(255,255,255,.1);--ink:#f2f4f7;--ink2:#a4adb8;--ink3:#6b7684;--cyan:#53eafd;--cyan-glow:rgba(103,232,249,.35);--mint:#5ee9b5;--grey:#3a4350;--dash:#4a5563;--sans:"Geist",system-ui,-apple-system,"Segoe UI",sans-serif;--mono:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,monospace;--r:10px}
@@ -429,23 +441,32 @@ summary{cursor:pointer;list-style:none}summary::-webkit-details-marker{display:n
 .item{border:1px solid var(--line);border-radius:8px;margin:0 0 8px;background:var(--bg2)}.item>summary{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;padding:10px 12px}.item .t{flex:1 1 60%}.item .st{margin-left:auto}
 .body{padding:0 12px 12px;color:var(--ink2)}.plain{color:var(--ink);margin:0 0 8px}dl{margin:0}dt{font-size:12px;color:var(--ink3);margin-top:8px}dd{margin:2px 0 0}.none{color:var(--ink3)}
 .nobar{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--ink3);border-top:1px dashed var(--dash);padding-top:6px}
-.tl{list-style:none;margin:16px 0 0;padding:0}.node{position:relative;padding-left:26px}
-.node::before{content:"";position:absolute;left:5px;top:22px;bottom:-22px;width:1px;background:var(--grey)}.node:last-child::before{display:none}.s-done::before{background:var(--mint)}
-.node::after{content:"";position:absolute;left:0;top:16px;width:11px;height:11px;border-radius:50%;background:var(--grey)}.node.s-done::after{background:var(--mint)}.node.s-building::after{background:var(--cyan);box-shadow:0 0 10px var(--cyan-glow)}
-.fold::after{box-shadow:0 0 0 2px var(--bg),0 0 0 3px var(--mint)}.apart>.node::before,.asks>.node::before{display:none}.apart>.node::after{background:none;border:1px dashed var(--dash)}.asks>.node::after{background:none;border:2px solid var(--cyan)}
-.tl .item{border:0;background:none;margin:0;border-radius:0}.tl .item>summary{display:flex;align-items:center;gap:10px;min-height:44px;padding:4px 0}.tl .item>summary::after{content:"›";color:var(--ink3);font-size:18px;width:14px;text-align:center;transition:transform .2s}.tl .item[open]>summary::after{transform:rotate(90deg)}
-.tl .t{flex:1;font-weight:500}.tl .st{margin-left:0;text-transform:uppercase}.node.s-done>.item>summary .st{color:var(--mint)}.node.s-building>.item>summary .st{color:var(--cyan)}.tl .id{display:none}
-.tl .body{padding:0 0 10px;color:var(--ink2)}.more>summary{display:inline-block;font-size:13px;color:var(--cyan);padding:6px 0;min-height:32px}.more>summary::after{content:" ›"}.more[open]>summary{display:none}.more dl{border-top:1px solid var(--line);padding-top:4px}
-.inner{margin:0 0 6px}.inner .node::after{width:7px;height:7px;top:18px;left:2px}.inner .node::before{display:none}
-.nav{display:flex;justify-content:space-between;gap:8px;margin-top:14px}.nav button{font:inherit;font-size:13px;color:var(--ink2);background:none;border:1px solid var(--line);border-radius:999px;padding:8px 14px;min-height:40px;cursor:pointer}.nav button:disabled{visibility:hidden}
+.crumb{display:none}.row[open]{background:var(--bg);border-radius:20px;border-color:var(--line)}.row[open]>summary{padding:22px 20px 0}
+.row[open]>summary>:not(.crumb){display:none}.row[open]>summary .crumb{display:block;font-family:var(--mono);font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink2)}
+.row[open] .depth{border-top:0;padding:18px 20px 22px}
+.ph{display:flex;align-items:center;justify-content:space-between;gap:12px}.pname{font-size:clamp(30px,8vw,40px);font-weight:600;letter-spacing:-.03em;line-height:1.1;margin:0}.psub{color:var(--ink2);margin:8px 0 0}
+.pnav{display:flex;gap:8px;flex:none}.pnav button{width:44px;height:44px;border-radius:50%;border:1px solid rgba(255,255,255,.18);background:none;color:var(--ink);font-size:20px;line-height:1;cursor:pointer}.pnav button:disabled{opacity:.25;cursor:default}
+.pprog{display:flex;justify-content:space-between;gap:12px;color:var(--ink2);margin:26px 0 10px}.pnum{font-family:var(--mono);color:var(--ink);white-space:nowrap}
+.seq{font-family:var(--mono);font-size:12px;font-weight:400;letter-spacing:.16em;color:var(--ink2);margin:30px 0 4px}
+.tl{list-style:none;margin:8px 0 0;padding:0}.node{position:relative;padding-left:30px}
+.node::before{content:"";position:absolute;left:5.5px;top:28px;bottom:-24px;width:1px;background:var(--grey)}.node:last-child::before{display:none}.s-done::before{background:var(--mint)}
+.node::after{content:"";position:absolute;left:0;top:22px;width:12px;height:12px;border-radius:50%;background:var(--grey)}.node.s-done::after{background:var(--mint)}.node.s-building::after{background:var(--cyan);box-shadow:0 0 12px var(--cyan-glow)}
+.fold::after{box-shadow:0 0 0 2px var(--bg),0 0 0 3px var(--mint)}.apart-set,.asks-set{margin-top:18px}.apart>.node::before,.asks>.node::before{display:none}.apart>.node::after{background:none;border:1px dashed var(--ink3)}.asks>.node::after{background:none;border:2px solid var(--cyan)}
+.tl .item{border:0;background:none;margin:0;border-radius:0}.tl .item>summary{display:flex;align-items:center;gap:14px;min-height:56px;padding:6px 0}.tl .item>summary::after{content:"›";color:var(--ink2);font-size:20px;width:16px;text-align:center;transition:transform .2s}.tl .item[open]>summary::after{transform:rotate(90deg)}
+.tl .t{flex:1;font-size:17px;font-weight:500;color:var(--ink)}.tl .st{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink2);text-align:right}.node.s-done>.item>summary .st{color:var(--mint)}.node.s-building>.item>summary .st{color:var(--cyan)}.tl .id{display:none}
+.tl .body{padding:0 0 14px;color:var(--ink2)}.tl .plain{color:#d7dce2;font-size:16px;line-height:1.55;margin:0 0 4px}
+.more>summary{display:inline-block;font-size:14px;color:var(--cyan);padding:6px 0;min-height:32px}.more>summary::after{content:" ›"}.more[open]>summary{display:none}
+.tl dl{display:grid;grid-template-columns:84px 1fr;gap:10px 16px;border-top:1px solid var(--line);margin-top:12px;padding-top:14px}.tl dt{font-size:15px;color:var(--ink3);margin:0}.tl dd{font-size:15px;color:var(--ink);margin:0}
+.node.pr>.item>summary{flex-wrap:wrap;row-gap:0}.node.pr>.item>summary .t{flex:1 1 calc(100% - 40px)}.node.pr>.item>summary::after{order:2}.node.pr>.item>summary .st{order:3;flex-basis:100%;text-align:left;padding-bottom:4px}
+.inner{margin:0 0 8px}.inner .node{padding-left:22px}.inner .node::after{width:7px;height:7px;top:25px;left:2px}.inner .node::before{display:none}
 @media (prefers-reduced-motion:reduce){.tl .item>summary::after{transition:none}}
-.spend{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin:0 0 16px;--st:var(--mint)}.spend.st-hot{--st:#f2c46d}.spend.st-over{--st:#f39b86}.spend.st-none{--st:var(--ink3)}
-.sp-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}.sp-title{font-weight:600}.sp-chip{font-size:13px;color:var(--st)}.sp-chip::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--st);margin-right:7px;vertical-align:middle}
-.sp-big{font-size:34px;font-weight:500;letter-spacing:-.02em;margin:8px 0 10px}.sp-big span{font-size:14px;color:var(--ink2);font-weight:400}
-.sp-track{position:relative;height:8px;border-radius:4px;background:var(--grey)}.sp-fill,.sp-past{position:absolute;top:0;bottom:0;border-radius:4px}.sp-fill{left:0;background:var(--st)}.st-hot .sp-fill,.st-over .sp-fill{opacity:.4}.sp-past{background:var(--st)}
-.sp-mark{position:absolute;top:-5px;bottom:-5px;width:2px;margin-left:-1px;background:var(--ink);box-shadow:0 0 0 2px var(--bg)}
-.sp-legend{display:flex;justify-content:space-between;font-family:var(--mono);font-size:12px;color:var(--ink2);margin-top:8px}.sp-proj{color:var(--st);font-weight:500;margin:12px 0 0}.sp-basis{color:var(--ink2);font-size:13px;margin:2px 0 0}
-.sp-foot{display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px 12px;border-top:1px solid var(--line);margin-top:14px;padding-top:10px;font-size:12px;color:var(--ink3)}
+.spend{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px 20px;margin:0 0 16px;--st:var(--mint)}.spend.st-hot{--st:#f2c46d}.spend.st-over{--st:#f39b86}.spend.st-none{--st:var(--ink3)}
+.sp-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}.sp-title{font-size:17px;font-weight:600}.sp-chip{white-space:nowrap;font-size:14px;color:var(--st)}.sp-chip::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--st);margin-right:8px;vertical-align:middle}
+.sp-big{font-size:44px;font-weight:400;letter-spacing:-.02em;line-height:1;margin:22px 0 22px}.sp-big span{font-size:16px;color:var(--ink2);letter-spacing:0;margin-left:8px}
+.sp-track{position:relative;height:10px;border-radius:5px;background:var(--grey)}.sp-fill,.sp-past{position:absolute;top:0;bottom:0;border-radius:5px}.sp-fill{left:0;background:var(--st)}.st-hot .sp-fill,.st-over .sp-fill{opacity:.4}.sp-past{background:var(--st)}
+.sp-mark{position:absolute;top:-7px;bottom:-7px;width:3px;margin-left:-1.5px;border-radius:2px;background:var(--ink);box-shadow:0 0 0 3px var(--panel)}
+.sp-legend{display:flex;justify-content:space-between;font-family:var(--mono);font-size:13px;color:var(--ink2);margin-top:12px}.sp-pct{color:var(--st)}.sp-proj{color:var(--st);font-size:17px;font-weight:500;margin:20px 0 0}.sp-basis{color:var(--ink2);margin:4px 0 0}
+.sp-foot{display:flex;justify-content:space-between;white-space:nowrap;gap:4px 12px;border-top:1px solid var(--line);margin-top:24px;padding-top:14px;font-size:14px;color:var(--ink3)}
 a{color:var(--cyan)}ul{margin:0;padding-left:18px}.hist li,.money li{margin:6px 0;color:var(--ink2)}.hit{color:var(--mint)}.open{color:var(--ink3)}.edited{margin-top:16px}"""
 
 
@@ -458,9 +479,9 @@ rows.forEach(function(r,i){var d=r.querySelector('.depth'),x=null,y=0;if(!d)retu
 d.addEventListener('touchstart',function(ev){x=ev.touches[0].clientX;y=ev.touches[0].clientY},{passive:true});
 d.addEventListener('touchend',function(ev){if(x===null)return;var dx=ev.changedTouches[0].clientX-x,dy=ev.changedTouches[0].clientY-y;x=null;
 if(Math.abs(dx)>60&&Math.abs(dx)>2*Math.abs(dy))go(dx<0?i+1:i-1)},{passive:true});
-var nav=document.createElement('div');nav.className='nav';[[i-1,'\u2039 '],[i+1,'']].forEach(function(s){var b=document.createElement('button'),t=rows[s[0]];
-b.type='button';if(t){var nm=t.querySelector('.name').textContent;b.textContent=s[1]?s[1]+nm:nm+' \u203A';b.setAttribute('aria-label','Open '+nm)}else b.disabled=true;
-b.addEventListener('click',function(){go(s[0])});nav.appendChild(b)});d.appendChild(nav)});
+var nav=d.querySelector('.pnav');[[i-1,'\u2039'],[i+1,'\u203A']].forEach(function(s){var b=document.createElement('button'),t=rows[s[0]];
+b.type='button';b.textContent=s[1];if(t)b.setAttribute('aria-label','Open '+t.querySelector('.name').textContent);else{b.disabled=true;b.setAttribute('aria-hidden','true')}
+b.addEventListener('click',function(){go(s[0])});nav.appendChild(b)})});
 [].forEach.call(document.querySelectorAll('.tl .item>summary'),function(s){s.addEventListener('click',function(ev){var it=s.parentNode,
 m=it.querySelector(':scope>.body>.more');if(!m)return;if(it.open&&!m.open){ev.preventDefault();m.open=true}else if(it.open)m.open=false})})})();"""
 
@@ -598,11 +619,11 @@ def _selftest():
     d = lambda n, usd: {"date": "2026-09-%02d" % n, "usage": usd}
     card = lambda days: spend_card(None if days is None else {"days": days}, at)
     ok_ = card([d(1, 5.0), d(9, 2.0), d(10, 2.0), d(15, 3.0), dict(d(16, 50.0)), {"date": "2026-08-31", "usage": 9.0}])
-    hold("st-ok" in ok_ and "$12 <span>/ $40" in ok_ and "30% spent" in ok_ and "50% of September" in ok_ and
-         "Projected $27 at month end" in ok_ and "15 days left in September" in ok_,
+    hold("st-ok" in ok_ and "$12 <span>/ $40" in ok_ and "30% spent" in ok_ and "50% of cycle" in ok_ and
+         "Projected $27 by 30 September" in ok_ and "15 days to reset" in ok_,
          "the card: this month's completed days only, against the month gone, at seven days' rate")
     hot = card([d(1, 22.0), d(14, 0.5)])
-    hold("st-hot" in hot and "Projected $24 at month end" in hot, "running hot: ahead of the month, within budget at the recent rate")
+    hold("st-hot" in hot and "Projected $24 by 30 September" in hot, "running hot: ahead of the month, within budget at the recent rate")
     over = card([d(1, 10.0), d(12, 7.0), d(13, 7.0)])
     hold("st-over" in over and "Projected $54 · $14 over budget" in over, "overshooting names how far over")
     hold("st-none" in card(None) and "No OpenRouter key is connected" in card(None) and "$" + "0" not in card(None),
@@ -618,14 +639,14 @@ def _selftest():
     hold("UNSELECTED BODY TEXT" not in page, "§8: a pull request's body is never published beyond its two lines")
     hold("javascript:" not in page and 'href="https://github.com/Adonis80/how-we-build/pull/111"' in page,
          "§8: only this repository's pull-request links are linked")
-    hold(page.count('class="st">merged ') == MERGED_SHOWN and "#100" not in page and "#101" not in page,
+    hold(page.count('class="node s-done pr"') == MERGED_SHOWN and "#100 " not in page and "#101 " not in page,
          "§7: ten merged shown, newest first")
     hold("Snapshot checked 26 September 2026, 18:40 BST" in page or LONDON is None,
          "§5: the snapshot says its date, time and timezone")
     hold("Not reached yet" in page and "Revenue passes one thousand a month." in page,
          "§8: the money milestone's sentence and whether it is reached")
     hold("3 of 9 agreed done · 1 suggested" in page, "§1: a row's counts")
-    hold("Agreed on 7 September 2026 by the Chairman" in page or LONDON is None,
+    hold("<dt>Agreed</dt><dd>the Chairman · 7 September 2026</dd>" in page or LONDON is None,
          "§4: `decided_on` is labelled agreed on, as an absolute date")
     hold([page.index('<span class="name">%s</span>' % r) for r in ROWS] ==
          sorted(page.index('<span class="name">%s</span>' % r) for r in ROWS), "§1: four rows, Juku OS first")
@@ -638,7 +659,7 @@ def _selftest():
          "next eligible never names an item waiting on him")
     q = render(dict(reads, rulebook={"open": [pr(31, "**Priority:** P2. **Ready:** no — Decision needed: which host."),
                                               pr(32, ok)], "merged": []}))
-    hold('The queue <span class="n">1</span>' in q, "the queue counts only what it lists, not what waits on him")
+    hold('<span class="pnum">1 queued</span>' in q, "the queue counts only what it lists, not what waits on him")
     for shape, what in (({"money_milestones": [{"when": "M"}]}, "money_milestones has no `items` list"),
                         ({"money_milestones": {"items": [{"reached_on": "2026-09-01"}]}},
                          "money_milestones.items[0].when is not text")):
