@@ -96,6 +96,9 @@ jobs:
       TEAM: team_B8AXqxDb20T9DrXElAAXsvgF
       PROJECT: prj_Y61u57bV01hn4UAhVS1GSeTNlIca
       DOMAIN: roadmap.juku.pro
+      # One address for every preview (his ask, 1 October 2026): the newest smoked
+      # preview takes this name, so there is one link to open, never a new one.
+      NEXT: juku-build-board-next.vercel.app
     steps:
       - uses: actions/checkout@v4
         with:
@@ -430,6 +433,21 @@ jobs:
           [ "$g" -eq 0 ] || { echo "::error::the preview $id showed a stranger neither the sign-in wall nor the PIN screen by minute $limit of the job"; exit 1; }
           if [ "$TARGET" = preview ]; then
             ok=yes
+            # The smoked preview takes the fixed name; the host moves it off the last.
+            # The name is smoked as a stranger like the preview's own host before it
+            # is handed over; the board shown there deletes the preview (#136's read, 3).
+            code=$(v -X POST "https://api.vercel.com/v2/deployments/$id/aliases?$q" -d "{\"alias\":\"$NEXT\"}" -o /dev/null -w '%{http_code}') || code=000
+            if [[ "$code" =~ ^2 ]]; then
+              g=1
+              for _ in 1 2 3 4 5 6; do
+                gated "$NEXT" wall && g=0 || g=$?
+                [ "$g" -eq 1 ] || break
+                sleep 5
+              done
+              if [ "$g" -eq 2 ]; then ok=no; echo "::error::A STRANGER WAS SERVED THE BOARD at the fixed address $NEXT"; exit 1; fi
+              if [ "$g" -eq 0 ]; then echo "preview ready at the fixed address: https://$NEXT"
+              else echo "::warning::the fixed address did not show a stranger the sign-in wall or the PIN screen; use this preview's own"; fi
+            else echo "::warning::the fixed preview address was refused (HTTP $code); this preview has only its own"; fi
             echo "preview ready, and a stranger gets the sign-in wall or the PIN screen: https://$host"
             exit 0
           fi
