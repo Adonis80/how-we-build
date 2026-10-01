@@ -227,6 +227,31 @@ jobs:
             > "$RUNNER_TEMP/merged.json"
           echo "open pull requests: $(jq length "$RUNNER_TEMP/open+review.json"); merged read: $(jq length "$RUNNER_TEMP/merged.json")"
 
+      - name: Read the spend
+        env:
+          OPENROUTER_KEY: ${{ secrets.OPENROUTER_KEY }}
+        run: |
+          set -euo pipefail
+          # THE SPEND CARD (his ruling, 1 October 2026): OpenRouter's daily spend
+          # for its last 30 completed UTC days. The key is a management key, so it
+          # is used for this one read and nothing else: never against /keys,
+          # which review-gate.py refuses. A failed read never stops the board; the
+          # card says so. Counts only reach this public log, never an amount.
+          echo 'null' > "$RUNNER_TEMP/spend.json"
+          if [ -z "${OPENROUTER_KEY:-}" ]; then
+            echo "::warning::No OPENROUTER_KEY in the reviewer environment: the spend card says not connected."
+            exit 0
+          fi
+          code=$(curl -sS --max-time 30 -o "$RUNNER_TEMP/activity.json" -w '%{http_code}' \
+            -H "Authorization: Bearer $OPENROUTER_KEY" "https://openrouter.ai/api/v1/activity") || code=000
+          if [ "$code" = 200 ] && jq -e '.data | type == "array"' "$RUNNER_TEMP/activity.json" > /dev/null 2>&1; then
+            jq '{days: [.data[] | {date, usage}]}' "$RUNNER_TEMP/activity.json" > "$RUNNER_TEMP/spend.json"
+            echo "spend: OpenRouter answered with $(jq '.days | length' "$RUNNER_TEMP/spend.json") rows"
+          else
+            echo "::warning::OpenRouter's activity was not read (HTTP $code): the spend card says not reported."
+          fi
+          rm -f "$RUNNER_TEMP/activity.json"
+
       - name: Render
         env:
           AT: ${{ steps.clock.outputs.checked_at }}
@@ -237,13 +262,14 @@ jobs:
           [[ "${AT:-}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] || { echo "::error::the read's time was not stamped"; exit 1; }
           jq -n --arg at "$AT" \
             --slurpfile open "$RUNNER_TEMP/open+review.json" --slurpfile merged "$RUNNER_TEMP/merged.json" \
-            '{checked_at: $at, products: [inputs], rulebook: {open: $open[0], merged: $merged[0]}}' \
+            --slurpfile spend "$RUNNER_TEMP/spend.json" \
+            '{checked_at: $at, products: [inputs], rulebook: {open: $open[0], merged: $merged[0]}, spend: $spend[0]}' \
             "$RUNNER_TEMP"/reads/*.json > "$RUNNER_TEMP/reads.json"
           site="$RUNNER_TEMP/site"
           mkdir -p "$site"
           python3 board/build.py "$RUNNER_TEMP/reads.json" "$site/index.html"
           cp board/middleware.js board/robots.txt board/vercel.json "$site/"
-          rm -rf "$RUNNER_TEMP/reads" "$RUNNER_TEMP/reads.json" "$RUNNER_TEMP/open.json" "$RUNNER_TEMP/open+review.json"
+          rm -rf "$RUNNER_TEMP/reads" "$RUNNER_TEMP/reads.json" "$RUNNER_TEMP/open.json" "$RUNNER_TEMP/open+review.json" "$RUNNER_TEMP/spend.json"
 
       - name: Deploy, smoke, and roll back on red
         env:
