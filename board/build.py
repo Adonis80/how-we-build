@@ -233,7 +233,7 @@ def product_row(p):
             group("Status not one the board reads", unknown) +
             ('<section><h3>Money milestone</h3><ul class="money">%s</ul></section>' % money if money else "") +
             '<p class="edited">Roadmap last edited %s</p>' % e(when(p["last_edited"])))
-    return row(name, bar(n), counts, headline(items), body, progress, "Roadmap · in sequence"), n["decisions"]
+    return row(name, counts, headline(items), body, progress, "Roadmap · in sequence"), n["decisions"]
 
 
 # ---------------------------------------------------------------- Juku OS
@@ -343,10 +343,9 @@ def rulebook_row(rb):
     inner = '<ol class="tl inner">%s</ol>' % "".join(pr_html(pr, merged=True) for pr in merged)
     spine = ('<ol class="tl">%s%s</ol>' % (fold(len(merged), "merged", inner) if merged else "",
                                            "".join(pr_html(pr) for pr in queue))) if merged or queue else ""
-    progress = ('<div class="pprog"><span>Its plan is its open pull requests</span>'
+    progress = ('<div class="pprog"><span>No roadmap: its plan is its open pull requests</span>'
                 '<span class="pnum">%d queued</span></div>' % len(queue))
-    nobar = '<div class="nobar">No roadmap: its plan is its open pull requests</div>'
-    return row(RULEBOOK, nobar, counts, line, asks + spine, progress, "Pull requests · in sequence"), len(waiting)
+    return row(RULEBOOK, counts, line, asks + spine, progress, "Pull requests · in sequence"), len(waiting)
 
 
 # ---------------------------------------------------------------- spend
@@ -418,7 +417,7 @@ def spend_card(spend, checked_at):
 
 # ---------------------------------------------------------------- the page
 
-def row(name, bar_html, counts, line, body, progress="", seq=""):
+def row(name, counts, line, body, progress="", seq=""):
     """One project page, the view he approved (1 October 2026): its name with ‹ › beside
     it, what it counts and what is in hand, overall progress, and its timeline. The board
     is these pages side by side, swiped or stepped through; render() adds the ‹ ›."""
@@ -431,18 +430,17 @@ CSS = """:root{color-scheme:dark;--bg:#06070f;--bg2:#0a0b14;--panel:rgba(255,255
 *{box-sizing:border-box}body{margin:0;background:var(--bg);background-image:radial-gradient(ellipse 80% 50% at 50% -10%,rgba(83,234,253,.07),transparent 60%);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.5;padding-inline:16px;padding-block:22px 56px;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
 .wrap{max-width:720px;margin:0 auto}.eyebrow,.id,.n,.st,.edited,.said{font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--ink3)}.eyebrow{letter-spacing:.22em;text-transform:uppercase}
 h1{font-size:clamp(26px,6.5vw,34px);font-weight:600;letter-spacing:-.02em;line-height:1.15;margin:6px 0 10px}.lede{color:var(--ink);margin:10px 0 4px}.snap{font-family:var(--mono);font-size:12px;color:var(--ink3);margin:0 0 22px}
-.row{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);margin:0 0 12px}.row[open]{background:var(--panel2)}
+
 summary{cursor:pointer;list-style:none}summary::-webkit-details-marker{display:none}summary:focus-visible{outline:2px solid var(--cyan);outline-offset:2px;border-radius:var(--r)}
-.row>summary{display:grid;gap:8px;padding:16px}.name{font-size:18px;font-weight:600}.counts{color:var(--ink2);font-size:13px}.line{color:var(--ink)}
+
 .ask{color:var(--cyan);font-weight:500}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--cyan);box-shadow:0 0 8px var(--cyan-glow);margin-right:8px;vertical-align:middle}
 .bar{display:flex;height:6px;border-radius:3px;background:rgba(255,255,255,.05);overflow:hidden}.bar span{display:block;height:100%}.bar .done{background:var(--mint)}.bar .hand{background:var(--cyan)}.bar .queued{background:var(--grey)}
-.depth{padding:0 16px 16px;border-top:1px solid var(--line)}section{margin-top:16px}h3{font-size:12px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:var(--ink2);margin:0 0 8px}
+section{margin-top:16px}h3{font-size:12px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:var(--ink2);margin:0 0 8px}
 .item{border:1px solid var(--line);border-radius:8px;margin:0 0 8px;background:var(--bg2)}.item>summary{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;padding:10px 12px}.item .t{flex:1 1 60%}.item .st{margin-left:auto}
 .body{padding:0 12px 12px;color:var(--ink2)}.plain{color:var(--ink);margin:0 0 8px}dl{margin:0}dt{font-size:12px;color:var(--ink3);margin-top:8px}dd{margin:2px 0 0}.none{color:var(--ink3)}
-.nobar{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--ink3);border-top:1px dashed var(--dash);padding-top:6px}
 .tabs{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:0 0 12px}.tabs::-webkit-scrollbar{display:none}.tabs a{flex:none;font-size:14px;color:var(--ink2);text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:8px 14px}.tabs a.on{color:var(--bg);background:var(--ink);border-color:var(--ink)}
 .pages{display:flex;align-items:flex-start;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;transition:height .25s;margin:0 -16px;padding:0 16px;scroll-padding:0 16px;gap:16px}.pages::-webkit-scrollbar{display:none}
-.page{flex:0 0 100%;min-width:0;scroll-snap-align:start;scroll-snap-stop:always;background:var(--bg);border:1px solid var(--line);border-radius:20px;padding:22px 20px 24px}
+.page{flex:0 0 100%;min-width:0;scroll-snap-align:start;background:var(--bg);border:1px solid var(--line);border-radius:20px;padding:22px 20px 24px}
 .crumb{font-family:var(--mono);font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink2);margin-bottom:18px}.pline{color:var(--ink);margin:6px 0 0}
 .ph{display:flex;align-items:center;justify-content:space-between;gap:12px}.pname{font-size:clamp(30px,8vw,40px);font-weight:600;letter-spacing:-.03em;line-height:1.1;margin:0}.psub{color:var(--ink2);margin:8px 0 0}
 .pnav{display:flex;gap:8px;flex:none}.step{display:grid;place-items:center;width:44px;height:44px;border-radius:50%;border:1px solid rgba(255,255,255,.18);color:var(--ink);font-size:22px;line-height:1;text-decoration:none}.step.off{opacity:.2}
@@ -480,7 +478,7 @@ if(i!==cur){cur=i;tabs.forEach(function(a,k){a.classList.toggle('on',k===i)})}}
 box.addEventListener('scroll',function(){window.requestAnimationFrame(fit)},{passive:true});
 if(window.ResizeObserver)pages.forEach(function(p){new ResizeObserver(fit).observe(p)});window.addEventListener('resize',fit);
 [].forEach.call(document.querySelectorAll('a.step,.tabs a'),function(a){a.addEventListener('click',function(ev){var p=document.getElementById(a.getAttribute('href').slice(1));
-if(!p)return;ev.preventDefault();box.scrollTo({left:p.offsetLeft-box.offsetLeft,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
+if(!p)return;ev.preventDefault();p.scrollIntoView({block:'nearest',inline:'start',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
 var top=document.querySelector('.tabs').getBoundingClientRect().top;if(top<0)window.scrollBy(0,top-8)})});
 [].forEach.call(document.querySelectorAll('.tl .item>summary'),function(s){s.addEventListener('click',function(ev){var it=s.parentNode,
 m=it.querySelector(':scope>.body>.more');if(!m)return;if(it.open&&!m.open){ev.preventDefault();m.open=true}else if(it.open)m.open=false})});fit()})();"""
@@ -512,7 +510,7 @@ def render(reads):
     tabs = "".join('<a href="#%s"%s>%s</a>' % (ids[i], ' class="on"' if i == 0 else "", e(n)) for i, n in enumerate(ROWS))
     pages = "".join('<section class="page" id="%s" aria-label="%s">%s</section>'
                     % (ids[i], e(n), rows[n].replace("{NAV}", '<nav class="pnav">%s%s</nav>'
-                                                    % (step(i - 1, "‹", "Back to"), step(i + 1, "›", "On to"))))
+                                                    % (step(i - 1, "‹", "Back to"), step(i + 1, "›", "On to")), 1))
                     for i, n in enumerate(ROWS))
     return ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">\n'
@@ -625,7 +623,7 @@ def _selftest():
          "in hand, then queued, on the line; suggested set apart after it")
     hold(myst.count('<details class="more">') == 10 and "Plain X5</p><details class=\"more\"><summary>More" in myst,
          "each item opens to its sentence, then to its detail behind More")
-    hold("Its plan is its open pull requests" in page, "Juku OS says why it carries no bar")
+    hold("No roadmap: its plan is its open pull requests" in page, "Juku OS says why it carries no bar")
     # The spend card (his ruling, 1 October 2026), on 16 September of a 30-day month: 15 days gone.
     at = "2026-09-16T12:00:00Z"
     d = lambda n, usd: {"date": "2026-09-%02d" % n, "usage": usd}
