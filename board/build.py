@@ -358,6 +358,15 @@ DAY = re.compile(r"^\d{4}-\d{2}-\d{2}")
 usd = lambda x: int(x + 0.5)                            # half up: $22.50 is $23, never banker's $22
 
 
+def is_day(text):
+    """A real calendar day: a date of the right shape that does not exist is unread, never a crash (#134's second read, 2)."""
+    try:
+        datetime.strptime(text, "%Y-%m-%d")
+        return True
+    except ValueError:
+        return False
+
+
 def spend_card(spend, checked_at):
     """The Track card: spend this month against the budget and the month gone.
 
@@ -373,11 +382,13 @@ def spend_card(spend, checked_at):
     month = MONTHS[now.month - 1]
     left = "%d day%s to reset" % (days_in - gone, "" if days_in - gone == 1 else "s")
     local = now.astimezone(LONDON) if LONDON else now
-    stamp = "updated %d %s, %s" % (local.day, MONTHS[local.month - 1][:3], local.strftime("%H:%M"))
+    stamp = "updated %d %s, %s %s" % (local.day, MONTHS[local.month - 1][:3], local.strftime("%H:%M"),
+                                      local.tzname() or "UTC")
     last_day = "%d %s" % (days_in, month)
     rows = spend.get("days") if isinstance(spend, dict) else None
     ok = isinstance(rows, list) and all(isinstance(r, dict) and isinstance(r.get("date"), str) and
-                                        DAY.match(r["date"]) and isinstance(r.get("usage"), (int, float)) and
+                                        DAY.match(r["date"]) and is_day(r["date"][:10]) and
+                                        isinstance(r.get("usage"), (int, float)) and
                                         not isinstance(r.get("usage"), bool) for r in rows)
     if not ok:
         why = ("No OpenRouter key is connected" if spend is None else
@@ -409,7 +420,7 @@ def spend_card(spend, checked_at):
             'spent, %d%% of %s gone"><span class="sp-fill" style="width:%.2f%%"></span><span class="sp-past" '
             'style="left:%.2f%%;width:%.2f%%"></span><span class="sp-mark" style="left:%.2f%%"></span></div>'
             '<div class="sp-legend"><span class="sp-pct">%d%% spent</span><span>%d%% of cycle</span></div>'
-            '<p class="sp-proj">%s</p><p class="sp-basis">Based on the last 7 days</p><div class="sp-foot">'
+            '<p class="sp-proj">%s</p><p class="sp-basis">Spent to yesterday · based on the last 7 days</p><div class="sp-foot">'
             '<span>%s</span><span>%s</span></div></section>'
             % (state, chip, usd(spent), BUDGET_USD, usd(share), usd(time), e(month), fill - past, fill - past,
                past, time, usd(share), usd(time), e(proj), e(left), e(stamp)))
@@ -464,7 +475,7 @@ section{margin-top:16px}h3{font-size:12px;font-weight:500;letter-spacing:.14em;t
 .sp-track{position:relative;height:10px;border-radius:5px;background:var(--grey)}.sp-fill,.sp-past{position:absolute;top:0;bottom:0;border-radius:5px}.sp-fill{left:0;background:var(--st)}.st-hot .sp-fill,.st-over .sp-fill{opacity:.4}.sp-past{background:var(--st)}
 .sp-mark{position:absolute;top:-7px;bottom:-7px;width:3px;margin-left:-1.5px;border-radius:2px;background:var(--ink);box-shadow:0 0 0 3px var(--panel)}
 .sp-legend{display:flex;justify-content:space-between;font-family:var(--mono);font-size:13px;color:var(--ink2);margin-top:12px}.sp-pct{color:var(--st)}.sp-proj{color:var(--st);font-size:17px;font-weight:500;margin:20px 0 0}.sp-basis{color:var(--ink2);margin:4px 0 0}
-.sp-foot{display:flex;justify-content:space-between;white-space:nowrap;gap:4px 12px;border-top:1px solid var(--line);margin-top:24px;padding-top:14px;font-size:14px;color:var(--ink3)}
+.sp-foot{display:flex;flex-wrap:wrap;justify-content:space-between;white-space:nowrap;gap:4px 12px;border-top:1px solid var(--line);margin-top:24px;padding-top:14px;font-size:14px;color:var(--ink3)}
 a{color:var(--cyan)}ul{margin:0;padding-left:18px}.hist li,.money li{margin:6px 0;color:var(--ink2)}.hit{color:var(--mint)}.open{color:var(--ink3)}.edited{margin-top:16px}"""
 
 
@@ -642,6 +653,11 @@ def _selftest():
          "a key whose read failed is told apart from no key at all")
     hold("not in a shape the board reads" in card([{"date": "2026-09-01", "usage": "5"}]),
          "an answer it cannot read is said, never guessed at")
+    hold("not in a shape the board reads" in card([d(1, 5.0), {"date": "2026-09-31", "usage": 1.0}]),
+         "a day that does not exist is said as unread, never stops the board")
+    hold("Spent to yesterday · based on the last 7 days" in ok_ and "to yesterday" not in card(None) and
+         ("updated 16 Sep, 13:00 BST" in ok_ or LONDON is None),
+         "the card says its figure runs to yesterday, and its stamp carries the timezone (#135's read, 2)")
     hold('class="spend' in page and "No OpenRouter key is connected" in page, "the board carries the card, read or not")
     hold("<body data-board>" in page, "the marker #117's smoke test is to look for, so a board served to a stranger is caught")
     hold(readiness(pr(12, "**Priority:** **P2**. **Ready:** no — **Decision needed:** which host."))[2] == "P2",
