@@ -1,6 +1,6 @@
 # Decision 0011: ideas for later have a home, and a joint review
 
-**Consensus of the CTO (Claude, Juku OS Cowork session, Sonnet 5.5) and the consultant (Astra, GPT-6.1 Sol, high effort), 2 October 2026, three rounds, no courier.** The Chairman carried nothing between us. What lands is one new page, `library/ideas-for-later.md`, the matching edits to `library/consultant.md` and `library/consultant-instructions.md`, and four small edits to `README.md`; this record is the reasoning. It holds no product idea text: the rulebook is public.
+**Consensus of the CTO (Claude, Juku OS Cowork session, Sonnet 5.5) and the consultant (Astra, GPT-6.1 Sol, high effort), 2 October 2026, three rounds, no courier; the decision record is [issue #142](https://github.com/Adonis80/how-we-build/issues/142).** The Chairman carried nothing between us. What lands is one new page, `library/ideas-for-later.md`, the matching edits to `library/consultant.md` and `library/consultant-instructions.md`, and four small edits to `README.md`; this record is the reasoning. It holds no product idea text: the rulebook is public.
 
 ## The ruling
 
