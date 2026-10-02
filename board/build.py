@@ -697,15 +697,18 @@ def _selftest():
     # Decision 0012: every product's `proposed` items in one folded list above the pages, a view only.
     edit = lambda rd: {"name": rd[0], "last_edited": "2026-09-25T17:00:00Z", "roadmap": {"items": rd[1]}}
     q2 = render(dict(reads, products=[
-        edit(("Hemz OS", [it("H1", "proposed", title="Hemz idea"), it("H2", "proposed", title="Asks him idea",
-                                                                  gate="Decision needed: the price."), it("H3", "building")])),
+        edit(("Phena", [it("P1", "proposed", title=evil)])),
         edit(("Myst", road["items"])),
-        edit(("Phena", [it("P1", "proposed", title=evil)]))]))
-    card = q2[q2.index('<ol class="tl ideas">'):q2.index('<nav class="tabs"')]
-    hold("4 suggested ideas</span>" in card and card.count('<details class="more">') == 4 and
-         card.index("Hemz idea") < card.index("Asks him idea") < card.index("Item X4") < card.index(html.escape(evil)) and
-         evil not in card, "0012: every product's suggested items, his own too, in row order, escaped, one list")
-    hold('<details class="item" open>' not in card and q2.count('<section class="page"') == 4 and
+        edit(("Hemz OS", [it("H1", "proposed", title="Hemz idea"), it("H2", "proposed", title="Asks him idea",
+                                                                  gate="Decision needed: the price."), it("H3", "building")]))]))
+    ideas = q2[q2.index('<ol class="tl ideas">'):q2.index('<nav class="tabs"')]
+    hold("4 suggested ideas</span>" in ideas and ideas.count('<details class="more">') == 4 and
+         ideas.index("Hemz idea") < ideas.index("Asks him idea") < ideas.index("Item X4") < ideas.index(html.escape(evil)) and
+         evil not in ideas, "0012: every product's suggested items, his own too, in row order whatever the read order, escaped, one list")
+    hold("1 suggested idea</span>" in render(dict(reads, products=[edit(("Hemz OS", [it("H1", "proposed")])),
+                                                                  edit(("Myst", [])), edit(("Phena", []))])),
+         "0012: one suggestion is counted in the singular")
+    hold('<details class="item" open>' not in ideas and q2.count('<section class="page"') == 4 and
          "0 of 1 agreed done · 2 suggested · " in q2 and "3 of 9 agreed done · 1 suggested" in q2,
          "0012: the card is folded, adds no page, and changes no count")
     hold('class="tl ideas"' not in render(dict(reads, products=[edit(("Hemz OS", [it("H1", "building")])),
