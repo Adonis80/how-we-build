@@ -105,8 +105,11 @@ done
 # search would be one more list to drift. With no page named there is no
 # library, and that passes: the check exists before the pages it holds.
 lib_fail=0
+# A page name starts at a name boundary: a folder that merely ends in
+# "library" (juku-library/, <product>-library/) holds papers, not library
+# pages, and its files are not links to library/.
 page_re='library/[A-Za-z0-9._-]+\.md'
-named=$( { grep -o -E "$page_re" README.md || true; } | sort -u)
+named=$( { grep -o -P "(?<![A-Za-z0-9._-])$page_re" README.md || true; } | sort -u)
 shopt -s dotglob nullglob
 pages=(library/*)
 shopt -u dotglob nullglob
@@ -129,7 +132,7 @@ while IFS= read -r hit; do
   # the repository, so it is printed escaped, as a page name the pattern
   # refuses is above: a control character in a path reaches a public log.
   [ -f "$f" ] || { printf "FAIL: %q links '%s', which does not exist.\n" "${hit%:*}" "$f"; lib_fail=1; }
-done < <(grep -r -o -I -E --exclude-dir=.git "$page_re" . | sed 's|^\./||' | sort -u || true)
+done < <(grep -r -o -I -P --exclude-dir=.git "(?<![A-Za-z0-9._-])$page_re" . | sed 's|^\./||' | sort -u || true)
 # The index holds its pages in words as well as in names. Decision 0005
 # (issue #75: his ruling of 23 September 2026, and his challenge "machine
 # first, reading last") made the map "one line per topic saying when to open
