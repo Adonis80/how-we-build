@@ -3,7 +3,8 @@
 
 What the page shows and may claim is decision 0007 and its addendum
 (https://github.com/Adonis80/how-we-build/issues/97); the section marks below
-(§n, An) are its clauses. `.github/workflows/build-board.yml` makes the reads
+(§n, An) are its clauses. Decision 0012 (issues/145) adds one card above the pages:
+every product's `proposed` items in one folded list, a view only. `.github/workflows/build-board.yml` makes the reads
 and hands them here; a refresh by hand writes the same shape. This file
 fetches nothing and prints
 nothing a source holds: a fault names a product and a key, never a value,
@@ -199,9 +200,22 @@ def group(title, items, cls="apart"):
     return '<section class="%s-set">%s%s</section>' % (cls, head, timeline(cls, items))
 
 
-def fold(count, word, inner):
+def fold(count, word, inner, label=None):
     return ('<li class="node s-done fold"><details class="item"><summary><span class="t">%d %s</span>'
-            '<span class="st">%s</span></summary>%s</details></li>' % (count, word, word.capitalize(), inner))
+            '<span class="st">%s</span></summary>%s</details></li>' % (count, word, label or word.capitalize(), inner))
+
+
+def ideas_card(ideas):
+    """Decision 0012: every product's `proposed` items in one folded list, in the board's row
+    order. A view only: it shows what the project pages already read, keeps no copy, and
+    changes no count (§2: suggested stands outside progress; §3: his decisions are the pages')."""
+    total = sum(len(v) for v in ideas.values())
+    if not total:
+        return ""
+    inner = "".join('<section class="apart-set"><h3>%s <span class="n">%d</span></h3>%s</section>'
+                    % (e(name), len(ideas[name]), timeline("inner", ideas[name])) for name in ROWS if ideas.get(name))
+    return '<ol class="tl ideas">%s</ol>' % fold(total, "suggested idea" if total == 1 else "suggested ideas",
+                                               inner, "Every product")
 
 
 def product_row(p):
@@ -497,11 +511,12 @@ m=it.querySelector(':scope>.body>.more');if(!m)return;if(it.open&&!m.open){ev.pr
 
 def render(reads):
     checked = when(reads["checked_at"], clock=True)
-    rows, asked = {}, {}
+    rows, asked, ideas = {}, {}, {}
     for p in reads.get("products") or []:
         if p.get("name") not in ROWS or p["name"] == RULEBOOK:
             raise Unreadable("a product named outside the board's rows")
         rows[p["name"]], asked[p["name"]] = product_row(p)
+        ideas[p["name"]] = [it for it in items_of(p["name"], p.get("roadmap")) if it["status"] == "proposed"]
     rows[RULEBOOK], asked[RULEBOOK] = rulebook_row(reads.get("rulebook"))
     missing = [n for n in ROWS if n not in rows]
     if missing:
@@ -532,9 +547,9 @@ def render(reads):
             '<style>%s</style></head>\n<body data-board><main class="wrap">'
             '<div class="eyebrow">Juku OS · Build board</div>'
             '<p class="lede">%s</p><p class="snap">Snapshot checked %s. Changes after this time may not appear.</p>'
-            '%s<nav class="tabs" aria-label="Projects">%s</nav><div class="pages">%s</div></main><script>%s</script>'
+            '%s%s<nav class="tabs" aria-label="Projects">%s</nav><div class="pages">%s</div></main><script>%s</script>'
             '</body></html>\n' % (CSS, e(lede), e(checked), spend_card(reads.get("spend"), reads["checked_at"]),
-                                   tabs, pages, BOARD_JS))
+                                   ideas_card(ideas), tabs, pages, BOARD_JS))
 
 
 # ---------------------------------------------------------------- selftest
@@ -679,6 +694,23 @@ def _selftest():
     hold(page.count('<section class="page"') == 4 and 'href="#p-1" aria-label="On to Hemz OS"' in page and
          '<span class="step off" aria-hidden="true">‹</span>' in page and "{NAV}" not in page,
          "the board is four project pages, each stepping to its neighbours by a link that needs no script")
+    # Decision 0012: every product's `proposed` items in one folded list above the pages, a view only.
+    edit = lambda rd: {"name": rd[0], "last_edited": "2026-09-25T17:00:00Z", "roadmap": {"items": rd[1]}}
+    q2 = render(dict(reads, products=[
+        edit(("Hemz OS", [it("H1", "proposed", title="Hemz idea"), it("H2", "proposed", title="Asks him idea",
+                                                                  gate="Decision needed: the price."), it("H3", "building")])),
+        edit(("Myst", road["items"])),
+        edit(("Phena", [it("P1", "proposed", title=evil)]))]))
+    card = q2[q2.index('<ol class="tl ideas">'):q2.index('<nav class="tabs"')]
+    hold("4 suggested ideas</span>" in card and card.count('<details class="more">') == 4 and
+         card.index("Hemz idea") < card.index("Asks him idea") < card.index("Item X4") < card.index(html.escape(evil)) and
+         evil not in card, "0012: every product's suggested items, his own too, in row order, escaped, one list")
+    hold('<details class="item" open>' not in card and q2.count('<section class="page"') == 4 and
+         "0 of 1 agreed done · 2 suggested · " in q2 and "3 of 9 agreed done · 1 suggested" in q2,
+         "0012: the card is folded, adds no page, and changes no count")
+    hold('class="tl ideas"' not in render(dict(reads, products=[edit(("Hemz OS", [it("H1", "building")])),
+                                                              edit(("Myst", [it("M1", "done")])), edit(("Phena", []))])),
+         "0012: with nothing suggested there is no card")
     hold(readiness(pr(14, "**Priority:** p1. **Ready:** yes."))[2] == "P1", "a lower-case priority reads, and sorts, as its level")
     hold(pr_state(pr(15, "**Priority:** P3. **Ready:** no — Decision needed: none.")) == "Parked" and
          not needs_decision({"gate": "Decision needed: none"}), "\"Decision needed: none\" asks him nothing")
