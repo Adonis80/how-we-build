@@ -2,7 +2,7 @@
 
 Scope: every product session, and the consultant. Open when: a session spots an improvement it will not build now, or a roadmap read shows ideas due for review.
 
-**His ruling, 2 October 2026:** *"all of your ideas for later documented somewhere for review between Claude and ChatGPT and for them to reach a consensus on"*; [decision 0011](../consensuses/juku-os/DECISION-0011-IDEAS-FOR-LATER.md).
+**His ruling, 2 October 2026:** *"all of your ideas for later documented somewhere for review between Claude and ChatGPT and for them to reach a consensus on"*; [decision 0011](../juku-library/DECISION-0011-IDEAS-FOR-LATER.md).
 
 **Where.** The product's own `roadmap.json`, as `proposed` items, which already means the CTO's suggestion, not agreed until he says. No new file, list or map.
 
