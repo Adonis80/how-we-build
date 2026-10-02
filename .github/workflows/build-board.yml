@@ -29,9 +29,12 @@ run-name: Build the board (${{ github.event_name }})
 # read, because this repository is public: only a branch here, which only a
 # writer can push, reaches the board.
 #
-# THE DEPLOY NEVER LEAVES THE DOMAIN TO THE HOST (#117's second read, 1). It
+# THE DOMAIN MOVES ONLY TO WHAT THIS STEP SMOKED (#117's second read, 1). It
 # makes a preview, which the host never gives the domain; smokes it as a
-# stranger; and only then promotes that same deployment and smokes the domain.
+# stranger; and only then asks for a production copy of those same files,
+# since the host will not promote a preview, which the host gives the domain
+# once ready; then it smokes the domain. A copy asked for whose answer is lost
+# is not known to this step and may still land (#139's read, 2b).
 # Every red after the promote puts back what the domain served before; a
 # preview that never came ready is cancelled, one that failed its smoke is
 # deleted. review-gate.py runs this step against a fake host, path by path.
@@ -339,18 +342,9 @@ jobs:
           }
           # What the domain serves, asked of the host by name.
           serving() { v "https://api.vercel.com/v13/deployments/$DOMAIN?$q" 2>/dev/null | jq -r '.id // empty' 2>/dev/null || true; }
-          # Promoting a preview-built deployment mints a production copy of it
-          # (library/deploy.md), so the domain serves $1 when it serves $1 or
-          # a deployment whose original is $1.
-          serves() {
-            local s o
-            s=$(serving)
-            [ -n "$s" ] || return 1
-            [ "$s" = "$1" ] && return 0
-            o=$(v "https://api.vercel.com/v13/deployments/$s?$q" 2>/dev/null \
-              | jq -r '.originalDeploymentId // .meta.originalDeploymentId // empty' 2>/dev/null || true)
-            [ "$o" = "$1" ]
-          }
+          serves() { local s; s=$(serving); [ -n "$s" ] && [ "$s" = "$1" ]; }
+          # The production copy's state, asked of the host.
+          copied() { v "https://api.vercel.com/v13/deployments/$copy?$q" 2>/dev/null | jq -r '.readyState // empty' 2>/dev/null || true; }
           # What the domain serves now is recorded before anything moves: what
           # it serves, not what the project calls production (#117's second
           # read, 1).
@@ -363,6 +357,7 @@ jobs:
           # promoted back, the host must accept it, and the domain must serve
           # it again within three minutes. Each refusal is red in its own words.
           id=""
+          copy=""
           state=""
           phase=none
           ok=no
@@ -383,8 +378,34 @@ jobs:
                 exit 1 ;;
               promoted)
                 echo "::error::not confirmed live and gated; promoting $before back"
+                # A copy still building would take the domain once ready, so it
+                # is cancelled, and the cancel is read back: a copy that went
+                # READY first is put back below like any other (#139's read, 2).
+                if [ -n "$copy" ]; then
+                  state=$(copied)
+                  case "$state" in
+                    READY|ERROR|CANCELED) ;;
+                    *) code=$(v -X PATCH "https://api.vercel.com/v12/deployments/$copy/cancel?$q" -o /dev/null -w '%{http_code}') || code=000
+                       for _ in 1 2 3 4 5 6; do
+                         state=$(copied)
+                         case "$state" in READY|ERROR|CANCELED) break ;; esac
+                         sleep 5
+                       done
+                       case "$state" in
+                         READY) ;;
+                         ERROR|CANCELED) echo "cancelled: $copy, $state" ;;
+                         *) echo "::error::CANCEL $([[ "$code" =~ ^2 ]] && echo UNCONFIRMED || echo "REFUSED: HTTP $code"): $copy is ${state:-unread}, and takes the domain once ready."; exit 1 ;;
+                       esac ;;
+                  esac
+                  # A READY copy may take the domain a moment after: it is
+                  # given a minute to, so the put-back comes after it.
+                  if [ "$state" = READY ]; then
+                    for _ in 1 2 3 4 5 6; do serves "$copy" && break; sleep 10; done
+                  fi
+                fi
                 code=$(v -X POST "https://api.vercel.com/v10/projects/$PROJECT/promote/$before?$q" -o /dev/null -w '%{http_code}') || code=000
-                [[ "$code" =~ ^2 ]] || { echo "::error::ROLLBACK REFUSED: HTTP $code promoting $before. The domain may serve an unconfirmed board."; exit 1; }
+                # The host answers 409 to a promote of what the domain still serves (run 36997804844).
+                [[ "$code" =~ ^2 ]] || { [ "$code" = 409 ] && serves "$before"; } || { echo "::error::ROLLBACK REFUSED: HTTP $code promoting $before. The domain may serve an unconfirmed board."; exit 1; }
                 local back=$(( $(date +%s) + 180 ))
                 while [ "$(date +%s)" -lt "$back" ]; do
                   serves "$before" && { echo "rolled back: $DOMAIN serves $before"; exit 1; }
@@ -452,10 +473,16 @@ jobs:
             exit 0
           fi
           # PROMOTED BY THIS STEP, NEVER BY THE HOST (#117's second read, 1).
-          # Armed before the call: a promote that times out may still land.
+          # The host will not point the domain at a preview (run 36997804844:
+          # 422), so the smoked preview is copied to production, as the host's
+          # own CLI promotes one: its files, not a rebuild of main (library/deploy.md).
+          # Armed before the call: a copy asked for may still land.
           phase=promoted
-          code=$(v -X POST "https://api.vercel.com/v10/projects/$PROJECT/promote/$id?$q" -o /dev/null -w '%{http_code}') || code=000
-          [[ "$code" =~ ^2 ]] || { echo "::error::PROMOTE REFUSED: HTTP $code promoting $id"; exit 1; }
+          made=$(v -X POST "https://api.vercel.com/v13/deployments?$q" \
+            -d "{\"deploymentId\":\"$id\",\"name\":\"juku-build-board\",\"target\":\"production\",\"meta\":{\"action\":\"promote\"}}" || true)
+          copy=$(printf '%s' "$made" | jq -r '.id // empty' 2>/dev/null || true)
+          [[ "$copy" =~ ^dpl_[A-Za-z0-9]+$ ]] || { echo "::error::PROMOTE REFUSED: no production copy of $id: $(printf '%s' "$made" | jq -r '.error.code // "no code"' 2>/dev/null || echo "no answer")"; exit 1; }
+          echo "production copy: $copy"
           # THE SMOKE: the domain serves this deployment, and to a stranger
           # the PIN screen and nothing of the board. The edge follows the
           # control plane by a little, so a missing answer is asked again until
@@ -464,13 +491,13 @@ jobs:
           while [ "$(date +%s)" -lt "$by" ]; do
             gated "$DOMAIN" pin && g=0 || g=$?
             [ "$g" -ne 2 ] || break
-            if [ "$g" -eq 0 ] && serves "$id"; then
+            if [ "$g" -eq 0 ] && serves "$copy"; then
               ok=yes
-              echo "live: $id on $DOMAIN, the PIN screen alone to a stranger"
+              echo "live: $copy, the copy of $id, on $DOMAIN, the PIN screen alone to a stranger"
               exit 0
             fi
             sleep 10
           done
           [ "$g" -ne 2 ] || { echo "::error::A STRANGER WAS SERVED THE BOARD on $DOMAIN"; exit 1; }
-          echo "::error::$DOMAIN did not serve $id, gated, by minute $limit of the job"
+          echo "::error::$DOMAIN did not serve $copy, gated, by minute $limit of the job"
           exit 1
