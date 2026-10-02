@@ -2957,13 +2957,28 @@ case "$method $path" in
     [ "${FAKE_SERVING:-ok}" = ok ] || { reply 500 '{}'; exit 0; }
     reply 200 "{\"id\":\"$serving\"}" ;;
   "POST https://api.vercel.com/v13/deployments")
-    case "$data" in @*) grep -q '"target"' "${data#@}" && refuse "a deployment given a target, which the host would put on the domain by itself" ;; *) refuse "a deployment with no files" ;; esac
-    echo "$FAKE_NEW" > "$S/new"
-    reply 200 '{"id":"dpl_new","readyState":"QUEUED"}' ;;
+    case "$data" in
+      @*) grep -q '"target"' "${data#@}" && refuse "a deployment given a target, which the host would put on the domain by itself"
+          echo "$FAKE_NEW" > "$S/new"
+          reply 200 '{"id":"dpl_new","readyState":"QUEUED"}' ;;
+      # The host's CLI promotes a preview so: a production copy, which takes the domain once ready.
+      *'"deploymentId":"dpl_new"'*'"target":"production"'*)
+          echo "promote: a production copy of dpl_new" >> "$S/calls"
+          [ "$TARGET" = production ] || refuse "a production copy made on a preview run"
+          [ "$(cat "$S/new")" = READY ] || refuse "a copy of a deployment that is not READY"
+          [ "${FAKE_PROMOTE:-ok}" = ok ] || { reply 400 '{"error":{"code":"bad_request"}}'; exit 0; }
+          echo "${FAKE_COPY:-READY}" > "$S/copy"
+          [ "${FAKE_COPY:-READY}" != READY ] || [ "${FAKE_DOMAIN:-pin}" = never ] || echo dpl_copy > "$S/serving"
+          reply 200 '{"id":"dpl_copy","readyState":"QUEUED"}' ;;
+      *) refuse "a deployment with no files" ;;
+    esac ;;
   "GET https://api.vercel.com/v13/deployments/dpl_new")
     reply 200 "{\"id\":\"dpl_new\",\"readyState\":\"$(cat "$S/new")\",\"url\":\"juku-build-board-x1.vercel.app\"}" ;;
   "GET https://api.vercel.com/v13/deployments/dpl_copy")
-    reply 200 '{"id":"dpl_copy","readyState":"READY","originalDeploymentId":"dpl_new"}' ;;
+    reply 200 "{\"id\":\"dpl_copy\",\"readyState\":\"$(cat "$S/copy")\"}" ;;
+  "PATCH https://api.vercel.com/v12/deployments/dpl_copy/cancel")
+    [ "${FAKE_CANCEL:-ok}" = ok ] || { reply 400 '{}'; exit 0; }
+    echo CANCELED > "$S/copy"; reply 200 '{"readyState":"CANCELED"}' ;;
   "GET https://api.vercel.com/v13/deployments/dpl_before")
     reply 200 '{"id":"dpl_before","readyState":"READY"}' ;;
   "PATCH https://api.vercel.com/v12/deployments/dpl_new/cancel")
@@ -2971,12 +2986,12 @@ case "$method $path" in
     echo CANCELED > "$S/new"; reply 200 '{"readyState":"CANCELED"}' ;;
   "DELETE https://api.vercel.com/v13/deployments/dpl_new")
     echo DELETED > "$S/new"; reply 200 '{"state":"DELETED"}' ;;
+  # As the host answered run 36997804844: a preview is not promoted, and
+  # what the domain still serves is not promoted again.
   "POST https://api.vercel.com/v10/projects/$PROJECT/promote/dpl_new")
-    [ "${FAKE_PROMOTE:-ok}" = ok ] || { reply 409 '{}'; exit 0; }
-    [ "$(cat "$S/new")" = READY ] || refuse "a promote of a deployment that is not READY"
-    [ "${FAKE_DOMAIN:-pin}" = never ] || echo dpl_copy > "$S/serving"
-    reply 201 '' ;;
+    reply 422 '{"error":{"code":"not_production"}}' ;;
   "POST https://api.vercel.com/v10/projects/$PROJECT/promote/dpl_before")
+    [ "$serving" != dpl_before ] || { reply 409 '{}'; exit 0; }
     case "${FAKE_ROLLBACK:-ok}" in refused) reply 409 '{}'; exit 0 ;; ok) echo dpl_before > "$S/serving" ;; esac
     reply 201 '' ;;
   "POST https://api.vercel.com/v2/deployments/dpl_new/aliases")
@@ -3025,7 +3040,7 @@ if [ "$*" = "+%s" ]; then cat "$FAKE/clock"; else exec /bin/date "$@"; fi
 # as much weight as the rest: without them a step that always exits 1 would
 # satisfy every other line. The paths #117's second read named come first.
 BOARD_DEPLOY_CASES = (
-    ("a production deploy that passes", {}, 0, "dpl_copy", "READY", "live: dpl_new", None),
+    ("a production deploy that passes", {}, 0, "dpl_copy", "READY", "live: dpl_copy, the copy of dpl_new", None),
     ("the domain shows a stranger the board", {"FAKE_DOMAIN": "board"}, 1, "dpl_before", "READY",
      "rolled back: roadmap.juku.pro serves dpl_before", None),
     ("the domain never serves it", {"FAKE_DOMAIN": "never"}, 1, "dpl_before", "READY",
@@ -3033,6 +3048,12 @@ BOARD_DEPLOY_CASES = (
     ("it is never READY: the wait gives up and cancels it", {"FAKE_READY": "BUILDING"}, 1, "dpl_before",
      "CANCELED", "cancelled: dpl_new", "promote"),
     ("the promote is refused", {"FAKE_PROMOTE": "no"}, 1, "dpl_before", "READY", "PROMOTE REFUSED", None),
+    # Run 36997804844: a copy that never comes ready is cancelled before it can
+    # take the domain, and a domain still on what it served is put back as is.
+    ("the copy never comes ready", {"FAKE_COPY": "BUILDING"}, 1, "dpl_before", "READY",
+     "cancelled: dpl_copy", "ROLLBACK REFUSED"),
+    ("the copy never comes ready, and its cancel is refused", {"FAKE_COPY": "BUILDING", "FAKE_CANCEL": "no"}, 1,
+     "dpl_before", "READY", "CANCEL REFUSED", "rolled back"),
     ("the rollback is accepted and never lands", {"FAKE_DOMAIN": "board", "FAKE_ROLLBACK": "stuck"}, 1,
      "dpl_copy", "READY", "ROLLBACK UNCONFIRMED", None),
     # A rollback begun at the deadline still has its three minutes in the job.
@@ -3115,7 +3136,7 @@ def _board_deploy_case(script, job, case):
             with open(os.path.join(binned, name), "w", encoding="utf-8") as f:
                 f.write(body)
             os.chmod(os.path.join(binned, name), 0o755)
-        for name, body in (("clock", clock), ("serving", "dpl_before"), ("new", "none"), ("calls", ""),
+        for name, body in (("clock", clock), ("serving", "dpl_before"), ("new", "none"), ("copy", "none"), ("calls", ""),
                            ("refused", "")):
             with open(os.path.join(fake, name), "w", encoding="utf-8") as f:
                 f.write("%s\n" % body if body != "" else "")
@@ -3278,7 +3299,8 @@ BOARD_LOOSENINGS = (
     ("a deploy cut off mid-way", lambda t: t.replace("cancel-in-progress: false", "cancel-in-progress: true", 1)),
     ("a rollback to the new deployment", lambda t: t.replace("promote/$before", "promote/$id", 1)),
     ("nothing put back on a red", lambda t: t.replace("          trap cleanup EXIT\n", "", 1)),
-    ("a refused rollback taken as done", lambda t: t.replace('[[ "$code" =~ ^2 ]] || { echo "::error::ROLLBACK REFUSED', 'true || { echo "::error::ROLLBACK REFUSED', 1)),
+    ("a refused rollback taken as done", lambda t: t.replace('[[ "$code" =~ ^2 ]] || { [ "$code" = 409 ] && serves "$before"; } || {', 'true || {', 1)),
+    ("a building copy left to take the domain", lambda t: t.replace("                    READY|ERROR|CANCELED) ;;\n", "                    *) ;;\n", 1)),
     ("a rollback never confirmed", lambda t: t.replace('serves "$before" && {', "true && {", 1)),
     ("a leaked board asked again", lambda t: t.replace('if grep -q "data-board" <<< "$body"; then return 2; fi', "if false; then return 2; fi", 1)),
     ("the page's own name never smoked", lambda t: t.replace("for p in / /index.html; do", "for p in /; do", 1)),
@@ -3286,8 +3308,9 @@ BOARD_LOOSENINGS = (
     # served is what is put back.
     ("the domain left to the host", lambda t: t.replace("projectSettings: {framework: null},", 'projectSettings: {framework: null}, target: "production",', 1)),
     ("what is live read from the project", lambda t: t.replace("before=$(serving)", """before=$(v "https://api.vercel.com/v9/projects/$PROJECT?$q" | jq -r '.targets.production.id // empty')""", 1)),
-    ("a smoke passed on any deployment", lambda t: t.replace('if [ "$g" -eq 0 ] && serves "$id"; then', 'if [ "$g" -eq 0 ]; then', 1)),
-    ("a promote refused and carried on", lambda t: t.replace('[[ "$code" =~ ^2 ]] || { echo "::error::PROMOTE REFUSED', 'true || { echo "::error::PROMOTE REFUSED', 1)),
+    ("a smoke passed on any deployment", lambda t: t.replace('if [ "$g" -eq 0 ] && serves "$copy"; then', 'if [ "$g" -eq 0 ]; then', 1)),
+    ("a promote refused and carried on", lambda t: t.replace('[[ "$copy" =~ ^dpl_[A-Za-z0-9]+$ ]] || { echo "::error::PROMOTE REFUSED', 'true || { echo "::error::PROMOTE REFUSED', 1)),
+    ("a copy made with no target, left a preview", lambda t: t.replace('\\"target\\":\\"production\\",', "", 1)),
     ("a wait given up and left building", lambda t: t.replace('case "$state" in ERROR|CANCELED) exit 1 ;; esac', "exit 1", 1)),
     ("a refused cancel taken as done", lambda t: t.replace('[[ "$code" =~ ^2 ]] || { echo "::error::CANCEL REFUSED', 'true || { echo "::error::CANCEL REFUSED', 1)),
     # 2: the preview smoked as a stranger, deleted on red, named only after.
