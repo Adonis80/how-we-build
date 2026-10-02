@@ -29,13 +29,15 @@ run-name: Build the board (${{ github.event_name }})
 # read, because this repository is public: only a branch here, which only a
 # writer can push, reaches the board.
 #
-# THE DOMAIN MOVES ONLY TO WHAT THIS STEP SMOKED (#117's second read, 1). It
+# THE DOMAIN MOVES ONLY TO A COPY OF WHAT THIS STEP SMOKED (#117's second read, 1). It
 # makes a preview, which the host never gives the domain; smokes it as a
 # stranger; and only then asks for a production copy of those same files,
 # since the host will not promote a preview, which the host gives the domain
 # once ready; then it smokes the domain. A copy asked for whose answer is lost
-# is not known to this step and may still land (#139's read, 2b).
-# Every red after the promote puts back what the domain served before; a
+# is not known to this step and may still land (#139's read, 2b), as may a
+# READY copy the host gives the domain after the minute it is waited for.
+# Every other red after the promote puts back what the domain served before,
+# but a copy whose cancel is refused or unconfirmed, red in its own words; a
 # preview that never came ready is cancelled, one that failed its smoke is
 # deleted. review-gate.py runs this step against a fake host, path by path.
 #
@@ -377,7 +379,7 @@ jobs:
                 echo "deleted: $id"
                 exit 1 ;;
               promoted)
-                echo "::error::not confirmed live and gated; promoting $before back"
+                echo "::error::not confirmed live and gated; putting $before back"
                 # A copy still building would take the domain once ready, so it
                 # is cancelled, and the cancel is read back: a copy that went
                 # READY first is put back below like any other (#139's read, 2).
@@ -481,7 +483,7 @@ jobs:
           made=$(v -X POST "https://api.vercel.com/v13/deployments?$q" \
             -d "{\"deploymentId\":\"$id\",\"name\":\"juku-build-board\",\"target\":\"production\",\"meta\":{\"action\":\"promote\"}}" || true)
           copy=$(printf '%s' "$made" | jq -r '.id // empty' 2>/dev/null || true)
-          [[ "$copy" =~ ^dpl_[A-Za-z0-9]+$ ]] || { echo "::error::PROMOTE REFUSED: no production copy of $id: $(printf '%s' "$made" | jq -r '.error.code // "no code"' 2>/dev/null || echo "no answer")"; exit 1; }
+          [[ "$copy" =~ ^dpl_[A-Za-z0-9]+$ ]] || { echo "::error::PROMOTE REFUSED: no production copy of $id: $(printf '%s' "$made" | jq -r '.error.code // "no code"' 2>/dev/null || echo "no answer"); one asked for may still land"; exit 1; }
           echo "production copy: $copy"
           # THE SMOKE: the domain serves this deployment, and to a stranger
           # the PIN screen and nothing of the board. The edge follows the
