@@ -4,7 +4,7 @@ Scope: the look shared by every Juku product. Open when: setting a product's vis
 
 A seed, written only from what the Chairman has already said. He refines it by looking, and each change goes in here once.
 
-- **Feel.** Console-game-grade, not website-grade. Cinematic: Minority Report, Blade Runner 2049, Linear precision.
+- **Feel.** Console-game-grade, not website-grade. Cinematic: Minority Report, Blade Runner 2049, Linear precision. The spatial 3D layer is in `library/screen-design.md`.
 - **Colour.** Dark by default. Neon is punctuation, never decoration. Six themes: three Void (dark), three Dawn (light), each built from brand-fixed colours plus theme-variable colours.
 - **Type.** Hubot Sans, Mona Sans and JetBrains Mono.
 - **Motion.** Rive is the source of truth; Motion.dev is the web default; GSAP by exception.
