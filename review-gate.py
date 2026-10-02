@@ -2955,6 +2955,14 @@ path=${url%%\?*}
 case "$method $path" in
   "GET https://api.vercel.com/v13/deployments/$DOMAIN")
     [ "${FAKE_SERVING:-ok}" = ok ] || { reply 500 '{}'; exit 0; }
+    # A late copy builds while the domain is looked at, and takes it on the third look.
+    if [ "$(cat "$S/copy")" = late ]; then
+      looks=$(( $(cat "$S/looks" 2>/dev/null || echo 0) + 1 )); echo "$looks" > "$S/looks"
+      if [ "$looks" -ge 3 ]; then
+        echo READY > "$S/copy"
+        [ "${FAKE_DOMAIN:-pin}" = never ] || { serving=dpl_copy; echo dpl_copy > "$S/serving"; }
+      fi
+    fi
     reply 200 "{\"id\":\"$serving\"}" ;;
   "POST https://api.vercel.com/v13/deployments")
     case "$data" in
@@ -2975,8 +2983,11 @@ case "$method $path" in
   "GET https://api.vercel.com/v13/deployments/dpl_new")
     reply 200 "{\"id\":\"dpl_new\",\"readyState\":\"$(cat "$S/new")\",\"url\":\"juku-build-board-x1.vercel.app\"}" ;;
   "GET https://api.vercel.com/v13/deployments/dpl_copy")
-    reply 200 "{\"id\":\"dpl_copy\",\"readyState\":\"$(cat "$S/copy")\"}" ;;
+    c=$(cat "$S/copy"); [ "$c" != late ] || c=BUILDING
+    reply 200 "{\"id\":\"dpl_copy\",\"readyState\":\"$c\"}" ;;
   "PATCH https://api.vercel.com/v12/deployments/dpl_copy/cancel")
+    # late: the copy went READY and took the domain as it was cancelled.
+    if [ "${FAKE_CANCEL:-ok}" = late ]; then echo READY > "$S/copy"; echo dpl_copy > "$S/serving"; reply 409 '{}'; exit 0; fi
     [ "${FAKE_CANCEL:-ok}" = ok ] || { reply 400 '{}'; exit 0; }
     echo CANCELED > "$S/copy"; reply 200 '{"readyState":"CANCELED"}' ;;
   "GET https://api.vercel.com/v13/deployments/dpl_before")
@@ -3054,6 +3065,14 @@ BOARD_DEPLOY_CASES = (
      "cancelled: dpl_copy", "ROLLBACK REFUSED"),
     ("the copy never comes ready, and its cancel is refused", {"FAKE_COPY": "BUILDING", "FAKE_CANCEL": "no"}, 1,
      "dpl_before", "READY", "CANCEL REFUSED", "rolled back"),
+    # #139's read, 2a and 3: the copy READY on a later look, failed, or READY
+    # as it is cancelled, which is put back like any other.
+    ("a copy that comes ready on the third look", {"FAKE_COPY": "late"}, 0, "dpl_copy", "READY",
+     "live: dpl_copy, the copy of dpl_new", None),
+    ("the copy fails to build", {"FAKE_COPY": "ERROR"}, 1, "dpl_before", "READY",
+     "rolled back: roadmap.juku.pro serves dpl_before", "cancelled: dpl_copy"),
+    ("the copy goes READY as it is cancelled", {"FAKE_COPY": "BUILDING", "FAKE_CANCEL": "late"}, 1, "dpl_before",
+     "READY", "rolled back: roadmap.juku.pro serves dpl_before", "CANCEL"),
     ("the rollback is accepted and never lands", {"FAKE_DOMAIN": "board", "FAKE_ROLLBACK": "stuck"}, 1,
      "dpl_copy", "READY", "ROLLBACK UNCONFIRMED", None),
     # A rollback begun at the deadline still has its three minutes in the job.
@@ -3301,6 +3320,7 @@ BOARD_LOOSENINGS = (
     ("nothing put back on a red", lambda t: t.replace("          trap cleanup EXIT\n", "", 1)),
     ("a refused rollback taken as done", lambda t: t.replace('[[ "$code" =~ ^2 ]] || { [ "$code" = 409 ] && serves "$before"; } || {', 'true || {', 1)),
     ("a building copy left to take the domain", lambda t: t.replace("                    READY|ERROR|CANCELED) ;;\n", "                    *) ;;\n", 1)),
+    ("a copy READY at its cancel left on the domain", lambda t: t.replace("                         READY) ;;\n", "                         READY) exit 1 ;;\n", 1)),
     ("a rollback never confirmed", lambda t: t.replace('serves "$before" && {', "true && {", 1)),
     ("a leaked board asked again", lambda t: t.replace('if grep -q "data-board" <<< "$body"; then return 2; fi', "if false; then return 2; fi", 1)),
     ("the page's own name never smoked", lambda t: t.replace("for p in / /index.html; do", "for p in /; do", 1)),

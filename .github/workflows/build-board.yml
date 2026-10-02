@@ -29,10 +29,12 @@ run-name: Build the board (${{ github.event_name }})
 # read, because this repository is public: only a branch here, which only a
 # writer can push, reaches the board.
 #
-# THE DEPLOY NEVER LEAVES THE DOMAIN TO THE HOST (#117's second read, 1). It
+# THE DOMAIN MOVES ONLY TO WHAT THIS STEP SMOKED (#117's second read, 1). It
 # makes a preview, which the host never gives the domain; smokes it as a
-# stranger; and only then promotes it — a production copy of those same files,
-# since the host will not promote a preview — and smokes the domain.
+# stranger; and only then asks for a production copy of those same files,
+# since the host will not promote a preview, which the host gives the domain
+# once ready; then it smokes the domain. A copy asked for whose answer is lost
+# is not known to this step and may still land (#139's read, 2b).
 # Every red after the promote puts back what the domain served before; a
 # preview that never came ready is cancelled, one that failed its smoke is
 # deleted. review-gate.py runs this step against a fake host, path by path.
@@ -340,19 +342,9 @@ jobs:
           }
           # What the domain serves, asked of the host by name.
           serving() { v "https://api.vercel.com/v13/deployments/$DOMAIN?$q" 2>/dev/null | jq -r '.id // empty' 2>/dev/null || true; }
-          # Promoting a preview-built deployment mints a production copy of it
-          # (library/deploy.md), so the domain serves $1 when it serves $1 or
-          # a deployment whose original is $1.
-          serves() {
-            local s o
-            [ -n "$1" ] || return 1
-            s=$(serving)
-            [ -n "$s" ] || return 1
-            [ "$s" = "$1" ] && return 0
-            o=$(v "https://api.vercel.com/v13/deployments/$s?$q" 2>/dev/null \
-              | jq -r '.originalDeploymentId // .meta.originalDeploymentId // empty' 2>/dev/null || true)
-            [ "$o" = "$1" ]
-          }
+          serves() { local s; s=$(serving); [ -n "$s" ] && [ "$s" = "$1" ]; }
+          # The production copy's state, asked of the host.
+          copied() { v "https://api.vercel.com/v13/deployments/$copy?$q" 2>/dev/null | jq -r '.readyState // empty' 2>/dev/null || true; }
           # What the domain serves now is recorded before anything moves: what
           # it serves, not what the project calls production (#117's second
           # read, 1).
@@ -386,15 +378,30 @@ jobs:
                 exit 1 ;;
               promoted)
                 echo "::error::not confirmed live and gated; promoting $before back"
-                # A copy still building would take the domain once ready.
+                # A copy still building would take the domain once ready, so it
+                # is cancelled, and the cancel is read back: a copy that went
+                # READY first is put back below like any other (#139's read, 2).
                 if [ -n "$copy" ]; then
-                  state=$(v "https://api.vercel.com/v13/deployments/$copy?$q" 2>/dev/null | jq -r '.readyState // empty' 2>/dev/null || true)
+                  state=$(copied)
                   case "$state" in
                     READY|ERROR|CANCELED) ;;
                     *) code=$(v -X PATCH "https://api.vercel.com/v12/deployments/$copy/cancel?$q" -o /dev/null -w '%{http_code}') || code=000
-                       [[ "$code" =~ ^2 ]] || { echo "::error::CANCEL REFUSED: HTTP $code cancelling $copy, which takes the domain once ready."; exit 1; }
-                       echo "cancelled: $copy" ;;
+                       for _ in 1 2 3 4 5 6; do
+                         state=$(copied)
+                         case "$state" in READY|ERROR|CANCELED) break ;; esac
+                         sleep 5
+                       done
+                       case "$state" in
+                         READY) ;;
+                         ERROR|CANCELED) echo "cancelled: $copy, $state" ;;
+                         *) echo "::error::CANCEL $([[ "$code" =~ ^2 ]] && echo UNCONFIRMED || echo "REFUSED: HTTP $code"): $copy is ${state:-unread}, and takes the domain once ready."; exit 1 ;;
+                       esac ;;
                   esac
+                  # A READY copy may take the domain a moment after: it is
+                  # given a minute to, so the put-back comes after it.
+                  if [ "$state" = READY ]; then
+                    for _ in 1 2 3 4 5 6; do serves "$copy" && break; sleep 10; done
+                  fi
                 fi
                 code=$(v -X POST "https://api.vercel.com/v10/projects/$PROJECT/promote/$before?$q" -o /dev/null -w '%{http_code}') || code=000
                 # The host answers 409 to a promote of what the domain still serves (run 36997804844).
