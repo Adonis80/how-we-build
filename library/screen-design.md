@@ -4,7 +4,7 @@ Scope: every product with a screen, in either stack. Open when: a screen is new 
 
 His ruling, 2 October 2026: the one order for all visual front-end work. He steers the look and approves by looking; he never reads a spec. This page overrides `CHARTER.md` §5 and §7 on the visual workbench.
 
-1. **Style.** Start from `library/juku-style.md`. He says how this product differs; adapt it a little, keep the core philosophy. Write the product's version in its `design/` folder.
+1. **Style.** The Juku style is the distillation rule and spatial layer below, and nothing else. He says how this product differs; adapt it a little, keep the core philosophy. Write the product's version in its `design/` folder.
 2. **Brief.** The CTO briefs the GPT Space visualizer (`@Visualize`) on users, the real task, states, verified figures and fixed rules, with the distillation rule below. Never the layout. It seeks the most spectacular, beautiful, creative graphics within those limits. It never changes a rule or invents a number.
 3. **Rounds.** He sends screenshots; the CTO answers the visualizer with guidance. At most three rounds. If looks are still open, he picks between the last two viable pictures. The CTO fixes any wrong figure or unusable screen before showing either.
 4. **Save.** In `<product>-library/design/<screen>/`: the agreed screenshots with plain, findable titles, and a dated builder-only note (actions, states, rules, data, responsive changes, acceptance checks). He never reads the note. After release, add phone and desktop screenshots titled "shipped" with the date and pull request.

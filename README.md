@@ -48,7 +48,6 @@ One page per topic, or a named few where a topic is over the cap, opened when it
 |---|---|
 | `library/session-changeover.md`: *Session changeover* | deciding whether to stay in a session or start a fresh one, and before leaving one |
 | `library/screen-design.md`: *How a screen gets designed* | a screen is new or reworked, before any code for it |
-| `library/juku-style.md`: *The Juku style* | setting a product's visual style, or briefing the visualizer |
 | `library/two-stacks.md`, `library/stack-anthropic.md`, `library/stack-openai.md`: *The two stacks* | choosing the lead or its effort, handing work between stacks, a job that needs hands |
 | `library/max-subagent.md`: *The max subagent* | a lead hands its max piece on, or a product sets up or checks its max subagent file |
 | `library/reviewer.md`: *The independent reviewer* | working out who reviews a change, what it is shown, or what a risky class of change is owed |
