@@ -67,7 +67,7 @@ permissions:
 # dispatch deploys either way; production, dispatched or automatic, only once
 # this reads yes, which one reviewed line flips after he has agreed.
 env:
-  LIVE: "no"
+  LIVE: "yes"
 
 jobs:
   build:
