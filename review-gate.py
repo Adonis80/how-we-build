@@ -1755,7 +1755,7 @@ CLASS_CASES = (
     (["model-registry/registry.json"], "risky"),
     (["model-registry/resolve.py"], "risky"),
     (["library/model-registry.md"], "words"),
-    (["consensuses/juku-os/CLAUDE_OPEN_WEIGHT_MODEL_ROUTING_IMPLEMENTATION.md"], "words"),
+    (["juku-library/CLAUDE_OPEN_WEIGHT_MODEL_ROUTING_IMPLEMENTATION.md"], "words"),
 )
 
 

@@ -38,7 +38,7 @@ else
 fi
 
 # 2. Only these files exist at the root (plus .git and .github).
-allowed=" AGENTS.md CHARTER.md HOW-WE-BUILD.md README.md RICH-DATA.md board check.sh consensuses design library model-registry review-gate.py "
+allowed=" AGENTS.md CHARTER.md HOW-WE-BUILD.md README.md RICH-DATA.md board check.sh design juku-library library model-registry review-gate.py "
 while IFS= read -r f; do
   case "$f" in .git|.github) continue ;; esac
   case "$allowed" in
@@ -61,9 +61,12 @@ for f in $allowed; do
     # The model registry (decision 0008): the one file that names models, its
     # resolver and its OpenAI-compatible caller, and nothing else.
     model-registry) [ -d "$f" ] && [ "$(ls -A model-registry | tr '\n' ' ')" = "ask.py registry.json resolve.py " ] || { echo "FAIL: 'model-registry/' holds ask.py, registry.json and resolve.py, and nothing else."; fail=1; } ;;
-    # Consensuses committed verbatim for a build to read from GitHub (#103's
-    # amendment): pages, one folder per project, nothing executable.
-    consensuses) [ ! -e "$f" ] || { [ -d "$f" ] && [ -z "$(find consensuses -type f ! -name '*.md')" ] && [ -z "$(find consensuses -mindepth 1 -maxdepth 1 -type f)" ]; } || { echo "FAIL: 'consensuses/' holds only .md pages, each in a project's folder."; fail=1; } ;;
+    # The rulebook's own library (the Chairman's ruling of 2 October 2026): the
+    # papers and frozen records committed verbatim for a build to read from
+    # GitHub (#103's amendment): .md pages directly inside, no subfolder,
+    # nothing executable. A product keeps its own <product>-library/ in its
+    # own private repo, never here.
+    juku-library) [ ! -e "$f" ] || { [ -d "$f" ] && [ -z "$(find juku-library -type f ! -name '*.md')" ] && [ -z "$(find juku-library -mindepth 1 -type d)" ]; } || { echo "FAIL: 'juku-library/' holds only .md pages, directly inside it, with no subfolder."; fail=1; } ;;
     *) [ -f "$f" ] || { echo "FAIL: '$f' is missing, or is not a file; the root list is a fixed set."; fail=1; } ;;
   esac
 done
@@ -170,14 +173,14 @@ fi
 # 3b. A model is named in the registry and nowhere else (decision 0008). Every
 # other file asks for a role, so a switch is one edit to one file. Refused: any
 # id the registry lists, and anything shaped like a model id from a vendor we
-# use, anywhere but model-registry/ and consensuses/, whose records are kept
+# use, anywhere but model-registry/ and juku-library/, whose records are kept
 # verbatim. The ids are read from the registry, so a new model is held the day
 # it is added, and case hides none of them.
 ids=$(python3 -c 'import json,sys; print("|".join(m.replace(".", "[.]") for m in json.load(open(sys.argv[1]))["models"]))' model-registry/registry.json)
 shape='claude-(opus|sonnet|haiku|fable)-[0-9][0-9a-z.-]*|(z-ai|moonshotai|qwen|deepseek|anthropic|openai|google|meta-llama|mistralai|x-ai)/[a-z0-9][a-z0-9._-]*|gpt-[0-9][0-9a-z.-]*|glm-[0-9][0-9a-z.-]*|kimi-k[0-9][0-9a-z.-]*'
 if [ -z "$ids" ]; then
   echo "FAIL: model-registry/registry.json lists no models, so nothing could be held to it."; fail=1
-elif grep -R -n -i -E --exclude-dir=.git --exclude-dir=model-registry --exclude-dir=consensuses "($ids|$shape)" . | cut -d: -f1,2 | sed 's/^/  /' | grep . ; then
+elif grep -R -n -i -E --exclude-dir=.git --exclude-dir=model-registry --exclude-dir=juku-library "($ids|$shape)" . | cut -d: -f1,2 | sed 's/^/  /' | grep . ; then
   echo "FAIL: the place(s) above name a model; name the role instead, and the model in model-registry/registry.json."
   fail=1
 else
