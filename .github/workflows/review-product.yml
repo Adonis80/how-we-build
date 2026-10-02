@@ -485,7 +485,7 @@ jobs:
             add "$f" || true
           done < "$t/touched.txt"
           # THE SOURCE THE CHANGE IMPORTS, ONE HOP (decision 0010, 1a,
-          # consensuses/juku-os/DECISION-0010-REVIEW-SPEND-AND-PLAN-MAP.md, under
+          # juku-library/DECISION-0010-REVIEW-SPEND-AND-PLAN-MAP.md, under
           # the README's record of its 29 September freeze lift). A reader
           # handed a touched file and nothing it calls judges a call it cannot
           # see. So each touched JavaScript, TypeScript or Python file's direct
