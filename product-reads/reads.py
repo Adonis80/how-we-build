@@ -3,7 +3,7 @@
 
     reads.py product OWNER/NAME [README]          a product this rulebook lists?
     reads.py list [README]                         every product it lists, one a line
-    reads.py ready COMMIT PARENT PRCOMMITS SHA     is that commit the ready mark?
+    reads.py ready COMMIT PARENT SHA               is that commit the ready mark?
     reads.py verify CHECKRUNS                      did the product's own check pass?
     reads.py state CHECKRUNS SHA APPID [--again]   has that commit been read?
     reads.py --selftest
@@ -22,10 +22,14 @@ id of the commit beneath it>`, each alone on a line. That commit is the one a
 read is asked for. A builder that pushes half its fixes and goes quiet has not
 marked anything ready, so a timer never buys a read of work that is still
 moving; and a push on top of the mark moves the head off it, so a read is never
-asked for work the mark does not describe. No other commit of the pull request
-may carry either line. It is a signal between a builder and the asker, not a
-boundary: whoever can push can write it, and the check that matters is the
-reviewer's own, on the commit it read.
+asked for work the mark does not describe. A second round is a fix and a new mark
+on top of the old one, which stays in the pull request's history: the head must be
+a valid mark, and a commit already read is stopped by its own read state, so no
+rule about earlier commits is needed and one would make a second round impossible.
+It is a signal between a builder and the asker, not a boundary: whoever can push
+can write it, and the check that matters is the reviewer's own, on the commit it
+read. The same is true of the product's `verify`: it is the product's, so whoever
+can push there can make it pass, and a name is all this checks.
 
 THREE KINDS OF "NOT READ". A commit with a verdict on it has been read. One whose
 check run is still opening or reading is being read. One whose run ended
@@ -118,11 +122,11 @@ def listed(readme, repo):
         raise Refused("%s is not a product this rulebook lists" % repo)
 
 
-def ready(commit, parent, pr_commits, sha):
-    """Refused unless `sha` is the pull request's head and its ready mark.
+def ready(commit, parent, sha):
+    """Refused unless `sha` is a ready mark: one commit, with one parent, that changes no file.
 
-    `commit` and `parent` are the API's answers for the head and for the commit
-    beneath it; `pr_commits` is the pull request's commits, oldest first.
+    `commit` and `parent` are the API's answers for it and for the commit beneath it.
+    That it is the pull request's head is the caller's to have checked.
     """
     try:
         if not SHA.match(sha) or commit.get("sha") != sha:
@@ -140,13 +144,6 @@ def ready(commit, parent, pr_commits, sha):
             raise Refused("the commit's Review-Parent is not the commit beneath it")
         if commit["commit"]["tree"]["sha"] != parent["commit"]["tree"]["sha"]:
             raise Refused("the ready mark changes files; it must change none")
-        if not pr_commits or pr_commits[-1].get("sha") != sha:
-            raise Refused("the pull request's commits could not be read to the head "
-                          "(over 250 commits is too many to check)")
-        for other in pr_commits[:-1]:
-            if ANY_MARK.search(other["commit"]["message"]):
-                raise Refused("a commit other than the head carries a Review-Ready or "
-                              "Review-Parent line; only the head may")
     except (KeyError, TypeError, AttributeError):
         raise Refused("the commit's answer was not in the shape the ready check reads")
 
@@ -230,8 +227,8 @@ def main(argv):
             with open(argv[2] if len(argv) == 3 else "README.md", encoding="utf-8") as f:
                 print("\n".join(products(f.read())))
             return 0
-        elif argv[1:2] == ["ready"] and len(argv) == 6:
-            ready(_load(argv[2]), _load(argv[3]), _load(argv[4]), argv[5])
+        elif argv[1:2] == ["ready"] and len(argv) == 5:
+            ready(_load(argv[2]), _load(argv[3]), argv[4])
         elif argv[1:2] == ["verify"] and len(argv) == 4:
             verified(_load(argv[2]), argv[3])
         elif argv[1:2] == ["state"] and len(argv) in (5, 6) and (len(argv) == 5 or argv[5] == "--again"):
@@ -239,7 +236,7 @@ def main(argv):
                 raise ValueError("the App's id is a number")
             unread(_load(argv[2]), int(argv[4]), argv[3], now, again=len(argv) == 6)
         else:
-            print(__doc__.split("\n\n")[0])
+            print("\n\n".join(__doc__.split("\n\n")[:2]))
             return 2
     except Refused as why:
         print("refused: %s" % why)
@@ -277,12 +274,6 @@ def _mark(parent=BENEATH, extra=""):
 def _commit(message, sha=HEAD, parents=(BENEATH,), tree="t1"):
     return {"sha": sha, "parents": [{"sha": p} for p in parents],
             "commit": {"message": message, "tree": {"sha": tree}}}
-
-
-def _pr(*messages, head=HEAD):
-    shas = ["%040x" % n for n in range(len(messages))]
-    shas[-1] = head
-    return [{"sha": s, "commit": {"message": m}} for s, m in zip(shas, messages)]
 
 
 def _asks(fn, *args):
@@ -334,35 +325,35 @@ def _selftest():
     want("the real README's list is not empty or doubled", len(real) == len(set(real)) >= 1, True)
 
     # The ready mark.
-    good_pr = _pr("first change", _mark())
-    want("a ready mark", _asks(ready, _commit(_mark()), _commit("x", sha=BENEATH, parents=()), good_pr, HEAD), "ok")
     parent = _commit("x", sha=BENEATH, parents=())
-    for what, commit, prs, parent_json in (
-        ("another commit than asked", _commit(_mark(), sha="c" * 40), good_pr, parent),
-        ("no mark", _commit("fix things"), _pr("a", "fix things"), parent),
-        ("ready without a parent", _commit("Review-Ready: yes\n"), _pr("a", "Review-Ready: yes\n"), parent),
-        ("a parent without ready", _commit("Review-Parent: %s\n" % BENEATH), _pr("a", "x"), parent),
-        ("ready said no", _commit(_mark().replace("yes", "no")), _pr("a", "x"), parent),
-        ("ready said twice", _commit(_mark() + "Review-Ready: yes\n"), _pr("a", "x"), parent),
-        ("a different case of the key", _commit(_mark().replace("Review-Ready", "review-ready")), _pr("a", "x"), parent),
-        ("the mark indented", _commit(_mark().replace("Review-Ready", "  Review-Ready")), _pr("a", "x"), parent),
-        ("a variant line beside the real two", _commit(_mark(extra="review-ready: yes\n")), _pr("a", "x"), parent),
-        ("a spaced variant beside the real two", _commit(_mark(extra="Review-Parent : %s\n" % BENEATH)), _pr("a", "x"), parent),
-        ("the parent id short", _commit(_mark(parent="b" * 39)), _pr("a", "x"), parent),
-        ("the parent id upper case", _commit(_mark(parent="B" * 40)), _pr("a", "x"), parent),
-        ("the wrong parent named", _commit(_mark(parent="d" * 40)), _pr("a", "x"), parent),
-        ("a merge commit", _commit(_mark(), parents=(BENEATH, "e" * 40)), _pr("a", "x"), parent),
-        ("a root commit", _commit(_mark(), parents=()), _pr("a", "x"), parent),
-        ("the parent fetched is another", _commit(_mark()), _pr("a", "x"), _commit("x", sha="f" * 40, parents=())),
-        ("files changed", _commit(_mark(), tree="t2"), _pr("a", "x"), parent),
-        ("an earlier commit carries the mark", _commit(_mark()), _pr(_mark(), "x", _mark()), parent),
-        ("an earlier commit carries one line", _commit(_mark()), _pr("Review-Parent: %s" % ("9" * 40), "x", _mark()), parent),
-        ("the head is not last", _commit(_mark()), good_pr + _pr("later")[:1], parent),
-        ("no commits listed", _commit(_mark()), [], parent),
-        ("an answer in another shape", {"sha": HEAD}, good_pr, parent),
+    want("a ready mark", _asks(ready, _commit(_mark()), parent, HEAD), "ok")
+    # A second round: the first mark is still in the pull request's history beneath a fix,
+    # and the new mark names the fix. Nothing about the earlier commits is asked.
+    fix = _commit("a fix", sha="f" * 40, parents=(BENEATH,))
+    again = _commit(_mark(parent="f" * 40), parents=("f" * 40,))
+    want("a second mark, above a fix, above the first mark", _asks(ready, again, fix, HEAD), "ok")
+    for what, commit, parent_json in (
+        ("another commit than asked", _commit(_mark(), sha="c" * 40), parent),
+        ("no mark", _commit("fix things"), parent),
+        ("ready without a parent", _commit("Review-Ready: yes\n"), parent),
+        ("a parent without ready", _commit("Review-Parent: %s\n" % BENEATH), parent),
+        ("ready said no", _commit(_mark().replace("yes", "no")), parent),
+        ("ready said twice", _commit(_mark() + "Review-Ready: yes\n"), parent),
+        ("a different case of the key", _commit(_mark().replace("Review-Ready", "review-ready")), parent),
+        ("the mark indented", _commit(_mark().replace("Review-Ready", "  Review-Ready")), parent),
+        ("a variant line beside the real two", _commit(_mark(extra="review-ready: yes\n")), parent),
+        ("a spaced variant beside the real two", _commit(_mark(extra="Review-Parent : %s\n" % BENEATH)), parent),
+        ("the parent id short", _commit(_mark(parent="b" * 39)), parent),
+        ("the parent id upper case", _commit(_mark(parent="B" * 40)), parent),
+        ("the wrong parent named", _commit(_mark(parent="d" * 40)), parent),
+        ("a merge commit", _commit(_mark(), parents=(BENEATH, "e" * 40)), parent),
+        ("a root commit", _commit(_mark(), parents=()), parent),
+        ("the parent fetched is another", _commit(_mark()), _commit("x", sha="f" * 40, parents=())),
+        ("files changed", _commit(_mark(), tree="t2"), parent),
+        ("an answer in another shape", {"sha": HEAD}, parent),
     ):
-        refuses(what, ready, commit, parent_json, prs, HEAD)
-    want("a CRLF message", _asks(ready, _commit(_mark().replace("\n", "\r\n")), parent, good_pr, HEAD), "ok")
+        refuses(what, ready, commit, parent_json, HEAD)
+    want("a CRLF message", _asks(ready, _commit(_mark().replace("\n", "\r\n")), parent, HEAD), "ok")
 
     # The product's own check.
     green = {"check_runs": [_run(name=VERIFY, ago=9)]}
@@ -433,8 +424,8 @@ def _selftest():
         want("cli: a missing file", cli("product", "Adonis80/alpha", os.path.join(d, "none"))[0], 2)
         want("cli: the list names each product once", cli("list", readme)[1].split(), ["Adonis80/alpha"])
         want("cli: a broken list is a refusal, not an empty one", cli("list", put("bad.md", "# t\n"))[0], 1)
-        want("cli: ready", cli("ready", put("c", _commit(_mark())), put("p", parent), put("l", good_pr), HEAD)[0], 0)
-        want("cli: not ready", cli("ready", put("c", _commit("x")), put("p", parent), put("l", good_pr), HEAD)[0], 1)
+        want("cli: ready", cli("ready", put("c", _commit(_mark())), put("p", parent), HEAD)[0], 0)
+        want("cli: not ready", cli("ready", put("c", _commit("x")), put("p", parent), HEAD)[0], 1)
         want("cli: verified", cli("verify", put("v", green), HEAD)[0], 0)
         want("cli: not verified", cli("verify", put("v2", {"check_runs": []}), HEAD)[0], 1)
         want("cli: unread", cli("state", put("s", {"check_runs": []}), HEAD, str(APP))[0], 0)
@@ -452,9 +443,10 @@ def _selftest():
         want("cli: an unknown word after the id", cli("state", stale, HEAD, str(APP), "--force")[0], 2)
         want("cli: not json", cli("verify", put("junk", "{"), HEAD)[0], 2)
         want("cli: no arguments", cli()[0], 2)
+        want("cli: no arguments prints the usage, not only the title", "reads.py product" in cli()[1] and "reads.py ready" in cli()[1], True)
         # A refusal prints fixed words only, never what the product's JSON held.
         secret = _commit("a private message " + _mark())
-        code, said = cli("ready", put("c2", secret), put("p2", _commit("x", sha="f" * 40, parents=())), put("l2", good_pr), HEAD)
+        code, said = cli("ready", put("c2", secret), put("p2", _commit("x", sha="f" * 40, parents=())), HEAD)
         want("cli: a refusal quotes nothing", (code, "private" in said), (1, False))
 
     if bad:

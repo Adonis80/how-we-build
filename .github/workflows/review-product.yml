@@ -95,7 +95,7 @@ run-name: Review ${{ inputs.repo }}#${{ inputs.pr }} at ${{ inputs.sha }}
 #   - the pull request is open, not a draft, and its head is the commit asked for;
 #   - that commit is the builder's ready mark: one commit that changes no file
 #     and names the commit beneath it, so a read is never asked of work that is
-#     still moving;
+#     still moving. An earlier mark in the history is no concern of this check;
 #   - the product's own `verify` check passed on it;
 #   - it has not been read, is not being read, and did not fail to be read in a
 #     way nobody has looked at. `again` is a builder's word that someone has.
@@ -317,7 +317,6 @@ jobs:
         env:
           TOKEN: ${{ steps.badge.outputs.token }}
           REPO: ${{ inputs.repo }}
-          PR: ${{ inputs.pr }}
           SHA: ${{ inputs.sha }}
           AGAIN: ${{ inputs.again }}
           REVIEWER_APP_ID: ${{ secrets.REVIEWER_APP_ID }}
@@ -325,18 +324,14 @@ jobs:
           set -euo pipefail
           t="$RUNNER_TEMP"
           api() { curl -fsS -H "Authorization: token $TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$REPO/$1"; }
-          # The mark: this commit, the one beneath it, and every commit of the
-          # pull request (three pages of 100 is GitHub's own limit of 250; more
-          # than that is refused, never guessed at).
+          # The mark: this commit and the one beneath it, and nothing earlier. A second
+          # round is a fix and a new mark on top of the old one, which stays in the
+          # pull request's history; what an earlier commit carries is not asked.
           api "commits/$SHA" > "$t/commit.json"
           parent=$(jq -r '.parents[0].sha // empty' "$t/commit.json")
           [[ "$parent" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::the commit has no parent, so it cannot be a ready mark"; exit 1; }
           api "commits/$parent" > "$t/parent.json"
-          for page in 1 2 3; do
-            api "pulls/$PR/commits?per_page=100&page=$page" > "$t/page.$page.json"
-          done
-          jq -s 'add' "$t"/page.1.json "$t"/page.2.json "$t"/page.3.json > "$t/prcommits.json"
-          python3 -I product-reads/reads.py ready "$t/commit.json" "$t/parent.json" "$t/prcommits.json" "$SHA"
+          python3 -I product-reads/reads.py ready "$t/commit.json" "$t/parent.json" "$SHA"
           # The product's own check passed on this very commit.
           api "commits/$SHA/check-runs?check_name=verify&filter=all&per_page=100" > "$t/verify.json"
           python3 -I product-reads/reads.py verify "$t/verify.json" "$SHA"
@@ -349,7 +344,7 @@ jobs:
           else
             python3 -I product-reads/reads.py state "$t/read.json" "$SHA" "$REVIEWER_APP_ID"
           fi
-          rm -f "$t"/commit.json "$t"/parent.json "$t"/page.*.json "$t"/prcommits.json "$t"/verify.json "$t"/read.json
+          rm -f "$t"/commit.json "$t"/parent.json "$t"/verify.json "$t"/read.json
           echo "$SHA is the ready mark, its own check passed, and it is free to be read"
 
       - name: Say it is reading

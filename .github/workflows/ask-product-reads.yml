@@ -15,7 +15,9 @@ name: Ask for product reads
 # of its own once a read that failed, a read still running and a verdict have
 # each been told apart on a real product. review-gate.py holds this file to
 # `workflow_dispatch` and nothing else until then, so no clock can be added by
-# accident.
+# accident. That pull request carries a case of its own: a timed look at every
+# product's pull requests is polling, which CHARTER §3 rejects, so it needs
+# §13's gate or his ruling, and "automatically" is not yet his word for it.
 #
 # WHAT IT HOLDS. The App's key, behind the same door as the reviewer, so it runs
 # on main alone. Per product a token scoped to that one repository, with contents,
@@ -74,8 +76,9 @@ jobs:
           flag=""
           if [ "$DISPATCH" = "true" ]; then flag="--dispatch"; fi
           # The list is read whole before anything is asked, so a README that cannot
-          # be read is a red job and not a loop that runs no times.
-          products=$(python3 -I product-reads/reads.py list README.md)
+          # be read is a red job and not a loop that runs no times, and the log says why
+          # (the README is public, so its refusal can be printed).
+          products=$(python3 -I product-reads/reads.py list README.md) || { echo "::error::the README's product list could not be read: $products"; exit 1; }
           [ -n "$products" ] || { echo "::error::the README lists no product"; exit 1; }
           umask 077
           key="$RUNNER_TEMP/reviewer.pem"
@@ -93,20 +96,24 @@ jobs:
           jwt="$hdr.$pl.$sig"
           rm -f "$key"
           failed=0
+          # EVERY LOOKUP BELOW THAT CAN FAIL ENDS IN `|| x=""` OR A `continue`, never in the
+          # shell's own exit: under `set -e` and `pipefail` one product's timeout would end
+          # the loop, and the products after it would not be looked at. The job is red for it
+          # at the end, and says which.
           for REPO in $products; do
             inst=$(curl -sS --max-time 20 -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/$REPO/installation" | jq -r '.id // empty')
-            [ -n "$inst" ] || { echo "::error::the App is not installed on $REPO"; failed=1; continue; }
+              "https://api.github.com/repos/$REPO/installation" | jq -r '.id // empty') || inst=""
+            [ -n "$inst" ] || { echo "::error::the App is not installed on $REPO, or GitHub did not answer"; failed=1; continue; }
             # ONE PRODUCT, AND READ ALONE: what the asker looks at is its open pull
             # requests, their commits and their check runs, and it writes nothing.
             body=$(jq -cn --arg r "${REPO#*/}" '{repositories: [$r], permissions: {contents: "read", pull_requests: "read", checks: "read"}}')
             curl -sS --max-time 20 -X POST -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/app/installations/$inst/access_tokens" -d "$body" > "$RUNNER_TEMP/mint.json"
-            tok=$(jq -r '.token // empty' "$RUNNER_TEMP/mint.json")
+              "https://api.github.com/app/installations/$inst/access_tokens" -d "$body" > "$RUNNER_TEMP/mint.json" || : > "$RUNNER_TEMP/mint.json"
+            tok=$(jq -r '.token // empty' "$RUNNER_TEMP/mint.json") || tok=""
             [ -n "$tok" ] || { echo "::error::the App would not mint a token scoped to $REPO"; failed=1; continue; }
             echo "::add-mask::$tok"
             want='{"checks":"read","contents":"read","pull_requests":"read"}'
-            granted=$(jq -cS '(.permissions // {}) | del(.metadata)' "$RUNNER_TEMP/mint.json")
+            granted=$(jq -cS '(.permissions // {}) | del(.metadata)' "$RUNNER_TEMP/mint.json") || granted=""
             if [ "$granted" != "$want" ]; then
               revoke
               echo "::error::SCOPE WRONG: the token was granted $granted, not $want. Revoked; $REPO was not looked at."
@@ -114,7 +121,7 @@ jobs:
               continue
             fi
             reach=$(curl -sS --max-time 20 -H "Authorization: token $tok" -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/installation/repositories" | jq -r '[.repositories[].full_name] | join(",")')
+              "https://api.github.com/installation/repositories" | jq -r '[.repositories[].full_name] | join(",")') || reach=""
             if [ "$reach" != "$REPO" ]; then
               revoke
               echo "::error::SCOPE WRONG: the token reached [$reach], not $REPO alone. Revoked; $REPO was not looked at."

@@ -2634,9 +2634,7 @@ def _product_asks(reads):
         '"https://api.github.com/repos/$REPO/$1"; }',
         'api "commits/$SHA" > "$t/commit.json"',
         'api "commits/$parent" > "$t/parent.json"',
-        'for page in 1 2 3; do',
-        'api "pulls/$PR/commits?per_page=100&page=$page" > "$t/page.$page.json"',
-        '%s ready "$t/commit.json" "$t/parent.json" "$t/prcommits.json" "$SHA"' % check,
+        '%s ready "$t/commit.json" "$t/parent.json" "$SHA"' % check,
         'api "commits/$SHA/check-runs?check_name=%s&filter=all&per_page=100" > "$t/verify.json"' % reads.VERIFY,
         '%s verify "$t/verify.json" "$SHA"' % check,
         'api "commits/$SHA/check-runs?check_name=%s&app_id=$REVIEWER_APP_ID&filter=all&per_page=100" > '
@@ -2961,9 +2959,8 @@ PRODUCT_LOOSENINGS = (
     ("a read that did not finish re-asked by default", lambda t: t.replace("        default: false\n", "        default: true\n", 1)),
     ("a read that did not finish always re-asked", lambda t: t.replace('state "$t/read.json" "$SHA" "$REVIEWER_APP_ID"\n', 'state "$t/read.json" "$SHA" "$REVIEWER_APP_ID" --again\n', 1)),
     ("an error answer taken for an answer", lambda t: t.replace("curl -fsS", "curl -sS", 1)),
-    ("a refusal turned into a message", lambda t: t.replace('"$t/prcommits.json" "$SHA"\n', '"$t/prcommits.json" "$SHA" || true\n', 1)),
+    ("a refusal turned into a message", lambda t: t.replace('"$t/parent.json" "$SHA"\n', '"$t/parent.json" "$SHA" || true\n', 1)),
     ("the ready check allowed to fail", lambda t: _in_step(t, "Ready, checked, and not yet read", "        env:\n", "        continue-on-error: true\n        env:\n")),
-    ("only one page of the pull request's commits", lambda t: t.replace("for page in 1 2 3; do", "for page in 1; do", 1)),
     ("the ready check after the run is opened", lambda t: _moved_step(t, "Ready, checked, and not yet read", "Gather what the reviewer reads")),
     ("the head checked after the ready mark", lambda t: _moved_step(t, "The commit asked for is the head", "Say it is reading")),
     # One read of a pull request at a time, never cut off.
@@ -3650,19 +3647,16 @@ def _preflight_cases(reads):
     below = reads._commit("x", sha=beneath, parents=())
     below["parents"] = []
     marked["parents"] = [{"sha": beneath}]
-    pr_commits = [{"sha": "e" * 40, "commit": {"message": RUN_SECRET}}, {"sha": head, "commit": {"message": mark}}]
 
     def run(name="juku-reviewer", app=REVIEWER_APP_ID, status="completed", conclusion="success", ago=5, sha=head):
         return {"name": name, "app": {"id": app}, "head_sha": sha, "status": status,
                 "conclusion": conclusion, "started_at": _stamp_ago(ago)}
 
-    def routes(commit=marked, parent=below, page1=None, verify=None, read=None, read_latest=None, status=200,
+    def routes(commit=marked, parent=below, verify=None, read=None, read_latest=None, status=200,
                parent_status=200):
         return [
             (r"/commits/%s$" % head, status, commit),
             (r"/commits/%s$" % beneath, parent_status, parent),
-            (r"/pulls/7/commits\?per_page=100&page=1$", 200, pr_commits if page1 is None else page1),
-            (r"/pulls/7/commits\?per_page=100&page=[23]$", 200, []),
             (r"check_name=verify&filter=all&per_page=100$", 200,
              {"check_runs": [run(name="verify")] if verify is None else verify}),
             (r"check_name=juku-reviewer&app_id=%d&filter=all&per_page=100$" % REVIEWER_APP_ID, 200,
@@ -3710,9 +3704,13 @@ def _preflight_cases(reads):
         ("a fork's head", H, pr(head={"sha": head, "repo": {"full_name": "Evil/zed"}}), {}, False),
         ("a pull request GitHub cannot find", H, [(r"/pulls/7$", 404, {"message": "Not Found"})], {}, False),
         ("a ready commit with its own check passed and no read", P, routes(), {}, True),
-        ("a head that is no ready mark", P, routes(commit=reads._commit(RUN_SECRET, sha=head, parents=(beneath,)), page1=[pr_commits[0], {"sha": head, "commit": {"message": RUN_SECRET}}]), {}, False),
+        ("a head that is no ready mark", P, routes(commit=reads._commit(RUN_SECRET, sha=head, parents=(beneath,))), {}, False),
         ("a ready mark that changed files", P, routes(commit=dict(marked, commit=dict(marked["commit"], tree={"sha": "other"}))), {}, False),
-        ("an earlier commit that carries the mark", P, routes(page1=[{"sha": "e" * 40, "commit": {"message": mark}}, pr_commits[1]]), {}, False),
+        # A second round: the first mark was read and left findings, a fix followed, and the
+        # new mark names the fix. The first mark is still in the history; nothing asks.
+        ("a second round: an earlier mark was read, then a fix, then a new mark", P,
+         routes(parent=reads._commit("a fix", sha=beneath, parents=("e" * 40,)),
+                read=[run(conclusion="failure", sha="e" * 40)]), {}, True),
         ("its own check never run", P, routes(verify=[]), {}, False),
         ("its own check failed", P, routes(verify=[run(name="verify", conclusion="failure")]), {}, False),
         ("a clean read already on it", P, routes(read=[run()]), {}, False),
@@ -3760,9 +3758,9 @@ def _check_preflight_run(product=None, quiet=False):
     if not bad:
         say("ok: the four steps that decide whether a read is paid for were run on %d states (what was typed "
             "wrong, a product the README does not list, a draft, a closed or moved head, a fork, no mark, a "
-            "mark that changed files or a mark elsewhere, no passing check of its own, a clean or failing "
-            "read, a read going, ended or lost, a verdict hidden behind a newer run), came out as the rules "
-            "say in each, and printed nothing the product holds" % len(_preflight_cases(reads)))
+            "mark that changed files, a second round above an earlier mark, no passing check of its own, a "
+            "clean or failing read, a read going, ended or lost, a verdict hidden behind a newer run), came "
+            "out as the rules say in each, and printed nothing the product holds" % len(_preflight_cases(reads)))
     return bad
 
 
@@ -3779,6 +3777,9 @@ PREFLIGHT_LOOSENINGS = (
     ("a failed answer taken for an answer", lambda t: t.replace("curl -fsS", "curl -sS", 1)),
     ("`again` ignored", lambda t: t.replace('if [ "$AGAIN" = "true" ]; then', "if false; then", 1)),
     ("`again` always on", lambda t: t.replace('if [ "$AGAIN" = "true" ]; then', "if true; then", 1)),
+    ("the pull request's earlier commits asked about again", lambda t: t.replace(
+        '          api "commits/$parent" > "$t/parent.json"\n',
+        '          api "commits/$parent" > "$t/parent.json"\n          api "pulls/$PR/commits?per_page=100&page=1" > "$t/earlier.json"\n', 1)),
     ("another owner's product let through", lambda t: re.sub(r'^( +)\[\[ "\$REPO" =~ [^\n]*\n', r'\1true\n', t, count=1, flags=re.M)),
     ("a pull request named in words let through", lambda t: t.replace('[[ "$PR" =~ ^[1-9][0-9]{0,6}$ ]]', "true", 1)),
     ("a short commit let through", lambda t: t.replace('[[ "$SHA" =~ ^[0-9a-f]{40}$ ]]', "true", 1)),
@@ -3833,7 +3834,14 @@ ASK_HOLDS = (
     ('"https://api.github.com/installation/repositories"', "the token's reach asked of GitHub"),
     ('if [ "$reach" != "$REPO" ]; then', "a token reaching past the one product refused"),
     ('echo "::add-mask::$tok"', "the token masked in the log"),
-    ('products=$(python3 -I product-reads/reads.py list README.md)', "the products read from the README by the one parser"),
+    ('products=$(python3 -I product-reads/reads.py list README.md) || { echo "::error::the README\'s product list could not be read: $products"; exit 1; }',
+     "the products read from the README by the one parser, and why not said when it cannot be read"),
+    ('inst=$(curl -sS --max-time 20 -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \\\n'
+     '              "https://api.github.com/repos/$REPO/installation" | jq -r \'.id // empty\') || inst=""',
+     "one product's installation lookup failing without ending the loop"),
+    ('reach=$(curl -sS --max-time 20 -H "Authorization: token $tok" -H "Accept: application/vnd.github+json" \\\n'
+     '              "https://api.github.com/installation/repositories" | jq -r \'[.repositories[].full_name] | join(",")\') || reach=""',
+     "one product's reach lookup failing without ending the loop"),
     ('for REPO in $products; do', "every product the README lists, and no other"),
     ('if [ "$DISPATCH" = "true" ]; then flag="--dispatch"; fi', "an ask only when one was asked for"),
     ('[[ "$DISPATCH" =~ ^(true|false)$ ]] || { echo "::error::dispatch is true or false"; exit 1; }', "dispatch typed true or false"),
@@ -4270,6 +4278,228 @@ def _check_kit_loosenings():
     if not bad:
         print("ok: each of %d loosenings of the starter kit was applied to the real file and refused"
               % len(KIT_LOOSENINGS))
+    return bad
+
+
+# THE ASKER'S SHELL, RUN. It promises that one product's trouble does not stop the others
+# being looked at, and the first draft did not keep it: under `set -e` and `pipefail` a
+# curl that timed out ended the whole loop. Text pins cannot see that, so the step is
+# run here against a GitHub that answers from a scenario, one product at a time failing
+# in each way it can: its installation lookup timing out, no token minted, a token wider
+# than asked, a token that reaches a second repository, the program failing. Each must
+# leave the others asked and the job red; and the App's key must never reach the program.
+ASK_STEP = "Look at each product and ask"
+STUB_ASK_CURL = r"""#!/usr/bin/env python3
+import json, os, re, sys
+args = sys.argv[1:]
+scenario = json.loads(os.environ["ASK_SCENARIO"])
+url = next(a for a in args if a.startswith("https://"))
+def header(name):
+    for i, a in enumerate(args):
+        if a == "-H" and args[i + 1].lower().startswith(name.lower() + ":"):
+            return args[i + 1].split(":", 1)[1].strip()
+    return ""
+log = open(os.environ["ASK_LOG"], "a")
+m = re.match(r"https://api.github.com/repos/(Adonis80/[^/]+)/installation$", url)
+if m:
+    if m.group(1) in scenario.get("timeout", []):
+        sys.exit(28)
+    print(json.dumps({"id": 1}))
+    sys.exit(0)
+if url.endswith("/access_tokens"):
+    body = json.loads(args[args.index("-d") + 1])
+    name = body["repositories"][0]
+    full = "Adonis80/" + name
+    if full in scenario.get("mint_timeout", []):
+        sys.exit(28)
+    if full in scenario.get("garbled", []):
+        print("<html>not json at all")
+        sys.exit(0)
+    if full in scenario.get("notoken", []):
+        print(json.dumps({"message": "no"}))
+        sys.exit(0)
+    perms = {"checks": "read", "contents": "read", "pull_requests": "read", "metadata": "read"}
+    if full in scenario.get("wide", []):
+        perms["issues"] = "write"
+    if full in scenario.get("badperms", []):
+        perms = "oops"
+    print(json.dumps({"token": "tok-" + name, "permissions": perms}))
+    sys.exit(0)
+if url.endswith("/installation/repositories"):
+    name = header("Authorization").split("tok-", 1)[-1]
+    if "Adonis80/" + name in scenario.get("reach_timeout", []):
+        sys.exit(28)
+    reach = scenario.get("reach", {}).get("Adonis80/" + name, ["Adonis80/" + name])
+    print(json.dumps({"repositories": [{"full_name": r} for r in reach]}))
+    sys.exit(0)
+if url.endswith("/installation/token") and "DELETE" in args:
+    log.write("REVOKED %s\n" % header("Authorization").split(" ", 1)[-1])
+    sys.exit(0)
+sys.stderr.write("the stub does not recognise: " + url + "\n")
+sys.exit(97)
+"""
+STUB_ASK_OPENSSL = """#!/usr/bin/env bash
+case "$1" in
+  base64) base64 -w0 ;;
+  dgst) cat > /dev/null; printf 'signature' ;;
+  *) exit 97 ;;
+esac
+"""
+STUB_ASK_PYTHON = """#!/usr/bin/env bash
+case "$*" in
+  *ask.py*)
+    repo=$(printf '%s' "$*" | sed -E 's/.*ask\\.py ([^ ]+).*/\\1/')
+    printf 'ASKED %s | KEY=%s ID=%s TOKEN=%s APPID=%s FLAGS=%s\\n' "$repo" "${APP_KEY:-unset}" "${APP_ID:-unset}" "${PRODUCT_TOKEN:-unset}" "${REVIEWER_APP_ID:-unset}" "$(printf '%s' "$*" | grep -o -- '--dispatch' || true)" >> "$ASK_LOG"
+    case " $ASK_FAILS " in *" $repo "*) exit 1 ;; esac
+    exit 0 ;;
+  *) exec "$REAL_PY" "$@" ;;
+esac
+"""
+ASK_README = ("# t\n\n## Products under this rulebook\n\n- **A** — `https://github.com/Adonis80/a` one.\n"
+              "- **B** — `https://github.com/Adonis80/b` two.\n- **C** — `https://github.com/Adonis80/c` three.\n\n## Next\n")
+ASK_BROKEN_README = "# t\n\n## Products under this rulebook\n\nNone listed here.\n"
+
+
+def _run_ask(script, scenario=None, fails="", readme=ASK_README, env=None):
+    """(exit status, printed, the log the stubs kept) for the asker's step against a scenario."""
+    with tempfile.TemporaryDirectory() as d:
+        binned, work, temp = (os.path.join(d, n) for n in ("bin", "work", "tmp"))
+        for path in (binned, work, temp, os.path.join(work, "product-reads")):
+            os.makedirs(path)
+        for name, body in (("curl", STUB_ASK_CURL), ("openssl", STUB_ASK_OPENSSL), ("python3", STUB_ASK_PYTHON)):
+            with open(os.path.join(binned, name), "w", encoding="utf-8") as f:
+                f.write(body)
+            os.chmod(os.path.join(binned, name), 0o755)
+        with open(os.path.join(work, "README.md"), "w", encoding="utf-8") as f:
+            f.write(readme)
+        with open("product-reads/reads.py", encoding="utf-8") as src, \
+                open(os.path.join(work, "product-reads", "reads.py"), "w", encoding="utf-8") as dst:
+            dst.write(src.read())
+        log = os.path.join(d, "log")
+        e = dict(os.environ)
+        e.update({"PATH": binned + os.pathsep + os.environ.get("PATH", ""), "REAL_PY": sys.executable,
+                  "RUNNER_TEMP": temp, "ASK_LOG": log, "ASK_SCENARIO": json.dumps(scenario or {}),
+                  "ASK_FAILS": fails, "APP_ID": str(REVIEWER_APP_ID), "APP_KEY": "KEY-MATERIAL",
+                  "GH_TOKEN": "this-repository", "DISPATCH": "false"})
+        e.update(env or {})
+        try:
+            p = subprocess.run(["bash", "-c", script], cwd=work, env=e, capture_output=True, text=True, timeout=120)
+        except (OSError, subprocess.SubprocessError) as exc:
+            return None, "could not be run (%s)" % exc, ""
+        try:
+            kept = open(log, encoding="utf-8").read()
+        except OSError:
+            kept = ""
+        return p.returncode, p.stdout + p.stderr, kept
+
+
+def _check_ask_run(ask=None, quiet=False):
+    """The asker's step, run against a GitHub that fails one product at a time."""
+    say = (lambda *a: None) if quiet else print
+    try:
+        ask = _read(ASK_WORKFLOW) if ask is None else ask
+    except OSError as e:
+        say("  wiring: %s" % e)
+        return 1
+    script = _step_script(ask, ASK_STEP)
+    if script is None:
+        say("  wiring: %s has no `%s` step this build can run" % (ASK_WORKFLOW, ASK_STEP))
+        return 1
+    bad = 0
+    repos = ["Adonis80/a", "Adonis80/b", "Adonis80/c"]
+
+    def fault(what):
+        nonlocal bad
+        say("  wiring: %s, run: %s" % (ASK_WORKFLOW, what))
+        bad += 1
+
+    cases = (
+        ("every product looked at and asked", {}, "", ASK_README, {}, 0, repos, 3),
+        ("one product's installation lookup timing out", {"timeout": ["Adonis80/a"]}, "", ASK_README, {}, 1, repos[1:], 2),
+        ("one product that mints no token", {"notoken": ["Adonis80/b"]}, "", ASK_README, {}, 1, [repos[0], repos[2]], 2),
+        ("one product whose mint times out", {"mint_timeout": ["Adonis80/b"]}, "", ASK_README, {}, 1, [repos[0], repos[2]], 2),
+        ("one product whose mint answers with something that is not JSON", {"garbled": ["Adonis80/b"]}, "", ASK_README, {}, 1, [repos[0], repos[2]], 2),
+        ("one product whose grant cannot be read", {"badperms": ["Adonis80/b"]}, "", ASK_README, {}, 1, [repos[0], repos[2]], 3),
+        ("one product whose reach lookup times out", {"reach_timeout": ["Adonis80/b"]}, "", ASK_README, {}, 1, [repos[0], repos[2]], 3),
+        ("one product whose token is wider than asked", {"wide": ["Adonis80/b"]}, "", ASK_README, {}, 1, [repos[0], repos[2]], 3),
+        ("one product whose token reaches a second repository",
+         {"reach": {"Adonis80/b": ["Adonis80/b", "Adonis80/other"]}}, "", ASK_README, {}, 1, [repos[0], repos[2]], 3),
+        ("the program failing for one product", {}, "Adonis80/b", ASK_README, {}, 1, repos, 3),
+        ("a README list that cannot be read", {}, "", ASK_BROKEN_README, {}, 1, [], 0),
+        ("asking not chosen", {}, "", ASK_README, {"DISPATCH": "false"}, 0, repos, 3),
+        ("asking chosen", {}, "", ASK_README, {"DISPATCH": "true"}, 0, repos, 3),
+        ("a choice that is neither", {}, "", ASK_README, {"DISPATCH": "maybe"}, 1, [], 0),
+        ("no App key", {}, "", ASK_README, {"APP_KEY": ""}, 1, [], 0),
+    )
+    for what, scenario, fails, readme, env, code_want, asked_want, revoked_want in cases:
+        code, printed, kept = _run_ask(script, scenario, fails, readme, env)
+        asked = [l.split()[1] for l in kept.splitlines() if l.startswith("ASKED ")]
+        revoked = [l for l in kept.splitlines() if l.startswith("REVOKED ")]
+        if code is None:
+            fault("%s: %s" % (what, printed))
+            continue
+        if (code != 0) != bool(code_want):
+            fault("%s: came out %s where it must come out %s" % (what, "green" if code == 0 else "red", "red" if code_want else "green"))
+        if asked != asked_want:
+            fault("%s: asked %s, and must ask %s" % (what, asked, asked_want))
+        if len(revoked) != revoked_want:
+            fault("%s: revoked %d token(s), and must revoke %d: a token is never left live" % (what, len(revoked), revoked_want))
+        for line in kept.splitlines():
+            if line.startswith("ASKED "):
+                repo = line.split()[1]
+                if "KEY=unset ID=unset" not in line or "TOKEN=tok-%s " % repo.split("/")[1] not in line \
+                        or "APPID=%d" % REVIEWER_APP_ID not in line:
+                    fault("%s: the program was handed the App's key or id, or the wrong token: %s" % (what, line))
+                if ("--dispatch" in line) != (env.get("DISPATCH") == "true"):
+                    fault("%s: the program was told to ask %s" % (what, "when it should not" if "--dispatch" in line else "not to when it should"))
+    code, printed, kept = _run_ask(script, {}, "", ASK_BROKEN_README, {})
+    if "could not be read" not in printed:
+        fault("a README list that cannot be read goes unexplained in the log")
+    if not bad:
+        say("ok: the asker's shell was run against a GitHub failing one product at a time (a timeout, no token, "
+            "a wider token, a second repository, the program failing, a README that cannot be read): the "
+            "others are still looked at, the job is red, every token is revoked, the App's key never reaches "
+            "the program, and nothing is asked unless it was chosen")
+    return bad
+
+
+ASK_RUN_LOOSENINGS = (
+    ("one product's timeout ending the loop", lambda t: t.replace(""" | jq -r '.id // empty') || inst=\"\"""", """ | jq -r '.id // empty')""", 1)),
+    ("a failed reach lookup ending the loop", lambda t: t.replace(' || reach=""', "", 1)),
+    ("a failed mint ending the loop", lambda t: t.replace(' || : > "$RUNNER_TEMP/mint.json"', "", 1)),
+    ("an unreadable grant ending the loop", lambda t: t.replace(' || granted=""', "", 1)),
+    ("an unreadable token ending the loop", lambda t: t.replace(' || tok=""', "", 1)),
+    ("an unreadable README list said nothing", lambda t: t.replace(""" || { echo "::error::the README's product list could not be read: $products"; exit 1; }""", "", 1)),
+    ("the first product's trouble stopping the rest", lambda t: t.replace("""or GitHub did not answer"; failed=1; continue; }""", """or GitHub did not answer"; exit 1; }""", 1)),
+    ("a wider token let through", lambda t: t.replace('if [ "$granted" != "$want" ]; then', "if false; then", 1)),
+    ("a second repository let through", lambda t: t.replace('if [ "$reach" != "$REPO" ]; then', "if false; then", 1)),
+    ("the App's key left in the program's hands", lambda t: t.replace("env -u APP_KEY -u APP_ID PRODUCT_TOKEN=", "env PRODUCT_TOKEN=", 1)),
+    ("a failed ask forgotten", lambda t: t.replace('[ "$rc" -eq 0 ] || failed=1', "true", 1)),
+    ("a token left live after the ask", lambda t: t.replace("            revoke\n            [ \"$rc\" -eq 0 ] || failed=1", "            [ \"$rc\" -eq 0 ] || failed=1", 1)),
+    ("asking whatever was chosen", lambda t: t.replace('if [ "$DISPATCH" = "true" ]; then flag="--dispatch"; fi', 'flag="--dispatch"', 1)),
+    ("a red job turned green", lambda t: t.replace('[ "$failed" -eq 0 ]\n', 'true\n', 1)),
+)
+
+
+def _check_ask_run_loosenings():
+    """Every fault above, put back into the asker's shell, must be seen by running it."""
+    try:
+        ask = _read(ASK_WORKFLOW)
+    except OSError as e:
+        print("  wiring: %s" % e)
+        return 1
+    bad = 0
+    for what, loosen in ASK_RUN_LOOSENINGS:
+        changed = loosen(ask)
+        if changed == ask:
+            print("  wiring: the loosening '%s' no longer applies to %s — rewrite it against the "
+                  "file as it stands, or it proves nothing" % (what, ASK_WORKFLOW))
+            bad += 1
+        elif _check_ask_run(ask=changed, quiet=True) == 0:
+            print("  wiring: %s with %s passes the run of its own shell — the case for it is gone" % (ASK_WORKFLOW, what))
+            bad += 1
+    if not bad:
+        print("ok: each of %d faults put back into the asker's shell was seen by running it" % len(ASK_RUN_LOOSENINGS))
     return bad
 
 
@@ -4997,6 +5227,8 @@ def _selftest():
     failed += _check_preflight_loosenings()
     failed += _check_ask_wiring()
     failed += _check_ask_loosenings()
+    failed += _check_ask_run()
+    failed += _check_ask_run_loosenings()
     failed += _check_kit()
     failed += _check_kit_loosenings()
     failed += _check_board_loosenings()

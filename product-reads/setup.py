@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 """Set a new product up for the independent reviewer (decision 0013, #148).
 
-    setup.py NAME --commit SHA [--apply]
+    setup.py NAME --commit SHA [--apply] [--replace-gate] [--display NAME] [--about LINE]
     setup.py --selftest
 
 NAME is the product's repository under Adonis80. SHA is a commit of the rulebook
 (Adonis80/how-we-build) that is on main, which is where the starter kit is copied
-from: one reviewed commit, never "the latest". Without --apply it only reads, and
-says what it would do. With --apply it makes the repository if there is none,
+from: one reviewed commit, never "the latest". It is on main when the merge base of
+it and main is itself, which is asked of GitHub's compare and decided from the merge
+base, not from the word `status`, which describes main's position and not the
+commit's. Before the first real use, run it without --apply twice: once with an old
+commit of main, which must be accepted, and once with the head of an unmerged pull
+request, which must be refused. Without --apply it only reads, and says what it
+would do. With --apply it makes the repository if there is none,
 or takes over the one that is, and opens one pull request in it, on the branch
 `juku-kit`, that carries the kit: the gate, the wake, `verify`, and a starter
 AGENTS.md and roadmap.json where it has none. It never merges anything, and it is
@@ -24,12 +29,15 @@ WHAT IT DOES NOT DO: join the rulebook's map. The README's line, the board's row
 and the board's product list are one pull request in the rulebook, and the board
 draws four rows today (decision 0007 §1, board/build.py's own fixtures), so a
 fifth product's row needs the board to change first. The script prints the lines
-that pull request carries, and says so, and changes nothing there.
+that pull request carries, from --display and --about, and changes nothing there.
 
 KIT FILES. `owned` ones are the gate, and are made to match the kit exactly: a
-gate that differs from the rulebook's is not the rulebook's gate. `starter` ones
-become the product's own after the first install, so they are written only where
-there is no file, and a product's own `verify` is never overwritten.
+gate that differs from the rulebook's is not the rulebook's gate. But a product that
+already has a gate of its own, with its own command line, would be broken by having
+it replaced, so a differing file stops the script before anything is written, and
+`--replace-gate` is the word that it should be replaced. `starter` ones become the
+product's own after the first install, so they are written only where there is no
+file, and a product's own `verify` is never overwritten.
 """
 import base64
 import json
@@ -78,7 +86,10 @@ def kit_from(call, sha):
         raise Refused("the commit must be named in full: forty lower-case hex characters")
     status, cmp = call("GET", "/repos/%s/compare/%s...main" % (RULEBOOK, sha))
     _need(status, "the rulebook's compare")
-    if (cmp or {}).get("status") not in ("identical", "behind"):
+    # A commit is on main exactly when the merge base of it and main is itself. The
+    # `status` word is main's position relative to the commit, so an old commit of main
+    # says `ahead` and an unmerged one that descends from main says `behind`.
+    if ((cmp or {}).get("merge_base_commit") or {}).get("sha") != sha:
         raise Refused("that commit is not on the rulebook's main; the kit is copied from a "
                       "commit that has passed its gate, never a branch's")
     files = {}
@@ -150,7 +161,13 @@ def settled(call, name, pause, tries=6):
     raise Refused("the repository was made, but GitHub did not show it with a main; run this again")
 
 
-def run(call, name, sha, apply, say=print, pause=2):
+def today():
+    import datetime
+    d = datetime.date.today()
+    return "%d %s %d" % (d.day, d.strftime("%B"), d.year)
+
+
+def run(call, name, sha, apply, say=print, pause=2, replace_gate=False, display=None, about=None):
     """Do it, or say what would be done. Returns the number of writes made."""
     if not NAME.match(name) or name.endswith(".git"):
         raise Refused("a product's name is letters, digits, dots, dashes and underscores")
@@ -175,11 +192,20 @@ def run(call, name, sha, apply, say=print, pause=2):
         else wanted(call, name, kit, "main")
     for target, _, why in changes:
         say("  %s: %s" % (target, why))
+    foreign = [t_ for t_, _, why in changes if why == "differs from the kit"]
+    if foreign and not replace_gate:
+        raise Refused("%s already has its own %s, which differs from the kit's; replacing a gate "
+                      "can break the check that uses it, so nothing was written. If it should be "
+                      "replaced, say so with --replace-gate" % (name, " and ".join(foreign)))
     if not changes:
         say("the kit is already on main; nothing to open")
+        for line in join_lines(name, display or name, about or "<one line on what it is for>", today()):
+            say(line)
         return writes
     if not apply:
         say("nothing was written (without --apply)")
+        for line in join_lines(name, display or name, about or "<one line on what it is for>", today()):
+            say(line)
         return writes
     status, main_ref = call("GET", "/repos/%s/%s/git/ref/heads/main" % (OWNER, name))
     _need(status, "main's head")
@@ -220,6 +246,8 @@ def run(call, name, sha, apply, say=print, pause=2):
         _need(status, "opening the pull request", (201,))
         writes += 1
         say("opened pull request %s" % made["number"])
+    for line in join_lines(name, display or name, about or "<one line on what it is for>", today()):
+        say(line)
     return writes
 
 
@@ -228,8 +256,39 @@ def run(call, name, sha, apply, say=print, pause=2):
 class Fake:
     """GitHub, in memory, for the calls this script makes. Counts every write."""
 
-    def __init__(self, kit_dir, ancestor="behind", repo=None, files=None, late=0, made_as=None):
-        self.kit_dir, self.ancestor, self.repo = kit_dir, ancestor, repo
+    # The rulebook's history, as a graph of commits and their parents. main's tip is "2".
+    # `a` is an old commit of main; `9` is an unmerged commit that descends from main's tip
+    # (a pull request's head, say); `8` branched off long ago and main has moved on since.
+    GRAPH = {"a" * 40: None, "1" * 40: "a" * 40, "2" * 40: "1" * 40, "9" * 40: "2" * 40, "8" * 40: "a" * 40}
+    TIP = "2" * 40
+
+    def compare(self, sha):
+        """GitHub's compare of `sha...main`: `status` is where MAIN stands against `sha`, the
+        base, so an old commit of main is answered `ahead`, and an unmerged one that descends
+        from main is answered `behind`: the opposite of how it reads."""
+        if sha not in self.GRAPH:
+            return 404, None
+
+        def up(commit):
+            chain = []
+            while commit:
+                chain.append(commit)
+                commit = self.GRAPH[commit]
+            return chain
+
+        on_main, mine = up(self.TIP), up(sha)
+        if sha == self.TIP:
+            status, base = "identical", sha
+        elif sha in on_main:
+            status, base = "ahead", sha
+        elif self.TIP in mine:
+            status, base = "behind", self.TIP
+        else:
+            status, base = "diverged", next(c for c in mine if c in on_main)
+        return 200, {"status": status, "merge_base_commit": {"sha": base}}
+
+    def __init__(self, kit_dir, repo=None, files=None, late=0, made_as=None):
+        self.kit_dir, self.repo = kit_dir, repo
         self.late, self.made_as = late, made_as          # looks before it shows; the shape it is made in
         self.files = dict(files or {})          # product main: path -> text
         self.branch = None                      # None, or {path: text}
@@ -247,7 +306,7 @@ class Fake:
         path, _, query = path.partition("?")
         owned = "/repos/%s/" % OWNER
         if path.startswith("/repos/%s/compare/" % RULEBOOK):
-            return 200, {"status": self.ancestor}
+            return self.compare(path.split("/compare/", 1)[1].split("...", 1)[0])
         if path.startswith("/repos/%s/contents/product-reads/kit/" % RULEBOOK):
             return 200, self._entry(self._kit(path.rsplit("/", 1)[1]))
         if method == "GET" and re.match(r"^/repos/%s/[^/]+$" % OWNER, path):
@@ -297,10 +356,10 @@ def _selftest():
         if got != expected:
             bad.append("%s: expected %r, got %r" % (what, expected, got))
 
-    def attempt(fake, name="alpha", commit=sha, apply=True):
+    def attempt(fake, name="alpha", commit=sha, apply=True, **kw):
         said = []
         try:
-            n = run(fake, name, commit, apply, say=said.append, pause=0)
+            n = run(fake, name, commit, apply, say=said.append, pause=0, **kw)
             return n, " | ".join(said)
         except Refused as why:
             return None, str(why)
@@ -341,24 +400,37 @@ def _selftest():
 
     repo = {"owner": {"login": OWNER}, "full_name": "%s/alpha" % OWNER, "private": True, "archived": False,
             "default_branch": "main"}
-    # Taken over, with the gate stale and a verify of the product's own: the gate is
-    # replaced, the product's verify and AGENTS.md are left alone.
-    mine = {"review-gate.py": "old", ".github/workflows/verify.yml": "name: verify  # theirs\n",
+    # Taken over, with a gate of its own that differs from the kit's, and a verify and an
+    # AGENTS.md of its own. Replacing the gate could break the check that runs it, so the
+    # script stops before it writes anything, and says which file.
+    mine = {"review-gate.py": "its own gate\n", ".github/workflows/verify.yml": "name: verify  # theirs\n",
             "AGENTS.md": "Rulebook: x\n", "roadmap.json": "{}"}
     fake = Fake(kit_dir, repo=repo, files=mine)
-    fake.writes.clear()
     n, said = attempt(fake)
-    want("a takeover writes the missing gate files and the stale one",
+    want("a product with a gate of its own is not given another", (n, fake.writes, fake.branch), (None, [], None))
+    want("and is told which file", "review-gate.py" in said and "--replace-gate" in said, True)
+    n, said = attempt(Fake(kit_dir, repo=repo, files=mine), apply=False)
+    want("the dry run says so too", n, None)
+    # With the word, the gate is replaced and the product's own verify, AGENTS.md and roadmap are not.
+    fake = Fake(kit_dir, repo=repo, files=mine)
+    n, said = attempt(fake, replace_gate=True)
+    want("told to replace it, the gate is replaced and the missing gate files written",
          sorted(fake.branch), [".github/workflows/gate.yml", ".github/workflows/wake.yml", "review-gate.py"])
     want("the product's own verify, AGENTS.md and roadmap are untouched",
          [t for t in fake.branch if t in ("AGENTS.md", "roadmap.json", ".github/workflows/verify.yml")], [])
+    # A product with no gate yet is taken over without the word.
+    bare = {k: v for k, v in mine.items() if k != "review-gate.py"}
+    fake = Fake(kit_dir, repo=repo, files=bare)
+    n, said = attempt(fake)
+    want("a product with no gate yet is taken over", (n is not None, sorted(fake.branch)),
+         (True, [".github/workflows/gate.yml", ".github/workflows/wake.yml", "review-gate.py"]))
     # Everything already on main: nothing to open.
     full = {t: Fake(kit_dir)._kit(s) for s, t, _ in KIT}
     fake = Fake(kit_dir, repo=repo, files=full)
     n, said = attempt(fake)
     want("a product that has the kit gets no pull request", (n, fake.writes, fake.prs), (0, [], []))
     # An open pull request is reused, not doubled.
-    fake = Fake(kit_dir, repo=repo, files=mine)
+    fake = Fake(kit_dir, repo=repo, files=bare)
     fake.branch, fake.prs = {}, [{"number": 3}]
     n, said = attempt(fake)
     want("an open pull request is reused", (len(fake.prs), "pull request 3 is open already" in said), (1, True))
@@ -372,8 +444,9 @@ def _selftest():
         ("an empty name", attempt(Fake(kit_dir), name="")),
         ("a short commit", attempt(Fake(kit_dir), commit="abc123")),
         ("a branch name as the commit", attempt(Fake(kit_dir), commit="main")),
-        ("a commit not on main", attempt(Fake(kit_dir, ancestor="ahead"))),
-        ("a commit that diverged", attempt(Fake(kit_dir, ancestor="diverged"))),
+        ("an unmerged commit that descends from main, which GitHub answers `behind`", attempt(Fake(kit_dir), commit="9" * 40)),
+        ("a commit that branched off and diverged", attempt(Fake(kit_dir), commit="8" * 40)),
+        ("a commit GitHub does not know", attempt(Fake(kit_dir), commit="7" * 40)),
         ("another owner's repository", attempt(Fake(kit_dir, repo=dict(repo, owner={"login": "Evil"})))),
         ("a public repository", attempt(Fake(kit_dir, repo=dict(repo, private=False)))),
         ("an archived repository", attempt(Fake(kit_dir, repo=dict(repo, archived=True)))),
@@ -382,10 +455,59 @@ def _selftest():
     for what, (n, said) in refusals:
         if n is not None:
             bad.append("%s was let through" % what)
-    fakes = [Fake(kit_dir, ancestor="ahead"), Fake(kit_dir, repo=dict(repo, private=False))]
-    for f in fakes:
-        attempt(f)
+    fakes = [Fake(kit_dir), Fake(kit_dir, repo=dict(repo, private=False))]
+    attempt(fakes[0], commit="9" * 40)
+    attempt(fakes[1])
     want("a refusal writes nothing", [f.writes for f in fakes], [[], []])
+    # A commit that IS on main is accepted, old or new, however GitHub words the compare.
+    for what, commit in (("an old commit of main", "a" * 40), ("a commit in the middle of main", "1" * 40),
+                         ("main's tip", "2" * 40)):
+        n, said = attempt(Fake(kit_dir), commit=commit)
+        want("%s is accepted" % what, n is not None, True)
+    want("the fake answers as GitHub does: `ahead` for an old commit of main, `behind` for an unmerged one",
+         (Fake(kit_dir).compare("a" * 40)[1]["status"], Fake(kit_dir).compare("9" * 40)[1]["status"],
+          Fake(kit_dir).compare("2" * 40)[1]["status"], Fake(kit_dir).compare("8" * 40)[1]["status"]),
+         ("ahead", "behind", "identical", "diverged"))
+
+    # The join lines are printed, on every road that succeeds, and carry what it was given.
+    for what, kwargs in (("a dry run", dict(apply=False)), ("an install", {}), ("a repeat", {})):
+        f = Fake(kit_dir)
+        if what == "a repeat":
+            attempt(f)
+        n, said = attempt(f, display="Alpha", about="A thing for people.", **kwargs)
+        want("%s prints the join lines" % what,
+             "build-board.yml's product list: Adonis80/alpha=Alpha" in said and "A thing for people." in said
+             and "board/build.py: 'Alpha' added to ROWS" in said, True)
+    # Asked without a name or a line, it says what is missing and does not invent one.
+    n, said = attempt(Fake(kit_dir), apply=False)
+    want("without a display name or a line it prints placeholders, not inventions",
+         "<one line on what it is for>" in said, True)
+
+    # The command line: a usage that is a usage, and no token is no run.
+    import contextlib
+    import io
+    out = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(out):
+            main(["setup.py", "--help"])
+    except SystemExit as stop:
+        want("--help exits 0", stop.code, 0)
+    want("the usage names the commit and the word for replacing a gate",
+         "--commit" in out.getvalue() and "--replace-gate" in out.getvalue() and "--apply" in out.getvalue(), True)
+    err = io.StringIO()
+    try:
+        with contextlib.redirect_stderr(err):
+            main(["setup.py"])
+        bad.append("no arguments ran")
+    except SystemExit as stop:
+        want("no arguments is an error, not a run", stop.code, 2)
+    saved = os.environ.pop("SETUP_TOKEN", None)
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            want("no token is no run", main(["setup.py", "alpha", "--commit", "a" * 40]), 2)
+    finally:
+        if saved is not None:
+            os.environ["SETUP_TOKEN"] = saved
 
     # The lines for the rulebook's join are exactly what the product reviewer's own
     # rules read, so a product joined by them is one it will read.
@@ -410,26 +532,32 @@ def _selftest():
         print("setup selftest failed: %d case(s)" % len(bad))
         return 1
     print("ok: the setup script makes or takes over a private repository, opens one pull request "
-          "with the kit, replaces only the gate, writes nothing twice, merges nothing, and refuses "
-          "a bad name, a commit not on main, and a repository that is not Adonis80's private main")
+          "with the kit, replaces a gate only when told, writes nothing twice, merges nothing, prints "
+          "the lines the rulebook's join carries, accepts a commit that is on main and refuses one that "
+          "is not (the fake answers from a commit graph, as GitHub's compare does), and refuses a bad "
+          "name and a repository that is not Adonis80's private main")
     return 0
 
 
 def main(argv):
     if argv[1:] == ["--selftest"]:
         return _selftest()
-    args = argv[1:]
-    apply = "--apply" in args
-    args = [a for a in args if a != "--apply"]
-    if len(args) != 3 or args[1] != "--commit":
-        print(__doc__.split("\n\n")[0])
-        return 2
+    import argparse
+    ap = argparse.ArgumentParser(prog="setup.py", description=__doc__.split("\n\n")[0])
+    ap.add_argument("name", help="the product's repository under %s" % OWNER)
+    ap.add_argument("--commit", required=True, help="a commit of the rulebook that is on main, in full")
+    ap.add_argument("--apply", action="store_true", help="write; without it, only read and say")
+    ap.add_argument("--replace-gate", action="store_true", help="replace a gate the product already has")
+    ap.add_argument("--display", help="the product's name as the board shows it")
+    ap.add_argument("--about", help="one line on what the product is for")
+    args = ap.parse_args(argv[1:])
     token = os.environ.get("SETUP_TOKEN", "")
     if not token:
         print("SETUP_TOKEN is not set; it is read from the environment and never printed")
         return 2
     try:
-        run(github(token), args[0], args[2], apply)
+        run(github(token), args.name, args.commit, args.apply, replace_gate=args.replace_gate,
+            display=args.display, about=args.about)
     except Refused as why:
         print("refused: %s" % why)
         return 1

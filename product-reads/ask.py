@@ -49,7 +49,7 @@ def _list(call, path):
     return out
 
 
-def ready_to_read(call, repo, number, sha, app_id, now):
+def ready_to_read(call, repo, sha, app_id, now):
     """None if this commit may be asked for now, else the rule's own words for why not."""
     def get(path):
         status, body = call("GET", "/repos/%s/%s" % (repo, path))
@@ -61,7 +61,7 @@ def ready_to_read(call, repo, number, sha, app_id, now):
         commit = get("commits/%s" % sha)
         parents = commit.get("parents") or []
         parent = get("commits/%s" % parents[0]["sha"]) if len(parents) == 1 else {}
-        reads.ready(commit, parent, _list(call, "/repos/%s/pulls/%s/commits" % (repo, number)), sha)
+        reads.ready(commit, parent, sha)
         reads.verified(get("commits/%s/check-runs?check_name=%s&filter=all&per_page=100" % (sha, reads.VERIFY)), sha)
         reads.unread(get("commits/%s/check-runs?check_name=%s&app_id=%s&filter=all&per_page=100"
                          % (sha, reads.REVIEWER_CHECK, app_id)), app_id, sha, now)
@@ -84,7 +84,7 @@ def candidates(call, repo, app_id, now):
         elif (head.get("repo") or {}).get("full_name") != repo:
             why = "a fork's pull request"
         else:
-            why = ready_to_read(call, repo, number, sha, app_id, now)
+            why = ready_to_read(call, repo, sha, app_id, now)
         if why is None:
             chosen.append((number, sha))
         else:
@@ -140,14 +140,9 @@ def _selftest():
             # Whatever repository is asked of, the same answers: so only the README's list,
             # and not a 404 from this fake, can stop a product that is not on it.
             path = re.sub(r"^/repos/[^/]+/[^/]+", "", path)
-            pr = {p["number"]: p for p in self.prs}
             sha_of = {p["sha"]: p for p in self.prs}
             if path == "/pulls":
                 return 200, [p["api"] for p in self.prs]
-            m = path.startswith("/pulls/") and path.endswith("/commits")
-            if m:
-                number = int(path.split("/")[-2])
-                return 200, pr[number]["commits"]
             tail = path.split("/commits/", 1)[-1]
             if tail == reads.BENEATH:
                 return 200, reads._commit("x", sha=reads.BENEATH, parents=())
@@ -170,7 +165,6 @@ def _selftest():
               "api": {"number": number, "draft": kw.get("draft", False),
                       "head": {"sha": sha, "repo": {"full_name": kw.get("fork", repo)}}},
               "commit": reads._commit(marked["message"], sha=sha, tree=marked["tree"]),
-              "commits": reads._pr("first", marked["message"], head=sha),
               reads.VERIFY: kw.get("verify", [reads._run(name=reads.VERIFY, sha=sha, ago=9)]),
               reads.REVIEWER_CHECK: kw.get("read", [])}
         return pr
@@ -212,6 +206,10 @@ def _selftest():
     n, api, said = go([make(20, draft=True), make(21), make(22, verify=[]), make(23)], dispatch_=True)
     want("only the ready ones among several", [d["inputs"]["pr"] for d in api.dispatched], ["21", "23"])
     want("the log counts what it left, by reason", "2 to ask, 2 left" in said and "a draft" in said, True)
+    # A second round: the first mark was read and left findings, on another commit, and a fix and a
+    # new mark followed. The new mark is asked for; nothing about earlier commits stands in its way.
+    n, api, said = go([make(40, read=[reads._run(sha="e" * 40, conclusion="failure")])], dispatch_=True)
+    want("a second round is asked for", [d["inputs"]["pr"] for d in api.dispatched], ["40"])
     # No pull requests at all is not an error.
     n, api, said = go([], dispatch_=True)
     want("no pull requests", (n, api.dispatched), (0, []))
