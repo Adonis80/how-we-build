@@ -26,6 +26,6 @@ Astra, round 3: one wording objection, taken verbatim; everything else closed. S
 ## Checked, not assumed
 
 - On the board pull request's branch, the board's own selftest passes with the card, and fails when the card drops an item awaiting his decision (run against a deliberately broken copy); that pull request carries the record. The real board with real roadmaps is unproved until a refresh runs after the merge.
-- `library/build-board.md` has 28 spare bytes; the clause for the card lives in `board/build.py`'s header and here.
+- `library/build-board.md` names the card in the board pull request, paying for it by trading out one history clause; the card's reasons live here.
 - Known gaps, accepted for the first month: an agreed transfer has no reader until the board card exists, and who sees its obstacle clear is not named; new evidence matching a rulebook pull request has no roadmap line to update, so it goes in that pull request.
 - Still unproved: whether sessions apply the shared test without lifting too much, or too little; one month's evidence will say.
