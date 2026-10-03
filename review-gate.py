@@ -2955,6 +2955,8 @@ path=${url%%\?*}
 case "$method $path" in
   "GET https://api.vercel.com/v13/deployments/$DOMAIN")
     [ "${FAKE_SERVING:-ok}" = ok ] || { reply 500 '{}'; exit 0; }
+    # A slow copy, READY at once, takes the domain only past the smoke's deadline.
+    if [ -f "$S/land" ] && [ "$now" -ge "$(cat "$S/land")" ]; then rm -f "$S/land"; serving=dpl_copy; echo dpl_copy > "$S/serving"; fi
     # A late copy builds while the domain is looked at, and takes it on the third look.
     if [ "$(cat "$S/copy")" = late ]; then
       looks=$(( $(cat "$S/looks" 2>/dev/null || echo 0) + 1 )); echo "$looks" > "$S/looks"
@@ -2975,7 +2977,8 @@ case "$method $path" in
           [ "$TARGET" = production ] || refuse "a production copy made on a preview run"
           [ "$(cat "$S/new")" = READY ] || refuse "a copy of a deployment that is not READY"
           [ "${FAKE_PROMOTE:-ok}" = ok ] || { reply 400 '{"error":{"code":"bad_request"}}'; exit 0; }
-          echo "${FAKE_COPY:-READY}" > "$S/copy"
+          if [ "${FAKE_COPY:-READY}" = slow ]; then echo READY > "$S/copy"; echo $(( STARTED + 9 * 60 + 20 )) > "$S/land"
+          else echo "${FAKE_COPY:-READY}" > "$S/copy"; fi
           [ "${FAKE_COPY:-READY}" != READY ] || [ "${FAKE_DOMAIN:-pin}" = never ] || echo dpl_copy > "$S/serving"
           reply 200 '{"id":"dpl_copy","readyState":"QUEUED"}' ;;
       *) refuse "a deployment with no files" ;;
@@ -3069,6 +3072,10 @@ BOARD_DEPLOY_CASES = (
     # as it is cancelled, which is put back like any other.
     ("a copy that comes ready on the third look", {"FAKE_COPY": "late"}, 0, "dpl_copy", "READY",
      "live: dpl_copy, the copy of dpl_new", None),
+    # #139's second read, 3: READY, but given the domain only after the smoke
+    # gave up; the put-back waits for it rather than land first and be undone.
+    ("a READY copy the host gives the domain late", {"FAKE_COPY": "slow"}, 1, "dpl_before", "READY",
+     "rolled back: roadmap.juku.pro serves dpl_before", None),
     ("the copy fails to build", {"FAKE_COPY": "ERROR"}, 1, "dpl_before", "READY",
      "rolled back: roadmap.juku.pro serves dpl_before", "cancelled: dpl_copy"),
     ("the copy goes READY as it is cancelled", {"FAKE_COPY": "BUILDING", "FAKE_CANCEL": "late"}, 1, "dpl_before",
@@ -3179,6 +3186,10 @@ def _board_deploy_case(script, job, case):
             with open(os.path.join(fake, name), encoding="utf-8") as f:
                 return f.read().strip()
         log = p.stdout + p.stderr
+        # A slow copy still to land when the step ends takes the domain after it.
+        if os.path.exists(os.path.join(fake, "land")):
+            with open(os.path.join(fake, "serving"), "w", encoding="utf-8") as f:
+                f.write("dpl_copy\n")
         faults = []
         if state("refused"):
             faults.append("on '%s' made a call the host would refuse or the job would not have lived to "
@@ -3292,9 +3303,9 @@ def _check_board_wiring(board=None, product=None, readme=None, quiet=False):
             "repository's own pull requests and the reviewer's check run; it reads the %d products "
             "on the README's map with a token each, contents read alone, its grant and reach "
             "checked before anything is read; it checks out nothing of a pull request, uploads "
-            "nothing, and its deploy, run against a fake host on %d paths, promotes only a preview "
-            "it has smoked, cancels or deletes one that fails, and puts back what the domain served "
-            "on every red after the promote, inside the job's time"
+            "nothing, and its deploy, run against a fake host on %d paths, gives production only a "
+            "copy of a preview it has smoked, cancels or deletes one that fails, and on a red after "
+            "the copy cancels one still building and puts back what the domain served, inside the job's time"
             % (KEY_ENVIRONMENT, len(listed), len(BOARD_DEPLOY_CASES)))
     return bad
 
@@ -3320,6 +3331,7 @@ BOARD_LOOSENINGS = (
     ("nothing put back on a red", lambda t: t.replace("          trap cleanup EXIT\n", "", 1)),
     ("a refused rollback taken as done", lambda t: t.replace('[[ "$code" =~ ^2 ]] || { [ "$code" = 409 ] && serves "$before"; } || {', 'true || {', 1)),
     ("a building copy left to take the domain", lambda t: t.replace("                    READY|ERROR|CANCELED) ;;\n", "                    *) ;;\n", 1)),
+    ("a READY copy's landing not waited for", lambda t: t.replace('for _ in 1 2 3 4 5 6; do serves "$copy" && break; sleep 10; done', "true", 1)),
     ("a copy READY at its cancel left on the domain", lambda t: t.replace("                         READY) ;;\n", "                         READY) exit 1 ;;\n", 1)),
     ("a rollback never confirmed", lambda t: t.replace('serves "$before" && {', "true && {", 1)),
     ("a leaked board asked again", lambda t: t.replace('if grep -q "data-board" <<< "$body"; then return 2; fi', "if false; then return 2; fi", 1)),
