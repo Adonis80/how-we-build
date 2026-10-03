@@ -85,15 +85,42 @@ run-name: Review ${{ inputs.repo }}#${{ inputs.pr }} at ${{ inputs.sha }}
 # requests write alone, and the token was revoked. That pull request cites the
 # run. The product's wake is still to be shown, as the paragraph above says.
 
+# BEFORE ANY READ IS PAID FOR (decision 0013, #148). A read is asked of a
+# product's pull request only when all of this holds, and a run that finds
+# otherwise stops, saying which, before the read:
+#   - the product is, exactly as typed, an entry in the README's "Products
+#     under this rulebook" on main, and that list reads cleanly: one repository
+#     to a line, none twice. The form no longer lists products, so a new one is
+#     a line in the README and no edit here;
+#   - the pull request is open, not a draft, and its head is the commit asked for;
+#   - that commit is the builder's ready mark: one commit that changes no file
+#     and names the commit beneath it, so a read is never asked of work that is
+#     still moving;
+#   - the product's own `verify` check passed on it;
+#   - it has not been read, is not being read, and did not fail to be read in a
+#     way nobody has looked at. `again` is a builder's word that someone has.
+# The rules are in product-reads/reads.py, once; this file asks it, and the
+# asker (ask-product-reads.yml) asks it before it dispatches anything.
+#
+# ONE READ OF A PULL REQUEST AT A TIME, NEVER CUT OFF. A second ask waits its
+# turn and then finds the first one's verdict and stops. GitHub keeps one
+# waiting run in a group and replaces it with a newer one; every ask in this
+# group is the same pull request's, so what a newer ask displaces is an older
+# ask for work the newer one has overtaken. review.yml's single group could not
+# say that, which is why it has none.
+#
+# BUILT, NOT YET RUN. review-gate.py holds each line of it against cases, and
+# product-reads/reads.py runs the rules against theirs. Neither is a dispatch.
+# The first live one after #148 lands is its proof, and nothing that describes
+# this route says more than that.
+
 on:
   workflow_dispatch:
     inputs:
       repo:
-        description: The product repository.
+        description: The product repository, OWNER/NAME, as the README's map of products lists it.
         required: true
-        type: choice
-        options:
-          - Adonis80/Hemz-OS
+        type: string
       pr:
         description: The pull request's number.
         required: true
@@ -102,13 +129,20 @@ on:
         description: The pull request's head commit, all forty characters.
         required: true
         type: string
+      again:
+        description: Ask again for a commit whose earlier read did not finish. Only a builder who has looked sets it.
+        required: false
+        type: boolean
+        default: false
 
 # The token GitHub hands this run reads this repository and nothing else. The
 # product is reached only with the App's token, minted below and scoped to it.
 permissions:
   contents: read
 
-# No `concurrency:` block, for review.yml's reason: every ask runs.
+concurrency:
+  group: review-product-${{ inputs.repo }}-${{ inputs.pr }}
+  cancel-in-progress: false
 
 jobs:
   review:
@@ -124,6 +158,7 @@ jobs:
           REPO: ${{ inputs.repo }}
           PR: ${{ inputs.pr }}
           SHA: ${{ inputs.sha }}
+          AGAIN: ${{ inputs.again }}
         run: |
           set -euo pipefail
           # The read's deadline counts from here, the job's first step (*Read it*).
@@ -132,19 +167,33 @@ jobs:
           # into one: a dispatch is typed, and a value pasted into a script is a
           # value that can run. review-gate.py refuses a build that pastes one.
           #
-          # WHICH PRODUCT, CHECKED HERE AND NOT ONLY IN THE FORM. The `choice`
-          # above is what the dispatch form offers; whether GitHub also refuses
-          # another value sent through its API is not something this file has
-          # watched happen, so the run refuses it itself, before any token is
-          # minted (#68's first read). review-gate.py holds this list to the
-          # form's options, and both to the README's map of products.
-          case "$REPO" in
-            Adonis80/Hemz-OS) ;;
-            *) echo "::error::$REPO is not a product this reviewer reads"; exit 1 ;;
-          esac
+          # THE SHAPE OF WHAT WAS TYPED, HERE; WHICH PRODUCT, IN THE NEXT STEP.
+          # The form takes any text, so every value is refused here unless it is
+          # exactly what it should be, before any token is minted (#68's first
+          # read). Whether the product is one this rulebook lists is asked of the
+          # README, never of a list kept in this file (decision 0013).
+          [[ "$REPO" =~ ^Adonis80/[A-Za-z0-9._-]+$ ]] || { echo "::error::the product must be named Adonis80/NAME"; exit 1; }
           [[ "$PR" =~ ^[1-9][0-9]{0,6}$ ]] || { echo "::error::the pull request must be named by its number"; exit 1; }
           [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::the commit must be named in full: forty lower-case hex characters"; exit 1; }
+          [[ "$AGAIN" =~ ^(true|false)$ ]] || { echo "::error::again is true or false"; exit 1; }
           echo "asked: $REPO pull request $PR at $SHA"
+
+      # This repository, at the commit the door admitted: the rulebook's README
+      # and operating page, and the rules in product-reads/, are read from here,
+      # never from the product.
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: A product this rulebook lists
+        env:
+          REPO: ${{ inputs.repo }}
+        run: |
+          set -euo pipefail
+          # The README on main is the whole allowance. A list that cannot be read
+          # exactly, or does not hold the product, stops the run before a token is
+          # minted: a product nobody listed is not read because it was typed.
+          python3 -I product-reads/reads.py product "$REPO" README.md
 
       - name: Put on the badge
         id: badge
@@ -241,6 +290,9 @@ jobs:
           head=$(jq -r '.head.sha // empty' "$pr")
           from=$(jq -r '.head.repo.full_name // empty' "$pr")
           main=$(jq -r '.base.repo.default_branch // empty' "$pr")
+          # `tostring`, not `// empty`: jq's `//` treats false as absent, so a pull
+          # request that is not a draft would read as no answer and be refused.
+          draft=$(jq -r '.draft | tostring' "$pr")
           # The title is kept for the page picker below, in a file and never as
           # an output: an output reaches a later step as a variable, and a
           # step's variables are printed at its head in this public log.
@@ -249,11 +301,56 @@ jobs:
           jq -r '.title // ""' "$pr" > "$RUNNER_TEMP/title.txt"
           rm -f "$pr"
           [ "$state" = "open" ] || { echo "::error::$REPO pull request $PR is not open (${state:-not found})"; exit 1; }
+          [ "$draft" = "false" ] || { echo "::error::$REPO pull request $PR is a draft; a draft is not asked for a read"; exit 1; }
           [ "$from" = "$REPO" ] || { echo "::error::the pull request's head does not live in $REPO"; exit 1; }
           [ "$head" = "$SHA" ] || { echo "::error::the pull request's head is $head, not the commit asked for. Nothing was read or signed; ask for the head."; exit 1; }
           [[ "$main" =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "::error::$REPO names no default branch"; exit 1; }
           echo "main=$main" >> "$GITHUB_OUTPUT"
           echo "pull request $PR's head is $SHA, as asked; it is read against the tip of $main"
+
+      # READY, CHECKED, AND NOT YET READ: the three things asked of the commit
+      # itself, each by product-reads/reads.py, each before the check run opens
+      # and before a read is paid for. What the product's API answers goes to
+      # files and is never printed; a refusal is the rule's own fixed words.
+      # `curl -f` makes an answer that is an error a failed step, with no body.
+      - name: Ready, checked, and not yet read
+        env:
+          TOKEN: ${{ steps.badge.outputs.token }}
+          REPO: ${{ inputs.repo }}
+          PR: ${{ inputs.pr }}
+          SHA: ${{ inputs.sha }}
+          AGAIN: ${{ inputs.again }}
+          REVIEWER_APP_ID: ${{ secrets.REVIEWER_APP_ID }}
+        run: |
+          set -euo pipefail
+          t="$RUNNER_TEMP"
+          api() { curl -fsS -H "Authorization: token $TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$REPO/$1"; }
+          # The mark: this commit, the one beneath it, and every commit of the
+          # pull request (three pages of 100 is GitHub's own limit of 250; more
+          # than that is refused, never guessed at).
+          api "commits/$SHA" > "$t/commit.json"
+          parent=$(jq -r '.parents[0].sha // empty' "$t/commit.json")
+          [[ "$parent" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::the commit has no parent, so it cannot be a ready mark"; exit 1; }
+          api "commits/$parent" > "$t/parent.json"
+          for page in 1 2 3; do
+            api "pulls/$PR/commits?per_page=100&page=$page" > "$t/page.$page.json"
+          done
+          jq -s 'add' "$t"/page.1.json "$t"/page.2.json "$t"/page.3.json > "$t/prcommits.json"
+          python3 -I product-reads/reads.py ready "$t/commit.json" "$t/parent.json" "$t/prcommits.json" "$SHA"
+          # The product's own check passed on this very commit.
+          api "commits/$SHA/check-runs?check_name=verify&filter=all&per_page=100" > "$t/verify.json"
+          python3 -I product-reads/reads.py verify "$t/verify.json" "$SHA"
+          # Not read, not being read, and not a read that failed unseen. `filter=all`,
+          # as review-gate.py asks: on the default `latest` a verdict could be hidden
+          # behind a newer run that ended without one.
+          api "commits/$SHA/check-runs?check_name=juku-reviewer&app_id=$REVIEWER_APP_ID&filter=all&per_page=100" > "$t/read.json"
+          if [ "$AGAIN" = "true" ]; then
+            python3 -I product-reads/reads.py state "$t/read.json" "$SHA" "$REVIEWER_APP_ID" --again
+          else
+            python3 -I product-reads/reads.py state "$t/read.json" "$SHA" "$REVIEWER_APP_ID"
+          fi
+          rm -f "$t"/commit.json "$t"/parent.json "$t"/page.*.json "$t"/prcommits.json "$t"/verify.json "$t"/read.json
+          echo "$SHA is the ready mark, its own check passed, and it is free to be read"
 
       - name: Say it is reading
         id: open
@@ -274,12 +371,6 @@ jobs:
           [ -n "$id" ] || { echo "::error::the check run was not opened: $(jq -r '.message // "no message"' "$RUNNER_TEMP/opened.json")"; exit 1; }
           echo "id=$id" >> "$GITHUB_OUTPUT"
           echo "opened check run $id on $SHA"
-
-      # This repository, at the commit the door admitted: the rulebook's
-      # operating page is read from here, never from the product.
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
 
       - name: Gather what the reviewer reads
         id: gather
@@ -343,7 +434,7 @@ jobs:
               *) class=code ;;
             esac
             case "${f,,}" in
-              agents.md|*/agents.md|check.sh|*/check.sh|review-gate.py|*/review-gate.py|board/build.py|model-registry/*|*/model-registry/*|.*|*/.*) risky=yes ;;
+              agents.md|*/agents.md|check.sh|*/check.sh|review-gate.py|*/review-gate.py|board/build.py|model-registry/*|*/model-registry/*|product-reads/*|*/product-reads/*|.*|*/.*) risky=yes ;;
               *.md) ;;
               *pric*|*payment*|*billing*|*invoice*|*checkout*|*quote*) risky=yes ;;
               *.sql|*migration*|*schema*|supabase/*|*/supabase/*|*backfill*|*purge*|*truncate*|*wipe*|*seed*) risky=yes ;;

@@ -33,7 +33,7 @@ How a change reaches every product: it is made here once and then lands everywhe
 
 - Free checks and a self-review before any paid read, and on every change the line `Personal data or payments affected: yes/no — reason` ([decision 0010](juku-library/DECISION-0010-REVIEW-SPEND-AND-PLAN-MAP.md), 29 September 2026). Detail: `library/reviewer-asking.md`.
 - `AGENTS.md` ending with `## Review guidelines`, under 500 words; a check green only when the reviewer has read the current commit; the reviewer `review-gate.py` names. Detail: `library/carries-reviewer.md`.
-- Product reads asked from here through `review-product.yml`, and a model switched in one edit (met: `model-registry/`). Detail: `library/carries-review-route.md`.
+- Product reads asked from here through `review-product.yml`, of one commit only, the ready mark a builder adds after its own review (`library/product-joins.md`), and a model switched in one edit (met: `model-registry/`). Detail: `library/carries-review-route.md`.
 - Open pull requests moved on before new work; a session that cannot move says so once and stops hard, with the clock tools denied; a consultant that cannot be reached never holds up a slice; a `roadmap.json` fit for a one-word *build*. Detail: `library/carries-sessions.md`.
 - `.claude/agents/max-subagent.md`, the max subagent, exactly as its page gives it (his ruling, 28 September 2026). Detail: `library/max-subagent.md`.
 - Money milestones in `roadmap.json`; evidence recorded with its origin; the handover's `evidence` field; `PRODUCT.md` and `NAMES.md`; a README route section; a Project set to its template; a `design/` folder for a product with a user interface. Detail: `library/carries-evidence.md`.

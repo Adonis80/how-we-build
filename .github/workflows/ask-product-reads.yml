@@ -1,0 +1,133 @@
+name: Ask for product reads
+
+# THE ASKER (decision 0013, #148): for each product the README lists, ask for a
+# read of every pull request that is ready to be read, so a builder asks nobody
+# and no token of a product's carries the right to start a workflow here. What
+# is ready, and what is not, is product-reads/reads.py's to say (the ready mark,
+# the product's own check, not read yet), and review-product.yml asks it again
+# before it pays for anything, so this file cannot buy a read the reviewer
+# would refuse.
+#
+# IT IS OFF, AND IT STAYS OFF UNTIL STEP 3 HAS PASSED LIVE (decision 0013). It
+# runs when a person starts it, and by default only says what it would ask:
+# that is how it is tried against a real product before it runs by itself. The
+# line that makes it automatic is a `schedule:` trigger, added in a pull request
+# of its own once a read that failed, a read still running and a verdict have
+# each been told apart on a real product. review-gate.py holds this file to
+# `workflow_dispatch` and nothing else until then, so no clock can be added by
+# accident.
+#
+# WHAT IT HOLDS. The App's key, behind the same door as the reviewer, so it runs
+# on main alone. Per product a token scoped to that one repository, with contents,
+# pull requests and checks READ alone, whose grant and reach are checked before
+# it is used and which is revoked after. This repository's own token with
+# `actions: write`, handed to the one program that starts review-product.yml, and
+# nothing of the App's key. The ask names the product, a pull request's number
+# and a commit; the log shows those and counts, and nothing a product holds.
+#
+# BUILT, NOT YET RUN. review-gate.py holds each line of this file against cases,
+# and product-reads/ask.py runs its rules against a made-up product. Neither is a
+# run. The first live one, started by hand with nothing to ask, is its proof.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dispatch:
+        description: Ask for the reads it finds. False, it only says what it would ask.
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: ask-product-reads
+  cancel-in-progress: false
+
+jobs:
+  ask:
+    runs-on: ubuntu-latest
+    # THE DOOR, as the reviewer's: without this line the App's key is readable
+    # from any branch. review-gate.py refuses a build that loses it.
+    environment: reviewer
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Look at each product and ask
+        env:
+          APP_ID: ${{ secrets.REVIEWER_APP_ID }}
+          APP_KEY: ${{ secrets.REVIEWER_APP_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          DISPATCH: ${{ inputs.dispatch }}
+        run: |
+          set -euo pipefail
+          if [ -z "${APP_ID:-}" ] || [ -z "${APP_KEY:-}" ]; then
+            echo "::error::No badge: the reviewer environment holds no REVIEWER_APP_ID or REVIEWER_APP_KEY. Nothing is asked."
+            exit 1
+          fi
+          [[ "$DISPATCH" =~ ^(true|false)$ ]] || { echo "::error::dispatch is true or false"; exit 1; }
+          flag=""
+          if [ "$DISPATCH" = "true" ]; then flag="--dispatch"; fi
+          # The list is read whole before anything is asked, so a README that cannot
+          # be read is a red job and not a loop that runs no times.
+          products=$(python3 -I product-reads/reads.py list README.md)
+          [ -n "$products" ] || { echo "::error::the README lists no product"; exit 1; }
+          umask 077
+          key="$RUNNER_TEMP/reviewer.pem"
+          tok=""
+          # Every request has a time limit, and a product's token is never left live.
+          revoke() { [ -z "$tok" ] || curl -sS --max-time 20 -o /dev/null -X DELETE -H "Authorization: token $tok" \
+            -H "Accept: application/vnd.github+json" "https://api.github.com/installation/token" || true; tok=""; }
+          trap 'revoke; rm -f "$key" "$RUNNER_TEMP/mint.json"' EXIT
+          printf '%s\n' "$APP_KEY" > "$key"
+          b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+          now=$(date +%s)
+          hdr=$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | b64url)
+          pl=$(printf '{"iat":%d,"exp":%d,"iss":"%s"}' "$((now - 60))" "$((now + 540))" "$APP_ID" | b64url)
+          sig=$(printf '%s' "$hdr.$pl" | openssl dgst -binary -sha256 -sign "$key" | b64url)
+          jwt="$hdr.$pl.$sig"
+          rm -f "$key"
+          failed=0
+          for REPO in $products; do
+            inst=$(curl -sS --max-time 20 -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$REPO/installation" | jq -r '.id // empty')
+            [ -n "$inst" ] || { echo "::error::the App is not installed on $REPO"; failed=1; continue; }
+            # ONE PRODUCT, AND READ ALONE: what the asker looks at is its open pull
+            # requests, their commits and their check runs, and it writes nothing.
+            body=$(jq -cn --arg r "${REPO#*/}" '{repositories: [$r], permissions: {contents: "read", pull_requests: "read", checks: "read"}}')
+            curl -sS --max-time 20 -X POST -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/app/installations/$inst/access_tokens" -d "$body" > "$RUNNER_TEMP/mint.json"
+            tok=$(jq -r '.token // empty' "$RUNNER_TEMP/mint.json")
+            [ -n "$tok" ] || { echo "::error::the App would not mint a token scoped to $REPO"; failed=1; continue; }
+            echo "::add-mask::$tok"
+            want='{"checks":"read","contents":"read","pull_requests":"read"}'
+            granted=$(jq -cS '(.permissions // {}) | del(.metadata)' "$RUNNER_TEMP/mint.json")
+            if [ "$granted" != "$want" ]; then
+              revoke
+              echo "::error::SCOPE WRONG: the token was granted $granted, not $want. Revoked; $REPO was not looked at."
+              failed=1
+              continue
+            fi
+            reach=$(curl -sS --max-time 20 -H "Authorization: token $tok" -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/installation/repositories" | jq -r '[.repositories[].full_name] | join(",")')
+            if [ "$reach" != "$REPO" ]; then
+              revoke
+              echo "::error::SCOPE WRONG: the token reached [$reach], not $REPO alone. Revoked; $REPO was not looked at."
+              failed=1
+              continue
+            fi
+            # The App's key and id stay out of the program's hands; it is given the
+            # product's token, the App's id as a number, and this repository's token.
+            rc=0
+            env -u APP_KEY -u APP_ID PRODUCT_TOKEN="$tok" REVIEWER_APP_ID="$APP_ID" python3 -I product-reads/ask.py "$REPO" $flag || rc=$?
+            revoke
+            [ "$rc" -eq 0 ] || failed=1
+          done
+          # One product's trouble does not stop the others being looked at, and it
+          # does not go unsaid: the job is red.
+          [ "$failed" -eq 0 ]

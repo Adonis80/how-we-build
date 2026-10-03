@@ -1,0 +1,27 @@
+name: gate
+
+# Green only on a commit the independent reviewer has read clean. The reviewer's
+# verdict is a check run signed by its App; review-gate.py reads that and nothing
+# else. A push turns this red until a read lands on the new commit, and wake.yml
+# asks it again when one does. Copied from the rulebook's kit and changed there.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+  checks: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: python3 review-gate.py "$REPO" "$HEAD_SHA" "$GH_TOKEN"
+        env:
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
