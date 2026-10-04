@@ -144,6 +144,8 @@ def join_lines(name, display, about, today):
         "On the board: its row, from that file's items." % (display, OWNER, name),
         "build-board.yml's product list: %s/%s=%s" % (OWNER, name, display),
         "board/build.py: %r added to ROWS" % display,
+        "All four go in one pull request: the board's selftest holds ROWS to the README, so a "
+        "pull request with only some of them turns check.sh red.",
     ]
 
 

@@ -160,7 +160,7 @@ def run(call, send, repo, app_id, now, do_dispatch, say=print):
     say("%s: %d to ask, %d left%s" % (repo, len(fresh), sum(left.values()),
                                      "".join("; %d %s" % (n, why) for why, n in sorted(left.items()))))
     if trouble:
-        raise Trouble("%d question(s) GitHub did not answer: %s" % (len(trouble), "; ".join(trouble)))
+        raise Trouble("%s: %d question(s) GitHub did not answer: %s" % (repo, len(trouble), "; ".join(trouble)))
     return len(fresh)
 
 
@@ -350,7 +350,7 @@ def _selftest():
         run(api, api, repo, app, now, True, say=lambda *_: None)
         bad.append("two unanswered questions ended a run green")
     except Trouble as why:
-        want("both unanswered questions are named", "#60" in str(why) and "#62" in str(why), True)
+        want("both unanswered questions are named, under the product", repo in str(why) and "#60" in str(why) and "#62" in str(why), True)
     want("the pull request that could be read was still asked", [d["inputs"]["pr"] for d in api.dispatched], ["61"])
     # A list of what was asked already that cannot be had: nothing is asked, for fear of asking twice.
     api = Product([make(63)])
