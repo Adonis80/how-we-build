@@ -3816,16 +3816,18 @@ def _check_preflight_loosenings():
 # request of a listed product that is ready to be read, and it holds the App's
 # key to look at the products, so it is held as the product reviewer is: behind
 # the door, a token for one product at a time with its grant and its reach checked,
-# the key kept out of the program that does the asking. It is also held OFF: its
-# one trigger is a person's dispatch, and a clock is the line that comes in a pull
-# request of its own once step 3 has passed on a real product. The loosening that
-# adds one is the first below, so it cannot arrive by accident.
+# the key kept out of the program that does the asking. And it is the one timer
+# under this rulebook, by the Chairman's ruling of 4 October 2026 ("One timer in
+# the rulebook only"): exactly one schedule, every ten minutes, beside the person's
+# dispatch and nothing else. The loosenings below that add a second clock, a faster
+# one or any other trigger, or take the clock away, are what keep it that one.
 ASK_WORKFLOW = ".github/workflows/ask-product-reads.yml"
 ASK_SCOPE = ("body=$(jq -cn --arg r \"${REPO#*/}\" '{repositories: [$r], permissions: {contents: \"read\", "
              "pull_requests: \"read\", checks: \"read\"}}')")
 ASK_GRANT = "want='{\"checks\":\"read\",\"contents\":\"read\",\"pull_requests\":\"read\"}'"
 ASK_REVOKE = ("revoke() { [ -z \"$tok\" ] || curl -sS --max-time 20 -o /dev/null -X DELETE -H \"Authorization: token $tok\" \\\n"
               "            -H \"Accept: application/vnd.github+json\" \"https://api.github.com/installation/token\" || true; tok=\"\"; }")
+ASK_DISPATCH_ENV = "DISPATCH: ${{ github.event_name == 'schedule' && 'true' || inputs.dispatch }}"
 ASK_HOLDS = (
     (ASK_SCOPE, "a token scoped to one product with contents, pull requests and checks read alone"),
     (ASK_GRANT, "the grant checked against read alone"),
@@ -3849,9 +3851,10 @@ ASK_HOLDS = (
      "the App's key and id kept out of the program that asks"),
     ('[ "$rc" -eq 0 ] || failed=1', "one product's trouble remembered"),
     ('[ "$failed" -eq 0 ]', "a job that is red when any product could not be looked at"),
-    ("DISPATCH: ${{ inputs.dispatch }}", "the choice passed as a variable"),
+    (ASK_DISPATCH_ENV, "the choice passed as a variable, a timed run always asking and a person's run asking only if told to"),
     ("GH_TOKEN: ${{ github.token }}", "this repository's own token, for the one dispatch"),
 )
+ASK_ON = 'on:\n  schedule:\n    - cron: "*/10 * * * *"\n  workflow_dispatch:\n    inputs:\n'
 ASK_PERMISSIONS = "permissions:\n  contents: read\n  actions: write\n"
 ASK_CONCURRENCY = "concurrency:\n  group: ask-product-reads\n  cancel-in-progress: false\n"
 # The grant and reach are checked before the program that reads a product runs.
@@ -3860,7 +3863,7 @@ ASK_ORDER = (ASK_SCOPE, 'if [ "$granted" != "$want" ]; then', 'if [ "$reach" != 
 
 
 def _check_ask_wiring(ask=None, product=None, quiet=False):
-    """ask-product-reads.yml, held to the door, one product per token, and off."""
+    """ask-product-reads.yml, held to the door, one product per token, and one timer."""
     say = (lambda *a: None) if quiet else print
     try:
         ask = _read(ASK_WORKFLOW) if ask is None else ask
@@ -3875,9 +3878,14 @@ def _check_ask_wiring(ask=None, product=None, quiet=False):
         say("  wiring: %s %s" % (ASK_WORKFLOW, what))
         bad += 1
 
-    if triggers(ask) != ["workflow_dispatch"]:
-        fault("triggers on %s; until step 3 has passed live it must be workflow_dispatch and "
-              "nothing else — no clock, and never a branch's own event" % triggers(ask))
+    if triggers(ask) != ["schedule", "workflow_dispatch"]:
+        fault("triggers on %s; it must be one schedule and workflow_dispatch and nothing else — never a "
+              "branch's own event, and the one timer under this rulebook (his ruling, 4 October 2026)"
+              % triggers(ask))
+    if ask.count(ASK_ON) != 1 or len(re.findall(r"^\s*-?\s*cron:", ask, re.M)) != 1 \
+            or len(re.findall(r"^\s+schedule:", ask, re.M)) != 1:
+        fault("must have exactly one schedule, `*/10 * * * *`, every ten minutes (`%s`)"
+              % ASK_ON.strip().replace("\n", " "))
     if not USES_ENVIRONMENT.search(ask):
         fault("does not run in the `%s` environment, so the App's key is readable from any branch"
               % KEY_ENVIRONMENT)
@@ -3925,17 +3933,22 @@ def _check_ask_wiring(ask=None, product=None, quiet=False):
     if [l for l in ask.splitlines() if not l.strip().startswith("#") and re.search(r"\bagain\b", l)]:
         fault("passes `again`; the asker never retries a read that did not finish, only a builder does")
     if not bad:
-        say("ok: the asker runs only when a person starts it, behind the `%s` door, looking at each product "
-            "the README lists with a token scoped to it, read alone, its grant and reach checked, the key "
-            "kept from the program that asks; it asks only by a dispatch it was told to make, and never "
-            "retries a read that did not finish" % KEY_ENVIRONMENT)
+        say("ok: the asker runs on its one ten-minute timer and when a person starts it, behind the `%s` door, "
+            "looking at each product the README lists with a token scoped to it, read alone, its grant and "
+            "reach checked, the key kept from the program that asks; a timed run asks, a person's run asks "
+            "only if told to, and nothing retries a read that did not finish" % KEY_ENVIRONMENT)
     return bad
 
 
 ASK_LOOSENINGS = (
-    ("a clock", lambda t: t.replace("on:\n  workflow_dispatch:", "on:\n  schedule:\n    - cron: '0 * * * *'\n  workflow_dispatch:", 1)),
-    ("a push", lambda t: t.replace("on:\n  workflow_dispatch:", "on:\n  push:\n  workflow_dispatch:", 1)),
-    ("a pull request's own copy", lambda t: t.replace("on:\n  workflow_dispatch:", "on:\n  pull_request:\n  workflow_dispatch:", 1)),
+    ("a second clock", lambda t: t.replace('    - cron: "*/10 * * * *"\n', '    - cron: "*/10 * * * *"\n    - cron: "0 * * * *"\n', 1)),
+    ("a faster clock", lambda t: t.replace('"*/10 * * * *"', '"* * * * *"', 1)),
+    ("a slower clock", lambda t: t.replace('"*/10 * * * *"', '"0 * * * *"', 1)),
+    ("no clock", lambda t: t.replace('  schedule:\n    - cron: "*/10 * * * *"\n', "", 1)),
+    ("a push", lambda t: t.replace("  workflow_dispatch:\n    inputs:", "  push:\n  workflow_dispatch:\n    inputs:", 1)),
+    ("a pull request's own copy", lambda t: t.replace("  workflow_dispatch:\n    inputs:", "  pull_request:\n  workflow_dispatch:\n    inputs:", 1)),
+    ("a timed run that only says what it would ask", lambda t: t.replace(ASK_DISPATCH_ENV, "DISPATCH: ${{ inputs.dispatch }}", 1)),
+    ("a person's run that always asks", lambda t: t.replace(ASK_DISPATCH_ENV, "DISPATCH: ${{ 'true' }}", 1)),
     ("the door removed", lambda t: t.replace("    environment: reviewer\n", "", 1)),
     ("asking by default", lambda t: t.replace("        default: false\n", "        default: true\n", 1)),
     ("a wider grant wanted", lambda t: t.replace('checks: "read"}}', 'checks: "read", issues: "write"}}', 1)),
@@ -3964,7 +3977,7 @@ ASK_LOOSENINGS = (
     ("an input pasted", lambda t: t.replace('echo "::error::dispatch is true or false"', 'echo "${{ inputs.dispatch }}"', 1)),
     ("a credential left in the checkout", lambda t: t.replace("persist-credentials: false", "persist-credentials: true", 1)),
     ("a secret above the steps", lambda t: t.replace("    environment: reviewer\n", "    environment: reviewer\n    env:\n      KEY: ${{ secrets.REVIEWER_APP_KEY }}\n", 1)),
-    ("a third secret", lambda t: t.replace("          DISPATCH: ${{ inputs.dispatch }}\n", "          DISPATCH: ${{ inputs.dispatch }}\n          OTHER: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}\n", 1)),
+    ("a third secret", lambda t: t.replace("          " + ASK_DISPATCH_ENV + "\n", "          " + ASK_DISPATCH_ENV + "\n          OTHER: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}\n", 1)),
     ("the program run before the grant is checked", lambda t: t.replace('echo "::add-mask::$tok"\n', 'echo "::add-mask::$tok"\n            python3 -I product-reads/ask.py "$REPO"\n', 1)),
     ("a retry of a read that did not finish", lambda t: t.replace(' python3 -I product-reads/ask.py "$REPO" $flag', ' python3 -I product-reads/ask.py "$REPO" $flag again', 1)),
 )
@@ -3990,6 +4003,75 @@ def _check_ask_loosenings():
     if not bad:
         print("ok: each of %d loosenings of %s was applied to the real file and refused"
               % (len(ASK_LOOSENINGS), ASK_WORKFLOW))
+    return bad
+
+
+# THE FAILED-READ HANDLING, HELD UNDER THE TIMER (the Chairman's ruling of 4 October
+# 2026: the clock is on only after it passes). The timer comes back every ten minutes,
+# so the property that matters is that it cannot buy a read twice or retry one that went
+# wrong, and that a question GitHub does not answer is a red run. ask.py's selftest runs
+# seven timed runs against a made-up product to show it. This holds that selftest to
+# account: each fault below is put into a copy of the program and its selftest must go
+# red, so the proof cannot be deleted, or worn thin, while the clock stays on.
+ASK_PROGRAM_LOOSENINGS = (
+    ("a commit asked about again", "ask.py", 'if "Review %s#%s at %s" % (repo, number, sha) in asked:', "if False:"),
+    ("an unanswered question left unsaid", "ask.py",
+     'trouble.append("#%s: %s" % (number, unanswered))\n                continue', "continue"),
+    ("a list of reads already asked, that GitHub would not give, taken as empty", "ask.py",
+     'trouble.append(str(unanswered))\n            left["not asked: it could not be told what was asked already"] = len(chosen)\n            chosen = []',
+     "asked = set()"),
+    ("an unanswered question ending the run green", "ask.py", "    if trouble:\n        raise Trouble(", "    if False:\n        raise Trouble("),
+    ("a read that did not finish retried by itself", "reads.py", 'if state == "failed" and not again:', 'if state == "failed" and False:'),
+    ("a read already running asked again", "reads.py", 'if state == "running":\n        raise', "if False:\n        raise"),
+)
+
+
+def _ask_selftest_of(sources):
+    """The exit status of ask.py's own selftest, run on the given copies in a directory of their own."""
+    with tempfile.TemporaryDirectory() as d:
+        os.makedirs(os.path.join(d, "product-reads"))
+        for name, text in sources.items():
+            with open(os.path.join(d, "product-reads", name), "w", encoding="utf-8") as f:
+                f.write(text)
+        with open(os.path.join(d, "README.md"), "w", encoding="utf-8") as f:
+            f.write(_read("README.md"))
+        try:
+            p = subprocess.run([sys.executable, "-I", os.path.join(d, "product-reads", "ask.py"), "--selftest"],
+                               cwd=d, capture_output=True, text=True, timeout=120)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return p.returncode
+
+
+def _check_ask_program():
+    """ask.py's selftest passes, and goes red on each fault that would let the timer ask twice or retry."""
+    try:
+        sources = {name: _read("product-reads/" + name) for name in ("ask.py", "reads.py")}
+    except OSError as e:
+        print("  wiring: %s" % e)
+        return 1
+    bad = 0
+    if _ask_selftest_of(sources) != 0:
+        print("  wiring: product-reads/ask.py's own selftest does not pass on a clean copy, so the failed-read "
+              "handling the clock rests on is not shown")
+        return 1
+    for what, name, old, new in ASK_PROGRAM_LOOSENINGS:
+        if sources[name].count(old) != 1:
+            print("  wiring: the fault '%s' no longer applies to product-reads/%s — rewrite it against the "
+                  "file as it stands, or it proves nothing" % (what, name))
+            bad += 1
+            continue
+        changed = dict(sources)
+        changed[name] = sources[name].replace(old, new, 1)
+        if _ask_selftest_of(changed) == 0:
+            print("  wiring: ask.py's selftest passes with %s — the timed runs no longer prove the failed-read "
+                  "handling the clock is on for" % what)
+            bad += 1
+    if not bad:
+        print("ok: ask.py's selftest passes, and goes red on each of %d faults put into a copy (a commit asked "
+              "about twice, a question GitHub did not answer left unsaid or read as empty, a read that did not "
+              "finish retried, a read running asked again): the failed-read handling is shown, not claimed"
+              % len(ASK_PROGRAM_LOOSENINGS))
     return bad
 
 
@@ -4158,8 +4240,9 @@ def _check_kit(kit=None, wake=None, quiet=False, deep=True):
 
     # 3. The gate workflow.
     gate = kit["gate.yml"]
-    if triggers(gate) != ["pull_request"] or "    types: [opened, synchronize, reopened, edited]\n" not in gate:
-        fault("gate.yml must run on a pull request opened, pushed to, reopened or edited, and no other event")
+    if triggers(gate) != ["pull_request"] or "    types: [opened, synchronize, reopened]\n" not in gate:
+        fault("gate.yml must run on a pull request opened, pushed to or reopened, and no other event: "
+              "an edit changes nothing the gate answers on, and each run is a billed minute in a private repository")
     if re.findall(r"^permissions:\n((?:  .*\n)+)", gate, re.M) != ["  contents: read\n  checks: read\n"] \
             or gate.count("permissions:") != 1:
         fault("gate.yml may read contents and checks and nothing else")
@@ -4241,7 +4324,8 @@ KIT_LOOSENINGS = (
     ("a pull request's number looked up", "wake.yml", lambda t: t.replace('sha="$SHA"', 'sha=$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)', 1)),
     ("the commit not handed to the shell", "wake.yml", lambda t: t.replace("          SHA: ${{ github.event.check_run.head_sha }}\n", "", 1)),
     ("the gate run on a push", "gate.yml", lambda t: t.replace("on:\n  pull_request:", "on:\n  push:\n  pull_request:", 1)),
-    ("another event types", "gate.yml", lambda t: t.replace("[opened, synchronize, reopened, edited]", "[opened]", 1)),
+    ("another event types", "gate.yml", lambda t: t.replace("[opened, synchronize, reopened]", "[opened]", 1)),
+    ("a run on every edit", "gate.yml", lambda t: t.replace("[opened, synchronize, reopened]", "[opened, synchronize, reopened, edited]", 1)),
     ("a token that writes", "gate.yml", lambda t: t.replace("  checks: read\n", "  checks: write\n", 1)),
     ("the job renamed", "gate.yml", lambda t: t.replace("\n  gate:\n", "\n  review:\n", 1)),
     ("another command", "gate.yml", lambda t: t.replace(KIT_GATE_RUN, 'python3 review-gate.py --selftest', 1)),
@@ -4350,7 +4434,7 @@ case "$*" in
   *ask.py*)
     repo=$(printf '%s' "$*" | sed -E 's/.*ask\\.py ([^ ]+).*/\\1/')
     printf 'ASKED %s | KEY=%s ID=%s TOKEN=%s APPID=%s FLAGS=%s\\n' "$repo" "${APP_KEY:-unset}" "${APP_ID:-unset}" "${PRODUCT_TOKEN:-unset}" "${REVIEWER_APP_ID:-unset}" "$(printf '%s' "$*" | grep -o -- '--dispatch' || true)" >> "$ASK_LOG"
-    case " $ASK_FAILS " in *" $repo "*) exit 1 ;; esac
+    case " $ASK_FAILS " in *" $repo "*) exit 1 ;; *" $repo=3 "*) exit 3 ;; esac
     exit 0 ;;
   *) exec "$REAL_PY" "$@" ;;
 esac
@@ -4425,6 +4509,7 @@ def _check_ask_run(ask=None, quiet=False):
         ("one product whose token reaches a second repository",
          {"reach": {"Adonis80/b": ["Adonis80/b", "Adonis80/other"]}}, "", ASK_README, {}, 1, [repos[0], repos[2]], 3),
         ("the program failing for one product", {}, "Adonis80/b", ASK_README, {}, 1, repos, 3),
+        ("the program unable to get an answer from one product's GitHub (exit 3)", {}, "Adonis80/b=3", ASK_README, {}, 1, repos, 3),
         ("a README list that cannot be read", {}, "", ASK_BROKEN_README, {}, 1, [], 0),
         ("asking not chosen", {}, "", ASK_README, {"DISPATCH": "false"}, 0, repos, 3),
         ("asking chosen", {}, "", ASK_README, {"DISPATCH": "true"}, 0, repos, 3),
@@ -5229,6 +5314,7 @@ def _selftest():
     failed += _check_ask_loosenings()
     failed += _check_ask_run()
     failed += _check_ask_run_loosenings()
+    failed += _check_ask_program()
     failed += _check_kit()
     failed += _check_kit_loosenings()
     failed += _check_board_loosenings()

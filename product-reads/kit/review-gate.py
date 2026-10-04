@@ -62,8 +62,8 @@ def reason(answer, head):
                 % head)
     return ("no reviewer has read commit %s — when the round is finished, add one commit that "
             "changes no file, whose message carries `Review-Ready: yes` and `Review-Parent: <the "
-            "full id of the commit beneath it>`, each alone on a line; the read follows, and this "
-            "check re-runs itself when the verdict lands" % head)
+            "full id of the commit beneath it>`, each alone on a line; the rulebook's timer asks for the "
+            "read within about ten minutes, and this check re-runs itself when the verdict lands" % head)
 
 
 def _pages(url, token):

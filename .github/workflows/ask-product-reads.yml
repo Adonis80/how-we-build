@@ -8,16 +8,23 @@ name: Ask for product reads
 # before it pays for anything, so this file cannot buy a read the reviewer
 # would refuse.
 #
-# IT IS OFF, AND IT STAYS OFF UNTIL STEP 3 HAS PASSED LIVE (decision 0013). It
-# runs when a person starts it, and by default only says what it would ask:
-# that is how it is tried against a real product before it runs by itself. The
-# line that makes it automatic is a `schedule:` trigger, added in a pull request
-# of its own once a read that failed, a read still running and a verdict have
-# each been told apart on a real product. review-gate.py holds this file to
-# `workflow_dispatch` and nothing else until then, so no clock can be added by
-# accident. That pull request carries a case of its own: a timed look at every
-# product's pull requests is polling, which CHARTER §3 rejects, so it needs
-# §13's gate or his ruling, and "automatically" is not yet his word for it.
+# THE TIMER (the Chairman's ruling of 4 October 2026: "I agree with your
+# recommended option A. One timer in the rulebook only. Proceed to build."). This
+# is the one scheduled workflow in this repository and the only one under this
+# rulebook: every ten minutes it looks at each listed product and asks for the
+# reads that are ready. It lifts his 10 September stop on clocks for this file
+# only (library/carries-sessions.md): no product gets a timer, a token or a
+# schedule, and a session still has no clock. Started by a person it only says
+# what it would ask, unless told to ask.
+#
+# WHY IT CAN COME BACK EVERY TEN MINUTES. A commit is asked about once, whatever
+# became of the run (product-reads/ask.py reads review-product.yml's own run
+# names). A read that began and never finished, or ended without a verdict, is
+# nobody's to retry but a builder's, with `again`. A question GitHub does not
+# answer is a red run, never "nothing is ready". review-gate.py holds all three
+# against a made-up product over seven timed runs, and holds this file to one
+# schedule, every ten minutes, and nothing else; the clock is on only because
+# that passes. GitHub starts a schedule when it can, so a read may wait longer.
 #
 # WHAT IT HOLDS. The App's key, behind the same door as the reviewer, so it runs
 # on main alone. Per product a token scoped to that one repository, with contents,
@@ -29,9 +36,11 @@ name: Ask for product reads
 #
 # BUILT, NOT YET RUN. review-gate.py holds each line of this file against cases,
 # and product-reads/ask.py runs its rules against a made-up product. Neither is a
-# run. The first live one, started by hand with nothing to ask, is its proof.
+# run. The first live tick, once this is on main, is its proof.
 
 on:
+  schedule:
+    - cron: "*/10 * * * *"
   workflow_dispatch:
     inputs:
       dispatch:
@@ -65,7 +74,7 @@ jobs:
           APP_ID: ${{ secrets.REVIEWER_APP_ID }}
           APP_KEY: ${{ secrets.REVIEWER_APP_KEY }}
           GH_TOKEN: ${{ github.token }}
-          DISPATCH: ${{ inputs.dispatch }}
+          DISPATCH: ${{ github.event_name == 'schedule' && 'true' || inputs.dispatch }}
         run: |
           set -euo pipefail
           if [ -z "${APP_ID:-}" ] || [ -z "${APP_KEY:-}" ]; then

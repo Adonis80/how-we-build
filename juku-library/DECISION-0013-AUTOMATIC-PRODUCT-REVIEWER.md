@@ -36,3 +36,17 @@ Astra, round 4: *AGREED*. Strongest objection left: the whole path from creating
 ## Cost
 
 No new spend: the rulebook is public, and each product's gate runs on its own free allowance. Each new product costs about two reads: its join pull request and its first real one.
+
+## Amendment, 4 October 2026 (the record above is not edited; where it says otherwise, this stands)
+
+**The timer, by the Chairman's ruling.** *"I agree with your recommended option A. One timer in the rulebook only. Proceed to build."* One scheduled workflow in this repository, `ask-product-reads.yml`, every ten minutes, checks each listed product for ready commits and dispatches reads through `review-product.yml`. It lifts his 10 September stop on clocks (`library/carries-sessions.md`) for that one workflow only. No product gets a timer, a token or a schedule, and no session gets a clock. This replaces step 4's "The asker is off until step 3 passes" and the earlier plan to add the clock in a pull request of its own once a real product had shown a failed read and a running one apart: he ruled the clock on for this build, after the failed-read handling (step 3) passes. It passes as a test, not live: `product-reads/ask.py` and `review-gate.py` run seven timed runs against a made-up product, in which each ready commit is asked about once, and a read begun, lost, ended without a verdict or answered with findings is never retried, only a builder's `again` does that. The first live tick, once this is on `main`, is the proof, and a product's first real pull request is still step 6's.
+
+**What the timer needed that step 4 did not say.** A commit a run of `review-product.yml` was already started for is never asked about again, whatever became of the run (the run's name carries the pull request and the commit). A question GitHub does not answer, or answers in a shape the asker does not read, is a failed run and never "nothing is ready". The second is the second read's advisory 4b; the first is the cost of a clock, since without it a refused ask would be made again every ten minutes.
+
+**Step 5, as built.** "No other commit may carry those lines" is dropped. It made a second round impossible: after a read with findings, a fix and a new mark above the old one is the round, and a read already made of the earlier mark stops nothing. The head must still be a valid mark (one parent, the parent's tree, the parent named).
+
+**The Cost paragraph is wrong on one point.** Every private repository draws on the account's one pool of 2,000 Actions minutes a month (`library/reviewer-asking.md`), so each new product's `gate`, `verify` and `wake` are not free: at least two minutes a push. The kit's gate no longer runs on `edited`, which changed nothing it answers on.
+
+**Step 7, changed.** Hemz OS keeps nothing that asks twice: before this merges its builders have the ready commit and its own `ask.yml`, which asks every green push, is retired, so one asker asks. The CTO lines that up; the merge waits on it.
+
+**Who asks, today.** The timer, once this is merged; and by hand, a session with write access here dispatching `review-product.yml`. The README's "with no step from him" is a goal until a product has gone from created to its first review without one.
