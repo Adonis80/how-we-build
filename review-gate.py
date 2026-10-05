@@ -2091,10 +2091,11 @@ def _check_class_loosenings():
 ROUTE_RESOLVE = ('EFFORT=$(resolve "$ROLE" effort) || fail "the registry could not resolve $ROLE"',
                  'FALLBACK=$(resolve "$ROLE" fallback) || fail "the registry could not resolve $ROLE"')
 ROUTE_REGISTRY = {
-    REVIEW_WORKFLOW: 'git show "origin/${{ github.event.repository.default_branch }}:model-registry/$f" '
+    REVIEW_WORKFLOW: 'git show "origin/$DEFAULT_BRANCH:model-registry/$f" '
                      '> "$reg/$f" || fail "the protected branch holds no model-registry/$f"',
     PRODUCT_WORKFLOW: 'reg="$GITHUB_WORKSPACE/model-registry"',
 }
+ROUTE_MAIN = "DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}"
 ROUTE_ASK_GUARD = ('case "$effort" in %s) ;; *) printf \'{"is_error":true,"subtype":"no_effort"}\\n\' '
                    '> "$out"; : > "$err"; return 2 ;; esac' % REVIEW_EFFORT)
 ROUTE_FIRST = "fell_back=no"
@@ -2320,6 +2321,9 @@ def route_faults(text, path):
     for line in ROUTE_RESOLVE + (ROUTE_REGISTRY[path], ROUTE_ASK_GUARD, ROUTE_DERIVE):
         if line not in r:
             lost.append("`%s`" % line)
+    if path == REVIEW_WORKFLOW and len(re.findall(r"^\s*DEFAULT_BRANCH:", r, re.M)) != 1 or (
+            path == REVIEW_WORKFLOW and ROUTE_MAIN not in r):
+        lost.append("`%s` as the one branch the registry is read from" % ROUTE_MAIN)
     # ONE BLOCK, RUN WHOLE (#110's second read, advisory 1): from `reviewed()`
     # to the verdict, so every line between the two tests and the read runs
     # here as it runs in the job. Run as two pieces, the lines between them
@@ -2386,6 +2390,7 @@ REVIEW_TAKEN = {
 }
 ROUTE_LOOSENINGS = (
     ("the registry read from the head", REVIEW_WORKFLOW, lambda t: t.replace(ROUTE_REGISTRY[REVIEW_WORKFLOW], 'cp "model-registry/$f" "$reg/$f"', 1)),
+    ("the registry read from the head's branch", REVIEW_WORKFLOW, lambda t: t.replace(ROUTE_MAIN, "DEFAULT_BRANCH: ${{ github.head_ref }}", 1)),
     ("a role the registry cannot resolve read anyway", None, lambda t: t.replace(ROUTE_RESOLVE[0], 'EFFORT=$(resolve "$ROLE" effort) || EFFORT=high', 1)),
     ("an effort the ask never checks", None, lambda t: t.replace(ROUTE_ASK_GUARD, "true", 1)),
     ("a fallback let in below max again", None, lambda t: t.replace(ROUTE_ASK_GUARD, ROUTE_ASK_GUARD.replace("in %s)" % REVIEW_EFFORT, "in high|%s)" % REVIEW_EFFORT, 1), 1)),
@@ -3523,6 +3528,47 @@ def _check_context(path=None, quiet=False):
               "%d, with its partners, the pages naming it and on a code read the registry, names every other file "
               "with its size, gives a large file the sections it touches, and gives a risky change every file whole"
               % (CONTEXT_WORDS_MAX, CONTEXT_CODE_MAX))
+    return bad
+
+
+# GITHUB'S EXPRESSION LIMIT (#153's merge): a block scalar carrying `${{ }}` is
+# one expression to GitHub, refused past 21,000 characters, and a workflow it
+# refuses loads not at all: no job runs, a push leaves a failed run of no jobs,
+# and every ask on `main` started nothing until the expression moved to `env:`.
+EXPRESSION_MAX = 21000
+
+
+def expression_faults(text):
+    """Each block scalar (`run: |` and the like) that carries an expression past GitHub's limit."""
+    lines, out = text.splitlines(), []
+    for i, line in enumerate(lines):
+        m = re.match(r"^(\s*)(?:- )?[\w-]+: [|>][-+]?\s*$", line)
+        if not m:
+            continue
+        body = []
+        for l in lines[i + 1:]:
+            if l.strip() and len(l) - len(l.lstrip()) <= len(m.group(1)):
+                break
+            body.append(l)
+        cut = min((len(l) - len(l.lstrip()) for l in body if l.strip()), default=0)
+        block = "\n".join(l[cut:] for l in body).strip("\n")
+        if "${{" in block and len(block) > EXPRESSION_MAX:
+            out.append("line %d, %d characters" % (i + 1, len(block)))
+    return out
+
+
+def _check_expressions(quiet=False):
+    """No workflow here carries an expression GitHub would refuse to load."""
+    bad = 0
+    for path in sorted(glob.glob(".github/workflows/*.yml")):
+        got = expression_faults(_read(path))
+        if got:
+            bad += 1
+            if not quiet:
+                print("  workflow: %s carries an expression in a block past GitHub's %d characters (%s), so "
+                      "GitHub loads none of it; move the expression to `env:`" % (path, EXPRESSION_MAX, "; ".join(got)))
+    if not bad and not quiet:
+        print("ok: no workflow carries an expression in a block past GitHub's %d characters" % EXPRESSION_MAX)
     return bad
 
 
@@ -5159,6 +5205,7 @@ def _selftest():
     failed += _check_caller()
     failed += _check_caller_loosenings()
     failed += _check_context()
+    failed += _check_expressions()
     failed += _check_attempt_loosenings()
     failed += _check_more_loosenings()
     failed += _check_context_loosenings()

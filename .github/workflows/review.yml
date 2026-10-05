@@ -362,6 +362,10 @@ jobs:
           STARTED: ${{ steps.head.outputs.started }}
           CLASS: ${{ steps.gather.outputs.class }}
           ROLE: ${{ steps.gather.outputs.role }}
+          # In the environment, never in the script: GitHub refuses a workflow
+          # whose script carries an expression past 21,000 characters, and this
+          # one is longer (#153 merged it, and no ask ran until this moved).
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
           out=/tmp/resp.json
@@ -391,7 +395,7 @@ jobs:
           reg="$RUNNER_TEMP/registry"
           mkdir -p "$reg"
           for f in registry.json resolve.py ask.py; do
-            git show "origin/${{ github.event.repository.default_branch }}:model-registry/$f" > "$reg/$f" || fail "the protected branch holds no model-registry/$f"
+            git show "origin/$DEFAULT_BRANCH:model-registry/$f" > "$reg/$f" || fail "the protected branch holds no model-registry/$f"
           done
           resolve() { python3 "$reg/resolve.py" "$reg/registry.json" "$@"; }
           EFFORT=$(resolve "$ROLE" effort) || fail "the registry could not resolve $ROLE"
