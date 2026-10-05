@@ -316,9 +316,10 @@ def build(got, provider, system, prompt, schema, limits=None):
     return body
 
 
-# THE SPENDING CHECK (decision 0014, D). A read is re-read at most once, so a
-# read in flight elsewhere may yet send this many cash requests.
-RUN_ATTEMPTS = 2
+# THE SPENDING CHECK (decision 0014, D). A read in flight elsewhere may yet
+# send this many cash requests: the role's, the fallback's, and the one re-read
+# of whichever answered short. review-gate.py holds it to the most any route sends.
+RUN_ATTEMPTS = 3
 # Tokens a request's framing adds beyond its bytes: a token is at least a byte.
 FRAMING_TOKENS = 1000
 

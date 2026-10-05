@@ -90,6 +90,7 @@ the real ones and the fakes on every run of check.sh — no network, no GitHub, 
 it fails the build before a loose rule can pass a commit.
 """
 
+import fnmatch
 import glob
 import io
 import json
@@ -2243,7 +2244,7 @@ def route_says(block, first, second, fallback, left, again=(0, "clean"), more_ok
             fail() {{ echo "failed: $1"; exit 3; }}
             why() {{ echo "a reason"; }}
             ledger='{d}/attempts.jsonl'
-            more() {{ [ -z "$MORE_FAILS" ]; }}
+            more() {{ [ -z "$MORE_FAILS" ] && printf '%0120d' 0 >> '{d}/prompt.txt'; }}
             ask() {{
               role=$1 model="model-of-$1" effort=high
               echo "$1" >> '{d}/asked'
@@ -2298,12 +2299,19 @@ def route_says(block, first, second, fallback, left, again=(0, "clean"), more_ok
             out = os.path.join(d, "out")
             written = ([l.split("=", 1)[1] for l in open(out, encoding="utf-8").read().splitlines()
                         if l.startswith("verdict=")] if os.path.exists(out) else [])
+            # The bytes the spend line says, against what the last request was
+            # sent: a re-read carries the files `more()` added.
+            spent = ([l.split("=", 1)[1].split()[0] for l in open(out, encoding="utf-8").read().splitlines()
+                      if l.startswith("spent=")] if os.path.exists(out) else [])
+            sent = sum(os.path.getsize(os.path.join(d, f)) for f in ("prompt.txt", "system.txt"))
         except (OSError, subprocess.SubprocessError):
             return None
     # WHAT IS SIGNED IS WHAT WAS WRITTEN (#111's second read, advisory). *Sign the
     # verdict* reads the `verdict=` line in $GITHUB_OUTPUT, not the shell's
     # variable, so a case holds the file: one line, saying what the read said,
     # and none at all from a read that failed.
+    if spent and spent != [str(sent)]:
+        return asked, "spent %s bytes, not the %d the last request was sent" % (spent, sent)
     done = re.search(r"^done: (\w+)$", p.stdout, re.M)
     if p.returncode == 0 and done:
         return asked, done.group(1) if written == [done.group(1)] else "written %s" % written
@@ -2349,12 +2357,27 @@ def route_faults(text, path):
               if "GITHUB_OUTPUT" in l and "verdict" in l and not l.strip().startswith("#")]
     if writes != [ROUTE_LAST]:
         lost.append("one line writing the verdict, `%s`, and no other (it has %s)" % (ROUTE_LAST, writes))
+    most = 0
     for what, first, second, fallback, left, want, *rest in ROUTE_CASES:
         got = route_says(block, first, second, fallback, left, *rest)
         if got != want:
             lost.append("when %s, the roles %s asked and %s (it was %s)"
                         % (what, want[0], "the verdict %s read" % want[1] if want[1] else
                            "the read failed, never open", got))
+        most = max(most, len(got[0]) if isinstance(got, tuple) else 0)
+    # WHAT A READ IN FLIGHT IS RESERVED AT (decision 0014, D): the spending
+    # check counts each read elsewhere as RUN_ATTEMPTS requests, so that is
+    # never fewer than the most this block, run on its cases, ever asks.
+    try:
+        spec = importlib.util.spec_from_file_location("ask_for_routes", CALLER)
+        caller = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(caller)
+        reserved = caller.RUN_ATTEMPTS
+    except (OSError, ImportError, AttributeError, SyntaxError):
+        reserved = None
+    if not isinstance(reserved, int) or reserved < most:
+        lost.append("a read in flight reserved at the %d requests a read can send (the caller's "
+                    "RUN_ATTEMPTS is %s)" % (most, reserved))
     if path == PRODUCT_WORKFLOW:
         local = text
         for use in PRODUCT_LOCAL:
@@ -2421,6 +2444,8 @@ ROUTE_LOOSENINGS = (
     ("a shortfall left unsigned", None, lambda t: t.replace('            [ "$rc" -ne 0 ] || python3 "$reg/ask.py" incomplete "$out" || printf \'{"is_error":true,"subtype":"not_derived"}\\n\' > "$out"\n', "", 1)),
     ("a failed re-read taken as unread", None, lambda t: t.replace('then cp "$out.first" "$out"; rc=0; fi', "then :; fi", 1)),
     ("a re-read the budget refused signed blocking", None, lambda t: t.replace("if refused; then :; elif", "if false; then :; elif", 1)),
+    ("the re-read's files left out of the bytes it cost", REVIEW_WORKFLOW, lambda t: t.replace("              " + READ_BYTES[REVIEW_WORKFLOW] + "\n", "", 1)),
+    ("the re-read's files left out of the bytes it cost", PRODUCT_WORKFLOW, lambda t: t.replace("              " + READ_BYTES[PRODUCT_WORKFLOW] + "\n", "", 1)),
     ("another provider for a product's code", PRODUCT_WORKFLOW, lambda t: t.replace("          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}\n", "          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}\n          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}\n", 1)),
 )
 
@@ -2670,6 +2695,9 @@ def _check_spending(ask, path, quiet=False):
                 ("a key endpoint that does not answer", "1", OSError("down"), "0", "", False),
                 ("reads in flight that could not be counted", "1", ok, "unknown", "", False),
                 ("three reads in flight elsewhere, reserved", "1", ok, "3", "", False),
+                # Two fit at two requests each, not at the three a read can send.
+                ("two reads in flight elsewhere, each at the three requests a read can send", "1", ok, "2", "",
+                 False),
                 ("an unresolved attempt of this job, reserved", "1", ok, "0", open_cash, False),
                 ("an unresolved attempt with no bound", "1", ok, "0", no_bound, False),
                 ("a weekly limit that is no amount", "six", ok, "0", "", False)):
@@ -3185,6 +3213,7 @@ CALLER_LOOSENINGS = (
     ("the key's own limit ignored", '        caps.append(data["limit_remaining"])', '        pass'),
     ("unknown headroom let through", 'return None, "no weekly limit is set and the key has no limit of its own, so the headroom is unknown", ""', 'return this, None, "nothing"'),
     ("the reads in flight not reserved", 'reserved = others * RUN_ATTEMPTS * bound(lim, lim["context"])', 'reserved = 0'),
+    ("a read in flight reserved at two requests, not its three", "RUN_ATTEMPTS = 3", "RUN_ATTEMPTS = 2"),
     ("the reads in flight taken as none when uncounted", '        others = int(inflight)', '        others = int(inflight) if str(inflight).isdigit() else 0'),
     ("this job's unresolved attempts not reserved", '            reserved += a["bound"]', '            pass'),
     ("a key endpoint's silence taken as headroom", '        return None, "the provider\'s key endpoint did not answer, so the cash settled this week is unknown", ""', '        data = {"limit_remaining": 1000000}'),
@@ -3486,6 +3515,15 @@ def _check_context(path=None, quiet=False):
         left = [m for m, t, b in picked if t is None]
         return given, left, sum(b for m, t, b in picked if t is not None) + len(diff.encode("utf-8"))
     pool = sorted(f for f in tree if re.search(r"\.(md|sh|py|ya?ml)$", f) or f == REGISTRY)
+    # A partner entry whose files are all risky is never run: a risky read is
+    # given every file whole, and only a words or code read is selected.
+    arms = RISK_GATE.split(")")[0].split("|")
+
+    def risky(f):
+        return any(fnmatch.fnmatchcase(f.lower(), a) for a in arms)
+    for pattern, theirs in getattr(ctx, "PARTNERS", ()):
+        if risky(pattern) and all(risky(p.split("#")[0]) for p in theirs):
+            fault("the partner entry for %s brings only risky files, which no selection reaches" % pattern)
     try:
         given, left, size = run("words", ["README.md"])
         if size > CONTEXT_WORDS_MAX:
@@ -3526,12 +3564,31 @@ def _check_context(path=None, quiet=False):
     return bad
 
 
+def _check_brief(path="AGENTS.md", quiet=False):
+    """The reviewer's brief names every severity the schema asks for (#153's last read, advisory 5)."""
+    try:
+        text = _read(path)
+    except OSError as e:
+        text = ""
+        if not quiet:
+            print("  brief: %s" % e)
+    sec = text.split("## Review guidelines", 1)[1] if "## Review guidelines" in text else ""
+    sev = FINDINGS_SCHEMA["properties"]["findings"]["items"]["properties"]["severity"]["enum"]
+    missing = [s for s in sev if s not in sec]
+    if not quiet:
+        print("  brief: %s's Review guidelines do not name %s, which the schema asks for" % (path, missing)
+              if missing else "ok: %s's Review guidelines name every severity the schema asks for" % path)
+    return 1 if missing else 0
+
+
 CONTEXT_LOOSENINGS = (
     ("the registry dropped from a code read", "            give(REGISTRY, read(REGISTRY))", "            pass"),
     ("a risky read given the selection", '    if cls not in ("words", "code"):', '    if cls == "none":'),
     ("a file left out unnamed", "            out.append((LEFT_OUT % (f, size), None))", "            pass"),
     ("every page given to the pilot", "            if not text or not any(t in text for t in touched):", "            if not text:"),
     ("the operating page's partner lost", '    ("HOW-WE-BUILD.md", ["check.sh"]),\n', ""),
+    ("a partner entry no selection reaches", '    ("check.sh", ["library/rulebook-files.md"]),\n',
+     '    ("model-registry/*", ["model-registry/ask.py"]),\n    ("check.sh", ["library/rulebook-files.md"]),\n'),
     ("a partner never brought back", "            out.extend(matched)", "            pass"),
     ("a large file given whole", '            if len(text.encode("utf-8")) <= WHOLE:', "            if True:"),
     ("the pages naming a change not given", "                give(f, text)\n        if cls", "                pass\n        if cls"),
@@ -5159,6 +5216,7 @@ def _selftest():
     failed += _check_caller()
     failed += _check_caller_loosenings()
     failed += _check_context()
+    failed += _check_brief()
     failed += _check_attempt_loosenings()
     failed += _check_more_loosenings()
     failed += _check_context_loosenings()
