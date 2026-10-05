@@ -544,9 +544,12 @@ jobs:
           # The reads in flight elsewhere, which the spending check reserves for
           # (decision 0014, D): every other run of this workflow in progress.
           # Not counted is not none: `unknown`, and the check then sends nothing.
+          # Every page of them, as wake.yml reads runs: `per_page` alone caps the count.
           inflight() {
-            gh api "repos/$GITHUB_REPOSITORY/actions/workflows/review.yml/runs?status=in_progress&per_page=100" \
-              --jq "[.workflow_runs[] | select(.id != ${GITHUB_RUN_ID:-0})] | length" 2>/dev/null || echo unknown
+            local ids
+            ids=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/workflows/review.yml/runs?status=in_progress&per_page=100" \
+              --jq ".workflow_runs[] | select(.id != ${GITHUB_RUN_ID:-0}) | .id" 2>/dev/null) || { echo unknown; return; }
+            printf '%s' "$ids" | grep -c . || true
           }
           ask() {
             role=$1
@@ -677,6 +680,10 @@ jobs:
           # it named added; a second shortfall, a re-read that fails, or no file
           # to add signs blocking, "incomplete read: needed X". A real blocking
           # finding beside it was a refusal already, and is never re-read.
+          # The re-read is the whole read again, cold, with the files added
+          # after the pages: it is not shown the first answer, so it judges the
+          # change afresh rather than defending a verdict, and its cost is a
+          # record of its own.
           if [ "$rc" -eq 0 ] && [ "$(jq -r '.result // empty' "$out" 2>/dev/null | jq -r '.verdict // empty' 2>/dev/null || true)" = needs-context ]; then
             needed=$(jq -r '.result // empty' "$out" | jq -r '(.needs // []) | join(" ")' 2>/dev/null || true)
             left=$(( STARTED + limit * 60 - $(date +%s) ))

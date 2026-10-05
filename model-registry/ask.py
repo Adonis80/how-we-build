@@ -68,7 +68,10 @@ must not pass the weekly limit (the secret REVIEW_CASH_WEEKLY), nor the key's
 own remaining limit. Every request carries an output-token limit and a price
 limit, so its most is known. Unknown headroom means no request. A refusal, here
 or the provider's own limit, is `budget_refused`: the read parks, and nothing
-falls back. No figure of money reaches a log from here.
+falls back. What the Chairman holds privately, the weekly limit, the key's
+limit, the headroom and the week's settled spend, reaches no log from here;
+each request's own reported cost does, on the spend line, as it has since
+decision 0008.
 
 ITS LIMIT (#116's third read). If #115's findings were in the model's
 reasoning rather than its answer, nothing here recovers them, and a stub is
@@ -338,7 +341,7 @@ def bound(lim, body_bytes):
 
 
 def admit(base_url, key, lim, body_bytes, ledger, attempt, weekly, inflight, fetch=None):
-    """(the request's bound, None, what it was checked against) when admitted, else (None, why, ""). No figure of money is in either.
+    """(the request's bound, None, what it was checked against) when admitted, else (None, why, ""). Neither carries any figure: no limit, headroom or settled spend.
 
     Settled cash this week comes from the provider's own key endpoint; in-flight
     reservations are this job's unresolved cash attempts at their bounds, and
