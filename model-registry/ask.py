@@ -2,6 +2,7 @@
 """One read through an OpenAI-compatible endpoint, for a role the registry resolves.
 
     ask.py REGISTRY ROLE SYSTEM_FILE SCHEMA_JSON SECONDS < prompt > answer.json
+    ask.py derive ANSWER_FILE
 
 The interface is the chat-completions one that OpenRouter, a LiteLLM proxy and
 most direct providers all speak, so the provider is an entry in the registry and
@@ -10,29 +11,36 @@ it wants in the body, is the registry's too (`effort_param`, `extra`).
 
 The answer is written in the Claude Code tool's own shape, so the reviewer
 workflows read either caller the same way: on success
-{"result": <the verdict as JSON text>, "model", "usage": {"input_tokens",
-"output_tokens"}, "total_cost_usd"}, exit 0; otherwise {"is_error": true,
+{"result": <the model's answer, as written>, "model", "usage": {"input_tokens",
+"output_tokens"}, "total_cost_usd"}, exit 0, with "stop_reason": "max_tokens"
+when the provider cut it off for length; otherwise {"is_error": true,
 "subtype", "result": <what went wrong, in the provider's words>}, exit 1.
 
 No silent substitution: an answer from any model but the one pinned is refused,
 exactly as if the provider had not answered. Nothing here prints the prompt, the
 answer or the key. Standard library only.
 
-No silent loss either (#115, 26 September 2026: twice a `blocking` verdict was
-published whose review stopped at "one finding below", 9,389 and 6,492 tokens
-out, while full reads of the same commits carried the findings). Every
-object in the answer that carries a verdict is found — braces in the prose
-around it, a raw line break inside it or a wrapper object around it
-notwithstanding — and the worst speaks, as the gate's own verdict() keeps the
-worst. A refusal is never handed to a reader who might clear the change (#110):
-it keeps every other word of the answer, the other verdicts' reviews
-included, and says so if the provider cut it off for length; and an answer
-that says `"verdict": "blocking"` in the open but whose object will not decode
-(cut off inside it, or broken by an unescaped quote) is signed as a refusal
-with the whole answer for its review. A clearance is taken only when it is the
-one verdict in the answer, whole, with nothing beside it but fences; otherwise
-it is no answer, and its fallback reads. The job's summary gets the answer's
-shape, so the next stub says which way it came.
+THE VERDICT IS DERIVED, NEVER GIVEN (decision 0014, position C, replacing the
+model's own verdict word, whose last signed value on #148's round 4 said
+blocking over a text that said nothing blocks). The model returns findings,
+each with a severity, blocking or advisory, and a review; `ask.py derive FILE`
+rewrites an answer file, whichever caller wrote it, so that its `result` is the
+verdict the findings make: any blocking finding, blocking; else any finding,
+advisory; else clean. It is the one place a verdict is made. A field called
+`verdict` in the model's answer is ignored, and the summary says so, except
+that one saying blocking over findings that do not is a clearance not taken.
+Nothing in the prose is read for meaning.
+
+It fails closed. A missing, malformed, unknown-severity or cut-off answer
+signs no clearance, and its fallback reads. A refusal is never handed to a
+reader who might clear the change (#110): every blocking finding is found
+however the answer is wrapped (braces in the prose around it, a raw line break
+inside it, a wrapper object around it), the worst speaks, the refusal keeps
+every other word of the answer, and an answer that says `"severity":
+"blocking"` in the open but will not decode (cut off inside it, or broken by an
+unescaped quote) is signed as a refusal with the whole answer for its review
+(#115, #116, #119). A clearance is taken only when it is the one answer, whole,
+with nothing beside it but fences. The job's summary gets the answer's shape.
 
 ITS LIMIT (#116's third read). If #115's findings were in the model's
 reasoning rather than its answer, nothing here recovers them, and a stub is
@@ -72,25 +80,26 @@ def served_is_pinned(served, pinned):
     return bool(re.fullmatch(re.escape(pinned) + r"(-\d{8})?", served or ""))
 
 
-VERDICTS = ("clean", "advisory", "blocking")
+SEVERITIES = ("blocking", "advisory")
 # A kept refusal's review is cut here: the workflow posts it whole as a comment,
 # which GitHub refuses past 65,536 characters (#116's third read).
 KEPT_CAP = 50000
-# `"verdict": "blocking"` in the open, its first quote not escaped: inside any
-# JSON string it could only appear escaped, so a review that quotes it does
-# not match.
-REFUSAL_SAID = re.compile(r'(?<!\\)"verdict"\s*:\s*"blocking"', re.I)
+# `"severity": "blocking"` in the open, its first quote not escaped: inside any
+# JSON string it could only appear escaped, so a review that quotes it does not
+# match. The retired `"verdict": "blocking"` counts too, for an answer that
+# will not decode: a refusal in either spelling is never lost.
+REFUSAL_SAID = re.compile(r'(?<!\\)"(?:severity|verdict)"\s*:\s*"blocking"', re.I)
 
 
-def word(v):
-    """A verdict's word, whatever its case (#116's third read: "Blocking" is a refusal)."""
-    return str(v.get("verdict", "")).strip().lower()
+def severity(f):
+    """A finding's severity, whatever its case ("Blocking" is a refusal); "" for what is no finding."""
+    return str(f.get("severity", "")).strip().lower() if isinstance(f, dict) else ""
 
 
 def _carrying(obj):
-    """Every object carrying a verdict, at any depth: a wrapper hides none."""
+    """Every object carrying findings, at any depth: a wrapper hides none."""
     if isinstance(obj, dict):
-        if "verdict" in obj:
+        if "findings" in obj:
             yield obj
         for v in obj.values():
             yield from _carrying(v)
@@ -99,8 +108,8 @@ def _carrying(obj):
             yield from _carrying(v)
 
 
-def verdicts(content):
-    """(every object carrying a verdict, in order; the text around them, as written).
+def answers(content):
+    """(every object carrying findings, in order; the text around them, as written).
 
     Each `{` is decoded where it stands, leniently — a raw line break inside a
     string is read rather than refused — so a brace in the prose neither hides
@@ -129,28 +138,86 @@ def verdicts(content):
 
 
 def beside(prose):
-    """What was written beside the verdict, fences and whitespace aside: weighed, never published so."""
+    """What was written beside the answer, fences and whitespace aside: weighed, never published so."""
     return re.sub(r"\s", "", re.sub(r"```[A-Za-z]*", "", prose or ""))
+
+
+def _listed(answer):
+    """The findings an answer carries, as a list: anything else is no list."""
+    fs = answer.get("findings")
+    return fs if isinstance(fs, list) else []
+
+
+def _typed(findings):
+    """The findings as they are posted: severity and text, nothing the model added."""
+    return [{"severity": severity(f) or "unknown", "text": str(f.get("text") or "") if isinstance(f, dict) else str(f)}
+            for f in findings]
 
 
 def kept_refusal(found, prose, cut, content):
     """The refusal to sign, carrying every word of the answer it came in."""
-    refusals = [v for v in found if word(v) == "blocking"]
+    refusals = [a for a in found if any(severity(f) == "blocking" for f in _listed(a))]
     if not refusals:
-        return {"verdict": "blocking", "review": "*The answer said blocking, but its verdict object did "
-                "not decode%s. The caller signs it as a refusal and keeps the whole answer as its "
-                "review:*\n\n%s" % (", and the provider cut it off for length" if cut else "", content.strip())}
-    first = dict(refusals[0], verdict="blocking")
-    others = [str(v.get("review") or "").strip() for v in refusals[1:] + [v for v in found if word(v) != "blocking"]]
+        return {"verdict": "blocking", "findings": [],
+                "review": "*The answer said blocking, but its findings did not decode%s. The caller signs it "
+                "as a refusal and keeps the whole answer as its review:*\n\n%s"
+                % (", and the provider cut it off for length" if cut else "", content.strip())}
+    first = refusals[0]
+    review = str(first.get("review") or "")
+    others = [str(a.get("review") or "").strip() for a in refusals[1:] + [a for a in found if a not in refusals]]
     words = "\n\n".join(w for w in others + [prose] if w)
     if words or cut:
-        first["review"] = "%s\n\n---\n*%s*%s" % (
-            first.get("review") or "",
-            "Written beside the verdict, and kept by the caller so the refusal carries its findings"
+        review = "%s\n\n---\n*%s*%s" % (
+            review,
+            "Written beside the findings, and kept by the caller so the refusal carries its findings"
             + (", as far as the answer went before the provider cut it off for length" if cut else "") + ":"
             if words else "The provider cut this answer off for length after the words above.",
             "\n\n" + words if words else "")
-    return first
+    # No review at all stays no review: the signer fails a refusal with none, as it
+    # did before #110, and an empty string would read as one.
+    return dict({"verdict": "blocking", "findings": _typed([f for a in found for f in _listed(a)])},
+                **({"review": review} if review else {}))
+
+
+def derive(content, cut=False):
+    """(the verdict object, None), or (None, (subtype, why)) for an answer that clears nothing.
+
+    The verdict is made here from the findings alone. No number goes in a
+    `why`: the workflow's why() reads 401, 403, 429 and 529 in it as the
+    provider's own refusals (#116's first read).
+    """
+    content = content if isinstance(content, str) else ""
+    found, prose = answers(content)
+    if not found:
+        if REFUSAL_SAID.search(content):
+            return kept_refusal(found, prose, cut, content), None
+        if cut:
+            return None, ("truncated", "the model ran out of room before its answer ended, so its verdict is not taken")
+        return None, ("no_verdict", "the model answered no findings object")
+    own = [str(a["verdict"]).strip().lower() for a in found if "verdict" in a]
+    blocked = any(severity(f) == "blocking" for a in found for f in _listed(a))
+    if blocked:
+        # The worst speaks, and keeps every word of the answer (#110, #116).
+        refusal = kept_refusal(found, prose, cut, content)
+        refusal["ignored"] = ["verdict"] if own else []
+        if len(refusal.get("review", "")) > KEPT_CAP:
+            refusal["review"] = refusal["review"][:KEPT_CAP] + \
+                "\n\n*The rest is cut by the caller: a comment holds only so much.*"
+        return refusal, None
+    if cut:
+        return None, ("truncated", "the model ran out of room before its answer ended, so its verdict is not taken")
+    findings = [f for a in found for f in _listed(a)]
+    if (any(not isinstance(a.get("findings"), list) or not isinstance(a.get("review"), str) for a in found)
+            or any(severity(f) not in SEVERITIES or not str(f.get("text") or "").strip() for f in findings)):
+        return None, ("malformed", "the model answered findings or a review outside the schema")
+    if len(found) > 1 or beside(prose):
+        return None, ("outside", "the model wrote beside its answer object, so a verdict that would clear "
+                                 "the change is not taken")
+    if "blocking" in own:
+        return None, ("disagrees", "the model's own word was blocking over findings that do not make it so, "
+                                   "so a verdict that would clear the change is not taken")
+    return {"verdict": "advisory" if findings else "clean", "review": found[0]["review"],
+            "findings": _typed(findings), "ignored": ["verdict"] if own else []}, None
 
 
 def build(got, provider, system, prompt, schema):
@@ -187,38 +254,82 @@ def answer(resp, pinned):
         choice, content = {}, None
     usage = resp.get("usage") or {}
     cut = isinstance(choice, dict) and choice.get("finish_reason") == "length"
-    found, prose = verdicts(content)
-    # No number in a `result` below: the workflow's why() reads 401, 403, 429
-    # and 529 in it as the provider's own refusals (#116's first read).
-    if any(word(v) == "blocking" for v in found) or REFUSAL_SAID.search(content or ""):
-        # The worst verdict speaks, and keeps every word of the answer (#110, #116).
-        refusal = kept_refusal(found, prose, cut, content or "")
-        review = str(refusal.get("review") or "")
-        if len(review) > KEPT_CAP:
-            refusal["review"] = review[:KEPT_CAP] + "\n\n*The rest is cut by the caller: a comment holds only so much.*"
-        text = json.dumps(refusal)
-    elif cut:
-        return {"is_error": True, "subtype": "truncated",
-                "result": "the model ran out of room before its answer ended, so its verdict is not taken"}, 1
-    elif not found:
+    # What the model wrote is handed on as written; the verdict is made from it
+    # by derive(), the same way for either caller. No number in a `result`
+    # below: why() reads 401, 403, 429 and 529 in it as the provider's own
+    # refusals (#116's first read).
+    if not isinstance(content, str) or not content.strip():
         return {"is_error": True, "subtype": "no_verdict",
-                "result": "the model answered no verdict object"}, 1
-    elif len(found) > 1 or beside(prose):
-        return {"is_error": True, "subtype": "outside",
-                "result": "the model wrote beside its verdict object, so a verdict that would clear "
-                          "the change is not taken"}, 1
-    elif word(found[0]) not in VERDICTS:
-        return {"is_error": True, "subtype": "no_verdict",
-                "result": "the model answered a verdict outside the schema"}, 1
+                "result": "the model answered no content"}, 1
+    out = {"result": content, "model": served, "provider": resp.get("provider", ""),
+           "usage": {"input_tokens": usage.get("prompt_tokens"),
+                     "output_tokens": usage.get("completion_tokens")},
+           "total_cost_usd": usage.get("cost")}
+    if cut:
+        out["stop_reason"] = "max_tokens"
+    return out, 0
+
+
+def derive_file(path):
+    """Rewrite an answer file in place: its `result` becomes the derived verdict, or says why none is.
+
+    Whichever caller wrote the file, a read the tool failed is left as the tool
+    left it, and anything else is judged by derive() alone. Whatever goes wrong
+    here is an answer with no verdict, never an answer the model's own words
+    could pass for one.
+    """
+    try:
+        with open(path, encoding="utf-8") as f:
+            obj = json.load(f)
+    except (OSError, ValueError):
+        obj = None
+    if not isinstance(obj, dict):
+        obj = {"is_error": True, "subtype": "no_answer", "result": "the read left no answer to make a verdict from"}
+    elif obj.get("is_error"):
+        # A read the tool failed carries the tool's words and no object the model
+        # could have written a verdict in: that is no answer, whatever it holds.
+        try:
+            if isinstance(json.loads(obj.get("result")), (dict, list)):
+                obj["result"] = ""
+        except (TypeError, ValueError):
+            pass
     else:
-        text = json.dumps(dict(found[0], verdict=word(found[0])))
-    return {"result": text, "model": served, "provider": resp.get("provider", ""),
-            "usage": {"input_tokens": usage.get("prompt_tokens"),
-                      "output_tokens": usage.get("completion_tokens")},
-            "total_cost_usd": usage.get("cost")}, 0
+        # The tool's own schema-checked answer, where it gives one, is what the
+        # model answered; the text beside it is not.
+        structured = obj.get("structured_output")
+        content = json.dumps(structured) if isinstance(structured, dict) else obj.get("result")
+        got, why = derive(content, obj.get("stop_reason") == "max_tokens")
+        if got is None:
+            obj = dict({k: v for k, v in obj.items() if k not in ("result", "structured_output")},
+                       is_error=True, subtype=why[0], result=why[1])
+            note("derived no verdict: the answer was %s" % why[0])
+        else:
+            obj = dict({k: v for k, v in obj.items() if k not in ("structured_output", "result")}, result=json.dumps(got))
+            note("derived %s from %d finding(s)%s" % (
+                got["verdict"], len(got["findings"]),
+                "; the model's own verdict field was ignored" if got.get("ignored") else ""))
+    tmp = path + ".derived"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(obj, f)
+        f.write("\n")
+    os.replace(tmp, path)
+
+
+def note(text):
+    """A line to the job's summary alone, never to stderr and never at the cost of a verdict."""
+    try:
+        path = os.environ.get("GITHUB_STEP_SUMMARY")
+        if path:
+            with open(path, "a", encoding="utf-8") as f:
+                f.write("caller: %s\n" % text)
+    except Exception:  # a diagnostic never costs a verdict
+        pass
 
 
 def main(argv):
+    if len(argv) == 3 and argv[1] == "derive":
+        derive_file(argv[2])
+        return 0
     if len(argv) != 6:
         print(__doc__.strip().split("\n\n")[1], file=sys.stderr)
         return 2
@@ -286,9 +397,9 @@ def shape(resp):
         finish = re.sub(r"[^a-z_]", "", str(choice.get("finish_reason") or "none").lower())[:20]
         details = (resp.get("usage") or {}).get("completion_tokens_details") or {}
         thought = details.get("reasoning_tokens")
-        found, prose = verdicts(content)
+        found, prose = answers(content)
         with open(path, "a", encoding="utf-8") as f:
-            f.write("caller: finish %s; %d verdict object(s); answer %d characters, %d beside the "
+            f.write("caller: finish %s; %d answer object(s); answer %d characters, %d beside the "
                     "object; reasoning %s tokens\n" % (finish, len(found), len(content), len(prose),
                                                         thought if isinstance(thought, int) else "unknown"))
     except Exception:  # a diagnostic never costs a verdict
