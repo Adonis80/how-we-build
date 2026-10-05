@@ -1122,6 +1122,17 @@ PASTED_INPUT = re.compile(r"^\s+[A-Z_]+: \$\{\{ inputs\.[a-z_]+ \}\}\s*$")
 XTRACE = re.compile(r"\bset\s+-\w*x|\bxtrace\b")
 TOOL_PIN = r"npm install -g @anthropic-ai/claude-code@(\d+\.\d+\.\d+)\b"
 SCHEMA = re.compile(r"^\s*schema='([^']*)'\s*$", re.M)
+# What the model is asked for (decision 0014, position C): findings, each with a
+# severity and a text, and a review. Never a verdict: model-registry/ask.py's
+# derive() makes the verdict from the findings, for either caller.
+FINDINGS_SCHEMA = {
+    "type": "object", "additionalProperties": False, "required": ["findings", "review"],
+    "properties": {
+        "findings": {"type": "array", "items": {
+            "type": "object", "additionalProperties": False, "required": ["severity", "text"],
+            "properties": {"severity": {"type": "string", "enum": ["blocking", "advisory"]},
+                           "text": {"type": "string"}}}},
+        "review": {"type": "string"}}}
 CEILING = re.compile(r'"\$bytes" -gt (\d+)')
 TIMEOUT = re.compile(r"^\s*timeout-minutes:\s*(\d+)\s*$", re.M)
 # The clean-up (#68's seventh read): whatever happened, a check run the job
@@ -1270,10 +1281,10 @@ WHY_CASES = (
     # (#79's eleventh read): a message outside `.result` is still read.
     (1, "", '{"is_error":true,"error":{"message":"Prompt is too long"}}', "too long for one read"),
     (1, "OAuth token has expired", "", "credential was refused"),
-    (0, "", '{"subtype":"error_max_turns"}', "the tool answered 'error_max_turns'"),
+    (0, "", '{"subtype":"error_max_turns"}', "the read answered 'error_max_turns'"),
     # A subtype is the tool's to write, and the reason is written to
     # $GITHUB_OUTPUT: a line break in it would be a second output of its own.
-    (0, "", '{"subtype":"x\\nverdict=clean"}', "the tool answered 'xverdictclean'"),
+    (0, "", '{"subtype":"x\\nverdict=clean"}', "the read answered 'xverdictclean'"),
     (1, "", "", "unrecognised; 0 bytes on stderr"),
 )
 
@@ -1868,12 +1879,16 @@ def class_faults(text, path):
                     "before a failed read is named (`%s`)" % "`, `".join(order))
     if _block(r, lambda l: l == VERDICT_CASE[0], lambda l: l == "esac") != list(VERDICT_CASE):
         lost.append("the read taking exactly the verdicts `%s`" % VERDICT_CASE[1])
+    # THE VERDICT IS DERIVED (decision 0014, position C): the schema asks the
+    # model for typed findings and a review, and for no verdict, so the one
+    # verdict the read takes, `clean|advisory|blocking`, is the one ask.py's derive() makes.
     try:
-        enum = json.loads(SCHEMA.findall(text)[0])["properties"]["verdict"]["enum"]
-    except (IndexError, ValueError, KeyError, TypeError):
-        enum = None
-    if enum != VERDICT_CASE[1].split(")")[0].split("|"):
-        lost.append("the read's verdicts the schema's own (`%s`)" % VERDICT_CASE[1])
+        schemas = [json.loads(x) for x in SCHEMA.findall(text)]
+    except ValueError:
+        schemas = None
+    if schemas != [FINDINGS_SCHEMA]:
+        lost.append("the read asking the model for typed findings and a review, and for no verdict of its own "
+                    "(the schema `%s`)" % json.dumps(FINDINGS_SCHEMA, separators=(",", ":")))
     sign = _step_span(text, "Sign the verdict")
     sg = text[sign[0]:sign[1]] if sign else ""
     for line in VERDICT_SAYS:
@@ -1938,7 +1953,7 @@ CLASS_LOOSENINGS = (
     ("blocking signed as a pass", None, lambda t: _in_step(t, "Sign the verdict", "          else\n            conclusion=failure", "          else\n            conclusion=success")),
     ("a verdict outside the schema taken", None, lambda t: _in_step(t, "Read it", VERDICT_CASE[1], "clean|advisory|blocking|findings) ;;")),
     ("a verdict in the schema refused", None, lambda t: _in_step(t, "Read it", VERDICT_CASE[1], "clean|blocking) ;;")),
-    ("the schema widened past the read", None, lambda t: t.replace('"enum":["clean","advisory","blocking"]', '"enum":["clean","advisory","blocking","findings"]', 1)),
+    ("the schema widened past the read", None, lambda t: t.replace('"enum":["blocking","advisory"]', '"enum":["blocking","advisory","critical"]', 1)),
     ("any verdict read as advisory", None, lambda t: _in_step(t, "Sign the verdict", 'elif [ "$VERDICT" = "advisory" ]', 'elif [ -n "$VERDICT" ]')),
     ("a verdict that hides its effort", None, lambda t: t.replace(" (read as $CLASS at effort $EFFORT${SPENT:+; $SPENT})\"", "\"", 1)),
     ("a product's decisions read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("PRODUCT.md|", "", 1), 1)),
@@ -2058,12 +2073,22 @@ ROUTE_REGISTRY = {
 ROUTE_ASK_GUARD = ('case "$effort" in %s) ;; *) printf \'{"is_error":true,"subtype":"no_effort"}\\n\' '
                    '> "$out"; : > "$err"; return 2 ;; esac' % REVIEW_EFFORT)
 ROUTE_FIRST = "fell_back=no"
+# The verdict is derived from the findings, after every read that exited clean,
+# and a derivation that goes wrong leaves an answer with no verdict, never the
+# model's own word (decision 0014, position C).
+ROUTE_DERIVE = ('derive() { python3 "$reg/ask.py" derive "$out" || printf \'{"is_error":true,"subtype":"not_derived"}\\n\' '
+                '> "$out"; }')
 ROUTE_LAST = 'echo "verdict=$verdict" >> "$GITHUB_OUTPUT"'
 # A product's code is private, and no provider but Anthropic has been cleared to
 # read it (25 September 2026: a session's own guard refused to send it
 # elsewhere). So review-product.yml speaks the claude-code interface alone, and
 # names neither another caller nor another provider's credential.
 PRODUCT_EGRESS = ("ask.py", "OPENROUTER", "openai-compatible")
+# The one use of ask.py a product's workflow may name (decision 0014): the
+# derivation of the verdict from the findings, which reads and writes the answer
+# file and makes no request (`_check_caller` runs it with the network refused).
+# Any other mention of ask.py is the caller that sends a read to another provider.
+PRODUCT_DERIVE = 'python3 "$reg/ask.py" derive "$out"'
 # (what happens, the primary's exit and verdict, the fallback's, the fallback
 # role or none, seconds left when the fallback would start, what must follow:
 # the roles asked in order, and the verdict read or None for a read that fails).
@@ -2094,8 +2119,18 @@ ROUTE_CASES = (
      (0, "clean"), FALLBACK_ROLE, 30, ([ORDINARY_ROLE], None)),
     ("the fallback exits in error with a verdict written", (1, ""), (1, "clean"), FALLBACK_ROLE, 600,
      ([ORDINARY_ROLE, FALLBACK_ROLE], None)),
-    ("the fallback answers a verdict outside the schema", (1, ""), (0, "findings"), FALLBACK_ROLE, 600,
+    ("the fallback answers a finding of a severity outside the schema", (1, ""), (0, "findings"), FALLBACK_ROLE, 600,
      ([ORDINARY_ROLE, FALLBACK_ROLE], None)),
+    # THE VERDICT IS DERIVED (decision 0014, position C): findings in, the one
+    # verdict out. A severity the schema does not hold clears nothing; one
+    # blocking finding among advisories is a refusal and never asked again; and a
+    # verdict word of the model's own, `clean` over a blocking finding, is ignored.
+    ("the role answers a finding of unknown severity, which clears nothing", (0, "findings"), (0, "clean"),
+     FALLBACK_ROLE, 600, ([ORDINARY_ROLE, FALLBACK_ROLE], "clean")),
+    ("the role answers advisory findings and a blocking one", (0, "mixed"), (0, "clean"), FALLBACK_ROLE, 600,
+     ([ORDINARY_ROLE], "blocking")),
+    ("the role sends a verdict of its own, clean, over a blocking finding", (0, "stray"), (0, "clean"),
+     FALLBACK_ROLE, 600, ([ORDINARY_ROLE], "blocking")),
     # A verdict with nothing read behind it is no answer. #108's first read on
     # 50a4688: `clean`, and a review of three dots, 15 tokens out against
     # 129,357 in, and the gate opened on it. The same commit read again wrote
@@ -2153,7 +2188,21 @@ def route_says(block, first, second, fallback, left):
               echo "$1" >> '{d}/asked'
               if [ "$1" = "$ROLE" ]; then r=$P_RC; v=$P_V; w=$P_W; n=$P_NONE; else r=$F_RC; v=$F_V; w=$F_W; n=$F_NONE; fi
               if [ -n "$v" ]; then
-                jq -cn --arg v "$v" --arg w "$w" --arg n "$n" '{{result: ((if $n == "1" then {{verdict: $v}} else {{verdict: $v, review: $w}} end) | tojson), usage: {{input_tokens: 9, output_tokens: 2}}, total_cost_usd: 0.01}}' > "$out"
+                # What a model answers under the schema: findings, and a review. The
+                # word stands for the findings the stub gives, never for a verdict
+                # (decision 0014): `stray` is the retired verdict field sent anyway,
+                # `findings` a severity the schema does not hold.
+                jq -cn --arg v "$v" --arg w "$w" --arg n "$n" --arg r "$r" '
+                  ({{blocking: [{{severity: "blocking", text: "a finding"}}],
+                    advisory: [{{severity: "advisory", text: "a finding"}}],
+                    mixed: [{{severity: "advisory", text: "a finding"}}, {{severity: "blocking", text: "another"}}],
+                    stray: [{{severity: "blocking", text: "a finding"}}],
+                    clean: []}}[$v] // [{{severity: "critical", text: "a finding"}}]) as $f
+                  | {{result: ((if $n == "1" then {{findings: $f}} else {{findings: $f, review: $w}} end
+                               | if $v == "stray" then . + {{verdict: "clean"}} else . end
+                               | if $r != "0" and ($v == "clean" or $v == "advisory" or $v == "blocking")
+                                 then . + {{verdict: $v}} else . end) | tojson),
+                     usage: {{input_tokens: 9, output_tokens: 2}}, total_cost_usd: 0.01}}' > "$out"
               else
                 printf '{{"is_error":true,"subtype":"x"}}\\n' > "$out"
               fi
@@ -2162,7 +2211,8 @@ def route_says(block, first, second, fallback, left):
             limit=25 STARTED=$(( $(date +%s) - limit * 60 + {left} ))
             left=600
             role=$ROLE model=unknown effort=high
-            """).format(d=d, left=left)
+            reg='{reg}'
+            """).format(d=d, left=left, reg=os.path.abspath(os.path.dirname(CALLER)))
         script = stub + body + '\necho "done: $verdict"\n'
         with open(os.path.join(d, "route.sh"), "w", encoding="utf-8") as f:
             f.write(script)
@@ -2199,7 +2249,7 @@ def route_faults(text, path):
     lost = []
     span = _step_span(text, "Read it")
     r = text[span[0]:span[1]] if span else ""
-    for line in ROUTE_RESOLVE + (ROUTE_REGISTRY[path], ROUTE_ASK_GUARD):
+    for line in ROUTE_RESOLVE + (ROUTE_REGISTRY[path], ROUTE_ASK_GUARD, ROUTE_DERIVE):
         if line not in r:
             lost.append("`%s`" % line)
     # ONE BLOCK, RUN WHOLE (#110's second read, advisory 1): from `reviewed()`
@@ -2238,7 +2288,7 @@ def route_faults(text, path):
                         % (what, want[0], "the verdict %s read" % want[1] if want[1] else
                            "the read failed, never open", got))
     if path == PRODUCT_WORKFLOW:
-        said = [w for w in PRODUCT_EGRESS if w in text]
+        said = [w for w in PRODUCT_EGRESS if w in text.replace(PRODUCT_DERIVE, "")]
         if said:
             lost.append("no caller or credential but Anthropic's for a product's private code "
                         "(it names %s)" % ", ".join(said))
@@ -2273,7 +2323,9 @@ ROUTE_LOOSENINGS = (
     ("an answer with no verdict taken", None, lambda t: t.replace('{ [ "$rc" -ne 0 ] || ! answered; }', '[ "$rc" -ne 0 ]', 1)),
     ("a failure forgotten when no time is left", None, lambda t: t.replace('            if [ "$left" -ge 60 ]; then\n              rc=0\n', '            rc=0\n            if [ "$left" -ge 60 ]; then\n', 1)),
     ("a failed read never named", None, lambda t: t.replace("          " + READ_ANSWERED + "\n", "", 1)),
-    ("a verdict outside the schema read", None, lambda t: _in_step(t, "Read it", '            *) fail "the reviewer returned no verdict: $(why)" ;;', '            *) verdict=clean ;;')),
+    ("the first read's verdict left to the model", None, lambda t: t.replace('          ask "$ROLE" "$bound" || rc=$?\n          [ "$rc" -ne 0 ] || derive\n', '          ask "$ROLE" "$bound" || rc=$?\n', 1)),
+    ("the fallback's verdict left to the model", None, lambda t: t.replace('              ask "$FALLBACK" "$left" || rc=$?\n              [ "$rc" -ne 0 ] || derive\n', '              ask "$FALLBACK" "$left" || rc=$?\n', 1)),
+    ("a derivation that fails open", None, lambda t: t.replace(' || printf \'{"is_error":true,"subtype":"not_derived"}\\n\' > "$out"; }', ' || true; }', 1)),
     ("a verdict with no review behind it counted as an answer", None, lambda t: t.replace(REVIEW_WEIGHED, "true", 1)),
     ("an empty review taken, as before #109", REVIEW_WORKFLOW, lambda t: t.replace(*REVIEW_TAKEN[REVIEW_WORKFLOW], 1)),
     ("an empty review taken, as before #109", PRODUCT_WORKFLOW, lambda t: t.replace(*REVIEW_TAKEN[PRODUCT_WORKFLOW], 1)),
@@ -2411,24 +2463,32 @@ def _check_registry():
     return bad
 
 
-# THE CALLER, model-registry/ask.py: the OpenAI-compatible read. What it must
-# do is run here on answers a provider could give, never on a network: refuse a
-# model it did not pin (no silent substitution), take a verdict however it is
-# wrapped, name a refusal, count the tokens and the cost, and put the effort
-# where the registry says the provider takes it, sending no list of models.
+# THE CALLER, model-registry/ask.py: the OpenAI-compatible read, and the one place
+# a verdict is made. What it must do is run here on answers a provider could
+# give, never on a network: refuse a model it did not pin (no silent
+# substitution), hand an answer on as written, make the verdict from the
+# findings alone (decision 0014, position C: any blocking, else any advisory,
+# else clean, whatever the model says of its own, and nothing read from the
+# prose), clear nothing on an answer that is missing, malformed, of unknown
+# severity or cut off, and still refuse on a blocking finding that survives a
+# cut or a break. It counts the tokens and the cost and puts the effort where the
+# registry says, sending no list of models.
 CALLER = "model-registry/ask.py"
 
 
-def _check_caller():
+def _check_caller(path=None, quiet=False):
+    """The caller's tests, on `path` (a loosened copy, in _check_caller_loosenings) or the file itself."""
+    path = path or CALLER
     bad = 0
 
     def fault(what):
         nonlocal bad
-        print("  caller: %s" % what)
+        if not quiet:
+            print("  caller: %s" % what)
         bad += 1
 
     try:
-        spec = importlib.util.spec_from_file_location("ask", CALLER)
+        spec = importlib.util.spec_from_file_location("ask", path)
         ask = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(ask)
     except (OSError, ImportError, SyntaxError) as e:
@@ -2439,13 +2499,22 @@ def _check_caller():
                          ("vendor/model-1", False), ("", False), (pinned + "-2026", False)):
         if ask.served_is_pinned(served, pinned) != want:
             fault("an answer from %r %s" % (served, "refused" if want else "taken as the pinned model's"))
-    verdict = '{"verdict": "clean", "review": "r"}'
+    said = "To the CTO. " + "I read the diff whole and checked each changed line against the brief. " * 3
 
-    def reply(model=pinned, content=verdict, **more):
+    def answer(findings, review=said, **more):
+        return json.dumps(dict({"findings": findings, "review": review}, **more))
+
+    def finding(severity, text="a finding"):
+        return {"severity": severity, "text": text}
+    clean = answer([])
+
+    def reply(model=pinned, content=clean, **more):
         r = {"model": model, "choices": [{"message": {"content": content}}],
              "usage": {"prompt_tokens": 900, "completion_tokens": 40, "cost": 0.0021}}
         r.update(more)
         return r
+    # The transport: an answer is handed on as written, marked when the provider
+    # cut it off, and refused when the model, the body or the content is wrong.
     for what, resp, rc, sub in (("an answer from the pinned model", reply(), 0, None),
                                 ("an answer from another model", reply(model="vendor/other"), 1, "wrong_model"),
                                 ("a refusal in the body", reply(error={"code": 402, "message": "Insufficient credits"}), 1, "provider_error"),
@@ -2454,85 +2523,246 @@ def _check_caller():
         got, status = ask.answer(resp, pinned)
         if status != rc or got.get("subtype") != sub:
             fault("%s answered %s (%s), not %s (%s)" % (what, status, got.get("subtype"), rc, sub))
-    # NO SILENT LOSS (#115's first reads: a `blocking` published with its
-    # findings missing; #116's first read: parse before weighing a cut, and let
-    # no brace in the prose hide the object). The worst verdict speaks; a
-    # refusal keeps every word beside it, cut off or not; a clearance is taken
-    # only whole and alone; no number reaches a `result`, where why() would read
-    # 429 as the provider's own refusal.
-    findings = "**1. Blocking — the page it left behind.** " + "It says the opposite. " * 20
+    got, status = ask.answer(reply(), pinned)
+    if status != 0 or got.get("result") != clean or "stop_reason" in got:
+        fault("an answer was not handed on as the model wrote it")
+    cutoff = reply()
+    cutoff["choices"][0]["finish_reason"] = "length"
+    got, status = ask.answer(cutoff, pinned)
+    if status != 0 or got.get("stop_reason") != "max_tokens":
+        fault("an answer the provider cut off for length was not marked as cut")
+
+    # THE VERDICT, MADE FROM THE FINDINGS (decision 0014, position C). Each case is
+    # (what happens, the answer, cut off for length, what comes of it, the words a
+    # refusal must still carry): a verdict, or `none:` and the subtype of an answer
+    # that clears nothing. No number reaches a `why`, where the workflow's why()
+    # would read 429 as the provider's own refusal.
     intro = "To the CTO. Read verdict blocking, on one finding below."
-    refusal = '{"verdict": "blocking", "review": "%s"}' % intro
-    clean = '{"verdict": "clean", "review": "%s"}' % ("Read whole. " * 12)
-
-    def kept(content, *words, **more):
-        got, status = ask.answer(reply(content=content, **more), pinned)
-        review = json.loads(got.get("result") or "{}").get("review", "") if status == 0 else ""
-        said = json.loads(got.get("result") or "{}").get("verdict") if status == 0 else None
-        return status == 0 and said == "blocking" and all(w in review for w in words), (status, said, review[:100])
-
-    def cut(content):
-        r = reply(content=content)
-        r["choices"][0]["finish_reason"] = "length"
-        return r
-    for content, words, what in (
-            (findings + "\n\n" + refusal, (intro, "the page it left behind"), "findings written before a refusal (#115's stub)"),
-            ("**1. Blocking — `${{ inputs.repo }}` is pasted into the script.** " + findings + "\n" + refusal,
-             ("${{ inputs.repo }}", intro), "a `${{ … }}` in the findings before a refusal"),
-            (refusal + "\n\nAnd a dict: {'a': 1}. " + findings, ("{'a': 1}", intro), "a `}` in the findings after a refusal"),
-            (refusal + " Also: the brief is stale.", ("the brief is stale",), "a short finding beside a refusal"),
-            (clean + "\n" + refusal, (intro,), "a clearance and a refusal together, where the worst speaks")):
-        ok, why = kept(content, *words)
+    prose = "**1. Blocking — the page it left behind.** " + "It says the opposite. " * 20
+    refusal = answer([finding("blocking", "the key leaks")], intro)
+    cases = (
+        ("a read with no findings", clean, False, "clean", ()),
+        ("advisory findings alone", answer([finding("advisory"), finding("advisory", "another")]), False, "advisory", ()),
+        ("one blocking finding among advisories",
+         answer([finding("advisory"), finding("blocking", "the key leaks"), finding("advisory", "b")], intro),
+         False, "blocking", (intro,)),
+        ("a blocking finding spelt Blocking", answer([finding(" Blocking ")], intro), False, "blocking", (intro,)),
+        ("a blocking finding with no text", answer([{"severity": "blocking"}], intro), False, "blocking", (intro,)),
+        ("a finding of unknown severity", answer([finding("critical")]), False, "none:malformed", ()),
+        ("a finding with no severity", answer([{"text": "t"}]), False, "none:malformed", ()),
+        ("an advisory finding with no text", answer([finding("advisory", " ")]), False, "none:malformed", ()),
+        ("a finding that is not an object", answer(["blocking"]), False, "none:malformed", ()),
+        ("findings that are no list", json.dumps({"findings": "none", "review": said}), False, "none:malformed", ()),
+        ("no review", json.dumps({"findings": []}), False, "none:malformed", ()),
+        # The prose is read for nothing: a review that says blocking over no findings
+        # is a read with no findings, and one that says nothing blocks over a blocking
+        # finding is a refusal, which is what #148's round 4 signed the wrong way round.
+        ("no findings, and a review that says it is blocking", answer([], "This is blocking: the key leaks."),
+         False, "clean", ()),
+        ("a blocking finding, and a review that says nothing blocks",
+         answer([finding("blocking")], "Nothing blocks this change."), False, "blocking", ("Nothing blocks",)),
+        ("an answer with prose written beside it", clean + "\n\nAlso: I think this is blocking.", False,
+         "none:outside", ()),
+        ("two answers, neither blocking", clean + " " + clean, False, "none:outside", ()),
+        ("a read cut off for length, none blocking", clean, True, "none:truncated", ()),
+        ("advisory findings, and the answer cut off", answer([finding("advisory")]), True, "none:truncated", ()),
+        ("an answer cut off inside its findings, none said blocking",
+         '{"findings": [{"severity": "advisory", "text": "the page it left', True, "none:truncated", ()),
+        ("a blocking finding cut off inside its answer",
+         '{"findings": [{"severity": "blocking", "text": "the page it left', True, "blocking",
+         ("the page it left", "did not decode", "cut it off for length")),
+        ("a blocking finding whole, the answer cut off after it", answer([finding("blocking")], "whole"), True,
+         "blocking", ("whole", "cut this answer off for length after the words above")),
+        ("no answer at all", "no object", False, "none:no_verdict", ()),
+        ("malformed JSON", '{"findings": [ {oops', False, "none:no_verdict", ()),
+        ("no content", None, False, "none:no_verdict", ()),
+        ("an answer that is not text", {"findings": []}, False, "none:no_verdict", ()),
+        ("the retired verdict shape, clean", '{"verdict": "clean", "review": "r"}', False, "none:no_verdict", ()),
+        ("the retired verdict shape, blocking", '{"verdict": "blocking", "review": "r"}', False, "blocking",
+         ('"verdict": "blocking"', "did not decode")),
+        # The model's own word is ignored, except where it says blocking over findings
+        # that do not: that is a clearance not taken, never a verdict.
+        ("a verdict of its own, clean, over a blocking finding", answer([finding("blocking")], intro, verdict="clean"),
+         False, "blocking", (intro,)),
+        ("a verdict of its own, clean, over no findings", answer([], verdict="clean"), False, "clean", ()),
+        ("a verdict of its own, advisory, over no findings", answer([], verdict="advisory"), False, "clean", ()),
+        ("a verdict of its own, blocking, over advisory findings", answer([finding("advisory")], verdict="blocking"),
+         False, "none:disagrees", ()),
+        ("a verdict of its own, blocking, over no findings", answer([], verdict="blocking"), False, "none:disagrees", ()),
+        # NO SILENT LOSS (#115's first reads: a `blocking` published with its findings
+        # missing; #116's: parse before weighing a cut, and let no brace in the prose
+        # hide the object): a refusal keeps every word beside it, wherever it sits.
+        ("prose written before a refusal (#115's stub)", prose + "\n\n" + refusal, False, "blocking",
+         (intro, "the page it left behind")),
+        ("a `${{ … }}` in the prose before a refusal",
+         "**1. Blocking — `${{ inputs.repo }}` is pasted into the script.** " + prose + "\n" + refusal, False,
+         "blocking", ("${{ inputs.repo }}", intro)),
+        ("a `}` in the prose after a refusal", refusal + "\n\nAnd a dict: {'a': 1}. " + prose, False, "blocking",
+         ("{'a': 1}", intro)),
+        ("a short finding beside a refusal", refusal + " Also: the brief is stale.", False, "blocking",
+         ("the brief is stale",)),
+        ("a clearance and a refusal together, where the worst speaks", clean + "\n" + refusal, False, "blocking",
+         (intro,)),
+        ("two refusals, the second's review kept",
+         answer([finding("blocking")], "first") + " " + answer([finding("blocking")], "second"), False, "blocking",
+         ("first", "second")),
+        ("a refusal inside a wrapper object", '{"name": "answer", "arguments": %s}' % answer([finding("blocking")], "wrapped"),
+         False, "blocking", ("wrapped",)),
+        ("a refusal with a raw line break in its review",
+         '{"findings": [{"severity": "blocking", "text": "t"}], "review": "line one\nline two"}', False, "blocking",
+         ("line one\nline two",)),
+        ("a refusal broken by an unescaped quote",
+         '{"findings": [{"severity": "blocking", "text": "t"}], "review": "the "key" leaks"}', False, "blocking",
+         ('the "key" leaks', "did not decode")),
+        ("a refusal beside a code fence, which is kept", refusal + "\n\n```bash\nrm -rf x\n```", False, "blocking",
+         ("```bash",)),
+        ("a clearance that only quotes the words",
+         json.dumps({"findings": [], "review": 'The brief says a "severity": "blocking" finding must be listed.'}),
+         False, "clean", ()),
+    )
+    for what, content, cut, want, words in cases:
+        try:
+            obj, why = ask.derive(content, cut)
+        except Exception as e:  # noqa: BLE001
+            fault("%s made the derivation raise %s, which would leave the read with no verdict at all"
+                  % (what, type(e).__name__))
+            continue
+        if want.startswith("none:"):
+            ok = obj is None and why[0] == want[5:] and not re.search(r"\d", why[1])
+            got = "a verdict %r" % (obj and obj.get("verdict")) if obj else "%s, %r" % (why[0], why[1][:60])
+        else:
+            ok = obj is not None and obj.get("verdict") == want and all(w in obj.get("review", "") for w in words)
+            got = (obj or {}).get("verdict") or "no verdict (%s)" % (why,)
         if not ok:
-            fault("%s was not kept as a refusal with its words (%s)" % (what, why))
-    got, status = ask.answer(cut(refusal + "\n\n" + findings), pinned)
-    review = json.loads(got.get("result") or "{}").get("review", "") if status == 0 else ""
-    if status != 0 or "the page it left behind" not in review or "cut it off for length" not in review:
-        fault("a refusal cut off for length was not kept as one, marked as cut (%s, %r)" % (status, review[-120:]))
-    for resp, sub, what in ((reply(content=findings + " " + clean), "outside", "a clearance written beside its object"),
-                            (reply(content=clean + " " + clean), "outside", "two clearances in one answer"),
-                            (reply(content='{"verdict": "advisory", "review": "r"}\n\n' + findings), "outside", "an advisory written beside its object"),
-                            (cut(clean), "truncated", "a clearance cut off for length"),
-                            (reply(content="${{ x }} and no verdict at all"), "no_verdict", "an answer with braces and no verdict")):
-        got, status = ask.answer(resp, pinned)
-        if status != 1 or got.get("subtype") != sub:
-            fault("%s answered %s (%s), not %s" % (what, status, got.get("subtype"), sub))
-        elif re.search(r"\d", got.get("result", "")):
-            fault("%s names a number, which why() may read as a provider's refusal: %r" % (what, got["result"]))
-    # However the one verdict is wrapped, it is read; with none, nothing is.
-    for content, want in ((verdict, verdict), ("```json\n%s\n```" % verdict, verdict),
-                          ("Here it is: %s. Done." % verdict, verdict), ("no object", None),
-                          (None, None)):
-        got, status = ask.answer(reply(content=content), pinned)
-        if (status, got.get("result") if status == 0 else got.get("subtype")) != \
-                ((0, want) if want else (1, "no_verdict")):
-            fault("the answer %r read as %s %r" % (content, status, got.get("result")))
-    # A one-sentence finding beside a clearance is not a wrapper (#116's second read).
-    got, status = ask.answer(reply(content=verdict + " Blocking: the key is printed on line 42."), pinned)
-    if status != 1 or got.get("subtype") != "outside":
-        fault("a clearance with a one-sentence finding beside it answered %s (%s), not no answer"
-              % (status, got.get("subtype")))
-    # The shape goes to the job's summary alone: never to stderr, where why()
-    # reads 429 as a rate limit, and never at the cost of a verdict.
+            fault("%s was derived as %s, not %s" % (what, got, want))
+    # The typed findings the verdict stands on go on, and a verdict of its own is
+    # named as ignored; a refusal's kept words are cut to what a comment can hold.
+    obj, _ = ask.derive(answer([finding("advisory", "a"), finding("blocking", "b")], verdict="clean"))
+    if obj is None or obj.get("ignored") != ["verdict"] or obj.get("findings") != [
+            {"severity": "blocking", "text": "b"}, {"severity": "advisory", "text": "a"}]:
+        fault("the findings were not carried on as typed, or the model's own verdict not named as ignored (%s)" % obj)
+    obj, _ = ask.derive(clean)
+    if obj is None or obj.get("ignored") != []:
+        fault("a read that sent no verdict of its own was said to have had one ignored (%s)" % obj)
+    obj, _ = ask.derive(answer([finding("advisory")], verdict="clean"))
+    if obj is None or obj.get("verdict") != "advisory" or obj.get("ignored") != ["verdict"]:
+        fault("an advisory read that sent a verdict of its own was not derived from its findings, or the "
+              "verdict not named as ignored (%s)" % obj)
+    # A comment holds 65,536 characters (#119's first read, blocking): the review,
+    # the findings beneath it and a spend line go in one, and a comment GitHub
+    # refuses skips the wake. The number is GitHub's, not the file's own, so each
+    # path that publishes is held to a sum under it, whatever the model writes.
+    def published(o):
+        return len(o.get("review", "")) + sum(len(f["text"]) + 40 for f in o["findings"]) + 120
+    huge = "x" * 100000
+    for what, content, left_out in (
+            ("two hundred long blocking findings and a long review", answer([finding("blocking", huge)] * 200, huge), 170),
+            ("a refusal that will not decode, and long",
+             '{"findings": [{"severity": "blocking", "text": "t"}' + huge, 0),
+            ("a refusal with a long answer beside it", refusal + " " + huge, 0),
+            ("forty long advisory findings and a long review", answer([finding("advisory", huge)] * 40, huge), 10),
+            ("a clean read with a long review", answer([], huge), 0)):
+        obj, _ = ask.derive(content)
+        if obj is None or published(obj) > 60000:
+            fault("%s published %s characters, past what one comment holds"
+                  % (what, obj and published(obj)))
+        elif obj.get("omitted") != left_out or any(len(f["text"]) > 520 for f in obj["findings"]):
+            fault("%s left out %s findings, not %s, or published a finding's text without end"
+                  % (what, obj.get("omitted"), left_out))
+    obj, _ = ask.derive(answer([finding("advisory", "a")] * 40 + [finding("blocking", "b")]))
+    if obj is None or obj["findings"][0]["severity"] != "blocking" or obj.get("omitted") != 11:
+        fault("a long list of findings hid its one blocking finding, or did not count the ones it left out")
+    obj2, _ = ask.derive(json.dumps({"findings": [finding("blocking")]}))
+    if obj2 is None or "review" in obj2:
+        fault("a refusal with no review at all was given one, which the signer takes for a review")
+
+    # THE FILE, as the workflows hand it over: either caller's answer, rewritten so
+    # its `result` is the verdict, and refused the network.
     import contextlib
     import io
-    long_reply = reply(content=verdict + " " + "x" * 429)
+    saved = os.environ.get("GITHUB_STEP_SUMMARY")
+    real_urlopen = urllib.request.urlopen
+
+    def no_request(*a, **k):
+        raise AssertionError("derive made a request")
     with tempfile.TemporaryDirectory() as d:
         summary = os.path.join(d, "summary")
-        for path in (summary, os.path.join(d, "no", "such", "dir")):
-            os.environ["GITHUB_STEP_SUMMARY"] = path
-            said = io.StringIO()
+        os.environ["GITHUB_STEP_SUMMARY"] = summary
+
+        def run(obj):
+            f = os.path.join(d, "answer.json")
+            with open(f, "w", encoding="utf-8") as g:
+                g.write(obj if isinstance(obj, str) else json.dumps(obj))
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                rc = ask.main(["ask.py", "derive", f])
+            return rc, json.load(open(f, encoding="utf-8")), err.getvalue()
+        usage = {"input_tokens": 5, "output_tokens": 7}
+        urllib.request.urlopen = no_request
+        try:
+            rc, got, err = run({"is_error": False, "result": clean, "usage": usage, "total_cost_usd": 0.5})
+            body = json.loads(got.get("result") or "{}")
+            if rc != 0 or body.get("verdict") != "clean" or got.get("usage") != usage or got.get("total_cost_usd") != 0.5 or err:
+                fault("an answer file was not rewritten to its derived verdict with its usage kept (%s %r)" % (rc, got))
+            rc, got, err = run({"is_error": False, "result": answer([finding("blocking")], intro, verdict="clean")})
+            if json.loads(got.get("result") or "{}").get("verdict") != "blocking":
+                fault("an answer file carrying the model's own `clean` over a blocking finding was not a refusal")
+            rc, got, err = run({"is_error": False, "result": "", "structured_output": json.loads(answer([finding("advisory")]))})
+            if json.loads(got.get("result") or "{}").get("verdict") != "advisory" or "structured_output" in got:
+                fault("an answer the tool left as structured output was not read from it")
+            rc, got, err = run({"is_error": False, "result": "Done: nothing blocks this.",
+                                "structured_output": json.loads(answer([finding("blocking")], intro))})
+            if json.loads(got.get("result") or "{}").get("verdict") != "blocking":
+                fault("the tool's structured answer was passed over for the text beside it")
+            rc, got, err = run({"is_error": False, "result": {"findings": []}})
+            if rc != 0 or not got.get("is_error") or got.get("subtype") != "no_verdict":
+                fault("an answer that is not text cleared something or raised (%s %r)" % (rc, got))
+            rc, got, err = run({"is_error": False, "result": '{"findings": [{"severity": "advisory", "text": "the p',
+                                "stop_reason": "max_tokens", "usage": usage})
+            if not got.get("is_error") or got.get("subtype") != "truncated" or got.get("usage") != usage:
+                fault("an answer file cut off for length cleared something (%r)" % got)
+            rc, got, err = run({"is_error": True, "subtype": "error_max_turns",
+                                "result": json.dumps({"verdict": "clean", "review": said})})
+            if not got.get("is_error") or got.get("result") or got.get("subtype") != "error_max_turns":
+                fault("a read the tool failed kept an object the model's own verdict could be read from (%r)" % got)
+            rc, got, err = run("not json")
+            if not got.get("is_error") or got.get("subtype") != "no_answer":
+                fault("an answer file that is not JSON was not no answer (%r)" % got)
+        except AssertionError as e:
+            fault("deriving a verdict reached for the network: %s" % e)
+        finally:
+            urllib.request.urlopen = real_urlopen
+        wrote = open(summary, encoding="utf-8").read() if os.path.exists(summary) else ""
+        if saved is None:
+            os.environ.pop("GITHUB_STEP_SUMMARY", None)
+        else:
+            os.environ["GITHUB_STEP_SUMMARY"] = saved
+    if "derived clean from 0 finding(s)" not in wrote or "the model's own verdict field was ignored" not in wrote:
+        fault("the job's summary did not say what was derived, or that the model's own verdict was ignored (%r)"
+              % wrote[:120])
+
+    # The shape goes to the job's summary alone: never to stderr, where why()
+    # reads 429 as a rate limit, and never at the cost of a verdict.
+    long_reply = reply(content=clean + " " + "x" * 429)
+    with tempfile.TemporaryDirectory() as d:
+        summary = os.path.join(d, "summary")
+        for target in (summary, os.path.join(d, "no", "such", "dir")):
+            os.environ["GITHUB_STEP_SUMMARY"] = target
+            heard = io.StringIO()
             try:
-                with contextlib.redirect_stderr(said):
+                with contextlib.redirect_stderr(heard):
                     ask.shape(long_reply)
             except Exception as e:  # noqa: BLE001
                 fault("the answer's shape raised %s, which would cost a verdict" % type(e).__name__)
-            if said.getvalue():
+            if heard.getvalue():
                 fault("the answer's shape reached stderr, where why() reads its numbers: %r"
-                      % said.getvalue()[:80])
-        os.environ.pop("GITHUB_STEP_SUMMARY", None)
+                      % heard.getvalue()[:80])
+        if saved is None:
+            os.environ.pop("GITHUB_STEP_SUMMARY", None)
+        else:
+            os.environ["GITHUB_STEP_SUMMARY"] = saved
         wrote = open(summary, encoding="utf-8").read() if os.path.exists(summary) else ""
-    if "1 verdict object(s)" not in wrote:
+    if "1 answer object(s)" not in wrote:
         fault("the answer's shape did not reach the job's summary (%r)" % wrote[:80])
     got, _ = ask.answer(reply(), pinned)
     if (got.get("usage"), got.get("total_cost_usd")) != ({"input_tokens": 900, "output_tokens": 40}, 0.0021):
@@ -2549,23 +2779,95 @@ def _check_caller():
     env = dict((k, v) for k, v in os.environ.items() if k != "OPENROUTER_API_KEY")
     with tempfile.TemporaryDirectory() as d:
         open(os.path.join(d, "system.txt"), "w").write("s")
-        p = subprocess.run([sys.executable, CALLER, REGISTRY, ORDINARY_ROLE, os.path.join(d, "system.txt"),
+        p = subprocess.run([sys.executable, path, REGISTRY, ORDINARY_ROLE, os.path.join(d, "system.txt"),
                             "{}", "60"], input="p", capture_output=True, text=True, timeout=30, env=env)
     try:
-        said = json.loads(p.stdout)
+        heard = json.loads(p.stdout)
     except ValueError:
-        said = {}
-    if p.returncode != 1 or said.get("subtype") != "no_credential" or not said.get("is_error"):
+        heard = {}
+    if p.returncode != 1 or heard.get("subtype") != "no_credential" or not heard.get("is_error"):
         fault("with no credential it answered %s %r, not a refusal before any request"
               % (p.returncode, p.stdout.strip()[:200]))
+    if not bad and not quiet:
+        print("ok: the OpenAI-compatible caller takes an answer only from the model it pinned, hands it on as "
+              "written, and makes the one verdict from the findings alone — the model's own word and its "
+              "prose read for nothing, any blocking finding a refusal however the answer is wrapped, cut "
+              "or broken, and a missing, malformed, unknown-severity or cut-off answer clearing nothing "
+              "(%d cases, and the file mode run with the network refused) — writes the answer's shape to "
+              "the summary and never to stderr, carries tokens and cost to the spend line, puts the effort "
+              "where the registry says, and refuses before any request with no credential" % len(cases))
+    return bad
+
+
+# Each rule of the derivation, removed in turn from a copy of model-registry/ask.py
+# (what is removed, the text in the file, what stands in its place): the tests
+# above must fail on every copy, or the rule is held by nothing.
+CALLER_LOOSENINGS = (
+    ("the model's own verdict word over its findings",
+     'blocked = any(severity(f) == "blocking" for a in found for f in _listed(a))',
+     'blocked = (own[-1:] == ["blocking"]) if own else any(severity(f) == "blocking" for a in found for f in _listed(a))'),
+    ("a blocking finding among advisories lost",
+     'blocked = any(severity(f) == "blocking" for a in found for f in _listed(a))',
+     'blocked = all(severity(f) == "blocking" for a in found for f in _listed(a))'),
+    ("advisory findings made a clean read", '{"verdict": "advisory" if findings else "clean"', '{"verdict": "clean"'),
+    ("a finding of unknown severity cleared", 'severity(f) not in SEVERITIES or not str(f.get("text") or "").strip()',
+     'not str(f.get("text") or "").strip()'),
+    ("a read with no review cleared", 'or not isinstance(a.get("review"), str) for a in found)', 'for a in found)'),
+    ("an answer cut off for length cleared",
+     '    if cut:\n        return None, ("truncated", "the model ran out of room before its answer ended, so its verdict is not taken")\n    findings =',
+     '    findings ='),
+    ("a refusal lost once its answer will not decode", '"blocking"\', re.I)', '"blocking_"\', re.I)'),
+    ("prose beside a clearance taken", "if len(found) > 1 or beside(prose):", "if len(found) > 1:"),
+    ("the model's own blocking taken for a clearance", 'if "blocking" in own:', "if False:"),
+    ("an answer with no findings object taken as clean",
+     'return None, ("no_verdict", "the model answered no findings object")',
+     'return {"verdict": "clean", "review": "", "findings": []}, None'),
+    ("a blocking finding spelt Blocking lost", '.strip().lower() if isinstance(f, dict)', '.strip() if isinstance(f, dict)'),
+    ("the model's own verdict not named as ignored", '"ignored": ["verdict"] if own else []}, None', '"ignored": []}, None'),
+    ("a review published without end", "REVIEW_CAP = 40000", "REVIEW_CAP = 40000000"),
+    ("a finding's text published without end", "FINDING_CAP = 500", "FINDING_CAP = 500000"),
+    ("any number of findings published", "FINDINGS_SHOWN = 30", "FINDINGS_SHOWN = 3000"),
+    ("the blocking findings listed last", 'typed.sort(key=lambda f: {"blocking": 0, "advisory": 1}.get(f["severity"], 2))', "pass"),
+    ("the findings left out not counted", "max(0, len(typed) - FINDINGS_SHOWN)", "0"),
+    ("a refusal's review published without end", '**({"review": _cut(review, REVIEW_CAP)} if review else {})', '**({"review": review} if review else {})'),
+    ("a clean or advisory review published without end", '"review": _cut(found[0]["review"], REVIEW_CAP)', '"review": found[0]["review"]'),
+    ("a read the tool failed left holding the model's JSON", '                obj["result"] = ""', "                pass"),
+    ("the text beside the tool's own answer read in its place",
+     'content = json.dumps(structured) if isinstance(structured, dict) else obj.get("result")',
+     'content = obj.get("result") or (json.dumps(structured) if isinstance(structured, dict) else None)'),
+    ("an answer that is not text left to raise", 'content = content if isinstance(content, str) else ""', "pass"),
+)
+
+
+def _check_caller_loosenings():
+    """Each rule of the derivation held by a test that fails when it is removed."""
+    try:
+        source, resolver = _read(CALLER), _read(os.path.join(os.path.dirname(CALLER), "resolve.py"))
+    except OSError as e:
+        print("  caller: %s" % e)
+        return 1
+    bad = 0
+    for what, old, new in CALLER_LOOSENINGS:
+        if source.count(old) != 1:
+            print("  caller: the loosening '%s' no longer applies — rewrite it against the file as it "
+                  "stands, or it proves nothing" % what)
+            bad += 1
+            continue
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "ask.py"), "w", encoding="utf-8") as f:
+                f.write(source.replace(old, new, 1))
+            with open(os.path.join(d, "resolve.py"), "w", encoding="utf-8") as f:
+                f.write(resolver)
+            try:
+                refused = _check_caller(os.path.join(d, "ask.py"), quiet=True) > 0
+            except Exception:  # noqa: BLE001  (a copy the tests cannot run is not one they pass)
+                refused = True
+            if not refused:
+                print("  caller: with %s the caller's tests still pass — the guard for it is gone" % what)
+                bad += 1
     if not bad:
-        print("ok: the OpenAI-compatible caller takes an answer only from the model it pinned, reads "
-              "every verdict object that decodes whole however it is wrapped, braces in the prose "
-              "notwithstanding, and lets the worst speak — such a refusal keeps the words beside "
-              "it, cut off or not; a clearance counts only whole and alone — writes the answer's "
-              "shape to the summary and never to stderr, names a refusal, carries tokens and cost to the "
-              "spend line, puts the effort where the registry says, and refuses before any request "
-              "with no credential")
+        print("ok: each of %d loosenings of the derivation in %s was applied to a copy and refused by the "
+              "caller's tests" % (len(CALLER_LOOSENINGS), CALLER))
     return bad
 
 
@@ -2795,7 +3097,7 @@ PRODUCT_LOOSENINGS = (
     ("the shell traced", lambda t: t.replace("set -euo pipefail\n", "set -euxo pipefail\n", 1)),
     ("the instruction altered", lambda t: t.replace("Read COLD:", "Read kindly:", 1)),
     ("the JWT's lifetime altered", lambda t: t.replace("$((now + 540))", "$((now + 3600))", 1)),
-    ("the verdict's shape altered", lambda t: t.replace('"enum":["clean","advisory","blocking"]', '"enum":["clean"]', 1)),
+    ("the verdict's shape altered", lambda t: t.replace('"enum":["blocking","advisory"]', '"enum":["advisory"]', 1)),
     ("a conclusion GitHub writes", lambda t: t.replace("conclusion=neutral", "conclusion=skipped", 1)),
     ("the run created finished", lambda t: t.replace('status:"in_progress"', 'status:"completed"', 1)),
     ("a repository not on the map", lambda t: t.replace("          - Adonis80/Hemz-OS\n", "          - Adonis80/Hemz-OS\n          - Adonis80/elsewhere\n", 1)),
@@ -4151,6 +4453,7 @@ def _selftest():
     failed += _check_route_loosenings()
     failed += _check_registry()
     failed += _check_caller()
+    failed += _check_caller_loosenings()
     failed += _check_pick_loosenings()
     failed += _check_link_loosenings()
     return 1 if failed else 0
