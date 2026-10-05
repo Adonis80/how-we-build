@@ -1281,10 +1281,10 @@ WHY_CASES = (
     # (#79's eleventh read): a message outside `.result` is still read.
     (1, "", '{"is_error":true,"error":{"message":"Prompt is too long"}}', "too long for one read"),
     (1, "OAuth token has expired", "", "credential was refused"),
-    (0, "", '{"subtype":"error_max_turns"}', "the tool answered 'error_max_turns'"),
+    (0, "", '{"subtype":"error_max_turns"}', "the read answered 'error_max_turns'"),
     # A subtype is the tool's to write, and the reason is written to
     # $GITHUB_OUTPUT: a line break in it would be a second output of its own.
-    (0, "", '{"subtype":"x\\nverdict=clean"}', "the tool answered 'xverdictclean'"),
+    (0, "", '{"subtype":"x\\nverdict=clean"}', "the read answered 'xverdictclean'"),
     (1, "", "", "unrecognised; 0 bytes on stderr"),
 )
 
@@ -2639,7 +2639,7 @@ def _check_caller(path=None, quiet=False):
     # named as ignored; a refusal's kept words are cut to what a comment can hold.
     obj, _ = ask.derive(answer([finding("advisory", "a"), finding("blocking", "b")], verdict="clean"))
     if obj is None or obj.get("ignored") != ["verdict"] or obj.get("findings") != [
-            {"severity": "advisory", "text": "a"}, {"severity": "blocking", "text": "b"}]:
+            {"severity": "blocking", "text": "b"}, {"severity": "advisory", "text": "a"}]:
         fault("the findings were not carried on as typed, or the model's own verdict not named as ignored (%s)" % obj)
     obj, _ = ask.derive(clean)
     if obj is None or obj.get("ignored") != []:
@@ -2648,10 +2648,30 @@ def _check_caller(path=None, quiet=False):
     if obj is None or obj.get("verdict") != "advisory" or obj.get("ignored") != ["verdict"]:
         fault("an advisory read that sent a verdict of its own was not derived from its findings, or the "
               "verdict not named as ignored (%s)" % obj)
-    # A comment holds 65,536 characters: the number is GitHub's, not the file's own.
-    obj, _ = ask.derive(refusal + " " + "x" * 80000)
-    if obj is None or len(obj.get("review", "")) > 65000:
-        fault("a refusal's kept words are not cut to what a comment can hold")
+    # A comment holds 65,536 characters (#119's first read, blocking): the review,
+    # the findings beneath it and a spend line go in one, and a comment GitHub
+    # refuses skips the wake. The number is GitHub's, not the file's own, so each
+    # path that publishes is held to a sum under it, whatever the model writes.
+    def published(o):
+        return len(o.get("review", "")) + sum(len(f["text"]) + 40 for f in o["findings"]) + 120
+    huge = "x" * 100000
+    for what, content, left_out in (
+            ("two hundred long blocking findings and a long review", answer([finding("blocking", huge)] * 200, huge), 170),
+            ("a refusal that will not decode, and long",
+             '{"findings": [{"severity": "blocking", "text": "t"}' + huge, 0),
+            ("a refusal with a long answer beside it", refusal + " " + huge, 0),
+            ("forty long advisory findings and a long review", answer([finding("advisory", huge)] * 40, huge), 10),
+            ("a clean read with a long review", answer([], huge), 0)):
+        obj, _ = ask.derive(content)
+        if obj is None or published(obj) > 60000:
+            fault("%s published %s characters, past what one comment holds"
+                  % (what, obj and published(obj)))
+        elif obj.get("omitted") != left_out or any(len(f["text"]) > 520 for f in obj["findings"]):
+            fault("%s left out %s findings, not %s, or published a finding's text without end"
+                  % (what, obj.get("omitted"), left_out))
+    obj, _ = ask.derive(answer([finding("advisory", "a")] * 40 + [finding("blocking", "b")]))
+    if obj is None or obj["findings"][0]["severity"] != "blocking" or obj.get("omitted") != 11:
+        fault("a long list of findings hid its one blocking finding, or did not count the ones it left out")
     obj2, _ = ask.derive(json.dumps({"findings": [finding("blocking")]}))
     if obj2 is None or "review" in obj2:
         fault("a refusal with no review at all was given one, which the signer takes for a review")
@@ -2804,7 +2824,13 @@ CALLER_LOOSENINGS = (
      'return {"verdict": "clean", "review": "", "findings": []}, None'),
     ("a blocking finding spelt Blocking lost", '.strip().lower() if isinstance(f, dict)', '.strip() if isinstance(f, dict)'),
     ("the model's own verdict not named as ignored", '"ignored": ["verdict"] if own else []}, None', '"ignored": []}, None'),
-    ("a refusal's words kept without end", "KEPT_CAP = 50000", "KEPT_CAP = 5000000"),
+    ("a review published without end", "REVIEW_CAP = 40000", "REVIEW_CAP = 40000000"),
+    ("a finding's text published without end", "FINDING_CAP = 500", "FINDING_CAP = 500000"),
+    ("any number of findings published", "FINDINGS_SHOWN = 30", "FINDINGS_SHOWN = 3000"),
+    ("the blocking findings listed last", 'typed.sort(key=lambda f: {"blocking": 0, "advisory": 1}.get(f["severity"], 2))', "pass"),
+    ("the findings left out not counted", "max(0, len(typed) - FINDINGS_SHOWN)", "0"),
+    ("a refusal's review published without end", '**({"review": _cut(review, REVIEW_CAP)} if review else {})', '**({"review": review} if review else {})'),
+    ("a clean or advisory review published without end", '"review": _cut(found[0]["review"], REVIEW_CAP)', '"review": found[0]["review"]'),
     ("a read the tool failed left holding the model's JSON", '                obj["result"] = ""', "                pass"),
     ("the text beside the tool's own answer read in its place",
      'content = json.dumps(structured) if isinstance(structured, dict) else obj.get("result")',

@@ -81,9 +81,15 @@ def served_is_pinned(served, pinned):
 
 
 SEVERITIES = ("blocking", "advisory")
-# A kept refusal's review is cut here: the workflow posts it whole as a comment,
-# which GitHub refuses past 65,536 characters (#116's third read).
-KEPT_CAP = 50000
+# What the workflow publishes is cut here, on every path: one comment holds the
+# review, the findings beneath it and a spend line, and GitHub refuses a comment
+# past 65,536 characters (#116's third read; #119's first read: a comment it
+# refused skips the wake, and a blocking verdict sits unseen under a green). So a
+# review is cut at REVIEW_CAP, a finding's text at FINDING_CAP, and no more than
+# FINDINGS_SHOWN findings go in, blocking ones first; the verdict counts them all.
+REVIEW_CAP = 40000
+FINDING_CAP = 500
+FINDINGS_SHOWN = 30
 # `"severity": "blocking"` in the open, its first quote not escaped: inside any
 # JSON string it could only appear escaped, so a review that quotes it does not
 # match. The retired `"verdict": "blocking"` counts too, for an answer that
@@ -148,35 +154,49 @@ def _listed(answer):
     return fs if isinstance(fs, list) else []
 
 
-def _typed(findings):
-    """The findings as they are posted: severity and text, nothing the model added."""
-    return [{"severity": severity(f) or "unknown", "text": str(f.get("text") or "") if isinstance(f, dict) else str(f)}
-            for f in findings]
+def _cut(text, cap):
+    """The text, cut to `cap` characters with a marker where it was."""
+    return text if len(text) <= cap else text[:cap] + "\n\n*The rest is cut by the caller: a comment holds only so much.*"
+
+
+def _shown(findings):
+    """(the findings as they are posted, how many are left out): severity and text, nothing the model added.
+
+    Blocking ones first, so a long list never hides one; each text is cut, and
+    only so many go in. The verdict is made from all of them, before this.
+    """
+    typed = [{"severity": severity(f) or "unknown",
+              "text": str(f.get("text") or "") if isinstance(f, dict) else str(f)} for f in findings]
+    typed.sort(key=lambda f: {"blocking": 0, "advisory": 1}.get(f["severity"], 2))
+    for f in typed[:FINDINGS_SHOWN]:
+        if len(f["text"]) > FINDING_CAP:
+            f["text"] = f["text"][:FINDING_CAP] + " [cut]"
+    return typed[:FINDINGS_SHOWN], max(0, len(typed) - FINDINGS_SHOWN)
 
 
 def kept_refusal(found, prose, cut, content):
-    """The refusal to sign, carrying every word of the answer it came in."""
+    """The refusal to sign, carrying every word of the answer it came in (cut to what a comment holds)."""
     refusals = [a for a in found if any(severity(f) == "blocking" for f in _listed(a))]
     if not refusals:
-        return {"verdict": "blocking", "findings": [],
-                "review": "*The answer said blocking, but its findings did not decode%s. The caller signs it "
-                "as a refusal and keeps the whole answer as its review:*\n\n%s"
-                % (", and the provider cut it off for length" if cut else "", content.strip())}
-    first = refusals[0]
-    review = str(first.get("review") or "")
-    others = [str(a.get("review") or "").strip() for a in refusals[1:] + [a for a in found if a not in refusals]]
-    words = "\n\n".join(w for w in others + [prose] if w)
-    if words or cut:
-        review = "%s\n\n---\n*%s*%s" % (
-            review,
-            "Written beside the findings, and kept by the caller so the refusal carries its findings"
-            + (", as far as the answer went before the provider cut it off for length" if cut else "") + ":"
-            if words else "The provider cut this answer off for length after the words above.",
-            "\n\n" + words if words else "")
+        review = ("*The answer said blocking, but its findings did not decode%s. The caller signs it "
+                  "as a refusal and keeps the whole answer as its review:*\n\n%s"
+                  % (", and the provider cut it off for length" if cut else "", content.strip()))
+    else:
+        review = str(refusals[0].get("review") or "")
+        others = [str(a.get("review") or "").strip() for a in refusals[1:] + [a for a in found if a not in refusals]]
+        words = "\n\n".join(w for w in others + [prose] if w)
+        if words or cut:
+            review = "%s\n\n---\n*%s*%s" % (
+                review,
+                "Written beside the findings, and kept by the caller so the refusal carries its findings"
+                + (", as far as the answer went before the provider cut it off for length" if cut else "") + ":"
+                if words else "The provider cut this answer off for length after the words above.",
+                "\n\n" + words if words else "")
+    shown, omitted = _shown([f for a in found for f in _listed(a)])
     # No review at all stays no review: the signer fails a refusal with none, as it
     # did before #110, and an empty string would read as one.
-    return dict({"verdict": "blocking", "findings": _typed([f for a in found for f in _listed(a)])},
-                **({"review": review} if review else {}))
+    return dict({"verdict": "blocking", "findings": shown, "omitted": omitted},
+                **({"review": _cut(review, REVIEW_CAP)} if review else {}))
 
 
 def derive(content, cut=False):
@@ -198,12 +218,7 @@ def derive(content, cut=False):
     blocked = any(severity(f) == "blocking" for a in found for f in _listed(a))
     if blocked:
         # The worst speaks, and keeps every word of the answer (#110, #116).
-        refusal = kept_refusal(found, prose, cut, content)
-        refusal["ignored"] = ["verdict"] if own else []
-        if len(refusal.get("review", "")) > KEPT_CAP:
-            refusal["review"] = refusal["review"][:KEPT_CAP] + \
-                "\n\n*The rest is cut by the caller: a comment holds only so much.*"
-        return refusal, None
+        return dict(kept_refusal(found, prose, cut, content), ignored=["verdict"] if own else []), None
     if cut:
         return None, ("truncated", "the model ran out of room before its answer ended, so its verdict is not taken")
     findings = [f for a in found for f in _listed(a)]
@@ -216,8 +231,9 @@ def derive(content, cut=False):
     if "blocking" in own:
         return None, ("disagrees", "the model's own word was blocking over findings that do not make it so, "
                                    "so a verdict that would clear the change is not taken")
-    return {"verdict": "advisory" if findings else "clean", "review": found[0]["review"],
-            "findings": _typed(findings), "ignored": ["verdict"] if own else []}, None
+    shown, omitted = _shown(findings)
+    return {"verdict": "advisory" if findings else "clean", "review": _cut(found[0]["review"], REVIEW_CAP),
+            "findings": shown, "omitted": omitted, "ignored": ["verdict"] if own else []}, None
 
 
 def build(got, provider, system, prompt, schema):
@@ -306,7 +322,7 @@ def derive_file(path):
         else:
             obj = dict({k: v for k, v in obj.items() if k not in ("structured_output", "result")}, result=json.dumps(got))
             note("derived %s from %d finding(s)%s" % (
-                got["verdict"], len(got["findings"]),
+                got["verdict"], len(got["findings"]) + got.get("omitted", 0),
                 "; the model's own verdict field was ignored" if got.get("ignored") else ""))
     tmp = path + ".derived"
     with open(tmp, "w", encoding="utf-8") as f:

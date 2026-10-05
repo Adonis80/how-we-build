@@ -497,7 +497,7 @@ jobs:
             elif grep -qiE 'unauthori[sz]ed|\b401\b|\b403\b|invalid.{0,20}(token|key)|oauth' <<< "$said"; then
               echo "the reviewer's credential was refused"
             elif [ -n "$sub" ]; then
-              echo "the tool answered '$sub'"
+              echo "the read answered '$sub'"
             else
               echo "unrecognised; $(wc -c < "$err" 2>/dev/null || echo 0) bytes on stderr"
             fi
@@ -640,7 +640,7 @@ jobs:
           [ "$verdict" = blocking ] || reviewed < /tmp/review.md || fail "the reviewer's review was under 100 characters, not counting whitespace"
           # The findings the verdict was derived from go under the review on the
           # pull request, after the bar above, which weighs the model's own words.
-          printf '%s' "$result" | jq -r 'if ((.findings // []) | length) > 0 then "\n\n---\n*The findings the verdict was derived from:*\n" + ((.findings // []) | map("- **" + (.severity // "unknown") + "**: " + (.text // "")) | join("\n")) else empty end' >> /tmp/review.md 2>/dev/null || true
+          printf '%s' "$result" | jq -r 'if ((.findings // []) | length) > 0 then "\n\n---\n*The findings the verdict was derived from:*\n" + ((.findings // []) | map("- **" + (.severity // "unknown") + "**: " + (.text // "")) | join("\n")) + (if (.omitted // 0) > 0 then "\n- and " + (.omitted | tostring) + " more, not shown here; the verdict counts them" else "" end) else empty end' >> /tmp/review.md 2>/dev/null || true
           echo "verdict=$verdict" >> "$GITHUB_OUTPUT"
 
       - name: Sign the verdict
