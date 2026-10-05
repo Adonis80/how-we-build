@@ -1,0 +1,503 @@
+name: Build the board
+run-name: Build the board (${{ github.event_name }})
+
+# THE BUILD BOARD, REBUILT ON AN EVENT, NEVER ON A CLOCK (decision 0007 §6,
+# issue #97). It reads each product's roadmap.json on its main and this
+# repository's pull requests, renders the one page with board/build.py, and
+# deploys it with board/'s PIN gate to the Vercel project juku-build-board.
+# A failed read or render stops before the deploy, so the last dated snapshot
+# stands (§5). review-gate.py holds this file: its triggers, its door, its
+# token's scope and reach, and its list of products against the README's map.
+#
+# WHAT WAKES IT. A dispatch, for a product's merge that touched its roadmap
+# (a product cannot see this repository's events) or for a session's refresh;
+# a pull request here opened, edited, pushed to, reopened, readied, drafted or
+# closed; and the reviewer's check run created, re-requested or completed. The
+# `check_run` route is decision 0007's first unproved line: it is cited on the
+# pull request that proves it, not claimed here.
+#
+# WHY pull_request_target AND NOT pull_request. A `pull_request` run takes the
+# pull request's ref, and the `reviewer` environment admits `main` alone, so
+# every such run would be refused its keys. `pull_request_target` runs this
+# file as it stands on the pull request's base — main, for every pull request
+# the queue holds — and the door admits main alone. That it admits these runs
+# is shown by the first run and cited, not claimed (#113's first read); what it
+# does with a pull request based elsewhere is not claimed here until a run
+# shows it (#117's second read, 8). Nothing of the pull request is
+# checked out or run: its number, title, two body lines and the reviewer's check run are read
+# through the API as data. A fork's pull request wakes nothing and is not
+# read, because this repository is public: only a branch here, which only a
+# writer can push, reaches the board.
+#
+# THE DOMAIN MOVES ONLY TO WHAT THIS STEP SMOKED (#117's second read, 1). It
+# makes a preview, which the host never gives the domain; smokes it as a
+# stranger; and only then asks for a production copy of those same files,
+# since the host will not promote a preview, which the host gives the domain
+# once ready; then it smokes the domain. A copy asked for whose answer is lost
+# is not known to this step and may still land (#139's read, 2b).
+# Every red after the promote puts back what the domain served before; a
+# preview that never came ready is cancelled, one that failed its smoke is
+# deleted. review-gate.py runs this step against a fake host, path by path.
+#
+# THIS LOG IS PUBLIC AND THE ROADMAPS ARE NOT. Nothing a product holds is
+# printed: byte counts and conclusions only. No artifact is uploaded and no
+# run summary written, because a public repository's are public too.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: preview, a look first; production, the board itself, once LIVE is yes.
+        required: true
+        # A preview unless production is chosen (#117's second read, 7).
+        default: preview
+        type: choice
+        options:
+          - production
+          - preview
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened, ready_for_review, converted_to_draft, closed]
+  check_run:
+    types: [created, rerequested, completed]
+
+# Read, and nothing else: review-gate.py refuses a `write` (#117's second read, 5).
+permissions:
+  contents: read
+  pull-requests: read
+  checks: read
+
+# Production waits for his look at the first preview (step 6): a preview
+# dispatch deploys either way; production, dispatched or automatic, only once
+# this reads yes, which one reviewed line flips after he has agreed.
+env:
+  LIVE: "yes"
+
+jobs:
+  build:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request_target' &&
+       github.event.pull_request.head.repo.full_name == github.repository) ||
+      (github.event_name == 'check_run' &&
+       github.event.check_run.app.id == 5000405 &&
+       github.event.check_run.name == 'juku-reviewer')
+    runs-on: ubuntu-latest
+    # One at a time, and none cancelled: a deploy is never cut off between
+    # going live and its smoke test. On the job, not the workflow, so a run
+    # its `if:` skips (a fork's pull request, anyone else's check run) never
+    # joins the group and displaces a real one (#113's first read). Held there.
+    concurrency:
+      group: build-board
+      cancel-in-progress: false
+    # THE DOOR. The App's key and the deploy key are readable only from main.
+    # review-gate.py refuses a build that loses it.
+    environment: reviewer
+    # The deploy's waits end at minute `limit` of this, so a rollback begun at
+    # the last moment keeps its three minutes inside it.
+    timeout-minutes: 15
+    env:
+      TEAM: team_B8AXqxDb20T9DrXElAAXsvgF
+      PROJECT: prj_Y61u57bV01hn4UAhVS1GSeTNlIca
+      DOMAIN: roadmap.juku.pro
+      # One address for every preview (his ask, 1 October 2026): the newest smoked
+      # preview takes this name, so there is one link to open, never a new one.
+      NEXT: juku-build-board-next.vercel.app
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # No token left in .git for a later step to find; held.
+          persist-credentials: false
+
+      - name: Start the clock
+        id: clock
+        run: |
+          set -euo pipefail
+          # The job's start, which the deploy's deadline counts from (#117's
+          # second read, 3), and the snapshot's time, stamped before the first
+          # product is read, so the board never says it was checked later than
+          # the oldest read on it (#117's second read, 6).
+          now=$(date +%s)
+          echo "started=$now" >> "$GITHUB_OUTPUT"
+          echo "checked_at=$(date -u -d "@$now" +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Read the products
+        env:
+          APP_ID: ${{ secrets.REVIEWER_APP_ID }}
+          APP_KEY: ${{ secrets.REVIEWER_APP_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${APP_ID:-}" ] || [ -z "${APP_KEY:-}" ]; then
+            echo "::error::No badge: the reviewer environment holds no REVIEWER_APP_ID or REVIEWER_APP_KEY. Nothing is read or deployed."
+            exit 1
+          fi
+          umask 077
+          key="$RUNNER_TEMP/reviewer.pem"
+          tok=""
+          # Every request has a time limit (#117's second read, 3).
+          revoke() { [ -z "$tok" ] || curl -sS --max-time 20 -o /dev/null -X DELETE -H "Authorization: token $tok" \
+            -H "Accept: application/vnd.github+json" "https://api.github.com/installation/token" || true; tok=""; }
+          # Whatever ends this step, a product's token is not left live.
+          trap 'revoke; rm -f "$key" "$RUNNER_TEMP/mint.json"' EXIT
+          printf '%s\n' "$APP_KEY" > "$key"
+          b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+          now=$(date +%s)
+          hdr=$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | b64url)
+          pl=$(printf '{"iat":%d,"exp":%d,"iss":"%s"}' "$((now - 60))" "$((now + 540))" "$APP_ID" | b64url)
+          sig=$(printf '%s' "$hdr.$pl" | openssl dgst -binary -sha256 -sign "$key" | b64url)
+          jwt="$hdr.$pl.$sig"
+          rm -f "$key"
+          mkdir -p "$RUNNER_TEMP/reads"
+          # THE PRODUCTS: the README's map, and nothing else. review-gate.py
+          # holds this list to the map both ways.
+          while IFS='=' read -r REPO NAME; do
+            [ -n "$REPO" ] || continue
+            inst=$(curl -sS --max-time 20 -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$REPO/installation" | jq -r '.id // empty')
+            [ -n "$inst" ] || { echo "::error::the App is not installed on $REPO; nothing is deployed"; exit 1; }
+            # ONE PRODUCT, CONTENTS READ, AND NOTHING ELSE: a roadmap is all
+            # this token is for.
+            body=$(jq -cn --arg r "${REPO#*/}" '{repositories: [$r], permissions: {contents: "read"}}')
+            curl -sS --max-time 20 -X POST -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/app/installations/$inst/access_tokens" -d "$body" > "$RUNNER_TEMP/mint.json"
+            tok=$(jq -r '.token // empty' "$RUNNER_TEMP/mint.json")
+            [ -n "$tok" ] || { echo "::error::the App would not mint a token scoped to $REPO"; exit 1; }
+            echo "::add-mask::$tok"
+            want='{"contents":"read"}'
+            granted=$(jq -cS '(.permissions // {}) | del(.metadata)' "$RUNNER_TEMP/mint.json")
+            if [ "$granted" != "$want" ]; then
+              revoke
+              echo "::error::SCOPE WRONG: the token was granted $granted, not $want. Revoked; nothing was read."
+              exit 1
+            fi
+            reach=$(curl -sS --max-time 20 -H "Authorization: token $tok" -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/installation/repositories" | jq -r '[.repositories[].full_name] | join(",")')
+            if [ "$reach" != "$REPO" ]; then
+              revoke
+              echo "::error::SCOPE WRONG: the token reached [$reach], not $REPO alone. Revoked; nothing was read."
+              exit 1
+            fi
+            main=$(curl -sS --max-time 20 -H "Authorization: token $tok" -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$REPO" | jq -r '.default_branch // empty')
+            [[ "$main" =~ ^[A-Za-z0-9._/-]+$ ]] || { revoke; echo "::error::$REPO names no default branch"; exit 1; }
+            road="$RUNNER_TEMP/road.json"
+            curl -sSf --max-time 60 -H "Authorization: token $tok" -H "Accept: application/vnd.github.raw+json" \
+              "https://api.github.com/repos/$REPO/contents/roadmap.json?ref=$main" -o "$road" \
+              || { revoke; echo "::error::$REPO's roadmap.json could not be read from $main"; exit 1; }
+            edited=$(curl -sS --max-time 20 -H "Authorization: token $tok" -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$REPO/commits?path=roadmap.json&sha=$main&per_page=1" \
+              | jq -r '.[0].commit.committer.date // empty')
+            revoke
+            [ -n "$edited" ] || { echo "::error::$REPO's roadmap.json has no commit on $main"; exit 1; }
+            jq -e 'type == "object"' "$road" > /dev/null 2>&1 \
+              || { echo "::error::$REPO's roadmap.json is not a JSON object"; exit 1; }
+            jq -n --arg name "$NAME" --arg edited "$edited" --slurpfile road "$road" \
+              '{name: $name, last_edited: $edited, roadmap: $road[0]}' > "$RUNNER_TEMP/reads/${REPO#*/}.json"
+            echo "read $NAME: $(wc -c < "$road") bytes"
+            rm -f "$road"
+          done <<'PRODUCTS'
+          Adonis80/Hemz-OS=Hemz OS
+          Adonis80/myst=Myst
+          Adonis80/phena=Phena
+          PRODUCTS
+
+      - name: Read this repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          R: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          api() { curl -sSf --max-time 30 -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$R/$1"; }
+          # This repository's own branches only: a fork's pull request is not
+          # put on his board.
+          api "pulls?state=open&per_page=100" | jq --arg r "$R" '[.[] | select(.head.repo.full_name == $r)
+            | {number, title, body: (.body // ""), draft, created_at, url: .html_url, sha: .head.sha}]' > "$RUNNER_TEMP/open.json"
+          # The reviewer's check runs on each head, newest first (§7: an older
+          # success never overrides a newer attempt). Each run is kept only if
+          # it is the reviewer's by App and name, on this head, as the gate's
+          # check_run_verdict keeps it, not on the query's word (#113's fourth
+          # read).
+          echo '[]' > "$RUNNER_TEMP/open+review.json"
+          for row in $(jq -r '.[] | @base64' "$RUNNER_TEMP/open.json"); do
+            pr=$(printf '%s' "$row" | base64 -d)
+            sha=$(printf '%s' "$pr" | jq -r '.sha')
+            [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::a pull request's head is not a commit"; exit 1; }
+            runs=$(api "commits/$sha/check-runs?check_name=juku-reviewer&app_id=5000405&filter=all&per_page=100" \
+              | jq --arg sha "$sha" '[.check_runs[] | select(.app.id == 5000405 and .name == "juku-reviewer" and .head_sha == $sha)]
+                | sort_by(.started_at // "") | reverse | map({status, conclusion})')
+            jq --argjson pr "$pr" --argjson runs "$runs" '. + [$pr + {review: $runs} | del(.sha)]' \
+              "$RUNNER_TEMP/open+review.json" > "$RUNNER_TEMP/tmp.json"
+            mv "$RUNNER_TEMP/tmp.json" "$RUNNER_TEMP/open+review.json"
+          done
+          api "pulls?state=closed&sort=updated&direction=desc&per_page=50" | jq --arg r "$R" \
+            '[.[] | select(.merged_at != null and .head.repo.full_name == $r) | {number, title, url: .html_url, merged_at}]' \
+            > "$RUNNER_TEMP/merged.json"
+          echo "open pull requests: $(jq length "$RUNNER_TEMP/open+review.json"); merged read: $(jq length "$RUNNER_TEMP/merged.json")"
+
+      - name: Read the spend
+        env:
+          OPENROUTER_KEY: ${{ secrets.OPENROUTER_KEY }}
+        run: |
+          set -euo pipefail
+          # THE SPEND CARD (his ruling, 1 October 2026): OpenRouter's daily spend
+          # for its last 30 completed UTC days. The key is a management key, so it
+          # is used for this one read and nothing else: never against /keys,
+          # which review-gate.py refuses. A failed read never stops the board; the
+          # card says so. Counts only reach this public log, never an amount.
+          echo 'null' > "$RUNNER_TEMP/spend.json"
+          if [ -z "${OPENROUTER_KEY:-}" ]; then
+            echo "::warning::No OPENROUTER_KEY in the reviewer environment: the spend card says not connected."
+            exit 0
+          fi
+          code=$(curl -sS --max-time 30 -o "$RUNNER_TEMP/activity.json" -w '%{http_code}' \
+            -H "Authorization: Bearer $OPENROUTER_KEY" "https://openrouter.ai/api/v1/activity") || code=000
+          # Whole or not at all: an answer jq cannot map leaves the card's own
+          # "not read" in place, never a stopped board (#134's first read, 1).
+          if [ "$code" = 200 ] && jq '{days: [.data[] | {date, usage}]}' "$RUNNER_TEMP/activity.json" \
+              > "$RUNNER_TEMP/spend.tmp" 2> /dev/null; then
+            mv "$RUNNER_TEMP/spend.tmp" "$RUNNER_TEMP/spend.json"
+            echo "spend: OpenRouter answered with $(jq '.days | length' "$RUNNER_TEMP/spend.json") rows"
+          else
+            echo '{"unread": true}' > "$RUNNER_TEMP/spend.json"
+            echo "::warning::OpenRouter's activity was not read (HTTP $code): the spend card says so."
+          fi
+          rm -f "$RUNNER_TEMP/spend.tmp"
+          rm -f "$RUNNER_TEMP/activity.json"
+
+      - name: Render
+        env:
+          AT: ${{ steps.clock.outputs.checked_at }}
+        run: |
+          set -euo pipefail
+          # The snapshot's time (§5) is stamped before the first read, never
+          # at the render, which follows the last (#117's second read, 6).
+          [[ "${AT:-}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] || { echo "::error::the read's time was not stamped"; exit 1; }
+          jq -n --arg at "$AT" \
+            --slurpfile open "$RUNNER_TEMP/open+review.json" --slurpfile merged "$RUNNER_TEMP/merged.json" \
+            --slurpfile spend "$RUNNER_TEMP/spend.json" \
+            '{checked_at: $at, products: [inputs], rulebook: {open: $open[0], merged: $merged[0]}, spend: $spend[0]}' \
+            "$RUNNER_TEMP"/reads/*.json > "$RUNNER_TEMP/reads.json"
+          site="$RUNNER_TEMP/site"
+          mkdir -p "$site"
+          python3 board/build.py "$RUNNER_TEMP/reads.json" "$site/index.html"
+          cp board/middleware.js board/robots.txt board/vercel.json "$site/"
+          rm -rf "$RUNNER_TEMP/reads" "$RUNNER_TEMP/reads.json" "$RUNNER_TEMP/open.json" "$RUNNER_TEMP/open+review.json" "$RUNNER_TEMP/spend.json"
+
+      - name: Deploy, smoke, and roll back on red
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          # A dispatch's own target, empty included, so the case below refuses
+          # anything but the two (#117's third read, 7); never production by default.
+          TARGET: ${{ github.event_name != 'workflow_dispatch' && 'production' || inputs.target }}
+          STARTED: ${{ steps.clock.outputs.started }}
+        run: |
+          set -euo pipefail
+          # HIS LOOK FIRST (step 6). Until LIVE is flipped by a one-line pull
+          # request after he has agreed the preview, only a preview is deployed;
+          # a pull request or a verdict renders the board, proving the reads, and
+          # moves nothing, and a production dispatch is refused (#117's fourth
+          # read, 2).
+          if [ "$GITHUB_EVENT_NAME" != workflow_dispatch ] && [ "$LIVE" != yes ]; then
+            echo "::notice::rendered, not deployed: automatic deploys begin when LIVE is yes, after the Chairman agrees the look"
+            exit 0
+          fi
+          [ -n "${VERCEL_TOKEN:-}" ] || { echo "::error::No deploy key: the reviewer environment holds no VERCEL_TOKEN. Nothing is deployed; the last snapshot stands."; exit 1; }
+          case "$TARGET" in production|preview) ;; *) echo "::error::no such target"; exit 1 ;; esac
+          if [ "$TARGET" = production ] && [ "$LIVE" != yes ]; then
+            echo "::error::production waits for his look: LIVE is not yes, so nothing is deployed; dispatch a preview instead."
+            exit 1
+          fi
+          # EVERY REQUEST HAS A TIME LIMIT, AND EVERY WAIT A DEADLINE counted
+          # from the job's start (#117's second read, 3): the waits end at
+          # minute `limit` of the job, so a rollback begun then still has its
+          # three minutes inside the job's timeout.
+          limit=9
+          [[ "${STARTED:-}" =~ ^[0-9]+$ ]] || { echo "::error::the job's start was not recorded, so nothing could be timed. Nothing is deployed."; exit 1; }
+          by=$(( STARTED + limit * 60 ))
+          [ $(( by - $(date +%s) )) -ge 120 ] || { echo "::error::too little of the job is left to deploy, smoke and still roll back. Nothing is deployed."; exit 1; }
+          v() { curl -sS --max-time 20 -H "Authorization: Bearer $VERCEL_TOKEN" -H "Content-Type: application/json" "$@"; }
+          q="teamId=$TEAM"
+          site="$RUNNER_TEMP/site"
+          # What a stranger is shown at host $1, at the root and at the page's
+          # own name: 0, gated at both; 1, not yet; 2, the board. $2 = wall lets
+          # the host's sign-in wall count as gated, which only a preview has:
+          # a redirect to the host's own sign-in, and no other, as run
+          # 36715901351 found it answering a stranger (#117, 30 September).
+          # The page is grepped and never printed.
+          gated() {
+            local p out last code loc body seen=0
+            for p in / /index.html; do
+              out=$(curl -sS --max-time 20 -w '\n%{http_code} %{redirect_url}' "https://$1$p" 2>/dev/null || true)
+              last=${out##*$'\n'}
+              code=${last%% *}
+              loc=${last#* }
+              body=${out%$'\n'*}
+              if grep -q "data-board" <<< "$body"; then return 2; fi
+              case "$code" in
+                200) grep -q "Directors only" <<< "$body" || seen=1 ;;
+                302|307) { [ "$2" = wall ] && [[ "$loc" == "https://vercel.com/sso-api?"* ]]; } || seen=1 ;;
+                *) seen=1 ;;
+              esac
+            done
+            return "$seen"
+          }
+          # What the domain serves, asked of the host by name.
+          serving() { v "https://api.vercel.com/v13/deployments/$DOMAIN?$q" 2>/dev/null | jq -r '.id // empty' 2>/dev/null || true; }
+          serves() { local s; s=$(serving); [ -n "$s" ] && [ "$s" = "$1" ]; }
+          # The production copy's state, asked of the host.
+          copied() { v "https://api.vercel.com/v13/deployments/$copy?$q" 2>/dev/null | jq -r '.readyState // empty' 2>/dev/null || true; }
+          # What the domain serves now is recorded before anything moves: what
+          # it serves, not what the project calls production (#117's second
+          # read, 1).
+          before=$(serving)
+          [ -n "$before" ] || { echo "::error::what $DOMAIN serves could not be recorded, so there would be nothing to roll back to. Nothing is deployed."; exit 1; }
+          echo "serving before: $before"
+          # EVERY RED PUTS THINGS BACK, by how far the deploy got: a preview
+          # still building is cancelled; a ready one that did not pass its smoke
+          # is deleted; once promoted, what the domain served before is
+          # promoted back, the host must accept it, and the domain must serve
+          # it again within three minutes. Each refusal is red in its own words.
+          id=""
+          copy=""
+          state=""
+          phase=none
+          ok=no
+          cleanup() {
+            { [ "$ok" = yes ] || [ "$phase" = none ]; } && return 0
+            local code
+            case "$phase" in
+              building)
+                case "$state" in ERROR|CANCELED) exit 1 ;; esac
+                code=$(v -X PATCH "https://api.vercel.com/v12/deployments/$id/cancel?$q" -o /dev/null -w '%{http_code}') || code=000
+                [[ "$code" =~ ^2 ]] || { echo "::error::CANCEL REFUSED: HTTP $code cancelling $id. It is a preview and was never given the domain."; exit 1; }
+                echo "cancelled: $id"
+                exit 1 ;;
+              preview)
+                code=$(v -X DELETE "https://api.vercel.com/v13/deployments/$id?$q" -o /dev/null -w '%{http_code}') || code=000
+                [[ "$code" =~ ^2 ]] || { echo "::error::DELETE REFUSED: HTTP $code deleting $id. It is a preview and was never given the domain."; exit 1; }
+                echo "deleted: $id"
+                exit 1 ;;
+              promoted)
+                echo "::error::not confirmed live and gated; promoting $before back"
+                # A copy still building would take the domain once ready, so it
+                # is cancelled, and the cancel is read back: a copy that went
+                # READY first is put back below like any other (#139's read, 2).
+                if [ -n "$copy" ]; then
+                  state=$(copied)
+                  case "$state" in
+                    READY|ERROR|CANCELED) ;;
+                    *) code=$(v -X PATCH "https://api.vercel.com/v12/deployments/$copy/cancel?$q" -o /dev/null -w '%{http_code}') || code=000
+                       for _ in 1 2 3 4 5 6; do
+                         state=$(copied)
+                         case "$state" in READY|ERROR|CANCELED) break ;; esac
+                         sleep 5
+                       done
+                       case "$state" in
+                         READY) ;;
+                         ERROR|CANCELED) echo "cancelled: $copy, $state" ;;
+                         *) echo "::error::CANCEL $([[ "$code" =~ ^2 ]] && echo UNCONFIRMED || echo "REFUSED: HTTP $code"): $copy is ${state:-unread}, and takes the domain once ready."; exit 1 ;;
+                       esac ;;
+                  esac
+                  # A READY copy may take the domain a moment after: it is
+                  # given a minute to, so the put-back comes after it.
+                  if [ "$state" = READY ]; then
+                    for _ in 1 2 3 4 5 6; do serves "$copy" && break; sleep 10; done
+                  fi
+                fi
+                code=$(v -X POST "https://api.vercel.com/v10/projects/$PROJECT/promote/$before?$q" -o /dev/null -w '%{http_code}') || code=000
+                # The host answers 409 to a promote of what the domain still serves (run 36997804844).
+                [[ "$code" =~ ^2 ]] || { [ "$code" = 409 ] && serves "$before"; } || { echo "::error::ROLLBACK REFUSED: HTTP $code promoting $before. The domain may serve an unconfirmed board."; exit 1; }
+                local back=$(( $(date +%s) + 180 ))
+                while [ "$(date +%s)" -lt "$back" ]; do
+                  serves "$before" && { echo "rolled back: $DOMAIN serves $before"; exit 1; }
+                  sleep 10
+                done
+                echo "::error::ROLLBACK UNCONFIRMED: $DOMAIN does not serve $before after three minutes."
+                exit 1 ;;
+            esac
+          }
+          trap cleanup EXIT
+          # The files are sent through the API: no Git metadata, so the host
+          # cannot read this as an integration deploy (library/deploy.md). No
+          # target: a preview, which the host never gives the domain.
+          jq -n --arg p "$PROJECT" \
+            --rawfile index "$site/index.html" --rawfile mw "$site/middleware.js" \
+            --rawfile robots "$site/robots.txt" --rawfile vj "$site/vercel.json" \
+            '{name: "juku-build-board", project: $p, projectSettings: {framework: null},
+              files: [{file: "index.html", data: $index}, {file: "middleware.js", data: $mw},
+                      {file: "robots.txt", data: $robots}, {file: "vercel.json", data: $vj}]}' > "$RUNNER_TEMP/deploy.json"
+          rm -rf "$site"
+          made=$(v -X POST "https://api.vercel.com/v13/deployments?$q&skipAutoDetectionConfirmation=1" -d @"$RUNNER_TEMP/deploy.json" || true)
+          rm -f "$RUNNER_TEMP/deploy.json"
+          id=$(printf '%s' "$made" | jq -r '.id // empty' 2>/dev/null || true)
+          [[ "$id" =~ ^dpl_[A-Za-z0-9]+$ ]] || { echo "::error::the host did not confirm the deployment: $(printf '%s' "$made" | jq -r '.error.code // "no code"' 2>/dev/null || echo "no answer")"; exit 1; }
+          phase=building
+          echo "deployment: $id (a preview)"
+          while [ "$(date +%s)" -lt "$by" ]; do
+            state=$(v "https://api.vercel.com/v13/deployments/$id?$q" 2>/dev/null | jq -r '.readyState // empty' 2>/dev/null || true)
+            case "$state" in READY|ERROR|CANCELED) break ;; esac
+            sleep 5
+          done
+          [ "$state" = READY ] || { echo "::error::the deployment ended ${state:-unknown} by minute $limit of the job, not READY"; exit 1; }
+          phase=preview
+          # THE PREVIEW, SMOKED AS A STRANGER (#117's second read, 2): the
+          # host's sign-in wall or the PIN screen, never the board. Its address
+          # is printed only after.
+          host=$(v "https://api.vercel.com/v13/deployments/$id?$q" 2>/dev/null | jq -r '.url // empty' 2>/dev/null || true)
+          [[ "$host" =~ ^[a-z0-9.-]+$ ]] || { echo "::error::the host named no address for $id"; exit 1; }
+          g=1
+          while [ "$(date +%s)" -lt "$by" ]; do
+            gated "$host" wall && g=0 || g=$?
+            [ "$g" -eq 1 ] || break
+            sleep 10
+          done
+          [ "$g" -ne 2 ] || { echo "::error::A STRANGER WAS SERVED THE BOARD at the preview $id"; exit 1; }
+          [ "$g" -eq 0 ] || { echo "::error::the preview $id showed a stranger neither the sign-in wall nor the PIN screen by minute $limit of the job"; exit 1; }
+          if [ "$TARGET" = preview ]; then
+            ok=yes
+            # The smoked preview takes the fixed name; the host moves it off the last.
+            # The name is smoked as a stranger like the preview's own host before it
+            # is handed over; the board shown there deletes the preview (#136's read, 3).
+            code=$(v -X POST "https://api.vercel.com/v2/deployments/$id/aliases?$q" -d "{\"alias\":\"$NEXT\"}" -o /dev/null -w '%{http_code}') || code=000
+            if [[ "$code" =~ ^2 ]]; then
+              g=1
+              for _ in 1 2 3 4 5 6; do
+                gated "$NEXT" wall && g=0 || g=$?
+                [ "$g" -eq 1 ] || break
+                sleep 5
+              done
+              if [ "$g" -eq 2 ]; then ok=no; echo "::error::A STRANGER WAS SERVED THE BOARD at the fixed address $NEXT"; exit 1; fi
+              if [ "$g" -eq 0 ]; then echo "preview ready at the fixed address: https://$NEXT"
+              else echo "::warning::the fixed address did not show a stranger the sign-in wall or the PIN screen; use this preview's own"; fi
+            else echo "::warning::the fixed preview address was refused (HTTP $code); this preview has only its own"; fi
+            echo "preview ready, and a stranger gets the sign-in wall or the PIN screen: https://$host"
+            exit 0
+          fi
+          # PROMOTED BY THIS STEP, NEVER BY THE HOST (#117's second read, 1).
+          # The host will not point the domain at a preview (run 36997804844:
+          # 422), so the smoked preview is copied to production, as the host's
+          # own CLI promotes one: its files, not a rebuild of main (library/deploy.md).
+          # Armed before the call: a copy asked for may still land.
+          phase=promoted
+          made=$(v -X POST "https://api.vercel.com/v13/deployments?$q" \
+            -d "{\"deploymentId\":\"$id\",\"name\":\"juku-build-board\",\"target\":\"production\",\"meta\":{\"action\":\"promote\"}}" || true)
+          copy=$(printf '%s' "$made" | jq -r '.id // empty' 2>/dev/null || true)
+          [[ "$copy" =~ ^dpl_[A-Za-z0-9]+$ ]] || { echo "::error::PROMOTE REFUSED: no production copy of $id: $(printf '%s' "$made" | jq -r '.error.code // "no code"' 2>/dev/null || echo "no answer")"; exit 1; }
+          echo "production copy: $copy"
+          # THE SMOKE: the domain serves this deployment, and to a stranger
+          # the PIN screen and nothing of the board. The edge follows the
+          # control plane by a little, so a missing answer is asked again until
+          # the deadline; the board seen by a stranger is never asked again.
+          g=1
+          while [ "$(date +%s)" -lt "$by" ]; do
+            gated "$DOMAIN" pin && g=0 || g=$?
+            [ "$g" -ne 2 ] || break
+            if [ "$g" -eq 0 ] && serves "$copy"; then
+              ok=yes
+              echo "live: $copy, the copy of $id, on $DOMAIN, the PIN screen alone to a stranger"
+              exit 0
+            fi
+            sleep 10
+          done
+          [ "$g" -ne 2 ] || { echo "::error::A STRANGER WAS SERVED THE BOARD on $DOMAIN"; exit 1; }
+          echo "::error::$DOMAIN did not serve $copy, gated, by minute $limit of the job"
+          exit 1

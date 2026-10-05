@@ -90,11 +90,13 @@ the real ones and the fakes on every run of check.sh — no network, no GitHub, 
 it fails the build before a loose rule can pass a commit.
 """
 
+import glob
 import io
 import json
 import importlib.util
 import os
 import re
+import concurrent.futures
 import subprocess
 import sys
 import tempfile
@@ -122,29 +124,26 @@ DEFAULT_REVIEWER = "claude"
 # and model-registry/registry.json on the protected branch resolves the role to
 # a model, a provider and an effort. A switch is one edit to that file, which is
 # in the gate's own risky class. _check_registry() holds what the roles owe:
-# ordinary changes to ORDINARY_ROLE, with FALLBACK_ROLE behind it when it does
-# not answer; risky ones to RISKY_ROLE, with nothing behind it. Neither
-# answering leaves the commit unread: the gate never fails open.
+# ordinary changes to ORDINARY_ROLE and risky ones to RISKY_ROLE, each with
+# FALLBACK_ROLE behind it when it does not answer (the risky one since his
+# ruling of 30 September 2026). Neither answering leaves the commit unread: the
+# gate never fails open.
 REGISTRY = "model-registry/registry.json"
 RESOLVER = "model-registry/resolve.py"
 ORDINARY_ROLE = "reviewer-main"
 RISKY_ROLE = "reviewer-risky"
 FALLBACK_ROLE = "reviewer-fallback"
-# And the effort a role reads at is its class's. Decision 0005 (issue #75, 23
-# September 2026), in its own words: "Effort. Build at medium, high after one
-# failed attempt, max only for reviews of the risky classes." A change touching
-# a risky class is read at RISKY_EFFORT; pages and ordinary code at
-# ORDINARY_EFFORT. The registry sets each role's effort; this file refuses a
-# registry that sets them otherwise. The class is worked out in each workflow
-# and held below, at CLASS_FIRST.
-RISKY_EFFORT = "max"
-# Why high and not medium, since the decision names only what risky reads get
-# (#79's seventh read): his ruling of 18 September holds the reviewer at least
-# as strong as the lead that builds, and the lead builds at medium and steps to
-# high after one failed attempt. At high, a read stays at or above the lead's
-# own effort; at medium it could fall below it. The CTO's reading.
-# Not yet proved on a live read: review.yml's class block names the first run.
-ORDINARY_EFFORT = "high"
+# And every read is at one effort, whatever its class: his ruling of 28
+# September 2026 ("models now"), in his words, "every read at max". It
+# supersedes decision 0005's "max only for reviews of the risky classes"
+# (issue #75, 23 September 2026), and with it the CTO's reading that held
+# pages and ordinary code at high, a step above a lead then building at
+# medium. The class still names the role, and so the model (and, in
+# review.yml, what a read is given); it no longer moves the effort. The
+# registry sets each role's effort; this file refuses a registry that sets any
+# reviewer role otherwise, and each reviewer refuses to read at any other. The
+# class is worked out in each workflow and held below, at CLASS_FIRST.
+REVIEW_EFFORT = "max"
 
 # The badge. `juku-reviewer`, created on the Chairman's account 19 September 2026;
 # installation 162987297. The id is the
@@ -292,7 +291,9 @@ REVIEWERS = {
 # change to any of them is a change to the gate however it is dressed. Narrowing
 # it to named files buys nothing and would have to be argued back the first time
 # a fifth file mattered.
-GATE_FILES = ("check.sh", "review-gate.py")
+# board/build.py joins them (#113's fourth read): check.sh runs its selftest
+# before the verdict, so a change to it is a change to what the gate runs.
+GATE_FILES = ("check.sh", "review-gate.py", "board/build.py")
 GATE_DIRS = (".github/workflows/", "model-registry/")
 
 
@@ -1235,11 +1236,11 @@ READ_MARGIN = 5
 READ_START = 'echo "started=$(date +%s)" >> "$GITHUB_OUTPUT"'
 READ_LEFT = 'left=$(( STARTED + limit * 60 - $(date +%s) ))'
 # (what the steps before the read did, how long ago the job started or what was
-# recorded, whether the read may begin). `limit` is 25 in both files.
+# recorded, whether the read may begin). `limit` is the same in both files.
 DEADLINE_CASES = (
     ("the job has just started", 0, True),
     ("the steps before ran to minute 20", 20 * 60, True),
-    ("they ran to within a minute of the deadline", 25 * 60 - 30, False),
+    ("they ran to within a minute of the deadline", 50 * 60 - 30, False),
     ("they ran past it", 60 * 60, False),
     ("no start was recorded", "", False),
     ("the start is not a number", "1+1", False),
@@ -1378,8 +1379,8 @@ def read_faults(text):
 # Each must turn the hold red on both reviewers' files, or the hold is decoration.
 READ_LOOSENINGS = (
     ("the read unbounded", lambda t: t.replace(READ_CALL, "claude -p \\", 1)),
-    ("a read the job cuts off first", lambda t: t.replace("          limit=25\n", "          limit=28\n", 1)),
-    ("no limit set", lambda t: t.replace("          limit=25\n", "", 1)),
+    ("a read the job cuts off first", lambda t: t.replace("          limit=50\n", "          limit=53\n", 1)),
+    ("no limit set", lambda t: t.replace("          limit=50\n", "", 1)),
     ("a time-out not named", lambda t: _in_step(t, "Read it", 'if [ "$rc" -eq 124 ]; then', 'if [ "$rc" -eq 125 ]; then')),
     ("a missing tool not named", lambda t: _in_step(t, "Read it", 'elif [ "$rc" -eq 127 ]; then', 'elif false; then')),
     ("a reason that can break a line", lambda t: _in_step(t, "Read it", "| tr -cd 'a-z_' ||", "||")),
@@ -1426,7 +1427,9 @@ def _check_read_loosenings():
 
 # THE CLASS A CHANGE IS READ AT, AND WHAT A READ OF IT IS GIVEN. #77's reads
 # ran out of time twice at max, each preloading every file in this repository
-# (#70's slice 2), and decision 0005 keeps max for the risky classes alone. So
+# (#70's slice 2), and decision 0005 kept max for the risky classes alone,
+# until his ruling of 28 September 2026 put every read at max: the class now
+# picks the role, and so the model, and never the effort. So
 # each reviewer works out a class from the diff it reads: `words` when every
 # file the change touches is a page, `code` otherwise, and `risky` when any
 # file it touches is in one of the six risky classes. The brief, AGENTS.md at
@@ -1448,8 +1451,8 @@ def _check_read_loosenings():
 # the changes below, from its first line to the one output that hands the
 # effort to the read, so any line added inside it is run too.
 #
-# RISKY, BY NAME (#86). Max is kept for the six classes decision 0005 and the
-# operating page's step 5 name, and ordinary code is read at high with
+# RISKY, BY NAME (#86). The six classes decision 0005 and the operating page's
+# step 5 name are read by reviewer-risky, and ordinary code by reviewer-main with
 # everything it was given before. A file is risky by its path, lower-cased, so
 # a name's case cannot hide it: the gate's own files and the brief whatever
 # their extension, then, for anything that is not a page, a name that says
@@ -1458,7 +1461,7 @@ def _check_read_loosenings():
 # data), or deploy and release (every script, and what a build installs). A
 # page is never risky by its name: a screen spec called garment-pricing.md is
 # words about pricing, and the diff shows what it says. The names are a rule,
-# not a proof, so a read at high is told it was not read at max, and a reader
+# not a proof, so an ordinary read is told it was not read as risky, and a reader
 # that finds a risky change the names missed says so as a finding — which
 # puts the name in this list. Replayed before it merged, on the files each
 # merged pull request touched: of Hemz OS's last 72, 46 read risky and 26
@@ -1470,7 +1473,7 @@ CLASS_CODE = ("AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|des
 CLASS_ARMS = (CLASS_CODE, "*.md) ;;", "*) class=code ;;")
 RISK_CASE = 'case "${f,,}" in'
 # The six classes, as the arms that name them, in the order they are tried.
-RISK_GATE = ("agents.md|*/agents.md|check.sh|*/check.sh|review-gate.py|*/review-gate.py|"
+RISK_GATE = ("agents.md|*/agents.md|check.sh|*/check.sh|review-gate.py|*/review-gate.py|board/build.py|"
              "model-registry/*|*/model-registry/*|.*|*/.*) risky=yes ;;")
 RISK_PRICING = "*pric*|*payment*|*billing*|*invoice*|*checkout*|*quote*) risky=yes ;;"
 RISK_DATA = ("*.sql|*migration*|*schema*|supabase/*|*/supabase/*|*backfill*|*purge*|*truncate*|"
@@ -1507,14 +1510,15 @@ CLASS_LIST = {
 # The read is handed the class's role and nothing else; the effort and the
 # model are resolved from the registry inside the read, never passed in.
 ROLE_IN = "ROLE: ${{ steps.gather.outputs.role }}"
-EFFORT_GUARD = ('case "$EFFORT" in high|max) ;; *) fail "the registry set no effort a reviewer may '
-                'read at" ;; esac')
+EFFORT_GUARD = ('case "$EFFORT" in %s) ;; *) fail "the registry set no effort a reviewer may '
+                'read at" ;; esac' % REVIEW_EFFORT)
 READ_EFFORT = '--effort "$effort"'
 READ_MODEL = '--model "$model"'
-# A read below max is told so, in both reviewers, and asked to say if a file it
+# An ordinary read is told so, in both reviewers, and asked to say if a file it
 # was shown is in a risky class after all: without it, a name the list missed
-# is read at high in silence.
-RISK_TOLD = ('if [ "$EFFORT" != %s ]; then' % RISKY_EFFORT,
+# is read by reviewer-main, not reviewer-risky, in silence. It was keyed on the
+# effort while the two classes read at two; with one effort, on the class.
+RISK_TOLD = ('if [ "$CLASS" != risky ]; then',
              'echo "release machinery, or the review gate, that is a finding: say which file, so its '
              'name joins the rule."')
 # review.yml's pages: a change to pages alone is given the pages it touches, the
@@ -1666,6 +1670,8 @@ CLASS_CASES = (
     (["docs/AGENTS.md"], "risky"),
     (["README.md", "check.sh"], "risky"),
     (["review-gate.py"], "risky"),
+    (["board/build.py"], "risky"),
+    (["check.sh"], "risky"),
     ([".github/workflows/review.yml"], "risky"),
     ([".github/copilot-instructions.md"], "risky"),
     ([".claude/skills/steward/SKILL.md"], "risky"),
@@ -1674,7 +1680,7 @@ CLASS_CASES = (
     (["page.md.sh"], "risky"),
     (["page.md\nx.sh"], "risky"),
     (["supabase/migrations/0001_init.sql", "README.md"], "risky"),
-    # Ordinary code, and pages whose names sound risky, stay at high.
+    # Ordinary code, and pages whose names sound risky, stay ordinary.
     (["roadmap.json", "PRODUCT.md"], "code"),
     (["the-workshop.html", "hosting/queue.js"], "code"),
     (["hosting/test-orders.mjs"], "code"),
@@ -1749,7 +1755,7 @@ CLASS_CASES = (
     (["model-registry/registry.json"], "risky"),
     (["model-registry/resolve.py"], "risky"),
     (["library/model-registry.md"], "words"),
-    (["consensuses/juku-os/CLAUDE_OPEN_WEIGHT_MODEL_ROUTING_IMPLEMENTATION.md"], "words"),
+    (["juku-library/CLAUDE_OPEN_WEIGHT_MODEL_ROUTING_IMPLEMENTATION.md"], "words"),
 )
 
 
@@ -1850,8 +1856,8 @@ def class_faults(text, path):
     if [f for f in (_call(text) or []) if f.startswith("--model")] != [READ_MODEL + " \\"]:
         lost.append("`%s` as the call's one model" % READ_MODEL)
     if not all(line in r for line in RISK_TOLD):
-        lost.append("a read below %s told so and asked to name a risky file (`%s`)"
-                    % (RISKY_EFFORT, "`, `".join(RISK_TOLD)))
+        lost.append("an ordinary read told so and asked to name a risky file (`%s`)"
+                    % "`, `".join(RISK_TOLD))
     # What the read cost: counted before the call, timed around it, and handed
     # on before a failed read is named, so a read that ran out of time says too.
     held = [l.strip() for l in r.splitlines()]
@@ -1947,11 +1953,12 @@ CLASS_LOOSENINGS = (
     ("names split on a line break", None, lambda t: t.replace("diff -z --name-only --no-renames", "diff --name-only --no-renames", 1)),
     ("the role never handed on", None, lambda t: t.replace("          " + CLASS_OUT + "\n", "", 1)),
     ("the role handed on twice", None, lambda t: _in_step(t, "Gather what the reviewer reads", CLASS_OUT, CLASS_OUT + '\n          echo "role=%s" >> "$GITHUB_OUTPUT"' % ORDINARY_ROLE)),
-    ("an effort handed on by the class", None, lambda t: _in_step(t, "Gather what the reviewer reads", CLASS_OUT, CLASS_OUT + '\n          echo "effort=%s" >> "$GITHUB_OUTPUT"' % RISKY_EFFORT)),
+    ("an effort handed on by the class", None, lambda t: _in_step(t, "Gather what the reviewer reads", CLASS_OUT, CLASS_OUT + '\n          echo "effort=%s" >> "$GITHUB_OUTPUT"' % REVIEW_EFFORT)),
     ("the role not the class's", None, lambda t: t.replace(ROLE_IN, "ROLE: " + ORDINARY_ROLE, 1)),
-    ("an effort handed to the read", None, lambda t: t.replace("          " + ROLE_IN + "\n", "          %s\n          EFFORT: %s\n" % (ROLE_IN, ORDINARY_EFFORT), 1)),
+    ("an effort handed to the read", None, lambda t: t.replace("          " + ROLE_IN + "\n", "          %s\n          EFFORT: %s\n" % (ROLE_IN, REVIEW_EFFORT), 1)),
     ("an effort unchecked", None, lambda t: t.replace(EFFORT_GUARD, "true", 1)),
-    ("an effort written into the call", None, lambda t: t.replace(READ_EFFORT + " \\", "--effort " + ORDINARY_EFFORT + " \\", 1)),
+    ("a read let in below max again", None, lambda t: t.replace(EFFORT_GUARD, EFFORT_GUARD.replace("in %s)" % REVIEW_EFFORT, "in high|%s)" % REVIEW_EFFORT, 1), 1)),
+    ("an effort written into the call", None, lambda t: t.replace(READ_EFFORT + " \\", "--effort " + REVIEW_EFFORT + " \\", 1)),
     ("a model written into the call", None, lambda t: t.replace(READ_MODEL + " \\", "--model a-model-named-here \\", 1)),
     ("code given pages alone", REVIEW_WORKFLOW, lambda t: t.replace("code:*|risky:*) ;;", "code:*.md|risky:*) ;;", 1)),
     ("a risky change given pages alone", REVIEW_WORKFLOW, lambda t: t.replace("code:*|risky:*) ;;", "code:*) ;;", 1)),
@@ -1986,7 +1993,8 @@ CLASS_LOOSENINGS = (
     ("a name's case trusted", None, lambda t: t.replace(RISK_CASE, 'case "$f" in', 1)),
     ("the risk never raised", None, lambda t: t.replace("          " + CLASS_RISKY + "\n", "", 1)),
     ("the risk found and dropped", None, lambda t: t.replace(CLASS_RISKY, '[ "$risky" = yes ] || class=risky', 1)),
-    ("the read below max not told", None, lambda t: _in_step(t, "Read it", RISK_TOLD[1], 'echo "."')),
+    ("an ordinary read not told", None, lambda t: _in_step(t, "Read it", RISK_TOLD[1], 'echo "."')),
+    ("an ordinary read told only below an effort no read is at", None, lambda t: _in_step(t, "Read it", RISK_TOLD[0], 'if [ "$EFFORT" != %s ]; then' % REVIEW_EFFORT)),
     ("what the read cost never counted", None, lambda t: _in_step(t, "Read it", READ_TOOK[1], "true")),
     ("what the read cost counted after a failure is named", None, lambda t: _in_step(t, "Read it", "          %s\n" % READ_TOOK[0], "          %s\n          %s\n" % (READ_ANSWERED, READ_TOOK[0]))),
     ("what the read cost never passed on", None, lambda t: _in_step(t, "Sign the verdict", "SPENT: ${{ steps.read.outputs.spent }}", "SPENT: none")),
@@ -2020,12 +2028,13 @@ def _check_class_loosenings():
     if not bad:
         print("ok: each reviewer hands a change to its class's role, %s for pages and ordinary "
               "code and %s for the risky classes and any kind of file the list does not know, "
-              "worked out from the diff it reads, and a read below %s is told so; the class was "
+              "worked out from the diff it reads, and each reads at %s alone, an ordinary read told "
+              "it was not read as risky; the class was "
               "run on %d change(s), review.yml gives any change "
               "but pages every file and pages alone the pages they touch, the README's map, "
               "HOW-WE-BUILD.md and check.sh (its loop run on %d), each verdict says what its read "
               "cost, and each of %d loosenings was refused"
-              % (ORDINARY_ROLE, RISKY_ROLE, RISKY_EFFORT, len(CLASS_CASES), len(PAGES_CASES),
+              % (ORDINARY_ROLE, RISKY_ROLE, REVIEW_EFFORT, len(CLASS_CASES), len(PAGES_CASES),
                  len(CLASS_LOOSENINGS)))
     return bad
 
@@ -2046,8 +2055,8 @@ ROUTE_REGISTRY = {
                      '> "$reg/$f" || fail "the protected branch holds no model-registry/$f"',
     PRODUCT_WORKFLOW: 'reg="$GITHUB_WORKSPACE/model-registry"',
 }
-ROUTE_ASK_GUARD = ('case "$effort" in high|max) ;; *) printf \'{"is_error":true,"subtype":"no_effort"}\\n\' '
-                   '> "$out"; : > "$err"; return 2 ;; esac')
+ROUTE_ASK_GUARD = ('case "$effort" in %s) ;; *) printf \'{"is_error":true,"subtype":"no_effort"}\\n\' '
+                   '> "$out"; : > "$err"; return 2 ;; esac' % REVIEW_EFFORT)
 ROUTE_FIRST = "fell_back=no"
 ROUTE_LAST = 'echo "verdict=$verdict" >> "$GITHUB_OUTPUT"'
 # A product's code is private, and no provider but Anthropic has been cleared to
@@ -2125,7 +2134,8 @@ REVIEW_READ = ("Addressed to the CTO. I read the diff against main's tip and the
 
 
 def route_says(block, first, second, fallback, left):
-    """Run the reading block with a stub `ask()`. (roles asked, verdict read or None), or None."""
+    """Run the reading block with a stub `ask()`. (roles asked, verdict read or None), a
+    `written […]` string when the output file's verdict lines disagree with it, or None."""
     with tempfile.TemporaryDirectory() as d:
         body = "\n".join(l.replace("/tmp/", d + "/").replace('"$t/', '"' + d + "/") for l in block)
         # What `read_bytes=` measures, so the block's own line runs rather than
@@ -2167,12 +2177,21 @@ def route_says(block, first, second, fallback, left):
             p = subprocess.run(["bash", os.path.join(d, "route.sh")], env=env, capture_output=True,
                                text=True, timeout=60)
             asked = open(os.path.join(d, "asked"), encoding="utf-8").read().split()
+            out = os.path.join(d, "out")
+            written = ([l.split("=", 1)[1] for l in open(out, encoding="utf-8").read().splitlines()
+                        if l.startswith("verdict=")] if os.path.exists(out) else [])
         except (OSError, subprocess.SubprocessError):
             return None
+    # WHAT IS SIGNED IS WHAT WAS WRITTEN (#111's second read, advisory). *Sign the
+    # verdict* reads the `verdict=` line in $GITHUB_OUTPUT, not the shell's
+    # variable, so a case holds the file: one line, saying what the read said,
+    # and none at all from a read that failed.
     done = re.search(r"^done: (\w+)$", p.stdout, re.M)
     if p.returncode == 0 and done:
-        return asked, done.group(1)
-    return (asked, None) if p.returncode == 3 and "failed: " in p.stdout else None
+        return asked, done.group(1) if written == [done.group(1)] else "written %s" % written
+    if p.returncode == 3 and "failed: " in p.stdout:
+        return asked, None if not written else "written %s" % written
+    return None
 
 
 def route_faults(text, path):
@@ -2193,11 +2212,25 @@ def route_faults(text, path):
     # stub, not the file, so a second `ask()` placed above the block would win
     # in the real read and never run here. Only the reader of the diff guards
     # that region until the harness starts higher, with a fake `claude` on PATH.
+    # ITS OTHER LIMIT (#118's read): the harness stops at `ROUTE_LAST`, so
+    # below it only a text rule holds — no line of *Read it* but that one may
+    # name both `GITHUB_OUTPUT` and `verdict`. A write spelled another way
+    # below the block (the file through a variable, a braced group, the name
+    # in capitals) passes it, and only the reader of the diff guards that
+    # region until the harness runs to the end of the step.
     block = _block(r, lambda l: l == REVIEW_TEST, lambda l: l == ROUTE_LAST)
     if block is None or "answered() {" not in block or ROUTE_FIRST not in block:
         lost.append("one reading block from `%s`, through `answered()` and `%s`, to `%s`"
                     % (REVIEW_TEST, ROUTE_FIRST, ROUTE_LAST))
         return lost
+    # One line of *Read it* writes the verdict the next step signs, and it is the
+    # block's last: a second, anywhere in the step, is a verdict nothing reads
+    # the way the cases do (#111's second read: GitHub keeps the last value a
+    # step writes for a name).
+    writes = [l.strip() for l in r.splitlines()
+              if "GITHUB_OUTPUT" in l and "verdict" in l and not l.strip().startswith("#")]
+    if writes != [ROUTE_LAST]:
+        lost.append("one line writing the verdict, `%s`, and no other (it has %s)" % (ROUTE_LAST, writes))
     for what, first, second, fallback, left, want in ROUTE_CASES:
         got = route_says(block, first, second, fallback, left)
         if got != want:
@@ -2234,6 +2267,7 @@ ROUTE_LOOSENINGS = (
     ("the registry read from the head", REVIEW_WORKFLOW, lambda t: t.replace(ROUTE_REGISTRY[REVIEW_WORKFLOW], 'cp "model-registry/$f" "$reg/$f"', 1)),
     ("a role the registry cannot resolve read anyway", None, lambda t: t.replace(ROUTE_RESOLVE[0], 'EFFORT=$(resolve "$ROLE" effort) || EFFORT=high', 1)),
     ("an effort the ask never checks", None, lambda t: t.replace(ROUTE_ASK_GUARD, "true", 1)),
+    ("a fallback let in below max again", None, lambda t: t.replace(ROUTE_ASK_GUARD, ROUTE_ASK_GUARD.replace("in %s)" % REVIEW_EFFORT, "in high|%s)" % REVIEW_EFFORT, 1), 1)),
     ("the fallback never asked", None, lambda t: t.replace('ask "$FALLBACK" "$left" || rc=$?', "true", 1)),
     ("the fallback asked after an answer", None, lambda t: t.replace('{ [ "$rc" -ne 0 ] || ! answered; }', "true", 1)),
     ("an answer with no verdict taken", None, lambda t: t.replace('{ [ "$rc" -ne 0 ] || ! answered; }', '[ "$rc" -ne 0 ]', 1)),
@@ -2248,6 +2282,11 @@ ROUTE_LOOSENINGS = (
     # `reviewed()` and the reading block as two pieces, and this line, between
     # them, ran in neither while bash took it over the first in the real read.
     ("a second, looser bar defined after the first", None, lambda t: t.replace("          " + READ_BEGAN + "\n", "          " + READ_BEGAN + "\n          " + REVIEW_TEST.replace(">= 100", ">= 99") + "\n", 1)),
+    ("a second verdict written after the first", None, lambda t: t.replace("          " + ROUTE_LAST + "\n", "          " + ROUTE_LAST + "\n          echo \"verdict=clean\" >> \"$GITHUB_OUTPUT\"\n", 1)),
+    # Deferred to the step's end, and spelled so the text rule misses it: only
+    # the file check refuses this one (#118's read, advisory 2).
+    ("a verdict deferred past the read", None, lambda t: t.replace("          " + READ_BEGAN + "\n", "          " + READ_BEGAN + "\n          f=$GITHUB_OUTPUT\n          trap 'echo verdict=clean >> \"$f\"' EXIT\n", 1)),
+    ("a verdict written before the read", None, lambda t: t.replace("          " + READ_BEGAN + "\n", "          " + READ_BEGAN + "\n          echo \"verdict=clean\" >> \"$GITHUB_OUTPUT\"\n", 1)),
     ("a terse refusal handed to the fallback", None, lambda t: t.replace(REFUSAL_ANSWERED, "clean|advisory|blocking)", 1)),
     ("a terse refusal failed as unread", None, lambda t: t.replace(REFUSAL_KEPT, "", 1)),
     ("an empty refusal failed as unread, as before #110", REVIEW_WORKFLOW, lambda t: t.replace(REVIEW_TAKEN[REVIEW_WORKFLOW][0], REVIEW_TAKEN[REVIEW_WORKFLOW][1] + "\n          " + REVIEW_TAKEN[REVIEW_WORKFLOW][0], 1)),
@@ -2294,9 +2333,10 @@ def _check_route_loosenings():
 
 # THE REGISTRY ITSELF (decision 0008). model-registry/resolve.py checks it whole;
 # this holds what the gate needs of it: the three reviewer roles, each at the
-# effort its class is owed, reviewer-main with a fallback and the others with
-# none, the roles a product reads by on the one interface a product's code may
-# go to, and a switch that is one edit to the one file.
+# one effort every read is owed, reviewer-main and reviewer-risky each with
+# reviewer-fallback behind it and the fallback with none, the fallback on the
+# one interface a product's code may go to, since every product read ends on
+# it, and a switch that is one edit to the one file.
 def _check_registry():
     bad = 0
 
@@ -2315,29 +2355,29 @@ def _check_registry():
         return bad
     for f in resolve.check(reg):
         fault(f)
-    owed = ((ORDINARY_ROLE, ORDINARY_EFFORT, True), (FALLBACK_ROLE, ORDINARY_EFFORT, False),
-            (RISKY_ROLE, RISKY_EFFORT, False))
+    owed = ((ORDINARY_ROLE, True), (FALLBACK_ROLE, False), (RISKY_ROLE, True))
     got = {}
-    for role, effort, falls in owed:
+    for role, falls in owed:
         try:
             got[role] = resolve.resolve(reg, role)
         except resolve.Unresolved as e:
             fault(str(e))
             continue
-        if got[role]["effort"] != effort or got[role]["effort_checked"] != "yes":
-            fault("%s reads at %r; its class is owed %s, on an effort its model is known to take"
-                  % (role, got[role]["effort"], effort))
+        if got[role]["effort"] != REVIEW_EFFORT or got[role]["effort_checked"] != "yes":
+            fault("%s reads at %r; every read is owed %s, on an effort its model is known to take"
+                  % (role, got[role]["effort"], REVIEW_EFFORT))
         if bool(got[role]["fallback"]) != falls:
-            fault("%s %s" % (role, "has no fallback, so an outage parks every ordinary change"
+            fault("%s %s" % (role, "has no fallback, so an outage parks every change it reads"
                              if falls else "falls back to %r; nothing may stand behind it"
                              % got[role]["fallback"]))
-    if got.get(ORDINARY_ROLE, {}).get("fallback") not in (None, FALLBACK_ROLE):
-        fault("%s falls back to %r, not %s" % (ORDINARY_ROLE, got[ORDINARY_ROLE]["fallback"],
-                                               FALLBACK_ROLE))
-    for role in (FALLBACK_ROLE, RISKY_ROLE):
-        if role in got and got[role]["interface"] != "claude-code":
-            fault("%s is served through %s; a product's read speaks claude-code alone, so it would "
-                  "have no reader" % (role, got[role]["interface"]))
+    for role in (ORDINARY_ROLE, RISKY_ROLE):
+        if got.get(role, {}).get("fallback") not in (None, "", FALLBACK_ROLE):
+            fault("%s falls back to %r, not %s" % (role, got[role]["fallback"], FALLBACK_ROLE))
+    # A product's read speaks claude-code alone, so the fallback is the reader
+    # every product read ends on.
+    if FALLBACK_ROLE in got and got[FALLBACK_ROLE]["interface"] != "claude-code":
+        fault("%s is served through %s; a product's read speaks claude-code alone, so it would "
+              "have no reader" % (FALLBACK_ROLE, got[FALLBACK_ROLE]["interface"]))
     # One edit, one file: the ordinary role moved to another model in a copy of
     # the registry, and nothing else, is what the resolver then answers.
     if ORDINARY_ROLE in got and FALLBACK_ROLE in got:
@@ -2365,10 +2405,9 @@ def _check_registry():
         except resolve.Unresolved:
             pass
     if not bad:
-        print("ok: the registry resolves %s at %s with %s behind it, and %s at %s with nothing "
-              "behind it; a switch is one edit to %s, and an unknown role or a blocked model "
-              "fails closed" % (ORDINARY_ROLE, ORDINARY_EFFORT, FALLBACK_ROLE, RISKY_ROLE,
-                                RISKY_EFFORT, REGISTRY))
+        print("ok: the registry resolves %s and %s, each with %s behind it, all three at %s; a "
+              "switch is one edit to %s, and an unknown role or a blocked model fails closed"
+              % (ORDINARY_ROLE, RISKY_ROLE, FALLBACK_ROLE, REVIEW_EFFORT, REGISTRY))
     return bad
 
 
@@ -2695,6 +2734,10 @@ def _check_product_wiring(review=None, product=None, readme=None, quiet=False):
     if lost:
         fault("must carry the slice's own pages by rule and name what it leaves out; it has lost %s"
               % "; ".join(lost))
+    lost = link_faults(product)
+    if lost:
+        fault("must carry the source a change imports, one hop, and print nothing of it; it has "
+              "lost %s" % "; ".join(lost))
     if _why(review) is None or _why(product) != _why(review):
         fault("does not name why a read did not happen as %s does, line for line"
               % REVIEW_WORKFLOW)
@@ -2782,7 +2825,7 @@ PRODUCT_LOOSENINGS = (
     ("settings files read", lambda t: t.replace("--restricted \\\n", "", 1)),
     ("MCP servers from elsewhere", lambda t: t.replace("--strict-mcp-config \\\n", "", 1)),
     ("a model named in the call", lambda t: t.replace(READ_MODEL, "--model a-model-named-here", 1)),
-    ("the tool unpinned", lambda t: t.replace("claude-code@2.1.280", "claude-code", 1)),
+    ("the tool unpinned", lambda t: t.replace("claude-code@2.1.285", "claude-code", 1)),
     ("a different version", lambda t: re.sub(r"claude-code@(\d+)\.(\d+)\.(\d+)", "claude-code@9.9.9", t, 1)),
     ("the brief from the head", lambda t: t.replace('g show "origin/$MAIN:AGENTS.md"', 'g show "$SHA:AGENTS.md"', 1)),
     ("the diff against the base", lambda t: t.replace(PRODUCT_DIFF, 'g diff "$BASE...$SHA" > "$t/diff.txt"  # .base.sha', 1)),
@@ -2791,8 +2834,8 @@ PRODUCT_LOOSENINGS = (
     ("the token's reach never asked", lambda t: t.replace(PRODUCT_REACH[0], '"https://api.github.com/user/repos"', 1)),
     ("the install beside a secret", lambda t: t.replace("        run: npm install -g @anthropic-ai/claude-code@", "        env:\n          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}\n        run: npm install -g @anthropic-ai/claude-code@", 1)),
     ("a secret above the steps", lambda t: t.replace("    environment: reviewer\n", "    environment: reviewer\n    env:\n      KEY: ${{ secrets.REVIEWER_APP_KEY }}\n", 1)),
-    ("a second, unpinned install", lambda t: t.replace("run: npm install -g @anthropic-ai/claude-code@2.1.280", "run: npm install -g @anthropic-ai/claude-code@2.1.280 && npm install -g @anthropic-ai/claude-code", 1)),
-    ("a cancel-in-progress setting alone", lambda t: t.replace("    timeout-minutes: 30\n", "    timeout-minutes: 30\n    cancel-in-progress: true\n", 1)),
+    ("a second, unpinned install", lambda t: t.replace("run: npm install -g @anthropic-ai/claude-code@2.1.285", "run: npm install -g @anthropic-ai/claude-code@2.1.285 && npm install -g @anthropic-ai/claude-code", 1)),
+    ("a cancel-in-progress setting alone", lambda t: t.replace("    timeout-minutes: 55\n", "    timeout-minutes: 55\n    cancel-in-progress: true\n", 1)),
     ("the base fetched beside the right diff", lambda t: t.replace(PRODUCT_DIFF, PRODUCT_DIFF + "  # .base.sha", 1)),
     ("a different size ceiling", lambda t: t.replace('"$bytes" -gt 600000', '"$bytes" -gt 900000', 1)),
     ("no product at all", lambda t: t.replace("          - Adonis80/Hemz-OS\n", "", 1).replace("            Adonis80/Hemz-OS) ;;\n", "", 1)),
@@ -2829,8 +2872,8 @@ PRODUCT_LOOSENINGS = (
     ("a flag dropped from the call", lambda t: t.replace("            --no-session-persistence \\\n", "", 1)),
     ("a flag added to the call", lambda t: t.replace("            --output-format json \\\n", "            --output-format json \\\n            --verbose \\\n", 1)),
     ("a flag's value changed", lambda t: t.replace("--permission-prompts none", "--permission-prompts ask", 1)),
-    ("a different time limit", lambda t: t.replace("    timeout-minutes: 30\n", "    timeout-minutes: 90\n", 1)),
-    ("a different read limit", lambda t: t.replace("          limit=25\n", "          limit=20\n", 1)),
+    ("a different time limit", lambda t: t.replace("    timeout-minutes: 55\n", "    timeout-minutes: 90\n", 1)),
+    ("a different read limit", lambda t: t.replace("          limit=50\n", "          limit=20\n", 1)),
     ("a reason worded otherwise", lambda t: _in_step(t, "Read it", "the reviewer was rate-limited or overloaded", "the reviewer was busy")),
     # What the token was granted (#68's twelfth read).
     ("the grant printed, not checked", lambda t: t.replace(PRODUCT_GRANT[2], "if false; then", 1)),
@@ -2839,6 +2882,572 @@ PRODUCT_LOOSENINGS = (
     ("another secret written as the key", lambda t: t.replace('"$APP_KEY" > "$key"', '"$APP_ID" > "$key"', 1)),
 )
 
+
+
+# THE BUILD BOARD'S BUILD (decision 0007 §6, #113). It is not a reviewer, but it
+# stands behind the same door and wears the same App: it mints a token for
+# each product on the README's map to read that product's roadmap.json, so it
+# is held as review-product.yml is — its triggers, the door, a token scoped to
+# one product with contents read and nothing else, its grant and reach
+# checked, the list of products held to the map both ways — and, because it
+# runs on pull_request_target in a public repository, nothing of a pull request
+# is checked out and a fork's wakes nothing and is not read.
+BOARD_WORKFLOW = ".github/workflows/build-board.yml"
+BOARD_TRIGGERS = ["check_run", "pull_request_target", "workflow_dispatch"]
+BOARD_SCOPE = """body=$(jq -cn --arg r "${REPO#*/}" '{repositories: [$r], permissions: {contents: "read"}}')"""
+BOARD_HOLDS = (
+    (BOARD_SCOPE, "a token scoped to one product with contents read alone"),
+    ("""want='{"contents":"read"}'""", "the grant checked against contents read alone"),
+    ('if [ "$granted" != "$want" ]; then', "a grant that is more, or less, refused"),
+    ('"https://api.github.com/installation/repositories"', "the token's reach asked of GitHub"),
+    ('if [ "$reach" != "$REPO" ]; then', "a token reaching past the one product refused"),
+    ("github.event.pull_request.head.repo.full_name == github.repository", "a fork's pull request waking nothing"),
+    ("'[.[] | select(.head.repo.full_name == $r)", "a fork's pull request left off the board"),
+    ("select(.merged_at != null and .head.repo.full_name == $r)", "a fork's merge left off the board"),
+    ("github.event.check_run.app.id == %d" % REVIEWER_APP_ID, "only the reviewer's own check run waking it"),
+    ("github.event.check_run.name == '%s'" % REVIEWER_CHECK, "only the reviewer's check run by name"),
+    ("cancel-in-progress: false", "no deploy cut off between going live and its smoke test"),
+    # What the fake host below cannot tell apart, because it answers both alike.
+    ("for p in / /index.html; do", "a stranger asked at the root and at the page's own name"),
+    # #117's second read, 5 and 7.
+    ("persist-credentials: false", "no token left in the checkout"),
+    ("check_name=%s&app_id=%d&" % (REVIEWER_CHECK, REVIEWER_APP_ID), "the reviewer's own check runs read, by its name and App"),
+    # And each run kept only if it is the reviewer's, as check_run_verdict keeps
+    # it, not on the query's word (#113's fourth read).
+    ('select(.app.id == %d and .name == "%s" and .head_sha == $sha)' % (REVIEWER_APP_ID, REVIEWER_CHECK),
+     "each check run on the board held to the reviewer's App, name and head"),
+    ("        default: preview\n", "a dispatch that is a preview unless production is chosen"),
+    ("      NEXT: juku-build-board-next.vercel.app\n", "the one fixed name every preview lands at"),
+    ('-H "Authorization: Bearer $OPENROUTER_KEY" "https://openrouter.ai/api/v1/activity")',
+     "the spend card's key used for its one read, OpenRouter's daily activity"),
+    # #117's fourth read, 4c: the fake sets TARGET itself, so the line that
+    # sets it is held here.
+    ("TARGET: ${{ github.event_name != 'workflow_dispatch' && 'production' || inputs.target }}",
+     "a dispatch's own target, never production by default"),
+    # #117's second read, 6: the render takes the time the clock stamped.
+    ('jq -n --arg at "$AT"', "the snapshot's time taken from before the first read"),
+)
+# The snapshot's stamp, before the first product is read (#117's second read, 6).
+BOARD_STAMP = 'echo "checked_at='
+# Read, and nothing else, for the whole workflow; one group, on the job (#117's second read, 5).
+BOARD_PERMISSIONS = re.compile(r"^permissions:\n((?:  .*\n)+)", re.M)
+BOARD_JOB_CONCURRENCY = "    concurrency:\n      group: build-board\n      cancel-in-progress: false\n"
+# The read in order: minted, its grant and reach checked, and only then a roadmap read.
+BOARD_ORDER = (BOARD_SCOPE, 'if [ "$granted" != "$want" ]; then', 'if [ "$reach" != "$REPO" ]; then',
+               "contents/roadmap.json")
+# The smoke's two markers, held on both sides: the PIN screen's words in the gate,
+# and the attribute only the board's page carries.
+BOARD_MARKS = (("board/middleware.js", "Directors only"), ("board/build.py", "<body data-board>"))
+BOARD_NEVER = (
+    ("upload-artifact", "an artifact, which a public repository publishes"),
+    # #117's fourth read, 4b.
+    ("GITHUB_STEP_SUMMARY", "a run's summary, which a public repository publishes"),
+    # The spend card's key is a management key (his, 1 October 2026): one read, never a key made.
+    ("openrouter.ai/api/v1/keys", "OpenRouter's keys, which the management key could make or change"),
+    ("github.event.pull_request.head.sha", "the pull request's own code"),
+    ("github.event.pull_request.head.ref", "the pull request's own branch"),
+    ("github.head_ref", "the pull request's own branch"),
+    ("merge_commit_sha", "the pull request merged into main"),
+    ("refs/pull/", "a pull request's ref"),
+    ("git fetch", "anything fetched beside main's own checkout"),
+)
+BOARD_CHECKOUT_REF = re.compile(r"^\s*ref:", re.M)
+BOARD_PRODUCT = re.compile(r"^\s*(Adonis80/[A-Za-z0-9._-]+)=\S", re.M)
+MAP_PRODUCT = re.compile(r"`https://github\.com/(Adonis80/[A-Za-z0-9._-]+)`")
+
+
+# THE DEPLOY, RUN AGAINST A FAKE HOST (#117's second read, 4). Reading the
+# rollback for its spelling held it no better than reading the wake did: two
+# reads in a row found a path it did not cover. So the step's own shell is
+# lifted out of the file and run, path by path, against a `curl` that answers
+# as the host and the domain would from a state file, with `sleep` and `date`
+# on a clock of its own, so a wait costs no time here and a deadline is still
+# a deadline. The job's timeout is enforced by the fake too: a step that would
+# have been cut off by it, a request with no time limit, or a call the fake does
+# not know comes out as a fault, never as a pass. What the host really answers
+# is unproved until the first run (the shapes here are library/deploy.md's).
+BOARD_DEPLOY = "Deploy, smoke, and roll back on red"
+BOARD_FAKE_CURL = r"""#!/usr/bin/env bash
+# Stands in for curl: the host's API and the two addresses a stranger asks.
+S="$FAKE"
+refuse() { printf '%s\n' "the fake host refuses: $1" >> "$S/refused"; exit 97; }
+case " $* " in *" --max-time "*) ;; *) refuse "a request with no time limit: curl $*" ;; esac
+now=$(( $(cat "$S/clock") + 1 ))
+echo "$now" > "$S/clock"
+[ "$now" -le "$JOB_END" ] || refuse "the job's timeout would have cut this off"
+method=GET url="" out="" fmt="" data="" auth=no
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -X) method=$2; shift ;;
+    -o) out=$2; shift ;;
+    -w) fmt=$2; shift ;;
+    -d) data=$2; shift ;;
+    -H) case "$2" in Authorization:*) auth=yes ;; esac; shift ;;
+    --max-time) shift ;;
+    https://*) url=$1 ;;
+  esac
+  shift
+done
+echo "$method $url" >> "$S/calls"
+reply() {
+  local f
+  if [ -n "$out" ]; then printf '%s' "$2" > "$out"; else printf '%s' "$2"; fi
+  f=${fmt//'%{http_code}'/$1}
+  [ -z "$fmt" ] || printf '%b' "${f//'%{redirect_url}'/${3:-}}"
+  [ "$1" != 000 ] || exit 28
+}
+sso='https://vercel.com/sso-api?url=https%3A%2F%2Fjuku-build-board-x1.vercel.app%2F&nonce=n1'
+pin='<html><body><p>Directors only</p></body></html>'
+board='<html><body data-board><p>NOT-FOR-THE-LOG</p></body></html>'
+serving=$(cat "$S/serving")
+path=${url%%\?*}
+case "$method $path" in
+  "GET https://api.vercel.com/v13/deployments/$DOMAIN")
+    [ "${FAKE_SERVING:-ok}" = ok ] || { reply 500 '{}'; exit 0; }
+    # A late copy builds while the domain is looked at, and takes it on the third look.
+    if [ "$(cat "$S/copy")" = late ]; then
+      looks=$(( $(cat "$S/looks" 2>/dev/null || echo 0) + 1 )); echo "$looks" > "$S/looks"
+      if [ "$looks" -ge 3 ]; then
+        echo READY > "$S/copy"
+        [ "${FAKE_DOMAIN:-pin}" = never ] || { serving=dpl_copy; echo dpl_copy > "$S/serving"; }
+      fi
+    fi
+    reply 200 "{\"id\":\"$serving\"}" ;;
+  "POST https://api.vercel.com/v13/deployments")
+    case "$data" in
+      @*) grep -q '"target"' "${data#@}" && refuse "a deployment given a target, which the host would put on the domain by itself"
+          echo "$FAKE_NEW" > "$S/new"
+          reply 200 '{"id":"dpl_new","readyState":"QUEUED"}' ;;
+      # The host's CLI promotes a preview so: a production copy, which takes the domain once ready.
+      *'"deploymentId":"dpl_new"'*'"target":"production"'*)
+          echo "promote: a production copy of dpl_new" >> "$S/calls"
+          [ "$TARGET" = production ] || refuse "a production copy made on a preview run"
+          [ "$(cat "$S/new")" = READY ] || refuse "a copy of a deployment that is not READY"
+          [ "${FAKE_PROMOTE:-ok}" = ok ] || { reply 400 '{"error":{"code":"bad_request"}}'; exit 0; }
+          echo "${FAKE_COPY:-READY}" > "$S/copy"
+          [ "${FAKE_COPY:-READY}" != READY ] || [ "${FAKE_DOMAIN:-pin}" = never ] || echo dpl_copy > "$S/serving"
+          reply 200 '{"id":"dpl_copy","readyState":"QUEUED"}' ;;
+      *) refuse "a deployment with no files" ;;
+    esac ;;
+  "GET https://api.vercel.com/v13/deployments/dpl_new")
+    reply 200 "{\"id\":\"dpl_new\",\"readyState\":\"$(cat "$S/new")\",\"url\":\"juku-build-board-x1.vercel.app\"}" ;;
+  "GET https://api.vercel.com/v13/deployments/dpl_copy")
+    c=$(cat "$S/copy"); [ "$c" != late ] || c=BUILDING
+    reply 200 "{\"id\":\"dpl_copy\",\"readyState\":\"$c\"}" ;;
+  "PATCH https://api.vercel.com/v12/deployments/dpl_copy/cancel")
+    # late: the copy went READY and took the domain as it was cancelled.
+    if [ "${FAKE_CANCEL:-ok}" = late ]; then echo READY > "$S/copy"; echo dpl_copy > "$S/serving"; reply 409 '{}'; exit 0; fi
+    [ "${FAKE_CANCEL:-ok}" = ok ] || { reply 400 '{}'; exit 0; }
+    echo CANCELED > "$S/copy"; reply 200 '{"readyState":"CANCELED"}' ;;
+  "GET https://api.vercel.com/v13/deployments/dpl_before")
+    reply 200 '{"id":"dpl_before","readyState":"READY"}' ;;
+  "PATCH https://api.vercel.com/v12/deployments/dpl_new/cancel")
+    [ "${FAKE_CANCEL:-ok}" = ok ] || { reply 400 '{}'; exit 0; }
+    echo CANCELED > "$S/new"; reply 200 '{"readyState":"CANCELED"}' ;;
+  "DELETE https://api.vercel.com/v13/deployments/dpl_new")
+    echo DELETED > "$S/new"; reply 200 '{"state":"DELETED"}' ;;
+  # As the host answered run 36997804844: a preview is not promoted, and
+  # what the domain still serves is not promoted again.
+  "POST https://api.vercel.com/v10/projects/$PROJECT/promote/dpl_new")
+    reply 422 '{"error":{"code":"not_production"}}' ;;
+  "POST https://api.vercel.com/v10/projects/$PROJECT/promote/dpl_before")
+    [ "$serving" != dpl_before ] || { reply 409 '{}'; exit 0; }
+    case "${FAKE_ROLLBACK:-ok}" in refused) reply 409 '{}'; exit 0 ;; ok) echo dpl_before > "$S/serving" ;; esac
+    reply 201 '' ;;
+  "POST https://api.vercel.com/v2/deployments/dpl_new/aliases")
+    [ "$TARGET" = preview ] || refuse "the fixed preview name given to a production run"
+    [ "$(cat "$S/new")" = READY ] || refuse "the fixed preview name given before the smoke"
+    [ "${FAKE_ALIAS:-ok}" = ok ] || { reply 403 '{}'; exit 0; }
+    echo yes > "$S/aliased"; reply 200 '{}' ;;
+  "GET https://$NEXT/"|"GET https://$NEXT/index.html")
+    [ "$auth" = no ] || refuse "a stranger's request carrying a key"
+    [ -f "$S/aliased" ] || refuse "the fixed preview name asked before it was given"
+    [ "$(cat "$S/new")" = READY ] || { reply 404 'gone'; exit 0; }
+    case "${FAKE_NEXT:-wall}" in board) reply 200 "$board" ;; *) reply 302 '' "$sso" ;; esac ;;
+  "GET https://$DOMAIN/"|"GET https://$DOMAIN/index.html")
+    [ "$auth" = no ] || refuse "a stranger's request carrying a key"
+    [ "$serving" = dpl_copy ] || { reply 200 "$pin"; exit 0; }
+    case "${FAKE_DOMAIN:-pin}" in
+      board) reply 200 "$board" ;;
+      blank) reply 502 'bad gateway' ;;
+      wall) reply 302 '' "$sso" ;;
+      *) reply 200 "$pin" ;;
+    esac ;;
+  "GET https://juku-build-board-x1.vercel.app/"|"GET https://juku-build-board-x1.vercel.app/index.html")
+    [ "$auth" = no ] || refuse "a stranger's request carrying a key"
+    [ "$(cat "$S/new")" = READY ] || { reply 404 'gone'; exit 0; }
+    # The host's sign-in wall, as run 36715901351 found it: a redirect.
+    case "${FAKE_PREVIEW:-wall}" in
+      wall) reply 302 '' "$sso" ;;
+      elsewhere) reply 302 '' 'https://vercel.com.example/sso-api?url=x' ;;
+      denied) reply 401 '<html>Authentication Required</html>' ;;
+      pin) reply 200 "$pin" ;;
+      board) reply 200 "$board" ;;
+      none) reply 000 '' ;;
+    esac ;;
+  *) refuse "$method $url" ;;
+esac
+"""
+BOARD_FAKE_SLEEP = """#!/usr/bin/env bash
+echo $(( $(cat "$FAKE/clock") + ${1%s} )) > "$FAKE/clock"
+[ "$(cat "$FAKE/clock")" -le "$JOB_END" ] || { echo "the fake host refuses: the job's timeout would have cut this off" >> "$FAKE/refused"; exit 97; }
+"""
+BOARD_FAKE_DATE = """#!/usr/bin/env bash
+if [ "$*" = "+%s" ]; then cat "$FAKE/clock"; else exec /bin/date "$@"; fi
+"""
+# (what, environment, exit, what the domain serves after, the new deployment's
+# end state, what the log must say, what it must not). The two that pass carry
+# as much weight as the rest: without them a step that always exits 1 would
+# satisfy every other line. The paths #117's second read named come first.
+BOARD_DEPLOY_CASES = (
+    ("a production deploy that passes", {}, 0, "dpl_copy", "READY", "live: dpl_copy, the copy of dpl_new", None),
+    ("the domain shows a stranger the board", {"FAKE_DOMAIN": "board"}, 1, "dpl_before", "READY",
+     "rolled back: roadmap.juku.pro serves dpl_before", None),
+    ("the domain never serves it", {"FAKE_DOMAIN": "never"}, 1, "dpl_before", "READY",
+     "rolled back: roadmap.juku.pro serves dpl_before", None),
+    ("it is never READY: the wait gives up and cancels it", {"FAKE_READY": "BUILDING"}, 1, "dpl_before",
+     "CANCELED", "cancelled: dpl_new", "promote"),
+    ("the promote is refused", {"FAKE_PROMOTE": "no"}, 1, "dpl_before", "READY", "PROMOTE REFUSED", None),
+    # Run 36997804844: a copy that never comes ready is cancelled before it can
+    # take the domain, and a domain still on what it served is put back as is.
+    ("the copy never comes ready", {"FAKE_COPY": "BUILDING"}, 1, "dpl_before", "READY",
+     "cancelled: dpl_copy", "ROLLBACK REFUSED"),
+    ("the copy never comes ready, and its cancel is refused", {"FAKE_COPY": "BUILDING", "FAKE_CANCEL": "no"}, 1,
+     "dpl_before", "READY", "CANCEL REFUSED", "rolled back"),
+    # #139's read, 2a and 3: the copy READY on a later look, failed, or READY
+    # as it is cancelled, which is put back like any other.
+    ("a copy that comes ready on the third look", {"FAKE_COPY": "late"}, 0, "dpl_copy", "READY",
+     "live: dpl_copy, the copy of dpl_new", None),
+    ("the copy fails to build", {"FAKE_COPY": "ERROR"}, 1, "dpl_before", "READY",
+     "rolled back: roadmap.juku.pro serves dpl_before", "cancelled: dpl_copy"),
+    ("the copy goes READY as it is cancelled", {"FAKE_COPY": "BUILDING", "FAKE_CANCEL": "late"}, 1, "dpl_before",
+     "READY", "rolled back: roadmap.juku.pro serves dpl_before", "CANCEL"),
+    ("the rollback is accepted and never lands", {"FAKE_DOMAIN": "board", "FAKE_ROLLBACK": "stuck"}, 1,
+     "dpl_copy", "READY", "ROLLBACK UNCONFIRMED", None),
+    # A rollback begun at the deadline still has its three minutes in the job.
+    ("the domain never shows the PIN screen, and the rollback never lands",
+     {"FAKE_DOMAIN": "blank", "FAKE_ROLLBACK": "stuck"}, 1, "dpl_copy", "READY", "ROLLBACK UNCONFIRMED", None),
+    ("the rollback is refused", {"FAKE_DOMAIN": "board", "FAKE_ROLLBACK": "refused"}, 1, "dpl_copy",
+     "READY", "ROLLBACK REFUSED", None),
+    ("a preview for his look", {"TARGET": "preview", "LIVE": "no"}, 0, "dpl_before", "READY",
+     "preview ready at the fixed address: https://juku-build-board-next.vercel.app", "promote"),
+    ("the fixed address shows a stranger the board", {"TARGET": "preview", "LIVE": "no", "FAKE_NEXT": "board"}, 1,
+     "dpl_before", "DELETED", "A STRANGER WAS SERVED THE BOARD at the fixed address", "promote"),
+    ("a preview that is never ready takes no fixed name", {"TARGET": "preview", "LIVE": "no", "FAKE_READY": "BUILDING"}, 1,
+     "dpl_before", "CANCELED", "cancelled: dpl_new", "fixed address"),
+    ("a preview whose fixed name is refused", {"TARGET": "preview", "LIVE": "no", "FAKE_ALIAS": "no"}, 0,
+     "dpl_before", "READY", "the fixed preview address was refused", "promote"),
+    ("an automatic run before his look", {"GITHUB_EVENT_NAME": "pull_request_target", "LIVE": "no"}, 0,
+     "dpl_before", "none", "rendered, not deployed", "deployment:"),
+    # #117's fourth read, 2: a production dispatch waits for his look too.
+    ("a production dispatch before his look", {"LIVE": "no"}, 1, "dpl_before", "none",
+     "production waits for his look", "deployment:"),
+    # Run 36714764680: only the host's own sign-in redirect is its wall, and
+    # only at a preview.
+    ("the preview redirects a stranger somewhere else", {"FAKE_PREVIEW": "elsewhere"}, 1, "dpl_before",
+     "DELETED", "neither the sign-in wall nor the PIN screen", "promote"),
+    ("the preview refuses a stranger without the host's sign-in", {"FAKE_PREVIEW": "denied"}, 1,
+     "dpl_before", "DELETED", "neither the sign-in wall nor the PIN screen", "promote"),
+    ("the domain shows a stranger the host's sign-in, not the PIN screen", {"FAKE_DOMAIN": "wall"}, 1,
+     "dpl_before", "READY", "rolled back: roadmap.juku.pro serves dpl_before", None),
+    ("the preview shows a stranger the board", {"FAKE_PREVIEW": "board"}, 1, "dpl_before", "DELETED",
+     "A STRANGER WAS SERVED THE BOARD at the preview", "promote"),
+    ("the preview shows a stranger the board, asked for as a preview",
+     {"TARGET": "preview", "FAKE_PREVIEW": "board"}, 1, "dpl_before", "DELETED",
+     "deleted: dpl_new", "juku-build-board-x1.vercel.app"),
+    ("the preview never answers", {"FAKE_PREVIEW": "none"}, 1, "dpl_before", "DELETED",
+     "neither the sign-in wall nor the PIN screen", "promote"),
+    ("it is never READY, and the cancel is refused", {"FAKE_READY": "BUILDING", "FAKE_CANCEL": "no"}, 1,
+     "dpl_before", "BUILDING", "CANCEL REFUSED", "promote"),
+    ("its build fails", {"FAKE_READY": "ERROR"}, 1, "dpl_before", "ERROR", "ended ERROR", "promote"),
+    ("what the domain serves cannot be recorded", {"FAKE_SERVING": "no"}, 1, "dpl_before", "none",
+     "could not be recorded", "deployment:"),
+    ("too little of the job is left", {"LATE": "yes"}, 1, "dpl_before", "none", "too little of the job",
+     "deployment:"),
+)
+_board_runs = {}
+
+
+def board_deploy_faults(text):
+    """Run the deploy step against the fake host, every path at once. Its faults, or [].
+
+    The paths run side by side, each in its own directory on its own clock,
+    and a step already run is not run again: most loosenings leave it alone.
+    """
+    span = _step_span(text, BOARD_DEPLOY)
+    script = wake_script(text[span[0]:span[1]]) if span else None
+    if script is None:
+        return ["has no deploy step named %r whose shell can be run whole" % BOARD_DEPLOY]
+    m = TIMEOUT.search(text)
+    if not m:
+        return ["sets no timeout-minutes, so nothing bounds the deploy's rollback"]
+    job = int(m.group(1)) * 60
+    key = (script, job)
+    if key not in _board_runs:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            runs = pool.map(lambda case: _board_deploy_case(script, job, case), BOARD_DEPLOY_CASES)
+            _board_runs[key] = [f for faults in runs for f in faults]
+    return _board_runs[key]
+
+
+def _board_deploy_case(script, job, case):
+    what, env, want_rc, want_serving, want_new, says, never = case
+    start = 1000000
+    # A minute spent reading before the deploy began; in the late case, all
+    # but five of the job's minutes.
+    clock = start + (job - 300 if env.get("LATE") else 60)
+    with tempfile.TemporaryDirectory() as d:
+        binned, fake, run = (os.path.join(d, n) for n in ("bin", "fake", "run"))
+        for n in (binned, fake, os.path.join(run, "site")):
+            os.makedirs(n)
+        for name, body in (("curl", BOARD_FAKE_CURL), ("sleep", BOARD_FAKE_SLEEP), ("date", BOARD_FAKE_DATE)):
+            with open(os.path.join(binned, name), "w", encoding="utf-8") as f:
+                f.write(body)
+            os.chmod(os.path.join(binned, name), 0o755)
+        for name, body in (("clock", clock), ("serving", "dpl_before"), ("new", "none"), ("copy", "none"), ("calls", ""),
+                           ("refused", "")):
+            with open(os.path.join(fake, name), "w", encoding="utf-8") as f:
+                f.write("%s\n" % body if body != "" else "")
+        for name in ("index.html", "middleware.js", "robots.txt", "vercel.json"):
+            with open(os.path.join(run, "site", name), "w", encoding="utf-8") as f:
+                f.write("x")
+        e = {k: v for k, v in os.environ.items() if not k.startswith("FAKE_")}
+        e.update({"PATH": binned + os.pathsep + os.environ.get("PATH", ""), "FAKE": fake,
+                  # The job's clock started before this one, at the checkout.
+                  "JOB_END": str(start + job - 30), "RUNNER_TEMP": run, "STARTED": str(start),
+                  "GITHUB_EVENT_NAME": "workflow_dispatch", "LIVE": "yes", "TARGET": "production",
+                  "VERCEL_TOKEN": "not-a-token", "TEAM": "team_x", "PROJECT": "prj_x",
+                  "DOMAIN": "roadmap.juku.pro", "NEXT": "juku-build-board-next.vercel.app", "FAKE_NEW": env.get("FAKE_READY", "READY")})
+        e.update({k: v for k, v in env.items() if k != "LATE"})
+        try:
+            p = subprocess.run(["bash", "-c", script], env=e, capture_output=True, text=True, timeout=60)
+        except (OSError, subprocess.SubprocessError) as exc:
+            return ["on '%s' could not be run (%s)" % (what, exc)]
+
+        def state(name):
+            with open(os.path.join(fake, name), encoding="utf-8") as f:
+                return f.read().strip()
+        log = p.stdout + p.stderr
+        faults = []
+        if state("refused"):
+            faults.append("on '%s' made a call the host would refuse or the job would not have lived to "
+                          "make: %s" % (what, state("refused").splitlines()[0]))
+        if p.returncode != want_rc:
+            faults.append("on '%s' exited %d, not %d" % (what, p.returncode, want_rc))
+        if state("serving") != want_serving:
+            faults.append("on '%s' left the domain serving %s, not %s" % (what, state("serving"), want_serving))
+        if state("new") != want_new:
+            faults.append("on '%s' left its deployment %s, not %s" % (what, state("new"), want_new))
+        if says not in log:
+            faults.append("on '%s' never says %r" % (what, says))
+        if never and never in (log if never != "promote" else state("calls")):
+            faults.append("on '%s' %s %r" % (what, "called" if never == "promote" else "says", never))
+        if "NOT-FOR-THE-LOG" in log:
+            faults.append("on '%s' printed the board into the log" % what)
+        if int(state("clock")) > start + job - 30:
+            faults.append("on '%s' ran past the job's timeout" % what)
+        return faults
+
+
+def _check_board_wiring(board=None, product=None, readme=None, quiet=False):
+    """build-board.yml, held to the door, one product per token, and the README's map."""
+    say = (lambda *a: None) if quiet else print
+    try:
+        board = _read(BOARD_WORKFLOW) if board is None else board
+        product = _read(PRODUCT_WORKFLOW) if product is None else product
+        readme = _read("README.md") if readme is None else readme
+    except OSError as e:
+        say("  wiring: %s" % e)
+        return 1
+    bad = 0
+
+    def fault(what):
+        nonlocal bad
+        say("  wiring: %s %s" % (BOARD_WORKFLOW, what))
+        bad += 1
+
+    # No `pull_request`, whose run is a branch's own file, and no clock.
+    if triggers(board) != BOARD_TRIGGERS:
+        fault("triggers on %s; it must be %s and nothing else — never a branch's own copy, never "
+              "a clock" % (triggers(board), BOARD_TRIGGERS))
+    if not USES_ENVIRONMENT.search(board):
+        fault("does not run in the `%s` environment, so the App's key and the deploy key are "
+              "readable from any branch" % KEY_ENVIRONMENT)
+    for line, what in BOARD_HOLDS:
+        if line not in board:
+            fault("has lost %s (`%s`)" % (what, line))
+    for word, what in BOARD_NEVER:
+        if word in board:
+            fault("reaches %s (`%s`)" % (what, word))
+    if BOARD_CHECKOUT_REF.search(board) or board.count("uses: actions/checkout") != 1:
+        fault("checks out something other than main's own tree, once")
+    at = [board.find(line) for line in BOARD_ORDER]
+    if -1 in at or at != sorted(at):
+        fault("reads a roadmap before its token's grant and reach are checked (%s)" % " < ".join(BOARD_ORDER))
+    for path, mark in BOARD_MARKS:
+        try:
+            if mark not in _read(path):
+                fault("smokes for %r, which %s no longer carries" % (mark, path))
+        except OSError as e:
+            fault("smokes against %s, which cannot be read: %s" % (path, e))
+    if XTRACE.search(board):
+        fault("traces its shell, which prints what it holds into a public log")
+    # The spend card's management key: one read in this file, and in no other (#134's first read, 3).
+    if board.count("openrouter.ai") != 1:
+        fault("asks OpenRouter %d times; the spend card's key makes one read, its daily activity"
+              % board.count("openrouter.ai"))
+    if board.count("Bearer $OPENROUTER_KEY") != 1:
+        fault("sends the spend card's key %d times; it goes once, to OpenRouter's daily activity (#134's second read, 1)"
+              % board.count("Bearer $OPENROUTER_KEY"))
+    for other in sorted(glob.glob(".github/workflows/*.yml")):
+        if other != BOARD_WORKFLOW and "secrets.OPENROUTER_KEY" in _read(other):
+            fault("shares the spend card's management key with %s" % other)
+    perms = BOARD_PERMISSIONS.search(board)
+    if (not perms or len(re.findall(r"^\s*permissions:", board, re.M)) != 1
+            or not all(re.match(r"^  [a-z-]+: read$", l) for l in perms.group(1).splitlines())):
+        fault("asks for more than read: one `permissions:` block, for the workflow, every line of it read")
+    if re.search(r"^concurrency:", board, re.M) or BOARD_JOB_CONCURRENCY not in board:
+        fault("keeps its concurrency group on the workflow, or not at all; it belongs on the job, so a "
+              "skipped run never joins it")
+    unbounded = [l.strip() for l in board.splitlines() if re.search(r"\bcurl\s", l)
+                 and not l.strip().startswith("#") and "--max-time" not in l]
+    if unbounded:
+        fault("makes a request with no time limit (`%s`)" % unbounded[0])
+    stamp, read = board.find(BOARD_STAMP), board.find("contents/roadmap.json")
+    if stamp == -1 or read == -1 or stamp > read:
+        fault("stamps the snapshot's time after the first product is read, or not at all")
+    for f in board_deploy_faults(board):
+        fault("deploy step %s" % f)
+    if _jwt(board) is None or _jwt(board) != _jwt(product):
+        fault("signs the App's JWT differently from %s" % PRODUCT_WORKFLOW)
+    listed = sorted(set(BOARD_PRODUCT.findall(board)))
+    mapped = sorted(set(MAP_PRODUCT.findall(readme)))
+    if not listed or listed != mapped:
+        fault("reads %s, and the README's map names %s: the board reads the map's products, all "
+              "of them and nothing else" % (listed, mapped))
+    # The page's rows are the same list, by name: two copies of one truth held equal.
+    named = sorted(set(re.findall(r"^\s*Adonis80/[A-Za-z0-9._-]+=(.+?)\s*$", board, re.M)))
+    try:
+        spec = importlib.util.spec_from_file_location("board_build", "board/build.py")
+        build = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(build)
+        rows = sorted(r for r in build.ROWS if r != build.RULEBOOK)
+    except (OSError, ImportError, SyntaxError, AttributeError) as e:
+        rows = ["unreadable: %s" % e]
+    if rows != named:
+        fault("names its products %s, and board/build.py draws rows for %s" % (named, rows))
+    if not bad:
+        say("ok: the board's build runs only from main, behind the `%s` door, on a dispatch, this "
+            "repository's own pull requests and the reviewer's check run; it reads the %d products "
+            "on the README's map with a token each, contents read alone, its grant and reach "
+            "checked before anything is read; it checks out nothing of a pull request, uploads "
+            "nothing, and its deploy, run against a fake host on %d paths, promotes only a preview "
+            "it has smoked, cancels or deletes one that fails, and puts back what the domain served "
+            "on every red after the promote, inside the job's time"
+            % (KEY_ENVIRONMENT, len(listed), len(BOARD_DEPLOY_CASES)))
+    return bad
+
+
+# Each loosening of build-board.yml that the check above must refuse.
+BOARD_LOOSENINGS = (
+    ("a pull_request trigger", lambda t: t.replace("  pull_request_target:\n", "  pull_request:\n    types: [opened]\n  pull_request_target:\n", 1)),
+    ("a clock", lambda t: t.replace("  check_run:\n", "  schedule:\n    - cron: '0 * * * *'\n  check_run:\n", 1)),
+    ("the door removed", lambda t: t.replace("    environment: reviewer\n", "", 1)),
+    ("a wider token", lambda t: t.replace(BOARD_SCOPE, BOARD_SCOPE.replace('{contents: "read"}', '{contents: "read", pull_requests: "write"}'), 1)),
+    ("the grant unchecked", lambda t: t.replace('if [ "$granted" != "$want" ]; then', "if false; then", 1)),
+    ("the reach unchecked", lambda t: t.replace('if [ "$reach" != "$REPO" ]; then', "if false; then", 1)),
+    ("a product not on the map", lambda t: t.replace("          PRODUCTS\n", "          Adonis80/elsewhere=Elsewhere\n          PRODUCTS\n", 1)),
+    ("a product on the map left out", lambda t: t.replace("          Adonis80/phena=Phena\n", "", 1)),
+    ("a fork's pull request waking it", lambda t: t.replace("github.event.pull_request.head.repo.full_name == github.repository", "true", 1)),
+    ("a fork's pull request read", lambda t: t.replace("'[.[] | select(.head.repo.full_name == $r)", "'[.[] | select(true)", 1)),
+    ("any check run waking it", lambda t: t.replace("github.event.check_run.app.id == 5000405 &&", "", 1)),
+    ("an artifact uploaded", lambda t: t.replace("      - name: Render\n", "      - uses: actions/upload-artifact@v4\n        with:\n          path: ${{ runner.temp }}\n      - name: Render\n", 1)),
+    ("a traced shell", lambda t: t.replace("set -euo pipefail", "set -euxo pipefail", 1)),
+    ("the pull request's head checked out", lambda t: t.replace("          persist-credentials: false\n", "          persist-credentials: false\n          ref: ${{ github.event.pull_request.head.sha }}\n", 1)),
+    ("a deploy cut off mid-way", lambda t: t.replace("cancel-in-progress: false", "cancel-in-progress: true", 1)),
+    ("a rollback to the new deployment", lambda t: t.replace("promote/$before", "promote/$id", 1)),
+    ("nothing put back on a red", lambda t: t.replace("          trap cleanup EXIT\n", "", 1)),
+    ("a refused rollback taken as done", lambda t: t.replace('[[ "$code" =~ ^2 ]] || { [ "$code" = 409 ] && serves "$before"; } || {', 'true || {', 1)),
+    ("a building copy left to take the domain", lambda t: t.replace("                    READY|ERROR|CANCELED) ;;\n", "                    *) ;;\n", 1)),
+    ("a copy READY at its cancel left on the domain", lambda t: t.replace("                         READY) ;;\n", "                         READY) exit 1 ;;\n", 1)),
+    ("a rollback never confirmed", lambda t: t.replace('serves "$before" && {', "true && {", 1)),
+    ("a leaked board asked again", lambda t: t.replace('if grep -q "data-board" <<< "$body"; then return 2; fi', "if false; then return 2; fi", 1)),
+    ("the page's own name never smoked", lambda t: t.replace("for p in / /index.html; do", "for p in /; do", 1)),
+    # #117's second read, 1: the host never moves the domain, and what it
+    # served is what is put back.
+    ("the domain left to the host", lambda t: t.replace("projectSettings: {framework: null},", 'projectSettings: {framework: null}, target: "production",', 1)),
+    ("what is live read from the project", lambda t: t.replace("before=$(serving)", """before=$(v "https://api.vercel.com/v9/projects/$PROJECT?$q" | jq -r '.targets.production.id // empty')""", 1)),
+    ("a smoke passed on any deployment", lambda t: t.replace('if [ "$g" -eq 0 ] && serves "$copy"; then', 'if [ "$g" -eq 0 ]; then', 1)),
+    ("a promote refused and carried on", lambda t: t.replace('[[ "$copy" =~ ^dpl_[A-Za-z0-9]+$ ]] || { echo "::error::PROMOTE REFUSED', 'true || { echo "::error::PROMOTE REFUSED', 1)),
+    ("a copy made with no target, left a preview", lambda t: t.replace('\\"target\\":\\"production\\",', "", 1)),
+    ("a wait given up and left building", lambda t: t.replace('case "$state" in ERROR|CANCELED) exit 1 ;; esac', "exit 1", 1)),
+    ("a refused cancel taken as done", lambda t: t.replace('[[ "$code" =~ ^2 ]] || { echo "::error::CANCEL REFUSED', 'true || { echo "::error::CANCEL REFUSED', 1)),
+    # 2: the preview smoked as a stranger, deleted on red, named only after.
+    ("the preview never smoked", lambda t: t.replace('gated "$host" wall && g=0 || g=$?', "g=0", 1)),
+    ("a failed preview kept", lambda t: t.replace('v -X DELETE "https://api.vercel.com/v13/deployments/$id?$q"', 'v "https://api.vercel.com/v13/deployments/$id?$q"', 1)),
+    ("the preview named before its smoke", lambda t: t.replace("          g=1\n", '          echo "preview: https://$host"\n          g=1\n', 1)),
+    # 3: a time limit on every request and a deadline on every wait.
+    ("a host request with no time limit", lambda t: t.replace("v() { curl -sS --max-time 20 ", "v() { curl -sS ", 1)),
+    ("a read with no time limit", lambda t: t.replace("api() { curl -sSf --max-time 30 ", "api() { curl -sSf ", 1)),
+    ("a wait with no deadline", lambda t: t.replace('while [ "$(date +%s)" -lt "$by" ]; do\n            state=', "while true; do\n            state=", 1)),
+    ("waits that leave no time to roll back", lambda t: t.replace("          limit=9\n", "          limit=14\n", 1)),
+    ("a rollback given longer than the job", lambda t: t.replace("local back=$(( $(date +%s) + 180 ))", "local back=$(( $(date +%s) + 600 ))", 1)),
+    # 5.
+    ("a write permission", lambda t: t.replace("  checks: read\n", "  checks: read\n  statuses: write\n", 1)),
+    ("a job asking for its own permissions", lambda t: t.replace("    runs-on: ubuntu-latest\n", "    runs-on: ubuntu-latest\n    permissions:\n      contents: write\n", 1)),
+    ("the concurrency group on the workflow", lambda t: t.replace(BOARD_JOB_CONCURRENCY, "", 1).replace("\njobs:\n", "\nconcurrency:\n  group: build-board\n  cancel-in-progress: false\n\njobs:\n", 1)),
+    ("credentials left in the checkout", lambda t: t.replace("persist-credentials: false", "persist-credentials: true", 1)),
+    ("another App's check runs read", lambda t: t.replace("&app_id=%d&" % REVIEWER_APP_ID, "&app_id=15368&", 1)),
+    ("check runs of another name read", lambda t: t.replace("check_name=%s&" % REVIEWER_CHECK, "check_name=review&", 1)),
+    ("another App's run kept on the board", lambda t: t.replace("select(.app.id == %d and " % REVIEWER_APP_ID, "select(", 1)),
+    ("a run of another name kept on the board", lambda t: t.replace(' and .name == "%s"' % REVIEWER_CHECK, "", 1)),
+    ("a run on another head kept on the board", lambda t: t.replace(" and .head_sha == $sha)", ")", 1)),
+    # 6 and 7.
+    ("the snapshot stamped at the render", lambda t: t.replace('jq -n --arg at "$AT"', 'jq -n --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"', 1)),
+    ("the stamp after the first read", lambda t: t.replace(BOARD_STAMP, "true", 1).replace("          rm -f \"$road\"\n", "          rm -f \"$road\"\n          " + BOARD_STAMP + "x\" >> \"$GITHUB_OUTPUT\"\n", 1)),
+    ("a dispatch that deploys production by default", lambda t: t.replace("        default: preview\n", "        default: production\n", 1)),
+    # #117's fourth read, 2 and 4b-c, and run 36714764680.
+    ("a production dispatch before his look", lambda t: t.replace('if [ "$TARGET" = production ] && [ "$LIVE" != yes ]; then', "if false; then", 1)),
+    ("every run's target production", lambda t: t.replace("TARGET: ${{ github.event_name != 'workflow_dispatch' && 'production' || inputs.target }}", "TARGET: production", 1)),
+    ("a key made with the spend card's key", lambda t: t.replace('          rm -f "$RUNNER_TEMP/activity.json"\n', '          rm -f "$RUNNER_TEMP/activity.json"\n          curl -sS --max-time 30 -X POST -H "Authorization: Bearer $OPENROUTER_KEY" "https://openrouter.ai/api/v1/keys" -d \'{"name":"x"}\'\n', 1)),
+    ("a second OpenRouter read", lambda t: t.replace('          rm -f "$RUNNER_TEMP/activity.json"\n', '          rm -f "$RUNNER_TEMP/activity.json"\n          curl -sS --max-time 30 -H "Authorization: Bearer $OPENROUTER_KEY" "https://openrouter.ai/api/v1/credits"\n', 1)),
+    ("the spend card's key sent to another host", lambda t: t.replace('          rm -f "$RUNNER_TEMP/activity.json"\n', '          rm -f "$RUNNER_TEMP/activity.json"\n          curl -sS --max-time 30 -H "Authorization: Bearer $OPENROUTER_KEY" "https://example.com/"\n', 1)),
+    ("the spend card's key read from elsewhere", lambda t: t.replace('"https://openrouter.ai/api/v1/activity")', '"https://openrouter.ai/api/v1/credits")', 1)),
+    ("the fixed name never smoked", lambda t: t.replace('gated "$NEXT" wall && g=0 || g=$?', "g=0", 1)),
+    ("a run summary written", lambda t: t.replace('          echo "open pull requests:', '          echo "rendered" >> "$GITHUB_STEP_SUMMARY"\n          echo "open pull requests:', 1)),
+    ("any redirect taken as the wall", lambda t: t.replace('[[ "$loc" == "https://vercel.com/sso-api?"* ]]', "true", 1)),
+    ("a redirect's address matched loosely", lambda t: t.replace('[[ "$loc" == "https://vercel.com/sso-api?"* ]]', '[[ "$loc" == *"sso-api"* ]]', 1)),
+    ("the host's sign-in taken as gated at the domain", lambda t: t.replace('{ [ "$2" = wall ] && [[', "{ [[", 1)),
+    ("a roadmap read before the grant is checked", lambda t: t.replace(BOARD_SCOPE, 'curl -sS "https://api.github.com/repos/$REPO/contents/roadmap.json" > /dev/null\n            ' + BOARD_SCOPE, 1)),
+    ("a pull request fetched", lambda t: t.replace("      - name: Render\n", "      - run: git fetch origin pull/1/head\n      - name: Render\n", 1)),
+    ("a row the workflow does not read", lambda t: t.replace("          Adonis80/phena=Phena\n", "          Adonis80/phena=Phena Two\n", 1)),
+)
+
+
+def _check_board_loosenings():
+    """build-board.yml as it stands passes; each loosening of it is refused."""
+    try:
+        text = _read(BOARD_WORKFLOW)
+    except OSError as e:
+        print("  wiring: %s" % e)
+        return 1
+    bad = _check_board_wiring(board=text)
+    if bad:
+        return bad
+    for what, loosen in BOARD_LOOSENINGS:
+        changed = loosen(text)
+        if changed == text:
+            print("  wiring: the loosening '%s' no longer applies to %s — rewrite it against the "
+                  "file as it stands, or it proves nothing" % (what, BOARD_WORKFLOW))
+            bad += 1
+        elif not _check_board_wiring(board=changed, quiet=True):
+            print("  wiring: %s with %s passes the board's hold — the guard for it is gone"
+                  % (BOARD_WORKFLOW, what))
+            bad += 1
+    if not bad:
+        print("ok: each of %d loosenings of %s was applied to the real file and refused"
+              % (len(BOARD_LOOSENINGS), BOARD_WORKFLOW))
+    return bad
 
 def _check_product_loosenings():
     """Every loosening above must turn the product wiring red, and none may miss."""
@@ -2936,12 +3545,13 @@ json.dump(said, sys.stdout)
 '''
 
 
-def _picker(text):
-    """The picker's program, as the lines between its call and `PY`, dedented."""
+def _picker(text, call=PICK_CALL):
+    """The program called by `call` (the picker's, unless another is named), as the lines
+    between its call and `PY`, dedented."""
     gather = _step_span(text, "Gather what the reviewer reads")
     lines = text[gather[0]:gather[1]].splitlines() if gather else []
     try:
-        start = next(i for i, l in enumerate(lines) if l.strip() == PICK_CALL)
+        start = next(i for i, l in enumerate(lines) if l.strip() == call)
         end = next(i for i, l in enumerate(lines) if i > start and l.strip() == "PY")
     except StopIteration:
         return None
@@ -3085,6 +3695,217 @@ def _check_pick_loosenings():
               "the PRODUCT.md sections that item names, naming every other part with its size and "
               "printing numbers alone; the picker was run on %d case(s), and each of %d loosenings "
               "was refused" % (len(PICK_CASES), len(PICK_LOOSENINGS)))
+    return bad
+
+
+# THE SOURCE THE CHANGE IMPORTS, ONE HOP (decision 0010, 1a). A product read
+# carried the diff and every file it touches, and nothing those files call, so
+# a reader judged a call it could not see. Now each touched JS, TS or Python
+# file's direct imports are carried too, resolved against the head's tree and
+# nothing else. Held as the picker is: the linker is run here, not read,
+# against the cases below, so a bare package followed, a path the tree does not
+# hold, a Python import read at the wrong level, or a summary that prints a
+# product's path into the public log each turns the check red.
+LINK_CALL = ("if timeout 60 python3 - \"$t/tree.txt\" \"$t/touched.txt\" \"$t/sources\" \"$t/linked.txt\" "
+             "2>/dev/null <<'PY'")
+LINK_TREE = 'g ls-tree -r -z --name-only "$SHA" > "$t/tree.txt"'
+LINK_MARK = ("printf '\\n===== the source the change imports by relative path, and the scripts "
+             "a page loads, one hop; callers, tests, database rules and configuration only where touched or "
+             "imported =====\\n' >> \"$pages\"")
+LINK_TAKEN = ('while IFS= read -r -d \'\' f; do case "$carried" in *" $f "*) continue ;; esac; '
+              'add "$f" || true; done < "$t/linked.txt"')
+LINK_FAILED = ('echo "the source the change imports could not be linked, so this read carries the '
+               'touched files alone"')
+LINK_TOLD = ('echo "One hop is not the boundary: a change that could not be judged for want of a '
+             'file gets a blocking finding naming it."')
+# The reader is told a failed link too, not only the log (#129's first read, 2).
+LINK_FAILED_READ = ("printf '\\n===== the source the change imports could not be linked; only the "
+                    "touched files are here =====\\n' >> \"$pages\"")
+# What feeds the linker: the touched code of the kinds it reads, from the head (#129's first read, 4b).
+LINK_KINDS = 'case "$f" in *.js|*.mjs|*.cjs|*.jsx|*.ts|*.tsx|*.py|*.html) ;; *) continue ;; esac'
+LINK_FEED = 'g show "$SHA:$f" > "$t/sources/$n" 2>/dev/null || continue'
+# The touched files' own loop, which the linked files must follow (#129's first read, 4a).
+LINK_AFTER = 'add "$f" || true\n          done < "$t/touched.txt"\n'
+LINK_HTML = ('<script src="hosting/queue.js?v=3"></script>\n<script src="/app.js"></script>\n'
+             '<script src="https://cdn.example/x.js"></script><script src="//cdn.example/y.js"></script>\n'
+             '<script type="module">import { l } from \'./hosting/lib.js\'</script>\n')
+LINK_SAID = re.compile(r"^linked: \d+ file\(s\) imported by the \d+ touched code file\(s\) read\n$")
+LINK_JS = ("import a from './a'\nimport React from 'react'\nimport { lib } from \"../lib\"\n"
+           "import gone from './gone'\nexport { u } from './util'\nconst b = require('./b')\n"
+           "const c = await import( './c' )\nimport './side.css'\n")
+LINK_PY = ("from .x import y\nfrom .. import z\nimport pkg.mod\nimport os, json as j\n"
+           "from . import (w,\n    v as vv, gone)\nfrom pkg.sub import x as xx\nfrom .... import far\n"
+           "from pkg.sub import only\n")
+# (the tree, the files touched, the touched code and its text, the files linked).
+# The tree holds `app/react.js` beside the importer so that a bare `react`
+# followed as if it were relative is caught, and `pkg/sub/z.py` is absent so
+# that `from .. import z` read one level short finds nothing.
+LINK_CASES = (
+    (["app/main.js", "app/a.js", "app/react.js", "app/b.cjs", "app/c.tsx", "app/side.css",
+      "app/util.js", "lib/index.ts", "lib/other.ts"],
+     ["app/main.js", "app/util.js"],
+     [("app/main.js", LINK_JS), ("app/util.js", "import { a } from './a.js'\n")],
+     ["app/a.js", "lib/index.ts", "app/b.cjs", "app/c.tsx", "app/side.css"]),
+    (["pkg/__init__.py", "pkg/sub/__init__.py", "pkg/sub/m.py", "pkg/sub/x.py", "pkg/z.py",
+      "pkg/mod.py", "pkg/sub/w.py", "pkg/sub/v/__init__.py", "json.py", "pkg/sub/only.py"],
+     ["pkg/sub/m.py"],
+     [("pkg/sub/m.py", LINK_PY)],
+     ["pkg/sub/x.py", "pkg/z.py", "pkg/sub/w.py", "pkg/sub/v/__init__.py", "pkg/sub/__init__.py",
+      "pkg/sub/only.py", "pkg/mod.py", "json.py"]),
+    (["app/main.ts", "app/a.ts", "README.md"], ["README.md", "app/main.ts"],
+     [("app/main.ts", "// imports nothing\n")], []),
+    (["app/main.ts", "app/a.ts"], ["app/main.ts", "app/a.ts"],
+     [("app/main.ts", "import { a } from './a'\n")], []),
+    (["README.md"], ["README.md"], [], []),
+    # `https:/cdn.example/x.js` is what a remote src collapses to if followed as a path.
+    (["the-quote.html", "hosting/queue.js", "hosting/lib.js", "app.js", "https:/cdn.example/x.js"],
+     ["the-quote.html"],
+     [("the-quote.html", LINK_HTML)], ["hosting/lib.js", "hosting/queue.js", "app.js"]),
+)
+
+
+def links(program, cases):
+    """Run the linker on each case. Per case, (exit status, what it printed, the files it linked)."""
+    with tempfile.TemporaryDirectory() as d:
+        argvs = []
+        for n, (tree, touched, sources, _) in enumerate(cases):
+            names = [os.path.join(d, "%s%d" % (k, n)) for k in ("tree", "touched", "sources", "out")]
+            os.mkdir(names[2])
+            for name, paths in ((names[0], tree), (names[1], touched),
+                                (os.path.join(names[2], "names"), [s[0] for s in sources])):
+                with open(name, "w", encoding="utf-8") as f:
+                    f.write("".join(p + "\0" for p in paths))
+            for i, (_, body) in enumerate(sources):
+                with open(os.path.join(names[2], str(i)), "w", encoding="utf-8") as f:
+                    f.write(body)
+            argvs.append(names)
+        for name, body in (("program", program), ("cases", json.dumps(argvs)),
+                           ("harness", PICK_HARNESS)):
+            with open(os.path.join(d, name), "w", encoding="utf-8") as f:
+                f.write(body)
+        try:
+            p = subprocess.run([sys.executable, os.path.join(d, "harness"), os.path.join(d, "program"),
+                                os.path.join(d, "cases")], capture_output=True, text=True, timeout=60)
+            said = json.loads(p.stdout)
+        except (OSError, subprocess.SubprocessError, ValueError):
+            return [None] * len(cases)
+        got = []
+        for (rc, printed), argv in zip(said, argvs):
+            try:
+                linked = [l for l in open(argv[3], encoding="utf-8").read().split("\0") if l]
+            except OSError:
+                linked = None
+            got.append((rc, printed, linked))
+    return got
+
+
+def link_faults(text):
+    """What a product read has lost of carrying the source the change imports, one hop."""
+    lost = []
+    gather, read = _step_span(text, "Gather what the reviewer reads"), _step_span(text, "Read it")
+    g = text[gather[0]:gather[1]] if gather else ""
+    if LINK_TREE not in g:
+        lost.append("the tree listed from the head the read is of (`%s`)" % LINK_TREE)
+    for line, why in ((LINK_MARK, "the reader told where the linked source starts and what it is not"),
+                      (LINK_TAKEN, "the linked files carried through `add`, under the same budget"),
+                      (LINK_FAILED, "a failed link said, in words that name nothing of the product's"),
+                      (LINK_FAILED_READ, "a failed link said to the reader too, not only the log"),
+                      (LINK_KINDS, "the touched code of every kind the linker reads handed to it"),
+                      (LINK_FEED, "the touched code read from the head the read is of")):
+        if line not in g:
+            lost.append("%s (`%s`)" % (why, line))
+    if LINK_TAKEN in g and (LINK_AFTER not in g or g.index(LINK_TAKEN) < g.index(LINK_AFTER)):
+        lost.append("the touched files carried before the linked ones, so the budget spends on the change first")
+    if not read or LINK_TOLD not in text[read[0]:read[1]]:
+        lost.append("the reviewer told one hop is not the boundary (`%s`)" % LINK_TOLD)
+    program = _picker(text, LINK_CALL)
+    if program is None:
+        lost.append("the linker, called as `%s` — the tree's names and the touched code, "
+                    "its errors kept out of this public log" % LINK_CALL)
+        return lost
+    runs = links(program, LINK_CASES)
+    for n, ((tree, touched, sources, want), got) in enumerate(zip(LINK_CASES, runs), 1):
+        case = "in case %d" % n
+        if got is None:
+            lost.append("a linker that can be run %s" % case)
+            continue
+        rc, printed, linked = got
+        if rc != 0 or linked is None:
+            lost.append("a link made %s (it exited %s)" % (case, rc))
+            continue
+        if not LINK_SAID.match(printed) or [p for p in tree + touched if p in printed]:
+            lost.append("a summary of numbers alone %s (it printed %r)" % (case, printed))
+        if linked != want:
+            lost.append("exactly the files imported, one hop, each once and none touched, %s "
+                        "(it linked %s, not %s)" % (case, linked, want))
+    return lost
+
+
+# Each must turn the link's hold red on review-product.yml.
+LINK_LOOSENINGS = (
+    ("a bare package followed as if relative", lambda t: t.replace(r"""(\.\.?/[^"'\n]*)\1""", r"""([^"'\n]*)\1""", 1)),
+    ("a folder's index not tried", lambda t: t.replace(' + [path + "/index" + e for e in JS])', ")", 1)),
+    ("the extensions not tried", lambda t: t.replace('first([path] + [path + e for e in JS] + ', "first([path] + ", 1)),
+    ("a path the tree does not hold linked", lambda t: t.replace("if c in tree), None)", "if c in tree), candidates[0])", 1)),
+    ("a Python import's level ignored", lambda t: t.replace('base = "/".join(here[:len(here) - (len(dots) - 1)])', 'base = "/".join(here)', 1)),
+    ("the names of `from . import` not read as modules", lambda t: t.replace("found.append(module(base, words[0]))", "pass", 1)),
+    ("an absolute from-import's names not read as modules", lambda t: t.replace('found.append(module("", dotted + "." + words[0]))', "pass", 1)),
+    ("the linker unbounded", lambda t: t.replace(LINK_CALL, LINK_CALL.replace("timeout 60 ", ""), 1)),
+    ("an absolute Python import ignored", lambda t: t.replace("found.append(module(\"\", words[0]))", "pass", 1)),
+    ("a touched file linked again", lambda t: t.replace(" and path not in touched", "", 1)),
+    ("a linked file's path printed", lambda t: t.replace("% (len(chosen), importers))", "% (len(chosen), importers), *chosen)", 1)),
+    ("the linker's errors printed", lambda t: t.replace(LINK_CALL, LINK_CALL.replace(" 2>/dev/null", ""), 1)),
+    ("the tree listed from main", lambda t: t.replace(LINK_TREE, LINK_TREE.replace('"$SHA"', '"origin/$MAIN"'), 1)),
+    ("the linked files dropped", lambda t: t.replace(LINK_TAKEN, "true", 1)),
+    ("the marker line removed", lambda t: t.replace(LINK_MARK, "true", 1)),
+    ("a failed link unsaid", lambda t: t.replace(LINK_FAILED, "true", 1)),
+    ("the reviewer not told", lambda t: t.replace(LINK_TOLD, 'echo "."', 1)),
+    ("a failed link unsaid to the reader", lambda t: t.replace(LINK_FAILED_READ, "true", 1)),
+    ("Python not handed to the linker", lambda t: t.replace(LINK_KINDS, LINK_KINDS.replace("|*.py", ""), 1)),
+    ("a page not handed to the linker", lambda t: t.replace(LINK_KINDS, LINK_KINDS.replace("|*.html", ""), 1)),
+    ("the touched code read from main", lambda t: t.replace(LINK_FEED, LINK_FEED.replace('"$SHA:$f"', '"origin/$MAIN:$f"'), 1)),
+    ("a page's own script src ignored", lambda t: t.replace("for quote, src in SRC.findall(text):", "for quote, src in []:", 1)),
+    ("a remote script followed", lambda t: t.replace(' or ":" in src.split("/")[0]:', ":", 1)),
+    ("the linked files carried before the touched ones", lambda t: _link_first(t)),
+)
+
+
+def _link_first(t):
+    """The linker's block moved ahead of the touched files' own loop."""
+    start = t.find('          carried=" roadmap.json PRODUCT.md "\n')
+    end = t.find(LINK_AFTER, start)
+    link_end = t.find('          rm -rf "$t/tree.txt"', end)
+    if min(start, end, link_end) < 0:
+        return t
+    loop = t[start:end + len(LINK_AFTER)]
+    return t[:start] + t[end + len(LINK_AFTER):link_end] + loop + t[link_end:]
+
+
+def _check_link_loosenings():
+    """Every loosening above, applied to review-product.yml, must be refused."""
+    try:
+        product = _read(PRODUCT_WORKFLOW)
+    except OSError as e:
+        print("  wiring: %s" % e)
+        return 1
+    if link_faults(product):
+        return 1  # the wiring checks say what
+    bad = 0
+    for what, loosen in LINK_LOOSENINGS:
+        changed = loosen(product)
+        if changed == product:
+            print("  wiring: the loosening '%s' no longer applies to %s — rewrite it against the "
+                  "file as it stands, or it proves nothing" % (what, PRODUCT_WORKFLOW))
+            bad += 1
+        elif not link_faults(changed):
+            print("  wiring: %s with %s passes the link's hold — the guard for it is gone"
+                  % (PRODUCT_WORKFLOW, what))
+            bad += 1
+    if not bad:
+        print("ok: a product read carries, beside the files a change touches, the source they "
+              "import directly, one hop, resolved against the head's tree alone and printing "
+              "numbers alone; the linker was run on %d case(s), and each of %d loosenings was "
+              "refused" % (len(LINK_CASES), len(LINK_LOOSENINGS)))
     return bad
 
 
@@ -3317,6 +4138,13 @@ def _selftest():
     # rather than only through the cases above.
     bad += hold(touches_the_gate(["README.md", "check.sh", ".github/workflows/x.yml"]),
                 [".github/workflows/x.yml", "check.sh"], "which files are the gate")
+    bad += hold(touches_the_gate(["board/build.py", "board/vercel.json"]), ["board/build.py"],
+                "the board's build is the gate, its other files are not (#113's fifth read)")
+    # Every file the gate counts as itself is read as risky, so `GATE_FILES`
+    # cannot drift from the class (#113's sixth read): each needs a class case
+    # of its own. `GATE_DIRS` is held by the class's own directory arms.
+    bad += hold(sorted(f for f in GATE_FILES if ([f], "risky") not in CLASS_CASES), [],
+                "every gate file has a class case that reads it as risky")
     bad += hold(touches_the_gate(["design/ARCHITECT.md", "AGENTS.md"]), [], "and which are not")
     # THE RETIRED ROUTES ARE HELD SHUT, not merely deleted. A later session
     # restoring a prose reader would have to get past these: the gate reads check
@@ -3365,6 +4193,7 @@ def _selftest():
     failed += _check_wiring()
     failed += _check_product_wiring()
     failed += _check_product_loosenings()
+    failed += _check_board_loosenings()
     failed += _check_review_loosenings()
     failed += _check_read_loosenings()
     failed += _check_class_loosenings()
@@ -3372,6 +4201,7 @@ def _selftest():
     failed += _check_registry()
     failed += _check_caller()
     failed += _check_pick_loosenings()
+    failed += _check_link_loosenings()
     return 1 if failed else 0
 
 

@@ -6,7 +6,8 @@
 # an index row that opens its first page on words that page does not say,
 # anything that looks like a secret (naming the place, never the value), a
 # model named anywhere but the registry, a review gate that no longer matches the reviewer's answers or has drifted from
-# the workflows that fetch them, and, in a pull request, a commit no reviewer
+# the workflows that fetch them, a build board that no longer renders as
+# decision 0007 says, and, in a pull request, a commit no reviewer
 # has read clean — unread, or read and left a blocking finding on. Nothing else. A read by anybody the
 # gate does not count is unread, not a shape of its own.
 # A third shape, "read clean by a reviewer the rulebook does not allow to
@@ -37,7 +38,7 @@ else
 fi
 
 # 2. Only these files exist at the root (plus .git and .github).
-allowed=" AGENTS.md CHARTER.md HOW-WE-BUILD.md README.md RICH-DATA.md board check.sh consensuses design library model-registry review-gate.py "
+allowed=" AGENTS.md CHARTER.md HOW-WE-BUILD.md README.md RICH-DATA.md board check.sh design juku-library library model-registry review-gate.py "
 while IFS= read -r f; do
   case "$f" in .git|.github) continue ;; esac
   case "$allowed" in
@@ -52,17 +53,20 @@ done < <(ls -A)
 for f in $allowed; do
   case "$f" in
     design) [ -d "$f" ] || { echo "FAIL: '$f' is missing, or is not a directory; the root list is a fixed set."; fail=1; } ;;
-    # The build board's gate (decision 0007): its three files and nothing else. No roadmap data lives here.
-    board) [ ! -e "$f" ] || { [ -d "$f" ] && [ "$(ls -A board | tr '\n' ' ')" = "middleware.js robots.txt vercel.json " ]; } || { echo "FAIL: 'board/' holds only middleware.js, robots.txt and vercel.json."; fail=1; } ;;
+    # The build board (decision 0007): its gate's three files and the build that renders it, and nothing else. No roadmap data lives here.
+    board) { [ -d "$f" ] && [ "$(ls -A board | tr '\n' ' ')" = "build.py middleware.js robots.txt vercel.json " ]; } || { echo "FAIL: 'board/' holds only build.py, middleware.js, robots.txt and vercel.json."; fail=1; } ;;
     # Git keeps no empty directory, so an absent library is the empty one, and
     # the README's index holds it to the list both ways instead (2c).
     library) [ ! -e "$f" ] || [ -d "$f" ] || { echo "FAIL: '$f' is not a directory."; fail=1; } ;;
     # The model registry (decision 0008): the one file that names models, its
     # resolver and its OpenAI-compatible caller, and nothing else.
     model-registry) [ -d "$f" ] && [ "$(ls -A model-registry | tr '\n' ' ')" = "ask.py registry.json resolve.py " ] || { echo "FAIL: 'model-registry/' holds ask.py, registry.json and resolve.py, and nothing else."; fail=1; } ;;
-    # Consensuses committed verbatim for a build to read from GitHub (#103's
-    # amendment): pages, one folder per project, nothing executable.
-    consensuses) [ ! -e "$f" ] || { [ -d "$f" ] && [ -z "$(find consensuses -type f ! -name '*.md')" ] && [ -z "$(find consensuses -mindepth 1 -maxdepth 1 -type f)" ]; } || { echo "FAIL: 'consensuses/' holds only .md pages, each in a project's folder."; fail=1; } ;;
+    # The rulebook's own library (the Chairman's ruling of 2 October 2026): the
+    # papers and frozen records committed verbatim for a build to read from
+    # GitHub (#103's amendment): .md pages directly inside, no subfolder,
+    # nothing executable. A product keeps its own <product>-library/ in its
+    # own private repo, never here.
+    juku-library) [ ! -e "$f" ] || { [ -d "$f" ] && [ -z "$(find juku-library -type f ! -name '*.md')" ] && [ -z "$(find juku-library -mindepth 1 -type d)" ]; } || { echo "FAIL: 'juku-library/' holds only .md pages, directly inside it, with no subfolder."; fail=1; } ;;
     *) [ -f "$f" ] || { echo "FAIL: '$f' is missing, or is not a file; the root list is a fixed set."; fail=1; } ;;
   esac
 done
@@ -101,8 +105,11 @@ done
 # search would be one more list to drift. With no page named there is no
 # library, and that passes: the check exists before the pages it holds.
 lib_fail=0
+# A page name starts at a name boundary: a folder that merely ends in
+# "library" (juku-library/, <product>-library/) holds papers, not library
+# pages, and its files are not links to library/.
 page_re='library/[A-Za-z0-9._-]+\.md'
-named=$( { grep -o -E "$page_re" README.md || true; } | sort -u)
+named=$( { grep -o -P "(?<![A-Za-z0-9._-])$page_re" README.md || true; } | sort -u)
 shopt -s dotglob nullglob
 pages=(library/*)
 shopt -u dotglob nullglob
@@ -125,7 +132,7 @@ while IFS= read -r hit; do
   # the repository, so it is printed escaped, as a page name the pattern
   # refuses is above: a control character in a path reaches a public log.
   [ -f "$f" ] || { printf "FAIL: %q links '%s', which does not exist.\n" "${hit%:*}" "$f"; lib_fail=1; }
-done < <(grep -r -o -I -E --exclude-dir=.git "$page_re" . | sed 's|^\./||' | sort -u || true)
+done < <(grep -r -o -I -P --exclude-dir=.git "(?<![A-Za-z0-9._-])$page_re" . | sed 's|^\./||' | sort -u || true)
 # The index holds its pages in words as well as in names. Decision 0005
 # (issue #75: his ruling of 23 September 2026, and his challenge "machine
 # first, reading last") made the map "one line per topic saying when to open
@@ -169,14 +176,14 @@ fi
 # 3b. A model is named in the registry and nowhere else (decision 0008). Every
 # other file asks for a role, so a switch is one edit to one file. Refused: any
 # id the registry lists, and anything shaped like a model id from a vendor we
-# use, anywhere but model-registry/ and consensuses/, whose records are kept
+# use, anywhere but model-registry/ and juku-library/, whose records are kept
 # verbatim. The ids are read from the registry, so a new model is held the day
 # it is added, and case hides none of them.
 ids=$(python3 -c 'import json,sys; print("|".join(m.replace(".", "[.]") for m in json.load(open(sys.argv[1]))["models"]))' model-registry/registry.json)
 shape='claude-(opus|sonnet|haiku|fable)-[0-9][0-9a-z.-]*|(z-ai|moonshotai|qwen|deepseek|anthropic|openai|google|meta-llama|mistralai|x-ai)/[a-z0-9][a-z0-9._-]*|gpt-[0-9][0-9a-z.-]*|glm-[0-9][0-9a-z.-]*|kimi-k[0-9][0-9a-z.-]*'
 if [ -z "$ids" ]; then
   echo "FAIL: model-registry/registry.json lists no models, so nothing could be held to it."; fail=1
-elif grep -R -n -i -E --exclude-dir=.git --exclude-dir=model-registry --exclude-dir=consensuses "($ids|$shape)" . | cut -d: -f1,2 | sed 's/^/  /' | grep . ; then
+elif grep -R -n -i -E --exclude-dir=.git --exclude-dir=model-registry --exclude-dir=juku-library "($ids|$shape)" . | cut -d: -f1,2 | sed 's/^/  /' | grep . ; then
   echo "FAIL: the place(s) above name a model; name the role instead, and the model in model-registry/registry.json."
   fail=1
 else
@@ -197,11 +204,15 @@ fi
 # The gate's own rule is machine-checked before anything asks GitHub: one
 # implementation, held against the reviewer's real answers, the states a read
 # can arrive in, the fakes that once passed a looser test, the routes the gate
-# has stopped reading, and the five workflow files — the check, the reviewer,
-# the wake it calls, the door's standing proof and the product reviewer — which
+# has stopped reading, and the six workflow files — the check, the reviewer,
+# the wake it calls, the door's standing proof, the product reviewer and the
+# board's build — which
 # must still agree with the register and with each other.
 python3 review-gate.py --selftest || fail_gate=1
 [ "${fail_gate:-0}" -eq 0 ] || { echo "FAIL: the review gate no longer matches the reviewer's answers, or has drifted from the workflows — see the cases above."; fail=1; }
+# The build board's build (decision 0007): what the page may say, run on
+# made-up roadmaps, since the real ones are private and never reach this log.
+python3 -I board/build.py --selftest || { echo "FAIL: board/build.py no longer renders the board as decision 0007 says — see the case above."; fail=1; }
 # WHICH EVENTS THE GATE RUNS ON, WRITTEN AS WHAT IT SKIPS RATHER THAN WHAT IT
 # CATCHES. This read `pull_request|pull_request_review`, and this change removed
 # the second of those triggers from check.yml, leaving that arm unreachable.
