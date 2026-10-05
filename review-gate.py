@@ -2685,6 +2685,23 @@ def _check_spending(ask, path, quiet=False):
         ask.log_event(open_cash, {"attempt": n, "event": "reserve", "bound": 0.6})
         no_bound = os.path.join(d, "nobound.jsonl")
         ask.record_open(no_bound, "reviewer-main", "m1", "openai-compatible")
+
+        # A FINISHED REQUEST OF THIS JOB, counted until the provider's figure
+        # shows it: checked when the provider showed `shown`, then cost `cost`.
+        def finished(name, shown, cost):
+            led = os.path.join(d, name + ".jsonl")
+            n = ask.record_open(led, "reviewer-main", "m1", "openai-compatible")
+            ask.log_event(led, {"attempt": n, "event": "reserve", "bound": 0.6, "seen": shown})
+            ask.log_event(led, {"attempt": n, "event": "close", "outcome": "answered", "sent": True, "settled": True,
+                                **({"cost": cost} if cost is not None else {})})
+            return led
+        unshown_w = finished("unshown-w", {"usage_weekly": 0.5, "limit_remaining": 10}, 0.49)
+        shown_w = finished("shown-w", {"usage_weekly": 0.01, "limit_remaining": 10.49}, 0.49)
+        no_cost = finished("no-cost", {"usage_weekly": 0.5, "limit_remaining": 10}, None)
+        unseen = finished("unseen", {}, 0.49)
+        key_ok = {"limit_remaining": 0.5}
+        unshown_k = finished("unshown-k", {"limit_remaining": 0.5}, 0.49)
+        shown_k = finished("shown-k", {"limit_remaining": 0.99}, 0.49)
         for what, weekly, data, inflight, led, admitted in (
                 ("a request within the weekly limit", "1", ok, "0", "", True),
                 ("a request past the weekly limit", "1", {"usage_weekly": 0.995, "limit_remaining": 10}, "0", "", False),
@@ -2700,7 +2717,15 @@ def _check_spending(ask, path, quiet=False):
                  False),
                 ("an unresolved attempt of this job, reserved", "1", ok, "0", open_cash, False),
                 ("an unresolved attempt with no bound", "1", ok, "0", no_bound, False),
-                ("a weekly limit that is no amount", "six", ok, "0", "", False)):
+                ("a weekly limit that is no amount", "six", ok, "0", "", False),
+                # Settled at the provider, not yet in its figure: still counted.
+                ("a finished request of this job the week's figure does not yet show", "1", ok, "0", unshown_w,
+                 False),
+                ("a finished request of this job the week's figure shows", "1", ok, "0", shown_w, True),
+                ("a finished request with no cost, counted at its bound", "1", ok, "0", no_cost, False),
+                ("a finished request checked with no figure read", "1", ok, "0", unseen, False),
+                ("a finished request the key's figure does not yet show", "", key_ok, "0", unshown_k, False),
+                ("a finished request the key's figure shows", "", key_ok, "0", shown_k, True)):
             asked = []
             routes = {"/key": data if isinstance(data, Exception) else {"data": data}}
             try:
@@ -2768,6 +2793,10 @@ def _check_spending(ask, path, quiet=False):
             events = ask._events(led)
             if sent and not any(e.get("event") == "reserve" and isinstance(e.get("bound"), float) for e in events):
                 fault("%s was sent with nothing reserved for it" % what)
+            if sent and not any(e.get("event") == "reserve" and (e.get("seen") or {}).get("limit_remaining") == 100
+                                for e in events):
+                fault("%s: what the provider showed when it was checked is not on the record, so a finished "
+                      "request could never be released" % what)
             if sub is None and "checked on the key's own remaining limit" not in ask.summary(led):
                 fault("%s: the spend line does not say what the request was checked against (%s)"
                       % (what, ask.summary(led)))
@@ -3205,12 +3234,18 @@ CALLER_LOOSENINGS = (
     ("plan added to cash", 't = totals.setdefault(a.get("billing") or "unknown", [0.0, 0])', 't = totals.setdefault("cash", [0.0, 0])'),
     ("a budget refusal counted as sent", '"budget_refused": ("budget refused", False, True),', '"budget_refused": ("budget refused", True, True),'),
     ("what the provider returned not kept", '"generation": resp.get("id") if isinstance(resp, dict) else None,', '"generation": None,'),
-    ("what a request was checked against kept from the record", '"bound": most, "basis": basis}', '"bound": most}'),
-    ("nothing reserved before sending", '    log_event(ledger, {"attempt": attempt, "event": "reserve", "bound": most, "basis": basis})\n', ''),
+    ("what a request was checked against kept from the record", '"bound": most, "basis": basis, "seen": seen}', '"bound": most, "seen": seen}'),
+    ("nothing reserved before sending", '    log_event(ledger, {"attempt": attempt, "event": "reserve", "bound": most, "basis": basis, "seen": seen})\n', ''),
+    ("what the provider showed kept from the record", '"basis": basis, "seen": seen}', '"basis": basis}'),
+    ("a finished request of this job dropped", "        finished += cost\n", ""),
+    ("a finished request with no cost counted as nothing", 'cost = a["cost"] if _number(a.get("cost")) else a.get("bound")', 'cost = a["cost"] if _number(a.get("cost")) else 0'),
+    ("a figure never read taken as showing everything", "return max(0.0, finished - (rise if _number(rise) else 0.0))", "return max(0.0, finished - (rise if _number(rise) else finished))"),
+    ("the week's figure taken as showing what it does not", '        caps.append(limit - data["usage_weekly"] - unshown(rise))', '        caps.append(limit - data["usage_weekly"])'),
+    ("the key's figure taken as showing what it does not", '        caps.append(data["limit_remaining"] - unshown(rise))', '        caps.append(data["limit_remaining"])'),
     # The spending check (decision 0014, D).
     ("the spending check's refusal ignored", '    if why:\n        note("budget refused before sending', '    if False:\n        note("budget refused before sending'),
-    ("the weekly limit ignored", '        caps.append(limit - data["usage_weekly"])', '        pass'),
-    ("the key's own limit ignored", '        caps.append(data["limit_remaining"])', '        pass'),
+    ("the weekly limit ignored", '        caps.append(limit - data["usage_weekly"] - unshown(rise))', '        pass'),
+    ("the key's own limit ignored", '        caps.append(data["limit_remaining"] - unshown(rise))', '        pass'),
     ("unknown headroom let through", 'return None, "no weekly limit is set and the key has no limit of its own, so the headroom is unknown", ""', 'return this, None, "nothing"'),
     ("the reads in flight not reserved", 'reserved = others * RUN_ATTEMPTS * bound(lim, lim["context"])', 'reserved = 0'),
     ("a read in flight reserved at two requests, not its three", "RUN_ATTEMPTS = 3", "RUN_ATTEMPTS = 2"),

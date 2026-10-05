@@ -341,14 +341,19 @@ def bound(lim, body_bytes):
     return (tokens_in * lim["input_price"] + lim["output_tokens"] * lim["output_price"]) / 1e6
 
 
-def admit(base_url, key, lim, body_bytes, ledger, attempt, weekly, inflight, fetch=None):
+def admit(base_url, key, lim, body_bytes, ledger, attempt, weekly, inflight, fetch=None, seen=None):
     """(the request's bound, None, what it was checked against) when admitted, else (None, why, ""). Neither carries any figure: no limit, headroom or settled spend.
 
     Settled cash this week comes from the provider's own key endpoint; in-flight
     reservations are this job's unresolved cash attempts at their bounds, and
     every other read in flight at the most a read can send; then this request's
-    bound. All of it must fit under the weekly limit, when it is set, and the
-    key's own remaining limit, when the key has one. Unknown anything is no call.
+    bound. This job's finished cash attempts are counted too, at their cost (or
+    bound, if none came back), less what the provider's figure has risen by since
+    the first of them was checked, so a request settled but not yet shown is
+    never missed. All of it must fit under the weekly limit, when it is set, and
+    the key's own remaining limit, when the key has one. Unknown anything is no
+    call. `seen`, a dict, is given the provider's figures this check read, for
+    the record alone: they reach no log.
     """
     fetch = fetch or urllib.request.urlopen
     if lim is None:
@@ -361,11 +366,20 @@ def admit(base_url, key, lim, body_bytes, ledger, attempt, weekly, inflight, fet
     except (TypeError, ValueError):
         return None, "the reads in flight elsewhere could not be counted, so the headroom is unknown", ""
     reserved = others * RUN_ATTEMPTS * bound(lim, lim["context"])
+    finished, first = 0.0, None
     for a in attempts(ledger):
-        if a["attempt"] != str(attempt) and a.get("billing") == "cash" and a["unresolved"]:
+        if a["attempt"] == str(attempt) or a.get("billing") != "cash" or not a.get("sent", True):
+            continue
+        if a["unresolved"]:
             if not _number(a.get("bound")):
                 return None, "an earlier attempt in this job is unresolved with no bound, so the headroom is unknown", ""
             reserved += a["bound"]
+            continue
+        cost = a["cost"] if _number(a.get("cost")) else a.get("bound")
+        if not _number(cost):
+            return None, "an earlier attempt in this job finished with no cost and no bound, so the headroom is unknown", ""
+        finished += cost
+        first = first or a.get("seen") or {}
     try:
         req = urllib.request.Request(base_url.rstrip("/") + "/key", headers={"Authorization": "Bearer " + key})
         with fetch(req, timeout=30) as r:
@@ -374,6 +388,14 @@ def admit(base_url, key, lim, body_bytes, ledger, attempt, weekly, inflight, fet
         return None, "the provider's key endpoint did not answer, so the cash settled this week is unknown", ""
     if not isinstance(data, dict):
         return None, "the provider's key endpoint answered no data, so the cash settled this week is unknown", ""
+    if isinstance(seen, dict):
+        seen.update({k: data[k] for k in ("usage_weekly", "limit_remaining") if _number(data.get(k))})
+
+    def unshown(rise):
+        # What this job's finished attempts cost that the provider's figure
+        # has not yet risen by: all of it when the rise cannot be read.
+        return max(0.0, finished - (rise if _number(rise) else 0.0))
+    first = first or {}
     caps, basis = [], []
     if weekly not in (None, ""):
         try:
@@ -384,12 +406,14 @@ def admit(base_url, key, lim, body_bytes, ledger, attempt, weekly, inflight, fet
             return None, "the weekly limit is set but is not a positive amount", ""
         if not _number(data.get("usage_weekly")):
             return None, "the provider did not say what was spent this week", ""
-        caps.append(limit - data["usage_weekly"])
+        rise = data["usage_weekly"] - first["usage_weekly"] if _number(first.get("usage_weekly")) else None
+        caps.append(limit - data["usage_weekly"] - unshown(rise))
         basis.append("the week's spend the provider reported against the weekly limit")
     if data.get("limit_remaining") is not None:
         if not isinstance(data["limit_remaining"], (int, float)) or isinstance(data["limit_remaining"], bool):
             return None, "the provider's remaining limit is not an amount", ""
-        caps.append(data["limit_remaining"])
+        rise = first["limit_remaining"] - data["limit_remaining"] if _number(first.get("limit_remaining")) else None
+        caps.append(data["limit_remaining"] - unshown(rise))
         basis.append("the key's own remaining limit")
     if not caps:
         return None, "no weekly limit is set and the key has no limit of its own, so the headroom is unknown", ""
@@ -572,7 +596,7 @@ def attempts(ledger):
         if kind == "open":
             a.update(role=e.get("role"), model=e.get("model"), billing=e.get("billing", "unknown"))
         elif kind == "reserve":
-            a.update(bound=e.get("bound"), basis=e.get("basis"))
+            a.update(bound=e.get("bound"), basis=e.get("basis"), seen=e.get("seen"))
         elif kind == "returned":
             a.update(returned=True, generation=e.get("generation"), usage=e.get("usage"))
             if _number(e.get("cost")):
@@ -721,12 +745,13 @@ def main(argv):
     body = build(got, provider, system, sys.stdin.read(), json.loads(schema_json), lim)
     data = json.dumps(body).encode("utf-8")
     # THE SPENDING CHECK, before the request and never after (decision 0014, D).
+    seen = {}
     most, why, basis = admit(got["base_url"], key, lim, len(data), ledger, attempt,
-                      os.environ.get("REVIEW_CASH_WEEKLY", ""), os.environ.get("INFLIGHT", ""))
+                      os.environ.get("REVIEW_CASH_WEEKLY", ""), os.environ.get("INFLIGHT", ""), seen=seen)
     if why:
         note("budget refused before sending: %s" % why)
         return out({"is_error": True, "subtype": "budget_refused", "result": "budget refused: %s" % why}, 1)
-    log_event(ledger, {"attempt": attempt, "event": "reserve", "bound": most, "basis": basis})
+    log_event(ledger, {"attempt": attempt, "event": "reserve", "bound": most, "basis": basis, "seen": seen})
     req = urllib.request.Request(
         got["base_url"].rstrip("/") + "/chat/completions",
         data=data,
