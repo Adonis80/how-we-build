@@ -2676,13 +2676,13 @@ def _check_spending(ask, path, quiet=False):
             asked = []
             routes = {"/key": data if isinstance(data, Exception) else {"data": data}}
             try:
-                most, why = ask.admit("https://provider.test/api/v1", "k", lim, 9000, led, "9", weekly, inflight,
+                most, why, basis = ask.admit("https://provider.test/api/v1", "k", lim, 9000, led, "9", weekly, inflight,
                                       fetch=_fake_net(routes, asked))
             except Exception as e:  # noqa: BLE001
                 fault("%s made the spending check raise %s" % (what, type(e).__name__))
                 continue
-            if (most is not None) != admitted or (why and re.search(r"\d", why)):
-                fault("%s was %s (%s)" % (what, "admitted" if most is not None else "refused", why))
+            if (most is not None) != admitted or (why and re.search(r"\d", why)) or (admitted and not basis):
+                fault("%s was %s (%s), checked on %r" % (what, "admitted" if most is not None else "refused", why, basis))
         if ask.admit("https://provider.test", "k", None, 10, "", "1", "1", "0", fetch=_fake_net({}, []))[0] is not None:
             fault("a request whose most is unknown, with no limits in the registry, was admitted")
     # End to end: the caller's own main(), on the real registry, the network faked.
@@ -2740,6 +2740,9 @@ def _check_spending(ask, path, quiet=False):
             events = ask._events(led)
             if sent and not any(e.get("event") == "reserve" and isinstance(e.get("bound"), float) for e in events):
                 fault("%s was sent with nothing reserved for it" % what)
+            if sub is None and "checked on the key's own remaining limit" not in ask.summary(led):
+                fault("%s: the spend line does not say what the request was checked against (%s)"
+                      % (what, ask.summary(led)))
             if chat is not limit402 and sent and not any(e.get("event") == "returned" and e.get("generation") == "gen-7"
                                                          and e.get("usage") for e in events):
                 fault("%s: what the provider returned, usage and generation id, was not kept before the answer was "
@@ -3174,16 +3177,17 @@ CALLER_LOOSENINGS = (
     ("plan added to cash", 't = totals.setdefault(a.get("billing") or "unknown", [0.0, 0])', 't = totals.setdefault("cash", [0.0, 0])'),
     ("a budget refusal counted as sent", '"budget_refused": ("budget refused", False, True),', '"budget_refused": ("budget refused", True, True),'),
     ("what the provider returned not kept", '"generation": resp.get("id") if isinstance(resp, dict) else None,', '"generation": None,'),
-    ("nothing reserved before sending", '    log_event(ledger, {"attempt": attempt, "event": "reserve", "bound": most})\n', ''),
+    ("what a request was checked against kept from the record", '"bound": most, "basis": basis}', '"bound": most}'),
+    ("nothing reserved before sending", '    log_event(ledger, {"attempt": attempt, "event": "reserve", "bound": most, "basis": basis})\n', ''),
     # The spending check (decision 0014, D).
     ("the spending check's refusal ignored", '    if why:\n        note("budget refused before sending', '    if False:\n        note("budget refused before sending'),
     ("the weekly limit ignored", '        caps.append(limit - data["usage_weekly"])', '        pass'),
     ("the key's own limit ignored", '        caps.append(data["limit_remaining"])', '        pass'),
-    ("unknown headroom let through", 'return None, "no weekly limit is set and the key has no limit of its own, so the headroom is unknown"', 'return this, None'),
+    ("unknown headroom let through", 'return None, "no weekly limit is set and the key has no limit of its own, so the headroom is unknown", ""', 'return this, None, "nothing"'),
     ("the reads in flight not reserved", 'reserved = others * RUN_ATTEMPTS * bound(lim, lim["context"])', 'reserved = 0'),
     ("the reads in flight taken as none when uncounted", '        others = int(inflight)', '        others = int(inflight) if str(inflight).isdigit() else 0'),
     ("this job's unresolved attempts not reserved", '            reserved += a["bound"]', '            pass'),
-    ("a key endpoint's silence taken as headroom", '        return None, "the provider\'s key endpoint did not answer, so the cash settled this week is unknown"', '        data = {"limit_remaining": 1000000}'),
+    ("a key endpoint's silence taken as headroom", '        return None, "the provider\'s key endpoint did not answer, so the cash settled this week is unknown", ""', '        data = {"limit_remaining": 1000000}'),
     ("a request sent with no output-token limit", '        body["max_tokens"] = limits["output_tokens"]', '        pass'),
     ("a request sent with no price limit", '        _set(body, "provider.max_price", {"prompt": limits["input_price"], "completion": limits["output_price"]})', '        pass'),
     ("the provider's limit in the body read as an error to fall back on", '        if limited(code, said):', '        if False:'),
@@ -3340,6 +3344,109 @@ def _check_attempt_loosenings():
         print("ok: each reviewer's own ask() keeps one record per attempt — a fallback two, a call that never "
               "comes back one unresolved, a route refused before sending none — and its spend line carries them; "
               "run in %d case(s) a file, and each of %d loosenings refused" % (len(ATTEMPT_CASES), len(ATTEMPT_LOOSENINGS)))
+    return bad
+
+
+# THE FILES A SHORT READ ASKED FOR (decision 0014, F(2)), each reviewer's real
+# `more()` run on a made-up head: a plain path that exists is added, a path out
+# of the repository or of odd characters is never tried, a missing one is named,
+# the re-read stops at 200 KB, and with nothing added there is no re-read.
+# (what is asked, whether a re-read follows, files added, markers it must write, paths never named).
+MORE_TREE = {"a.md": "page a\n", "big.md": "x" * 150000 + "\n", "b.md": "y" * 100000 + "\n"}
+MORE_CASES = (
+    ("a page that exists", ["a.md"], True, {"a.md"}, (), ()),
+    ("paths out of the repository or of odd characters", ["../a.md", "/etc/passwd", "a b.md"], False, set(), (),
+     ("../a.md", "/etc/passwd", "a b.md")),
+    ("a file the change does not have", ["missing.md"], False, set(), ("missing.md: not in this change",), ()),
+    ("more than the re-read holds", ["big.md", "b.md"], True, {"big.md"},
+     ("b.md: 100001 bytes, left out: past the re-read limit",), ()),
+)
+
+
+def more_says(text, path, asked):
+    """Run the file's real `more()` on `asked`. (it returned yes, the prompt it wrote), or None."""
+    fn = _block(text, lambda l: l == "more() {", lambda l: l == "}")
+    if not fn:
+        return None
+    with tempfile.TemporaryDirectory() as d:
+        tree = os.path.join(d, "product")
+        os.makedirs(tree)
+        for f, body in MORE_TREE.items():
+            open(os.path.join(tree, f), "w").write(body)
+        try:
+            for cmd in (["init", "-q"], ["add", "-A"], ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "t"]):
+                subprocess.run(["git", "-C", tree] + cmd, check=True, capture_output=True, timeout=30)
+            sha = subprocess.run(["git", "-C", tree, "rev-parse", "HEAD"], capture_output=True, text=True,
+                                 check=True, timeout=30).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            return None
+        prompt = os.path.join(d, "prompt.txt")
+        open(prompt, "w").close()
+        body = "\n".join(l.replace("/tmp/", d + "/") for l in fn)
+        script = "set -euo pipefail\ncd '%s'\nt='%s'\n%s\nif more %s; then echo yes; else echo no; fi\n" % (
+            tree, d, body, " ".join("'%s'" % a for a in asked))
+        try:
+            p = subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=60,
+                               env=dict(os.environ, SHA=sha))
+            wrote = open(prompt, encoding="utf-8").read()
+        except (OSError, subprocess.SubprocessError):
+            return None
+    if p.returncode != 0 or p.stdout.strip() not in ("yes", "no"):
+        return None
+    return p.stdout.strip() == "yes", wrote
+
+
+def more_faults(text, path):
+    lost = []
+    for what, asked, again, added, marks, never in MORE_CASES:
+        got = more_says(text, path, asked)
+        if got is None:
+            lost.append("a `more()` that runs (%s)" % what)
+            continue
+        yes, wrote = got
+        given = set(re.findall(r"^===== (\S+) =====$", wrote, re.M))
+        if (yes != again or given != added or not all(m in wrote for m in marks)
+                or any(n in wrote for n in never) or "<more>" not in wrote or "</more>" not in wrote):
+            lost.append("%s answering %s with %s added (it answered %s with %s)"
+                        % (what, "a re-read" if again else "no re-read", sorted(added),
+                           "a re-read" if yes else "no re-read", sorted(given)))
+    return lost
+
+
+MORE_LOOSENINGS = (
+    ("any path tried", lambda t: t.replace("              case \"$f\" in /*|*..*|*[!A-Za-z0-9._/-]*) continue ;; esac\n", "", 1)),
+    ("the re-read unbounded", lambda t: t.replace("-gt 200000 ]; then", "-gt 2000000 ]; then", 1)),
+    ("a re-read with nothing added", lambda t: t.replace('            [ "$any" = yes ]\n', "            true\n", 1)),
+    ("a missing file unnamed", lambda t: t.replace(": not in this change =====", ": =====", 1)),
+)
+
+
+def _check_more_loosenings():
+    bad = 0
+    for path in (REVIEW_WORKFLOW, PRODUCT_WORKFLOW):
+        try:
+            text = _read(path)
+        except OSError as e:
+            print("  wiring: %s" % e)
+            return 1
+        lost = more_faults(text, path)
+        if lost:
+            print("  wiring: %s must add only what a short read named, once; it has lost %s" % (path, "; ".join(lost)))
+            bad += 1
+            continue
+        for what, loosen in MORE_LOOSENINGS:
+            changed = loosen(text)
+            if changed == text:
+                print("  wiring: the loosening '%s' no longer applies to %s — rewrite it against the file as it "
+                      "stands, or it proves nothing" % (what, path))
+                bad += 1
+            elif not more_faults(changed, path):
+                print("  wiring: %s with %s passes the re-read hold — the guard for it is gone" % (path, what))
+                bad += 1
+    if not bad:
+        print("ok: each reviewer's own more() adds a named file that exists, never tries a path out of the "
+              "repository, names a missing one, stops at the re-read's 200 KB, and asks no re-read with nothing "
+              "added; run in %d case(s) a file, and each of %d loosenings refused" % (len(MORE_CASES), len(MORE_LOOSENINGS)))
     return bad
 
 
@@ -5053,6 +5160,7 @@ def _selftest():
     failed += _check_caller_loosenings()
     failed += _check_context()
     failed += _check_attempt_loosenings()
+    failed += _check_more_loosenings()
     failed += _check_context_loosenings()
     failed += _check_pick_loosenings()
     failed += _check_link_loosenings()
