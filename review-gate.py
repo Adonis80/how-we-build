@@ -91,6 +91,7 @@ it fails the build before a loose rule can pass a commit.
 """
 
 import glob
+import http.server
 import io
 import json
 import importlib.util
@@ -98,11 +99,13 @@ import os
 import re
 import shlex
 import shutil
+import ssl
 import concurrent.futures
 import subprocess
 import sys
 import tempfile
 import textwrap
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -2103,6 +2106,9 @@ ROUTE_REGISTRY = {
     PRODUCT_WORKFLOW: 'reg="$GITHUB_WORKSPACE/model-registry"',
 }
 ROUTE_MAIN = "DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}"
+# The weekly cash limit reaches the caller in both reviewers alike (his
+# condition, 6 October 2026): a product's reads spend the same cash.
+ROUTE_CASH = "REVIEW_CASH_WEEKLY: ${{ secrets.REVIEW_CASH_WEEKLY }}"
 ROUTE_ASK_GUARD = ('case "$effort" in %s) ;; *) printf \'{"is_error":true,"subtype":"no_effort"}\\n\' '
                    '> "$out"; : > "$err"; return 2 ;; esac' % REVIEW_EFFORT)
 ROUTE_FIRST = "fell_back=no"
@@ -2112,22 +2118,6 @@ ROUTE_FIRST = "fell_back=no"
 ROUTE_DERIVE = ('derive() { python3 "$reg/ask.py" derive "$out" || printf \'{"is_error":true,"subtype":"not_derived"}\\n\' '
                 '> "$out"; }')
 ROUTE_LAST = 'echo "verdict=$verdict" >> "$GITHUB_OUTPUT"'
-# A product's code is private, and no provider but Anthropic has been cleared to
-# read it (25 September 2026: a session's own guard refused to send it
-# elsewhere). So review-product.yml speaks the claude-code interface alone, and
-# names neither another caller nor another provider's credential.
-PRODUCT_EGRESS = ("ask.py", "OPENROUTER", "openai-compatible")
-# The one use of ask.py a product's workflow may name (decision 0014): the
-# derivation of the verdict from the findings, which reads and writes the answer
-# file and makes no request (`_check_caller` runs it with the network refused).
-# Any other mention of ask.py is the caller that sends a read to another provider.
-PRODUCT_DERIVE = 'python3 "$reg/ask.py" derive "$out"'
-# And the other uses that read and write local files and make no request
-# (decision 0014): turning a second shortfall into a refusal, and the attempt
-# records. `_check_caller` runs them with the network refused too.
-PRODUCT_LOCAL = (PRODUCT_DERIVE, 'python3 "$reg/ask.py" incomplete "$out"',
-                 'python3 "$reg/ask.py" record open "$ledger"', 'python3 "$reg/ask.py" record close "$ledger"',
-                 'python3 "$reg/ask.py" record summary "$ledger"')
 # (what happens, the primary's exit and verdict, the fallback's, the fallback
 # role or none, seconds left when the fallback would start, what must follow:
 # the roles asked in order, and the verdict read or None for a read that fails).
@@ -2328,6 +2318,8 @@ def route_faults(text, path):
     for line in ROUTE_RESOLVE + (ROUTE_REGISTRY[path], ROUTE_ASK_GUARD, ROUTE_DERIVE):
         if line not in r:
             lost.append("`%s`" % line)
+    if ROUTE_CASH not in r:
+        lost.append("`%s` in the read's environment, so the weekly limit reaches the caller" % ROUTE_CASH)
     if path == REVIEW_WORKFLOW and len(re.findall(r"^\s*DEFAULT_BRANCH:", r, re.M)) != 1 or (
             path == REVIEW_WORKFLOW and ROUTE_MAIN not in r):
         lost.append("`%s` as the one branch the registry is read from" % ROUTE_MAIN)
@@ -2366,14 +2358,6 @@ def route_faults(text, path):
             lost.append("when %s, the roles %s asked and %s (it was %s)"
                         % (what, want[0], "the verdict %s read" % want[1] if want[1] else
                            "the read failed, never open", got))
-    if path == PRODUCT_WORKFLOW:
-        local = text
-        for use in PRODUCT_LOCAL:
-            local = local.replace(use, "")
-        said = [w for w in PRODUCT_EGRESS if w in local]
-        if said:
-            lost.append("no caller or credential but Anthropic's for a product's private code "
-                        "(it names %s)" % ", ".join(said))
     return lost
 
 
@@ -2397,6 +2381,7 @@ REVIEW_TAKEN = {
 }
 ROUTE_LOOSENINGS = (
     ("the registry read from the head", REVIEW_WORKFLOW, lambda t: t.replace(ROUTE_REGISTRY[REVIEW_WORKFLOW], 'cp "model-registry/$f" "$reg/$f"', 1)),
+    ("the weekly cash limit kept from the caller", None, lambda t: t.replace("          " + ROUTE_CASH + "\n", "", 1)),
     ("the registry read from the head's branch", REVIEW_WORKFLOW, lambda t: t.replace(ROUTE_MAIN, "DEFAULT_BRANCH: ${{ github.head_ref }}", 1)),
     ("a role the registry cannot resolve read anyway", None, lambda t: t.replace(ROUTE_RESOLVE[0], 'EFFORT=$(resolve "$ROLE" effort) || EFFORT=high', 1)),
     ("an effort the ask never checks", None, lambda t: t.replace(ROUTE_ASK_GUARD, "true", 1)),
@@ -2433,7 +2418,6 @@ ROUTE_LOOSENINGS = (
     ("a shortfall left unsigned", None, lambda t: t.replace('            [ "$rc" -ne 0 ] || python3 "$reg/ask.py" incomplete "$out" || printf \'{"is_error":true,"subtype":"not_derived"}\\n\' > "$out"\n', "", 1)),
     ("a failed re-read taken as unread", None, lambda t: t.replace('then cp "$out.first" "$out"; rc=0; fi', "then :; fi", 1)),
     ("a re-read the budget refused signed blocking", None, lambda t: t.replace("if refused; then :; elif", "if false; then :; elif", 1)),
-    ("another provider for a product's code", PRODUCT_WORKFLOW, lambda t: t.replace("          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}\n", "          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}\n          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}\n", 1)),
 )
 
 
@@ -2467,18 +2451,16 @@ def _check_route_loosenings():
     if not bad:
         print("ok: each reviewer resolves its role from the registry — review.yml from the "
               "protected branch — reads once, hands a read that did not answer to its fallback, "
-              "and fails closed when none answers; the reading block was run in %d case(s), a "
-              "product's code goes to no provider but Anthropic, and each of %d loosenings was "
-              "refused" % (len(ROUTE_CASES), len(ROUTE_LOOSENINGS)))
+              "and fails closed when none answers; the reading block was run in %d case(s), and "
+              "each of %d loosenings was refused" % (len(ROUTE_CASES), len(ROUTE_LOOSENINGS)))
     return bad
 
 
 # THE REGISTRY ITSELF (decision 0008). model-registry/resolve.py checks it whole;
-# this holds what the gate needs of it: the three reviewer roles, each at the
-# one effort every read is owed, reviewer-main and reviewer-risky each with
-# reviewer-fallback behind it and the fallback with none, the fallback on the
-# one interface a product's code may go to, since every product read ends on
-# it, and a switch that is one edit to the one file.
+# this holds what the gate needs of it: the two reviewer roles, each at the
+# one effort every read is owed and with nothing behind it, every networked
+# provider asking for providers who promise not to store or train on what it
+# sends, and a switch that is one edit to the one file.
 def _check_registry():
     bad = 0
 
@@ -2514,6 +2496,15 @@ def _check_registry():
         if bool(got[role]["fallback"]) != falls:
             fault("%s falls back to %r; nothing may stand behind a reviewer (his rulings, 5 and 6 "
                   "October 2026)" % (role, got[role]["fallback"]))
+    # A PRODUCT'S CODE GOES TO WHICHEVER PROVIDER THE REGISTRY NAMES (his ruling,
+    # 6 October 2026), so every provider a request is sent to over the network
+    # asks only for providers who promise not to store or train on it: their
+    # promise, not proof (his condition, 6 October 2026).
+    for name, prov in sorted((reg.get("providers") or {}).items()):
+        if prov.get("interface") == "openai-compatible" and \
+                ((prov.get("extra") or {}).get("provider") or {}).get("data_collection") != "deny":
+            fault("provider %s does not ask for providers who promise not to store or train on it, so a product's private code could be "
+                  "stored or trained on by whoever serves it" % name)
     # One edit, one file: the ordinary role moved to another model in a copy of
     # the registry, and nothing else, is what the resolver then answers.
     other = next((m for m in sorted(reg.get("models") or {}) if ORDINARY_ROLE in got
@@ -2757,6 +2748,40 @@ def _check_spending(ask, path, quiet=False):
                                                          and e.get("usage") for e in events):
                 fault("%s: what the provider returned, usage and generation id, was not kept before the answer was "
                       "parsed" % what)
+        # THE REQUEST AS IT WOULD LEAVE (decision 0014, E; his condition, 6 October
+        # 2026): a registry edit that widens what leaves is refused before anything
+        # is sent, not even the key endpoint is called.
+        for what, widen in (
+                ("a provider setting that swaps the model", lambda pr: pr["extra"].update(model="vendor/other")),
+                ("a provider setting that adds a list of models", lambda pr: pr["extra"].update(models=["vendor/other"])),
+                ("a provider that may store or train on the prompt",
+                 lambda pr: pr["extra"]["provider"].update(data_collection="allow")),
+                ("a provider with no data-collection ask", lambda pr: pr["extra"]["provider"].pop("data_collection"))):
+            wide = json.loads(json.dumps(reg))
+            widen(wide["providers"][wide["models"][model]["provider"]])
+            path_ = os.path.join(d, "wide.json")
+            with open(path_, "w", encoding="utf-8") as f:
+                json.dump(wide, f)
+            os.environ.update(OPENROUTER_API_KEY="k", INFLIGHT="0", REVIEW_CASH_WEEKLY="", ATTEMPTS="", ATTEMPT="1",
+                              GITHUB_STEP_SUMMARY=os.path.join(d, "summary"))
+            asked = []
+            urllib.request.urlopen = _fake_net({"/key": {"data": {"limit_remaining": 100}},
+                                                "/chat/completions": good}, asked)
+            sys.stdin = io.StringIO("p")
+            heard = io.StringIO()
+            try:
+                import contextlib
+                with contextlib.redirect_stdout(heard), contextlib.redirect_stderr(io.StringIO()):
+                    rc = ask.main(["ask.py", path_, ORDINARY_ROLE, system, "{}", "60"])
+                got = json.loads(heard.getvalue() or "{}")
+            except Exception as e:  # noqa: BLE001
+                fault("%s made the caller raise %s" % (what, type(e).__name__))
+                continue
+            finally:
+                urllib.request.urlopen, sys.stdin = real_urlopen, real_stdin
+            if asked or rc == 0 or got.get("subtype") != "request_refused":
+                fault("%s was not refused before sending (%d request(s) made, %s)"
+                      % (what, len(asked), got.get("subtype")))
     for k, v in saved.items():
         if v is None:
             os.environ.pop(k, None)
@@ -3198,6 +3223,9 @@ CALLER_LOOSENINGS = (
     ("the reads in flight taken as none when uncounted", '        others = int(inflight)', '        others = int(inflight) if str(inflight).isdigit() else 0'),
     ("this job's unresolved attempts not reserved", '            reserved += a["bound"]', '            pass'),
     ("a key endpoint's silence taken as headroom", '        return None, "the provider\'s key endpoint did not answer, so the cash settled this week is unknown", ""', '        data = {"limit_remaining": 1000000}'),
+    ("the outgoing request never checked", "    stop = outgoing(body, got)\n", "    stop = None\n"),
+    ("the model swap let through", '    if body.get("model") != got["model"]:', '    if False:'),
+    ("the data-collection ask not checked", '    if (body.get("provider") or {}).get("data_collection") != "deny":', '    if False:'),
     ("a request sent with the output-token limit no endpoint serves", '    _merge(body, provider.get("extra") or {})\n', '    _merge(body, provider.get("extra") or {})\n    body["max_tokens"] = 100000\n'),
     ("a request sent with the price limit no endpoint serves", '    _merge(body, provider.get("extra") or {})\n', '    _merge(body, provider.get("extra") or {})\n    _set(body, "provider.max_price", {"prompt": 0.5, "completion": 1.7})\n'),
     ("the provider's limit in the body read as an error to fall back on", '        if limited(code, said):', '        if False:'),
@@ -3614,7 +3642,8 @@ def alert_says(text, open_issue):
                     'case "$1 $2" in "issue list") printf "%%s" "$OPEN_ISSUE" ;; esac\n' % shlex.quote(log))
         os.chmod(os.path.join(bin_, "gh"), 0o755)
         env = dict(os.environ, PATH=bin_ + os.pathsep + os.environ.get("PATH", ""), OPEN_ISSUE=open_issue,
-                   GITHUB_REPOSITORY="o/r", PR="7", SHA="abc", WHY="the provider refused the read: HTTP 400",
+                   GITHUB_REPOSITORY="o/r", PR="7", SHA="abc", REPO="Adonis80/secret-product",
+                   WHY="the provider refused the read: HTTP 400",
                    OWNER="Adonis80", RUN="https://x/run/1", GH_TOKEN="t")
         try:
             p = subprocess.run(["bash", "-c", body], env=env, capture_output=True, text=True, timeout=30)
@@ -3624,8 +3653,8 @@ def alert_says(text, open_issue):
     return calls if p.returncode == 0 else None
 
 
-def alert_faults(text):
-    """What review.yml has lost of telling him when GLM did not read."""
+def alert_faults(text, path=None):
+    """What a reviewer has lost of telling him when GLM did not read."""
     lost = []
     step = _alert_step(text)
     if ALERT_IF not in step:
@@ -3635,8 +3664,14 @@ def alert_faults(text):
     if "${{" in step.split("run: |", 1)[-1]:
         lost.append("everything the alert says brought in through `env:`, none in its script")
     new, more = alert_says(text, ""), alert_says(text, "12")
-    if not new or "issue create" not in new or "@Adonis80" not in new or "HTTP 400" not in new or "#7" not in new:
+    if not new or "issue create" not in new or "@Adonis80" not in new or "HTTP 400" not in new:
         lost.append("an issue opened that @-mentions him with the reason, when none is open (it called %r)" % new)
+    # This repository's alert names the pull request and the commit; a
+    # product's names neither, nor the product, this repository being public.
+    elif path == PRODUCT_WORKFLOW and ("secret-product" in new or "#7" in new or "abc" in new):
+        lost.append("an alert that names no product, pull request or commit (it called %r)" % new)
+    elif path != PRODUCT_WORKFLOW and ("#7" not in new or "abc" not in new):
+        lost.append("the pull request and commit named in the alert (it called %r)" % new)
     if not more or "issue comment 12" not in more or "issue create" in more or "@Adonis80" not in more:
         lost.append("the open issue added to, never a second opened (it called %r)" % more)
     return lost
@@ -3649,33 +3684,216 @@ ALERT_LOOSENINGS = (
     ("the alert naming nobody", lambda t: t.replace('body="@$OWNER ', 'body="', 1)),
     ("no right to tell him", lambda t: t.replace("  issues: write\n", "", 1)),
 )
+# Each file's own: what its alert must name, or must not.
+ALERT_NAMING = {
+    REVIEW_WORKFLOW: ("the alert not naming the pull request", 'could not read #$PR at \\`$SHA\\`', "could not read a commit"),
+    PRODUCT_WORKFLOW: ("the alert naming the product", "could not read a product's pull request", "could not read $REPO#$PR at $SHA"),
+}
 
 
 def _check_alert(quiet=False):
-    """review.yml tells him when GLM did not read; each loosening refused."""
+    """Both reviewers tell him when GLM did not read; each loosening refused."""
+    bad = 0
+    for path in (REVIEW_WORKFLOW, PRODUCT_WORKFLOW):
+        try:
+            text = _read(path)
+        except OSError as e:
+            print("  alert: %s" % e)
+            return 1
+        lost = alert_faults(text, path)
+        if lost:
+            if not quiet:
+                print("  alert: %s must tell the Chairman when GLM did not read; it has lost %s"
+                      % (path, "; ".join(lost)))
+            bad += 1
+            continue
+        what, was, now = ALERT_NAMING[path]
+        for what, loosen in ALERT_LOOSENINGS + ((what, lambda t: t.replace(was, now, 1)),):
+            changed = loosen(text)
+            if changed == text or not alert_faults(changed, path):
+                if not quiet:
+                    print("  alert: in %s, the loosening '%s' %s" % (path, what, "no longer applies"
+                                                                    if changed == text else "was not refused"))
+                bad += 1
+    if not bad and not quiet:
+        print("ok: when GLM does not read, for any reason but his budget, both reviewers open one issue "
+              "that @-mentions him with the reason or add to the open one, their words through `env:` "
+              "alone; run against a fake gh, and each of %d loosenings refused in each" % (len(ALERT_LOOSENINGS) + 1))
+    return bad
+
+
+# THE PRODUCT'S READ THROUGH GLM, run (#157's first read, advisory). The
+# product reviewer's own `inflight()` and `ask()`, cut from its file, call the
+# real caller against a provider served on this machine, so what a product
+# sends is seen as it arrives: the pinned model, the ask that providers promise
+# not to store or train on it, the prompt, and a spending check that counted
+# both reviewers' reads in flight but its own, and sends nothing on a count it
+# could not make.
+PRODUCT_GLM_LOOSENINGS = (
+    ("the product's own reads in flight not counted", "for w in review.yml review-product.yml; do", "for w in review.yml; do"),
+    ("the reads in flight never given to the caller", 'INFLIGHT="$(inflight)" ', "INFLIGHT=0 "),
+    ("a count not made taken as none", "--jq \".workflow_runs[] | select(.id != ${GITHUB_RUN_ID:-0}) | .id\" 2>/dev/null) || { echo unknown; return; }",
+     "--jq \".workflow_runs[] | select(.id != ${GITHUB_RUN_ID:-0}) | .id\" 2>/dev/null) || { echo 0; return; }"),
+)
+
+
+def product_glm_says(text, runs, weekly):
+    """Run the product's `ask()` on its GLM role against a local provider.
+
+    `runs` maps each workflow to the ids GitHub would say are in progress, or is
+    None for a `gh` that fails. (exit status, subtype, the chat requests the
+    provider received), or None when the block could not be cut or run.
+    """
+    block = [l.strip() for l in text.splitlines() if l.strip().startswith("resolve() {")][:1]
+    funcs = _block(text, lambda l: l == "inflight() {", lambda l: l == 'return "$r"')
+    if not block or not funcs:
+        return None
+    chats = []
+    with open(REGISTRY, encoding="utf-8") as f:
+        reg = json.load(f)
+    pinned = reg["roles"][ORDINARY_ROLE]["model"]
+
+    class Provider(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def _send(self, obj):
+            data = json.dumps(obj).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def do_GET(self):
+            self._send({"data": {"usage_weekly": 0, "limit_remaining": None}})
+
+        def do_POST(self):
+            chats.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
+            self._send({"id": "gen-1", "model": pinned, "usage": {"prompt_tokens": 9, "completion_tokens": 2, "cost": 0.01},
+                        "choices": [{"finish_reason": "stop", "message": {"content": json.dumps(
+                            {"findings": [], "review": "To the CTO. I read it."})}}]})
+
+    with tempfile.TemporaryDirectory() as d:
+        # The registry admits an https provider alone, so this one serves TLS
+        # on a certificate made for the run, trusted by the caller alone.
+        cert, key = os.path.join(d, "cert.pem"), os.path.join(d, "key.pem")
+        try:
+            subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", key, "-out", cert,
+                            "-days", "1", "-subj", "/CN=127.0.0.1", "-addext", "subjectAltName=IP:127.0.0.1"],
+                           capture_output=True, check=True, timeout=60)
+            tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            tls.load_cert_chain(cert, key)
+        except (OSError, subprocess.SubprocessError, ssl.SSLError):
+            return None
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Provider)
+        server.socket = tls.wrap_socket(server.socket, server_side=True)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            p = _product_glm_run(d, server, reg, block, funcs, runs, weekly, cert)
+        finally:
+            server.shutdown()
+            server.server_close()
+    if p is None:
+        return None
+    said = p.stdout.split()
+    if len(said) != 2 or not said[0].startswith("rc="):
+        return None
+    return int(said[0][3:]), said[1], chats
+
+
+def _product_glm_run(d, server, reg, block, funcs, runs, weekly, cert):
+    """The cut block, run in `d` with a fake `gh`; the finished process, or None."""
     try:
-        text = _read(REVIEW_WORKFLOW)
-    except OSError as e:
-        print("  alert: %s" % e)
-        return 1
-    lost = alert_faults(text)
+        regdir = os.path.join(d, "reg")
+        os.mkdir(regdir)
+        for f in (CALLER, RESOLVER):
+            shutil.copy(f, regdir)
+        for prov in reg["providers"].values():
+            if prov.get("interface") == "openai-compatible":
+                prov["base_url"] = "https://127.0.0.1:%d/api/v1" % server.server_address[1]
+        with open(os.path.join(regdir, "registry.json"), "w", encoding="utf-8") as f:
+            json.dump(reg, f)
+        for f, said in (("system.txt", "the brief"), ("prompt.txt", "the product's diff, marked PRODUCT-DIFF")):
+            with open(os.path.join(d, f), "w", encoding="utf-8") as g:
+                g.write(said)
+        bin_ = os.path.join(d, "bin")
+        os.mkdir(bin_)
+        with open(os.path.join(bin_, "gh"), "w", encoding="utf-8") as f:
+            f.write('#!/usr/bin/env bash\n[ -z "$GH_FAILS" ] || exit 1\nq=""; url=""\n'
+                    'while [ $# -gt 0 ]; do case "$1" in --jq) q=$2; shift ;; repos/*) url=$1 ;; esac; shift; done\n'
+                    'w=${url#*/workflows/}; w=${w%%/*}\n'
+                    'jq -n --argjson ids "$(printf "%s" "$RUNS" | jq -c --arg w "$w" ".[\\$w] // []")" '
+                    '"{workflow_runs: [\\$ids[] | {id: .}]}" | jq -r "$q"\n')
+        os.chmod(os.path.join(bin_, "gh"), 0o755)
+        script = "\n".join(["set -uo pipefail", "t=%s reg=%s" % (shlex.quote(d), shlex.quote(regdir)),
+                             "out=$t/resp.json err=$t/err.txt ledger=$t/attempts.jsonl schema='{\"type\":\"object\"}'"]
+                            + block + funcs + ["}", 'r=0; ask "$ROLE" 600 > /dev/null || r=$?',
+                                               'echo "rc=$r"; jq -r ".subtype // \\"answered\\"" "$out"'])
+        env = dict(os.environ, PATH=bin_ + os.pathsep + os.environ.get("PATH", ""), ROLE=ORDINARY_ROLE,
+                   RUNS=json.dumps(runs or {}), GH_FAILS="" if runs is not None else "1",
+                   GITHUB_REPOSITORY="o/r", GITHUB_RUN_ID="99", OPENROUTER_API_KEY="k",
+                   REVIEW_CASH_WEEKLY=str(weekly), NO_PROXY="127.0.0.1", no_proxy="127.0.0.1",
+                   SSL_CERT_FILE=cert)
+        for k in ("HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"):
+            env.pop(k, None)
+        return subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError, ValueError, KeyError):
+        return None
+
+
+def product_glm_faults(text):
+    """What the product's read through GLM has lost, run three ways."""
+    spec = importlib.util.spec_from_file_location("ask", CALLER)
+    ask = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ask)
+    with open(REGISTRY, encoding="utf-8") as f:
+        reg = json.load(f)
+    pinned = reg["roles"][ORDINARY_ROLE]["model"]
+    lim = ask.limits(reg, pinned)
+    # Room for this read and one other in flight, never two.
+    one = ask.RUN_ATTEMPTS * ask.bound(lim, lim["context"])
+    weekly = round(ask.bound(lim, 4000) + 1.5 * one, 2)
+    lost = []
+    sent = product_glm_says(text, {"review.yml": [1], "review-product.yml": [99]}, weekly)
+    if not sent or sent[0] != 0 or sent[1] != "answered" or len(sent[2]) != 1:
+        lost.append("a read sent and answered with one other read in flight (it gave %r)" % (sent,))
+    else:
+        body = sent[2][0]
+        msgs = json.dumps(body.get("messages"))
+        if body.get("model") != pinned \
+                or (body.get("provider") or {}).get("data_collection") != "deny" or "PRODUCT-DIFF" not in msgs:
+            lost.append("the pinned model, the ask not to store or train, and the prompt, in what was sent")
+    for what, runs in (("two others in flight, one in each reviewer", {"review.yml": [1], "review-product.yml": [2, 99]}),
+                       ("a count GitHub did not answer", None)):
+        said = product_glm_says(text, runs, weekly)
+        if not said or said[0] == 0 or said[1] != "budget_refused" or said[2]:
+            lost.append("nothing sent on %s (it gave %r)" % (what, said))
+    return lost
+
+
+def _check_product_glm(quiet=False):
+    """The product reviewer's GLM read, run; each loosening refused."""
+    try:
+        text = _read(PRODUCT_WORKFLOW)
+        lost = product_glm_faults(text)
+    except (OSError, ValueError, KeyError, TypeError, ImportError) as e:
+        lost = ["it could not be run: %s" % e]
     if lost:
-        if not quiet:
-            print("  alert: %s must tell the Chairman when GLM did not read; it has lost %s"
-                  % (REVIEW_WORKFLOW, "; ".join(lost)))
+        print("  product read: %s has lost %s" % (PRODUCT_WORKFLOW, "; ".join(lost)))
         return 1
     bad = 0
-    for what, loosen in ALERT_LOOSENINGS:
-        changed = loosen(text)
-        if changed == text or not alert_faults(changed):
-            if not quiet:
-                print("  alert: the loosening '%s' %s" % (what, "no longer applies" if changed == text
-                                                          else "was not refused"))
+    for what, was, now in PRODUCT_GLM_LOOSENINGS:
+        changed = text.replace(was, now, 1)
+        if changed == text or not product_glm_faults(changed):
+            print("  product read: the loosening '%s' %s" % (what, "no longer applies" if changed == text
+                                                             else "was not refused"))
             bad += 1
     if not bad and not quiet:
-        print("ok: when GLM does not read, for any reason but his budget, review.yml opens one issue "
-              "that @-mentions him with the reason or adds to the open one, its words through `env:` "
-              "alone; run against a fake gh, and each of %d loosenings refused" % len(ALERT_LOOSENINGS))
+        print("ok: a product's read through GLM, run against a local provider, sends the pinned model, "
+              "the ask not to store or train and the prompt; counts both reviewers' reads in flight but "
+              "its own, and sends nothing past the weekly limit or on a count not made; each of %d "
+              "loosenings refused" % len(PRODUCT_GLM_LOOSENINGS))
     return bad
 
 
@@ -5313,6 +5531,7 @@ def _selftest():
     failed += _check_caller_loosenings()
     failed += _check_context()
     failed += _check_alert()
+    failed += _check_product_glm()
     failed += _check_expressions()
     failed += _check_attempt_loosenings()
     failed += _check_more_loosenings()
