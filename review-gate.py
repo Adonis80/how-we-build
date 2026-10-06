@@ -2740,10 +2740,12 @@ def _check_spending(ask, path, quiet=False):
             if got.get("subtype") != sub or bool(chats) != sent or (sub is None and rc != 0):
                 fault("%s answered %s (%s) and %s a request" % (what, rc, got.get("subtype"),
                                                                "sent" if chats else "sent no"))
+            # The request as GLM's endpoints take it (6 October 2026): no
+            # output-token limit and no price limit, which together left OpenRouter
+            # no endpoint to serve #154's read.
             for body in chats:
-                if body.get("max_tokens") != lim["output_tokens"] or (body.get("provider") or {}).get("max_price") != {
-                        "prompt": lim["input_price"], "completion": lim["output_price"]}:
-                    fault("%s was sent without its output-token limit and price limit (%s, %s)"
+                if "max_tokens" in body or "max_price" in (body.get("provider") or {}):
+                    fault("%s was sent with a limit no GLM endpoint serves (%s, %s)"
                           % (what, body.get("max_tokens"), (body.get("provider") or {}).get("max_price")))
             events = ask._events(led)
             if sent and not any(e.get("event") == "reserve" and isinstance(e.get("bound"), float) for e in events):
@@ -3196,8 +3198,8 @@ CALLER_LOOSENINGS = (
     ("the reads in flight taken as none when uncounted", '        others = int(inflight)', '        others = int(inflight) if str(inflight).isdigit() else 0'),
     ("this job's unresolved attempts not reserved", '            reserved += a["bound"]', '            pass'),
     ("a key endpoint's silence taken as headroom", '        return None, "the provider\'s key endpoint did not answer, so the cash settled this week is unknown", ""', '        data = {"limit_remaining": 1000000}'),
-    ("a request sent with no output-token limit", '        body["max_tokens"] = limits["output_tokens"]', '        pass'),
-    ("a request sent with no price limit", '        _set(body, "provider.max_price", {"prompt": limits["input_price"], "completion": limits["output_price"]})', '        pass'),
+    ("a request sent with the output-token limit no endpoint serves", '    _merge(body, provider.get("extra") or {})\n', '    _merge(body, provider.get("extra") or {})\n    body["max_tokens"] = 100000\n'),
+    ("a request sent with the price limit no endpoint serves", '    _merge(body, provider.get("extra") or {})\n', '    _merge(body, provider.get("extra") or {})\n    _set(body, "provider.max_price", {"prompt": 0.5, "completion": 1.7})\n'),
     ("the provider's limit in the body read as an error to fall back on", '        if limited(code, said):', '        if False:'),
     ("the provider's limit over HTTP read as an error to fall back on", '        if e.code == 402 or limited("", said):', '        if False:'),
 )
