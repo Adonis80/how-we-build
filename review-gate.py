@@ -2103,6 +2103,9 @@ ROUTE_REGISTRY = {
     PRODUCT_WORKFLOW: 'reg="$GITHUB_WORKSPACE/model-registry"',
 }
 ROUTE_MAIN = "DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}"
+# The weekly cash limit reaches the caller in both reviewers alike (his
+# condition, 6 October 2026): a product's reads spend the same cash.
+ROUTE_CASH = "REVIEW_CASH_WEEKLY: ${{ secrets.REVIEW_CASH_WEEKLY }}"
 ROUTE_ASK_GUARD = ('case "$effort" in %s) ;; *) printf \'{"is_error":true,"subtype":"no_effort"}\\n\' '
                    '> "$out"; : > "$err"; return 2 ;; esac' % REVIEW_EFFORT)
 ROUTE_FIRST = "fell_back=no"
@@ -2312,6 +2315,8 @@ def route_faults(text, path):
     for line in ROUTE_RESOLVE + (ROUTE_REGISTRY[path], ROUTE_ASK_GUARD, ROUTE_DERIVE):
         if line not in r:
             lost.append("`%s`" % line)
+    if ROUTE_CASH not in r:
+        lost.append("`%s` in the read's environment, so the weekly limit reaches the caller" % ROUTE_CASH)
     if path == REVIEW_WORKFLOW and len(re.findall(r"^\s*DEFAULT_BRANCH:", r, re.M)) != 1 or (
             path == REVIEW_WORKFLOW and ROUTE_MAIN not in r):
         lost.append("`%s` as the one branch the registry is read from" % ROUTE_MAIN)
@@ -2373,6 +2378,7 @@ REVIEW_TAKEN = {
 }
 ROUTE_LOOSENINGS = (
     ("the registry read from the head", REVIEW_WORKFLOW, lambda t: t.replace(ROUTE_REGISTRY[REVIEW_WORKFLOW], 'cp "model-registry/$f" "$reg/$f"', 1)),
+    ("the weekly cash limit kept from the caller", None, lambda t: t.replace("          " + ROUTE_CASH + "\n", "", 1)),
     ("the registry read from the head's branch", REVIEW_WORKFLOW, lambda t: t.replace(ROUTE_MAIN, "DEFAULT_BRANCH: ${{ github.head_ref }}", 1)),
     ("a role the registry cannot resolve read anyway", None, lambda t: t.replace(ROUTE_RESOLVE[0], 'EFFORT=$(resolve "$ROLE" effort) || EFFORT=high', 1)),
     ("an effort the ask never checks", None, lambda t: t.replace(ROUTE_ASK_GUARD, "true", 1)),
@@ -2490,11 +2496,12 @@ def _check_registry():
                   "October 2026)" % (role, got[role]["fallback"]))
     # A PRODUCT'S CODE GOES TO WHICHEVER PROVIDER THE REGISTRY NAMES (his ruling,
     # 6 October 2026), so every provider a request is sent to over the network
-    # refuses to be served by anyone who stores or trains on it.
+    # asks only for providers who promise not to store or train on it: their
+    # promise, not proof (his condition, 6 October 2026).
     for name, prov in sorted((reg.get("providers") or {}).items()):
         if prov.get("interface") == "openai-compatible" and \
                 ((prov.get("extra") or {}).get("provider") or {}).get("data_collection") != "deny":
-            fault("provider %s does not deny data collection, so a product's private code could be "
+            fault("provider %s does not ask for providers who promise not to store or train on it, so a product's private code could be "
                   "stored or trained on by whoever serves it" % name)
     # One edit, one file: the ordinary role moved to another model in a copy of
     # the registry, and nothing else, is what the resolver then answers.
@@ -2739,6 +2746,40 @@ def _check_spending(ask, path, quiet=False):
                                                          and e.get("usage") for e in events):
                 fault("%s: what the provider returned, usage and generation id, was not kept before the answer was "
                       "parsed" % what)
+        # THE REQUEST AS IT WOULD LEAVE (decision 0014, E; his condition, 6 October
+        # 2026): a registry edit that widens what leaves is refused before anything
+        # is sent, not even the key endpoint is called.
+        for what, widen in (
+                ("a provider setting that swaps the model", lambda pr: pr["extra"].update(model="vendor/other")),
+                ("a provider setting that adds a list of models", lambda pr: pr["extra"].update(models=["vendor/other"])),
+                ("a provider that may store or train on the prompt",
+                 lambda pr: pr["extra"]["provider"].update(data_collection="allow")),
+                ("a provider with no data-collection ask", lambda pr: pr["extra"]["provider"].pop("data_collection"))):
+            wide = json.loads(json.dumps(reg))
+            widen(wide["providers"][wide["models"][model]["provider"]])
+            path_ = os.path.join(d, "wide.json")
+            with open(path_, "w", encoding="utf-8") as f:
+                json.dump(wide, f)
+            os.environ.update(OPENROUTER_API_KEY="k", INFLIGHT="0", REVIEW_CASH_WEEKLY="", ATTEMPTS="", ATTEMPT="1",
+                              GITHUB_STEP_SUMMARY=os.path.join(d, "summary"))
+            asked = []
+            urllib.request.urlopen = _fake_net({"/key": {"data": {"limit_remaining": 100}},
+                                                "/chat/completions": good}, asked)
+            sys.stdin = io.StringIO("p")
+            heard = io.StringIO()
+            try:
+                import contextlib
+                with contextlib.redirect_stdout(heard), contextlib.redirect_stderr(io.StringIO()):
+                    rc = ask.main(["ask.py", path_, ORDINARY_ROLE, system, "{}", "60"])
+                got = json.loads(heard.getvalue() or "{}")
+            except Exception as e:  # noqa: BLE001
+                fault("%s made the caller raise %s" % (what, type(e).__name__))
+                continue
+            finally:
+                urllib.request.urlopen, sys.stdin = real_urlopen, real_stdin
+            if asked or rc == 0 or got.get("subtype") != "request_refused":
+                fault("%s was not refused before sending (%d request(s) made, %s)"
+                      % (what, len(asked), got.get("subtype")))
     for k, v in saved.items():
         if v is None:
             os.environ.pop(k, None)
@@ -3180,6 +3221,9 @@ CALLER_LOOSENINGS = (
     ("the reads in flight taken as none when uncounted", '        others = int(inflight)', '        others = int(inflight) if str(inflight).isdigit() else 0'),
     ("this job's unresolved attempts not reserved", '            reserved += a["bound"]', '            pass'),
     ("a key endpoint's silence taken as headroom", '        return None, "the provider\'s key endpoint did not answer, so the cash settled this week is unknown", ""', '        data = {"limit_remaining": 1000000}'),
+    ("the outgoing request never checked", "    stop = outgoing(body, got)\n", "    stop = None\n"),
+    ("the model swap let through", '    if body.get("model") != got["model"]:', '    if False:'),
+    ("the data-collection ask not checked", '    if (body.get("provider") or {}).get("data_collection") != "deny":', '    if False:'),
     ("a request sent with the output-token limit no endpoint serves", '    _merge(body, provider.get("extra") or {})\n', '    _merge(body, provider.get("extra") or {})\n    body["max_tokens"] = 100000\n'),
     ("a request sent with the price limit no endpoint serves", '    _merge(body, provider.get("extra") or {})\n', '    _merge(body, provider.get("extra") or {})\n    _set(body, "provider.max_price", {"prompt": 0.5, "completion": 1.7})\n'),
     ("the provider's limit in the body read as an error to fall back on", '        if limited(code, said):', '        if False:'),

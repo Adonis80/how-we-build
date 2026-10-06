@@ -18,7 +18,7 @@
         "usage": {"include": true},
         "provider": {"require_parameters": true, "data_collection": "deny"}
       },
-      "note": "First provider, not the only one: any OpenAI-compatible endpoint (a LiteLLM proxy, a direct provider) is a new entry here and nothing else. No model list is sent, so OpenRouter never substitutes another model; the caller also refuses an answer from any model but the one pinned. data_collection deny keeps a product's private code off providers that store it.",
+      "note": "First provider, not the only one: any OpenAI-compatible endpoint (a LiteLLM proxy, a direct provider) is a new entry here and nothing else. No model list is sent, so OpenRouter never substitutes another model; the caller also refuses an answer from any model but the one pinned. data_collection deny asks only for providers who promise not to store or train on the prompt: their promise, not proof; ask.py refuses to send a request without it.",
       "checked": "2026-09-25",
       "source": "https://openrouter.ai/docs/api-reference/overview"
     }

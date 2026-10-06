@@ -627,7 +627,8 @@ jobs:
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # A product's code goes to whichever provider the registry names for
-          # the role (his ruling, 6 October 2026), with data collection denied.
+          # the role (his ruling, 6 October 2026), asking only for providers who
+          # promise not to store or train on it: their promise, not proof.
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           REVIEW_CASH_WEEKLY: ${{ secrets.REVIEW_CASH_WEEKLY }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

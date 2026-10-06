@@ -316,6 +316,26 @@ def build(got, provider, system, prompt, schema):
     return body
 
 
+def outgoing(body, got):
+    """Why the request may not leave as built, or None.
+
+    Checked on the body exactly as it would be sent, after the provider's own
+    settings are merged in (decision 0014, E; the Chairman's condition of 6
+    October 2026), so a registry edit cannot widen what leaves: the pinned model
+    and no other, no list of models to substitute, and the ask for providers who
+    promise not to store or train on the prompt. That is the provider's promise,
+    not proof of what it does.
+    """
+    if body.get("model") != got["model"]:
+        return "the request names another model than the one pinned"
+    for k in ("models", "route"):
+        if k in body:
+            return "the request carries %s, which would let the provider serve another model" % k
+    if (body.get("provider") or {}).get("data_collection") != "deny":
+        return "the request does not ask for providers who promise not to store or train on it"
+    return None
+
+
 # THE SPENDING CHECK (decision 0014, D). A read is re-read at most once, so a
 # read in flight elsewhere may yet send this many cash requests.
 RUN_ATTEMPTS = 2
@@ -529,6 +549,7 @@ OUTCOMES = {
     "unreachable": ("unreachable, response lost", True, False),
     "no_credential": ("not sent: no credential", False, True),
     "unresolved": ("not sent: unresolved", False, True),
+    "request_refused": ("not sent: the request failed its check before sending", False, True),
 }
 
 
@@ -718,6 +739,12 @@ def main(argv):
     ledger, attempt = os.environ.get("ATTEMPTS", ""), os.environ.get("ATTEMPT", "")
     lim = limits(reg, got["model"])
     body = build(got, provider, system, sys.stdin.read(), json.loads(schema_json))
+    # THE REQUEST AS IT WOULD LEAVE, checked before anything is sent: no prompt,
+    # and no call to the key endpoint either.
+    stop = outgoing(body, got)
+    if stop:
+        note("refused before sending: %s" % stop)
+        return out({"is_error": True, "subtype": "request_refused", "result": "refused before sending: %s" % stop}, 1)
     data = json.dumps(body).encode("utf-8")
     # THE SPENDING CHECK, before the request and never after (decision 0014, D).
     most, why, basis = admit(got["base_url"], key, lim, len(data), ledger, attempt,
