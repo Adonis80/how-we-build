@@ -66,6 +66,8 @@ permissions:
   pull-requests: write
   # The spending check counts the reads in flight elsewhere (decision 0014, D).
   actions: read
+  # When GLM does not read, the Chairman is told on an issue (his ruling, 6 October 2026).
+  issues: write
 
 # THERE IS DELIBERATELY NO `concurrency:` BLOCK HERE, AND THE BUILD REFUSES ONE.
 #
@@ -504,6 +506,10 @@ jobs:
               echo "the reviewer's allowance is spent"
             elif grep -qiE 'unauthori[sz]ed|\b401\b|\b403\b|invalid.{0,20}(token|key)|oauth' <<< "$said"; then
               echo "the reviewer's credential was refused"
+            elif [ "$sub" = http_error ] || [ "$sub" = provider_error ] || [ "$sub" = unreachable ]; then
+              # The provider's own words, on one line: a refusal says why, so
+              # the fix starts from the reason (his ruling, 6 October 2026).
+              echo "the provider refused the read: $(jq -r '.result // empty' "$out" 2>/dev/null | tr -d '\r\n' | cut -c1-200)"
             elif [ -n "$sub" ]; then
               echo "the read answered '$sub'"
             else
@@ -849,6 +855,32 @@ jobs:
             echo "_is no second reviewer behind this one._"
           } > /tmp/comment.md
           gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -F body=@/tmp/comment.md --silent
+
+      # GLM DOWN, AND HE IS TOLD AT ONCE (his ruling, 6 October 2026: "if GLM is
+      # down, I need you to inform me immediately and the protocol should be that
+      # we figure out why we lost connection to GLM and fix that"). Nothing stands
+      # behind GLM, so a read that did not happen, for any reason but his own
+      # budget, opens one issue that @-mentions him, or adds to the open one, with
+      # the reason the read gave. Everything it says comes in through `env:`.
+      - name: Tell the Chairman the reviewer is down
+        if: steps.read.outcome == 'failure' && !startsWith(steps.read.outputs.why, 'budget refused')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.issue.number }}
+          SHA: ${{ steps.head.outputs.sha }}
+          WHY: ${{ steps.read.outputs.why }}
+          OWNER: ${{ github.repository_owner }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          title="Reviewer down: GLM did not read"
+          body="@$OWNER the reviewer could not read #$PR at \`$SHA\`: ${WHY:-no reason given}. Nothing stands behind GLM, so the commit stays unread until we find why the connection was lost and fix it. Run: $RUN"
+          n=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$n" ]; then
+            gh issue comment "$n" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+          fi
 
   # The badge's verdict is a check run, and whether GitHub starts a workflow for
   # one is a thing this repository has never watched happen. Nothing is built on

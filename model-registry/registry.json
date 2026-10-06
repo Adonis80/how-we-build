@@ -1,6 +1,6 @@
 {
-  "about": "The one place a model is named (decision 0008, issue #103, on the 18 September consensus in juku-library/). Every other file asks for a role. How to ask, inspect and switch: library/model-registry.md. A switch is one edit to this file, reviewed like any other change to the gate, unless the pinned reviewer tool does not know the new model: then the pin moves in both reviewers too, proved first on a full-size read (#130). The reviewer roles are decision 0008's own assignment, except that no reader is the lead's own model: since the Chairman's ruling of 29 September 2026 Sonnet 5.5 at max reads every change GLM does not, and Opus reads nothing; since his ruling of 30 September GLM 5.3 at max reads the risky classes first too, with Sonnet 5.5 at max behind it. Decision 0008's assignment reverses the 22 September pairing that put the open-weight model behind Sonnet as the main backup. The reviewer roles' effort is the Chairman's ruling of 28 September 2026, every read at max. The max-subagent role is what every product's max subagent file is set to, his ruling of the same day (library/max-subagent.md).",
-  "version": "2026-10-05.1",
+  "about": "The one place a model is named (decision 0008, issue #103, on the 18 September consensus in juku-library/). Every other file asks for a role. How to ask, inspect and switch: library/model-registry.md. A switch is one edit to this file, reviewed like any other change to the gate, unless the pinned reviewer tool does not know the new model: then the pin moves in both reviewers too, proved first on a full-size read (#130). The reviewer roles are decision 0008's own assignment, except that no reader is the lead's own model, and since his ruling of 30 September GLM 5.3 at max reads the risky classes too. Since his rulings of 5 and 6 October 2026 only open-weight models review and nothing stands behind GLM: when it does not answer, the commit stays unread, the Chairman is told at once, and the work is to find why the connection to GLM was lost and fix it. The reviewer roles' effort is the Chairman's ruling of 28 September 2026, every read at max. The max-subagent role is what every product's max subagent file is set to, his ruling of the same day (library/max-subagent.md).",
+  "version": "2026-10-06.1",
   "reviewed": "2026-09-25",
   "decision": "https://github.com/Adonis80/how-we-build/issues/103",
   "providers": {
@@ -109,20 +109,14 @@
     "reviewer-main": {
       "model": "z-ai/glm-5.3",
       "effort": "max",
-      "fallback": "reviewer-fallback",
-      "use": "Reads every ordinary change: pages and ordinary code (decision 0008, rule 2)."
+      "fallback": null,
+      "use": "Reads every ordinary change: pages and ordinary code (decision 0008, rule 2). Nothing stands behind it: if it does not answer, the commit stays unread and the Chairman is told."
     },
     "reviewer-risky": {
       "model": "z-ai/glm-5.3",
       "effort": "max",
-      "fallback": "reviewer-fallback",
-      "use": "Reads every change in a risky class, always whole (decision 0008, rule 1), on GLM 5.3 at max with reviewer-fallback behind it (his ruling, 30 September 2026: \"GLM 5.3 at max should also be the lead reviewer for risky changes. Followed by Sonnet 5.5 at max.\"). A product's read speaks claude-code alone, so there its fallback reads. If neither answers, the commit stays unread."
-    },
-    "reviewer-fallback": {
-      "model": "claude-sonnet-5-5",
-      "effort": "max",
       "fallback": null,
-      "use": "Reads an ordinary change when reviewer-main does not answer (decision 0008, rule 2), and a risky one when reviewer-risky does not (his ruling, 30 September 2026), on Sonnet 5.5 at max, the default whenever GLM is not the reader (his ruling, 29 September 2026). If it does not answer either, the commit stays unread."
+      "use": "Reads every change in a risky class, always whole (decision 0008, rule 1), on GLM 5.3 at max (his ruling, 30 September 2026: \"GLM 5.3 at max should also be the lead reviewer for risky changes.\"). Nothing stands behind it (his rulings of 5 and 6 October 2026: \"Sonnet should not be used for a fallback review from now on. Only open weight models should be used as reviews.\" and \"I don't want to have a backup if GLM is down because GLM is currently the only LLM that wins on a cost to price ratio therefore if GLM is down, I need you to inform me immediately and the protocol should be that we figure out why we lost connection to GLM and fix that.\"). If it does not answer, the commit stays unread and the Chairman is told."
     },
     "reviewer-frontend": {
       "model": "moonshotai/kimi-k3",
