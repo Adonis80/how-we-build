@@ -5662,7 +5662,9 @@ def _check_main():
     # canary check runs. The newest canary that ran decides; one skipped or
     # cancelled says nothing.
     canary = lambda c, at="2026-10-06T20:00:00Z": dict(_run(c, app=ACTIONS_APP), name=CANARY_CHECK, completed_at=at)
+    # Both pushes are dated from now, so the cases mean the same whenever they run (#162's read).
     young = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 60))
+    old = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 86400))
     red, green = [("m2", [canary("failure")])], [("m2", [canary("success")])]
     cases += [
         ([{"filename": "review-gate.py"}], [ok], 1, "the canary failed on main at m2",
@@ -5707,7 +5709,7 @@ def _check_main():
             if parts.path.endswith("/files"):
                 body = files if first else []
             elif parts.path == "/repos/o/r/commits":
-                body = [{"sha": s, "commit": {"committer": {"date": young if s.endswith("young") else "2026-10-06T20:00:00Z"}}}
+                body = [{"sha": s, "commit": {"committer": {"date": young if s.endswith("young") else old}}}
                         for s, _ in main_commits]
             elif parts.path.endswith("/check-runs") and head not in parts.path:
                 body = {"check_runs": dict(main_commits)[parts.path.split("/")[-2]] if first else []}
