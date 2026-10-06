@@ -298,8 +298,8 @@ def derive(content, cut=False):
             "findings": shown, "omitted": omitted, "ignored": ["verdict"] if own else []}, None
 
 
-def build(got, provider, system, prompt, schema, limits=None):
-    """The request body for one read; with `limits`, its output-token limit and its price limit too."""
+def build(got, provider, system, prompt, schema):
+    """The request body for one read."""
     body = {
         "model": got["model"],
         "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
@@ -308,11 +308,11 @@ def build(got, provider, system, prompt, schema, limits=None):
     }
     _set(body, provider.get("effort_param") or "reasoning_effort", got["effort"])
     _merge(body, provider.get("extra") or {})
-    if limits:
-        # The most a request can cost is known only if both are set: the
-        # tokens it may write, and the price per million it may be charged.
-        body["max_tokens"] = limits["output_tokens"]
-        _set(body, "provider.max_price", {"prompt": limits["input_price"], "completion": limits["output_price"]})
+    # No output-token limit and no price limit go with the request (6 October
+    # 2026): sent with them, as #153 built it, OpenRouter found no GLM 5.3
+    # endpoint to serve it ("HTTP 404 ... No endpoints found that can handle the
+    # requested parameters", #154's read). The spending check still bounds each
+    # request by the registry's price and output ceiling before it is sent.
     return body
 
 
@@ -742,7 +742,7 @@ def main(argv):
         system = f.read()
     ledger, attempt = os.environ.get("ATTEMPTS", ""), os.environ.get("ATTEMPT", "")
     lim = limits(reg, got["model"])
-    body = build(got, provider, system, sys.stdin.read(), json.loads(schema_json), lim)
+    body = build(got, provider, system, sys.stdin.read(), json.loads(schema_json))
     data = json.dumps(body).encode("utf-8")
     # THE SPENDING CHECK, before the request and never after (decision 0014, D).
     seen = {}
