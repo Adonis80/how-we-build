@@ -60,8 +60,9 @@ for f in $allowed; do
     # the README's index holds it to the list both ways instead (2c).
     library) [ ! -e "$f" ] || [ -d "$f" ] || { echo "FAIL: '$f' is not a directory."; fail=1; } ;;
     # The model registry (decision 0008): the one file that names models, its
-    # resolver and its OpenAI-compatible caller, and nothing else.
-    model-registry) [ -d "$f" ] && [ "$(ls -A model-registry | tr '\n' ' ')" = "ask.py registry.json resolve.py " ] || { echo "FAIL: 'model-registry/' holds ask.py, registry.json and resolve.py, and nothing else."; fail=1; } ;;
+    # resolver, its OpenAI-compatible caller, and the reviewer's context
+    # selector with its partner map (decision 0014), and nothing else.
+    model-registry) [ -d "$f" ] && [ "$(ls -A model-registry | tr '\n' ' ')" = "ask.py context.py registry.json resolve.py " ] || { echo "FAIL: 'model-registry/' holds ask.py, context.py, registry.json and resolve.py, and nothing else."; fail=1; } ;;
     # The product read's rules (decision 0013): the one module that says whether a
     # read is asked for and paid, and nothing else. It is part of the review gate.
     product-reads) [ -d "$f" ] && [ "$(LC_ALL=C ls -A product-reads | tr '\n' ' ')" = "ask.py kit reads.py setup.py " ] && [ "$(LC_ALL=C ls -A product-reads/kit | tr '\n' ' ')" = "AGENTS.starter.md gate.yml review-gate.py roadmap.starter.json verify.yml wake.yml " ] || { echo "FAIL: 'product-reads/' holds ask.py, reads.py, setup.py and kit/ (the starter kit's six files), and nothing else."; fail=1; } ;;
