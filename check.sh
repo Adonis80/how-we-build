@@ -8,7 +8,8 @@
 # model named anywhere but the registry, a review gate that no longer matches the reviewer's answers or has drifted from
 # the workflows that fetch them, a build board that no longer renders as
 # decision 0007 says, and, in a pull request, a commit no reviewer
-# has read clean — unread, or read and left a blocking finding on. Nothing else. A read by anybody the
+# has read clean — unread, or read and left a blocking finding on — or a change to the review
+# machinery while the newest canary on main is red. Nothing else. A read by anybody the
 # gate does not count is unread, not a shape of its own.
 # A third shape, "read clean by a reviewer the rulebook does not allow to
 # clear this change", was real while two vendors were on the register and is
