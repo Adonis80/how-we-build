@@ -91,6 +91,7 @@ it fails the build before a loose rule can pass a commit.
 """
 
 import glob
+import http.server
 import io
 import json
 import importlib.util
@@ -98,11 +99,13 @@ import os
 import re
 import shlex
 import shutil
+import ssl
 import concurrent.futures
 import subprocess
 import sys
 import tempfile
 import textwrap
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -2454,11 +2457,10 @@ def _check_route_loosenings():
 
 
 # THE REGISTRY ITSELF (decision 0008). model-registry/resolve.py checks it whole;
-# this holds what the gate needs of it: the three reviewer roles, each at the
-# one effort every read is owed, reviewer-main and reviewer-risky each with
-# reviewer-fallback behind it and the fallback with none, the fallback on the
-# one interface a product's code may go to, since every product read ends on
-# it, and a switch that is one edit to the one file.
+# this holds what the gate needs of it: the two reviewer roles, each at the
+# one effort every read is owed and with nothing behind it, every networked
+# provider asking for providers who promise not to store or train on what it
+# sends, and a switch that is one edit to the one file.
 def _check_registry():
     bad = 0
 
@@ -3640,7 +3642,8 @@ def alert_says(text, open_issue):
                     'case "$1 $2" in "issue list") printf "%%s" "$OPEN_ISSUE" ;; esac\n' % shlex.quote(log))
         os.chmod(os.path.join(bin_, "gh"), 0o755)
         env = dict(os.environ, PATH=bin_ + os.pathsep + os.environ.get("PATH", ""), OPEN_ISSUE=open_issue,
-                   GITHUB_REPOSITORY="o/r", PR="7", SHA="abc", WHY="the provider refused the read: HTTP 400",
+                   GITHUB_REPOSITORY="o/r", PR="7", SHA="abc", REPO="Adonis80/secret-product",
+                   WHY="the provider refused the read: HTTP 400",
                    OWNER="Adonis80", RUN="https://x/run/1", GH_TOKEN="t")
         try:
             p = subprocess.run(["bash", "-c", body], env=env, capture_output=True, text=True, timeout=30)
@@ -3650,7 +3653,7 @@ def alert_says(text, open_issue):
     return calls if p.returncode == 0 else None
 
 
-def alert_faults(text):
+def alert_faults(text, path=None):
     """What a reviewer has lost of telling him when GLM did not read."""
     lost = []
     step = _alert_step(text)
@@ -3663,6 +3666,12 @@ def alert_faults(text):
     new, more = alert_says(text, ""), alert_says(text, "12")
     if not new or "issue create" not in new or "@Adonis80" not in new or "HTTP 400" not in new:
         lost.append("an issue opened that @-mentions him with the reason, when none is open (it called %r)" % new)
+    # This repository's alert names the pull request and the commit; a
+    # product's names neither, nor the product, this repository being public.
+    elif path == PRODUCT_WORKFLOW and ("secret-product" in new or "#7" in new or "abc" in new):
+        lost.append("an alert that names no product, pull request or commit (it called %r)" % new)
+    elif path != PRODUCT_WORKFLOW and ("#7" not in new or "abc" not in new):
+        lost.append("the pull request and commit named in the alert (it called %r)" % new)
     if not more or "issue comment 12" not in more or "issue create" in more or "@Adonis80" not in more:
         lost.append("the open issue added to, never a second opened (it called %r)" % more)
     return lost
@@ -3675,6 +3684,11 @@ ALERT_LOOSENINGS = (
     ("the alert naming nobody", lambda t: t.replace('body="@$OWNER ', 'body="', 1)),
     ("no right to tell him", lambda t: t.replace("  issues: write\n", "", 1)),
 )
+# Each file's own: what its alert must name, or must not.
+ALERT_NAMING = {
+    REVIEW_WORKFLOW: ("the alert not naming the pull request", 'could not read #$PR at \\`$SHA\\`', "could not read a commit"),
+    PRODUCT_WORKFLOW: ("the alert naming the product", "could not read a product's pull request", "could not read $REPO#$PR at $SHA"),
+}
 
 
 def _check_alert(quiet=False):
@@ -3686,16 +3700,17 @@ def _check_alert(quiet=False):
         except OSError as e:
             print("  alert: %s" % e)
             return 1
-        lost = alert_faults(text)
+        lost = alert_faults(text, path)
         if lost:
             if not quiet:
                 print("  alert: %s must tell the Chairman when GLM did not read; it has lost %s"
                       % (path, "; ".join(lost)))
             bad += 1
             continue
-        for what, loosen in ALERT_LOOSENINGS:
+        what, was, now = ALERT_NAMING[path]
+        for what, loosen in ALERT_LOOSENINGS + ((what, lambda t: t.replace(was, now, 1)),):
             changed = loosen(text)
-            if changed == text or not alert_faults(changed):
+            if changed == text or not alert_faults(changed, path):
                 if not quiet:
                     print("  alert: in %s, the loosening '%s' %s" % (path, what, "no longer applies"
                                                                     if changed == text else "was not refused"))
@@ -3703,7 +3718,182 @@ def _check_alert(quiet=False):
     if not bad and not quiet:
         print("ok: when GLM does not read, for any reason but his budget, both reviewers open one issue "
               "that @-mentions him with the reason or add to the open one, their words through `env:` "
-              "alone; run against a fake gh, and each of %d loosenings refused in each" % len(ALERT_LOOSENINGS))
+              "alone; run against a fake gh, and each of %d loosenings refused in each" % (len(ALERT_LOOSENINGS) + 1))
+    return bad
+
+
+# THE PRODUCT'S READ THROUGH GLM, run (#157's first read, advisory). The
+# product reviewer's own `inflight()` and `ask()`, cut from its file, call the
+# real caller against a provider served on this machine, so what a product
+# sends is seen as it arrives: the pinned model, the ask that providers promise
+# not to store or train on it, the prompt, and a spending check that counted
+# both reviewers' reads in flight but its own, and sends nothing on a count it
+# could not make.
+PRODUCT_GLM_LOOSENINGS = (
+    ("the product's own reads in flight not counted", "for w in review.yml review-product.yml; do", "for w in review.yml; do"),
+    ("the reads in flight never given to the caller", 'INFLIGHT="$(inflight)" ', "INFLIGHT=0 "),
+    ("a count not made taken as none", "--jq \".workflow_runs[] | select(.id != ${GITHUB_RUN_ID:-0}) | .id\" 2>/dev/null) || { echo unknown; return; }",
+     "--jq \".workflow_runs[] | select(.id != ${GITHUB_RUN_ID:-0}) | .id\" 2>/dev/null) || { echo 0; return; }"),
+)
+
+
+def product_glm_says(text, runs, weekly):
+    """Run the product's `ask()` on its GLM role against a local provider.
+
+    `runs` maps each workflow to the ids GitHub would say are in progress, or is
+    None for a `gh` that fails. (exit status, subtype, the chat requests the
+    provider received), or None when the block could not be cut or run.
+    """
+    block = [l.strip() for l in text.splitlines() if l.strip().startswith("resolve() {")][:1]
+    funcs = _block(text, lambda l: l == "inflight() {", lambda l: l == 'return "$r"')
+    if not block or not funcs:
+        return None
+    chats = []
+    with open(REGISTRY, encoding="utf-8") as f:
+        reg = json.load(f)
+    pinned = reg["roles"][ORDINARY_ROLE]["model"]
+
+    class Provider(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def _send(self, obj):
+            data = json.dumps(obj).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def do_GET(self):
+            self._send({"data": {"usage_weekly": 0, "limit_remaining": None}})
+
+        def do_POST(self):
+            chats.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
+            self._send({"id": "gen-1", "model": pinned, "usage": {"prompt_tokens": 9, "completion_tokens": 2, "cost": 0.01},
+                        "choices": [{"finish_reason": "stop", "message": {"content": json.dumps(
+                            {"findings": [], "review": "To the CTO. I read it."})}}]})
+
+    with tempfile.TemporaryDirectory() as d:
+        # The registry admits an https provider alone, so this one serves TLS
+        # on a certificate made for the run, trusted by the caller alone.
+        cert, key = os.path.join(d, "cert.pem"), os.path.join(d, "key.pem")
+        try:
+            subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", key, "-out", cert,
+                            "-days", "1", "-subj", "/CN=127.0.0.1", "-addext", "subjectAltName=IP:127.0.0.1"],
+                           capture_output=True, check=True, timeout=60)
+            tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            tls.load_cert_chain(cert, key)
+        except (OSError, subprocess.SubprocessError, ssl.SSLError):
+            return None
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Provider)
+        server.socket = tls.wrap_socket(server.socket, server_side=True)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            p = _product_glm_run(d, server, reg, block, funcs, runs, weekly, cert)
+        finally:
+            server.shutdown()
+            server.server_close()
+    if p is None:
+        return None
+    said = p.stdout.split()
+    if len(said) != 2 or not said[0].startswith("rc="):
+        return None
+    return int(said[0][3:]), said[1], chats
+
+
+def _product_glm_run(d, server, reg, block, funcs, runs, weekly, cert):
+    """The cut block, run in `d` with a fake `gh`; the finished process, or None."""
+    try:
+        regdir = os.path.join(d, "reg")
+        os.mkdir(regdir)
+        for f in (CALLER, RESOLVER):
+            shutil.copy(f, regdir)
+        for prov in reg["providers"].values():
+            if prov.get("interface") == "openai-compatible":
+                prov["base_url"] = "https://127.0.0.1:%d/api/v1" % server.server_address[1]
+        with open(os.path.join(regdir, "registry.json"), "w", encoding="utf-8") as f:
+            json.dump(reg, f)
+        for f, said in (("system.txt", "the brief"), ("prompt.txt", "the product's diff, marked PRODUCT-DIFF")):
+            with open(os.path.join(d, f), "w", encoding="utf-8") as g:
+                g.write(said)
+        bin_ = os.path.join(d, "bin")
+        os.mkdir(bin_)
+        with open(os.path.join(bin_, "gh"), "w", encoding="utf-8") as f:
+            f.write('#!/usr/bin/env bash\n[ -z "$GH_FAILS" ] || exit 1\nq=""; url=""\n'
+                    'while [ $# -gt 0 ]; do case "$1" in --jq) q=$2; shift ;; repos/*) url=$1 ;; esac; shift; done\n'
+                    'w=${url#*/workflows/}; w=${w%%/*}\n'
+                    'jq -n --argjson ids "$(printf "%s" "$RUNS" | jq -c --arg w "$w" ".[\\$w] // []")" '
+                    '"{workflow_runs: [\\$ids[] | {id: .}]}" | jq -r "$q"\n')
+        os.chmod(os.path.join(bin_, "gh"), 0o755)
+        script = "\n".join(["set -uo pipefail", "t=%s reg=%s" % (shlex.quote(d), shlex.quote(regdir)),
+                             "out=$t/resp.json err=$t/err.txt ledger=$t/attempts.jsonl schema='{\"type\":\"object\"}'"]
+                            + block + funcs + ["}", 'r=0; ask "$ROLE" 600 > /dev/null || r=$?',
+                                               'echo "rc=$r"; jq -r ".subtype // \\"answered\\"" "$out"'])
+        env = dict(os.environ, PATH=bin_ + os.pathsep + os.environ.get("PATH", ""), ROLE=ORDINARY_ROLE,
+                   RUNS=json.dumps(runs or {}), GH_FAILS="" if runs is not None else "1",
+                   GITHUB_REPOSITORY="o/r", GITHUB_RUN_ID="99", OPENROUTER_API_KEY="k",
+                   REVIEW_CASH_WEEKLY=str(weekly), NO_PROXY="127.0.0.1", no_proxy="127.0.0.1",
+                   SSL_CERT_FILE=cert)
+        for k in ("HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"):
+            env.pop(k, None)
+        return subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError, ValueError, KeyError):
+        return None
+
+
+def product_glm_faults(text):
+    """What the product's read through GLM has lost, run three ways."""
+    spec = importlib.util.spec_from_file_location("ask", CALLER)
+    ask = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ask)
+    with open(REGISTRY, encoding="utf-8") as f:
+        reg = json.load(f)
+    pinned = reg["roles"][ORDINARY_ROLE]["model"]
+    lim = ask.limits(reg, pinned)
+    # Room for this read and one other in flight, never two.
+    one = ask.RUN_ATTEMPTS * ask.bound(lim, lim["context"])
+    weekly = round(ask.bound(lim, 4000) + 1.5 * one, 2)
+    lost = []
+    sent = product_glm_says(text, {"review.yml": [1], "review-product.yml": [99]}, weekly)
+    if not sent or sent[0] != 0 or sent[1] != "answered" or len(sent[2]) != 1:
+        lost.append("a read sent and answered with one other read in flight (it gave %r)" % (sent,))
+    else:
+        body = sent[2][0]
+        msgs = json.dumps(body.get("messages"))
+        if body.get("model") != pinned \
+                or (body.get("provider") or {}).get("data_collection") != "deny" or "PRODUCT-DIFF" not in msgs:
+            lost.append("the pinned model, the ask not to store or train, and the prompt, in what was sent")
+    for what, runs in (("two others in flight, one in each reviewer", {"review.yml": [1], "review-product.yml": [2, 99]}),
+                       ("a count GitHub did not answer", None)):
+        said = product_glm_says(text, runs, weekly)
+        if not said or said[0] == 0 or said[1] != "budget_refused" or said[2]:
+            lost.append("nothing sent on %s (it gave %r)" % (what, said))
+    return lost
+
+
+def _check_product_glm(quiet=False):
+    """The product reviewer's GLM read, run; each loosening refused."""
+    try:
+        text = _read(PRODUCT_WORKFLOW)
+        lost = product_glm_faults(text)
+    except (OSError, ValueError, KeyError, TypeError, ImportError) as e:
+        lost = ["it could not be run: %s" % e]
+    if lost:
+        print("  product read: %s has lost %s" % (PRODUCT_WORKFLOW, "; ".join(lost)))
+        return 1
+    bad = 0
+    for what, was, now in PRODUCT_GLM_LOOSENINGS:
+        changed = text.replace(was, now, 1)
+        if changed == text or not product_glm_faults(changed):
+            print("  product read: the loosening '%s' %s" % (what, "no longer applies" if changed == text
+                                                             else "was not refused"))
+            bad += 1
+    if not bad and not quiet:
+        print("ok: a product's read through GLM, run against a local provider, sends the pinned model, "
+              "the ask not to store or train and the prompt; counts both reviewers' reads in flight but "
+              "its own, and sends nothing past the weekly limit or on a count not made; each of %d "
+              "loosenings refused" % len(PRODUCT_GLM_LOOSENINGS))
     return bad
 
 
@@ -5341,6 +5531,7 @@ def _selftest():
     failed += _check_caller_loosenings()
     failed += _check_context()
     failed += _check_alert()
+    failed += _check_product_glm()
     failed += _check_expressions()
     failed += _check_attempt_loosenings()
     failed += _check_more_loosenings()

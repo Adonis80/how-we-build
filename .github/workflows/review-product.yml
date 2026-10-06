@@ -886,8 +886,8 @@ jobs:
           # fails at leaves an answer with no verdict, never the model's own
           # word. The code is main's, never the head's, and makes no request.
           derive() { python3 "$reg/ask.py" derive "$out" || printf '{"is_error":true,"subtype":"not_derived"}\n' > "$out"; }
-          # A budget refusal parks, for review.yml's reason; a product's read
-          # spends no cash today, so it is held here only to stay one block.
+          # A budget refusal parks, for review.yml's reason: a product's read
+          # spends from the same weekly limit as this repository's.
           refused() { case "$(jq -r '.subtype // empty' "$out" 2>/dev/null || true)" in budget_refused|provider_limit) return 0 ;; esac; return 1; }
           # What the read cost, for review.yml's reason: numbers alone reach
           # this log and the verdict. The spend line is review.yml's, and names
