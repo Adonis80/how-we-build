@@ -747,6 +747,10 @@ jobs:
               echo "the reviewer's allowance is spent"
             elif grep -qiE 'unauthori[sz]ed|\b401\b|\b403\b|invalid.{0,20}(token|key)|oauth' <<< "$said"; then
               echo "the reviewer's credential was refused"
+            elif [ "$sub" = http_error ] || [ "$sub" = provider_error ] || [ "$sub" = unreachable ]; then
+              # The provider's own words, on one line: a refusal says why, so
+              # the fix starts from the reason (his ruling, 6 October 2026).
+              echo "the provider refused the read: $(jq -r '.result // empty' "$out" 2>/dev/null | tr -d '\r\n' | cut -c1-200)"
             elif [ -n "$sub" ]; then
               echo "the read answered '$sub'"
             else
