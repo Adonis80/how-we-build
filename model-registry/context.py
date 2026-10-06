@@ -34,14 +34,10 @@ INDEX = ("README.md", "Where each topic lives")
 # decision issues, and AGENTS.md is the reviewer's own brief, given from main.
 NOT_NAMING = ("juku-library/*", "AGENTS.md")
 # THE PARTNER MAP: files whose correctness depends on each other, read together
-# whichever one a change touches. `path::name,name` gives those top-level
-# functions only; `path#Heading` that section only. A starting bundle, never a
-# boundary: what it misses, the reader names.
+# whichever one a change touches. `path#Heading` gives that section only. A
+# starting bundle, never a boundary: what it misses, the reader names. An entry
+# only risky files can bring is none: a risky read is given every file whole.
 PARTNERS = (
-    (".github/workflows/review*.yml",
-     ["review-gate.py::read_faults,class_faults,pages_says,route_says,route_faults,sign_says,why_says,"
-      "deadline_says,attempts_say,recovery_says"]),
-    ("model-registry/*", ["model-registry/registry.json", "model-registry/resolve.py", "model-registry/ask.py"]),
     ("check.sh", ["library/rulebook-files.md"]),
     ("HOW-WE-BUILD.md", ["check.sh"]),
     ("library/changing-the-rulebook.md", ["check.sh"]),
@@ -72,18 +68,6 @@ def section(text, heading):
                     return "".join(lines[i:j])
             return "".join(lines[i:])
     return None
-
-
-def functions(text, names):
-    """The named top-level functions of a Python file, each through to the next top-level line."""
-    lines, out, keep = text.splitlines(keepends=True), [], False
-    for line in lines:
-        if line and not line[0].isspace() and not line.startswith("#"):
-            m = re.match(r"def\s+(\w+)", line)
-            keep = bool(m and m.group(1) in names)
-        if keep:
-            out.append(line)
-    return "".join(out) or None
 
 
 def hunks(diff, path):
@@ -149,7 +133,7 @@ def partners(touched, tree, diff):
         if any(fnmatch.fnmatchcase(t, pattern) for t in touched):
             out.extend(theirs)
         for t in touched:
-            if t not in [p.split("::")[0].split("#")[0] for p in theirs]:
+            if t not in [p.split("#")[0] for p in theirs]:
                 continue
             matched = [f for f in tree if fnmatch.fnmatchcase(f, pattern)]
             if any(c in pattern for c in "*?["):
@@ -198,15 +182,11 @@ def select(cls, tree, changed, diff, read=_read):
                 give_part(f, "hunks", "%s, the sections the change touches only (of %d bytes)"
                           % (f, len(text.encode("utf-8"))), widened(text, f, hunks(diff, f)))
         for p in partners(touched, tree, diff):
-            name, _, names = p.partition("::")
-            name, _, heading = name.partition("#")
+            name, _, heading = p.partition("#")
             if name not in tree:
                 continue
             text = read(name)
-            if names:
-                give_part(name, "::" + names, "%s, the functions %s only" % (name, names.replace(",", ", ")),
-                          functions(text or "", names.split(",")))
-            elif heading:
+            if heading:
                 give_part(name, "#" + heading, '%s, its section "%s" only' % (name, heading),
                           section(text or "", heading))
             else:

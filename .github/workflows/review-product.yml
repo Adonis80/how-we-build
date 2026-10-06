@@ -920,6 +920,9 @@ jobs:
             # shellcheck disable=SC2086
             if [ -n "$needed" ] && [ "$left" -ge 60 ] && more $needed; then
               echo "short of context; reading once more on $role with $(printf '%s' "$needed" | wc -w) file(s)"
+              # The bytes the re-read was sent, the named files with them, so the
+              # spend line counts what the second look carried.
+              read_bytes=$(cat "$t/prompt.txt" "$t/system.txt" | wc -c)
               cp "$out" "$out.first"
               rc=0
               ask "$role" "$left" || rc=$?

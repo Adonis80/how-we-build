@@ -336,8 +336,10 @@ def outgoing(body, got):
     return None
 
 
-# THE SPENDING CHECK (decision 0014, D). A read is re-read at most once, so a
-# read in flight elsewhere may yet send this many cash requests.
+# THE SPENDING CHECK (decision 0014, D). A read in flight elsewhere may yet
+# send this many cash requests: the role's, and the one re-read of an answer
+# that came back short. Nothing stands behind the role since #156, so there is
+# no fallback's. review-gate.py holds it to the most today's route sends.
 RUN_ATTEMPTS = 2
 # Tokens a request's framing adds beyond its bytes: a token is at least a byte.
 FRAMING_TOKENS = 1000
@@ -366,8 +368,13 @@ def admit(base_url, key, lim, body_bytes, ledger, attempt, weekly, inflight, fet
     Settled cash this week comes from the provider's own key endpoint; in-flight
     reservations are this job's unresolved cash attempts at their bounds, and
     every other read in flight at the most a read can send; then this request's
-    bound. All of it must fit under the weekly limit, when it is set, and the
-    key's own remaining limit, when the key has one. Unknown anything is no call.
+    bound. This job's finished cash attempts are counted too, at their cost (or
+    bound, if none came back), and in full: a rise in the provider's figure may
+    be another job's, and nothing it reports ties a rise to this job's own
+    requests, so none is credited. A request already shown is counted twice
+    for the rest of the job, which errs toward refusing. All of it must fit
+    under the weekly limit, when it is set, and the key's own remaining limit,
+    when the key has one. Unknown anything is no call.
     """
     fetch = fetch or urllib.request.urlopen
     if lim is None:
@@ -380,11 +387,19 @@ def admit(base_url, key, lim, body_bytes, ledger, attempt, weekly, inflight, fet
     except (TypeError, ValueError):
         return None, "the reads in flight elsewhere could not be counted, so the headroom is unknown", ""
     reserved = others * RUN_ATTEMPTS * bound(lim, lim["context"])
+    finished = 0.0
     for a in attempts(ledger):
-        if a["attempt"] != str(attempt) and a.get("billing") == "cash" and a["unresolved"]:
+        if a["attempt"] == str(attempt) or a.get("billing") != "cash" or not a.get("sent", True):
+            continue
+        if a["unresolved"]:
             if not _number(a.get("bound")):
                 return None, "an earlier attempt in this job is unresolved with no bound, so the headroom is unknown", ""
             reserved += a["bound"]
+            continue
+        cost = a["cost"] if _number(a.get("cost")) else a.get("bound")
+        if not _number(cost):
+            return None, "an earlier attempt in this job finished with no cost and no bound, so the headroom is unknown", ""
+        finished += cost
     try:
         req = urllib.request.Request(base_url.rstrip("/") + "/key", headers={"Authorization": "Bearer " + key})
         with fetch(req, timeout=30) as r:
@@ -403,12 +418,12 @@ def admit(base_url, key, lim, body_bytes, ledger, attempt, weekly, inflight, fet
             return None, "the weekly limit is set but is not a positive amount", ""
         if not _number(data.get("usage_weekly")):
             return None, "the provider did not say what was spent this week", ""
-        caps.append(limit - data["usage_weekly"])
+        caps.append(limit - data["usage_weekly"] - finished)
         basis.append("the week's spend the provider reported against the weekly limit")
     if data.get("limit_remaining") is not None:
         if not isinstance(data["limit_remaining"], (int, float)) or isinstance(data["limit_remaining"], bool):
             return None, "the provider's remaining limit is not an amount", ""
-        caps.append(data["limit_remaining"])
+        caps.append(data["limit_remaining"] - finished)
         basis.append("the key's own remaining limit")
     if not caps:
         return None, "no weekly limit is set and the key has no limit of its own, so the headroom is unknown", ""
