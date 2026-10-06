@@ -97,6 +97,7 @@ import json
 import importlib.util
 import os
 import re
+import shlex
 import shutil
 import concurrent.futures
 import subprocess
@@ -1289,6 +1290,12 @@ WHY_CASES = (
     # credit (decision 0014, D): it parks the slice and is no model's refusal.
     (1, "", '{"is_error":true,"subtype":"budget_refused","result":"budget refused: no credit"}', "budget refused"),
     (1, "", '{"is_error":true,"subtype":"provider_limit","result":"Insufficient credits"}', "budget refused"),
+    # A provider's refusal says why, on one line (his ruling, 6 October 2026: GLM
+    # refused #154's read in a second and the reason was lost).
+    (1, "", '{"is_error":true,"subtype":"http_error","result":"HTTP 400 from openrouter: max_tokens is too large"}',
+     "the provider refused the read: HTTP 400 from openrouter: max_tokens is too large"),
+    (1, "", '{"is_error":true,"subtype":"http_error","result":"HTTP 404 from openrouter:\\nno endpoint\\nverdict=clean"}',
+     "the provider refused the read: HTTP 404 from openrouter:no endpointverdict=clean"),
     (0, "", '{"subtype":"error_max_turns"}', "the read answered 'error_max_turns'"),
     # A subtype is the tool's to write, and the reason is written to
     # $GITHUB_OUTPUT: a line break in it would be a second output of its own.
@@ -2515,7 +2522,10 @@ def _check_registry():
         return bad
     for f in resolve.check(reg):
         fault(f)
-    owed = ((ORDINARY_ROLE, True), (FALLBACK_ROLE, False), (RISKY_ROLE, True))
+    # NOTHING STANDS BEHIND A REVIEWER (his rulings, 5 and 6 October 2026): only
+    # open-weight models review, and when GLM does not answer the commit stays
+    # unread and he is told, so no reviewer role names a fallback.
+    owed = ((ORDINARY_ROLE, False), (RISKY_ROLE, False))
     got = {}
     for role, falls in owed:
         try:
@@ -2527,29 +2537,22 @@ def _check_registry():
             fault("%s reads at %r; every read is owed %s, on an effort its model is known to take"
                   % (role, got[role]["effort"], REVIEW_EFFORT))
         if bool(got[role]["fallback"]) != falls:
-            fault("%s %s" % (role, "has no fallback, so an outage parks every change it reads"
-                             if falls else "falls back to %r; nothing may stand behind it"
-                             % got[role]["fallback"]))
-    for role in (ORDINARY_ROLE, RISKY_ROLE):
-        if got.get(role, {}).get("fallback") not in (None, "", FALLBACK_ROLE):
-            fault("%s falls back to %r, not %s" % (role, got[role]["fallback"], FALLBACK_ROLE))
-    # A product's read speaks claude-code alone, so the fallback is the reader
-    # every product read ends on.
-    if FALLBACK_ROLE in got and got[FALLBACK_ROLE]["interface"] != "claude-code":
-        fault("%s is served through %s; a product's read speaks claude-code alone, so it would "
-              "have no reader" % (FALLBACK_ROLE, got[FALLBACK_ROLE]["interface"]))
+            fault("%s falls back to %r; nothing may stand behind a reviewer (his rulings, 5 and 6 "
+                  "October 2026)" % (role, got[role]["fallback"]))
     # One edit, one file: the ordinary role moved to another model in a copy of
     # the registry, and nothing else, is what the resolver then answers.
-    if ORDINARY_ROLE in got and FALLBACK_ROLE in got:
+    other = next((m for m in sorted(reg.get("models") or {}) if ORDINARY_ROLE in got
+                  and m != got[ORDINARY_ROLE]["model"]), None)
+    if ORDINARY_ROLE in got and other:
         moved = json.loads(json.dumps(reg))
-        moved["roles"][ORDINARY_ROLE]["model"] = got[FALLBACK_ROLE]["model"]
+        moved["roles"][ORDINARY_ROLE]["model"] = other
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "registry.json")
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(moved, f)
             p = subprocess.run([sys.executable, RESOLVER, path, ORDINARY_ROLE, "model"],
                                capture_output=True, text=True, timeout=30)
-        if p.returncode != 0 or p.stdout.strip() != got[FALLBACK_ROLE]["model"]:
+        if p.returncode != 0 or p.stdout.strip() != other:
             fault("a switch of %s's model in the registry alone did not switch what it resolves "
                   "to (it said %r)" % (ORDINARY_ROLE, p.stdout.strip() or p.stderr.strip()))
     # And a role nobody defined, or a registry that names a blocked model, fails
@@ -2565,9 +2568,9 @@ def _check_registry():
         except resolve.Unresolved:
             pass
     if not bad:
-        print("ok: the registry resolves %s and %s, each with %s behind it, all three at %s; a "
+        print("ok: the registry resolves %s and %s, both at %s with nothing behind them; a "
               "switch is one edit to %s, and an unknown role or a blocked model fails closed"
-              % (ORDINARY_ROLE, RISKY_ROLE, FALLBACK_ROLE, REVIEW_EFFORT, REGISTRY))
+              % (ORDINARY_ROLE, RISKY_ROLE, REVIEW_EFFORT, REGISTRY))
     return bad
 
 
@@ -3660,6 +3663,108 @@ def _check_brief(path="AGENTS.md", quiet=False):
         print("  brief: %s's Review guidelines do not name %s, which the schema asks for" % (path, missing)
               if missing else "ok: %s's Review guidelines name every severity the schema asks for" % path)
     return 1 if missing else 0
+
+
+# GLM DOWN, AND HE IS TOLD AT ONCE (his ruling, 6 October 2026). Nothing stands
+# behind GLM, so a read that did not happen, for any reason but his own budget,
+# opens one issue that @-mentions him or adds to the open one. Held by running
+# the step's own script against a fake `gh`.
+ALERT_STEP = "Tell the Chairman the reviewer is down"
+ALERT_IF = "if: steps.read.outcome == 'failure' && !startsWith(steps.read.outputs.why, 'budget refused')"
+
+
+def _alert_step(text):
+    """The alert step's text, to the next step or the end of its job."""
+    span = _step_span(text, ALERT_STEP)
+    if not span:
+        return ""
+    step = text[span[0]:span[1]]
+    end = re.search(r"^ {0,3}\S", step[1:], re.M)
+    return step[:end.start() + 1] if end else step
+
+
+def alert_says(text, open_issue):
+    """Run the alert step's script with a fake `gh`. The calls it made, or None."""
+    step = _alert_step(text)
+    if not step:
+        return None
+    lines = step.splitlines()
+    at = next((i for i, l in enumerate(lines) if l.strip() == "run: |"), None)
+    if at is None:
+        return None
+    body = textwrap.dedent("\n".join(lines[at + 1:]))
+    with tempfile.TemporaryDirectory() as d:
+        bin_ = os.path.join(d, "bin")
+        os.mkdir(bin_)
+        log = os.path.join(d, "calls")
+        with open(os.path.join(bin_, "gh"), "w", encoding="utf-8") as f:
+            f.write('#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> %s\n'
+                    'case "$1 $2" in "issue list") printf "%%s" "$OPEN_ISSUE" ;; esac\n' % shlex.quote(log))
+        os.chmod(os.path.join(bin_, "gh"), 0o755)
+        env = dict(os.environ, PATH=bin_ + os.pathsep + os.environ.get("PATH", ""), OPEN_ISSUE=open_issue,
+                   GITHUB_REPOSITORY="o/r", PR="7", SHA="abc", WHY="the provider refused the read: HTTP 400",
+                   OWNER="Adonis80", RUN="https://x/run/1", GH_TOKEN="t")
+        try:
+            p = subprocess.run(["bash", "-c", body], env=env, capture_output=True, text=True, timeout=30)
+            calls = open(log, encoding="utf-8").read() if os.path.exists(log) else ""
+        except (OSError, subprocess.SubprocessError):
+            return None
+    return calls if p.returncode == 0 else None
+
+
+def alert_faults(text):
+    """What review.yml has lost of telling him when GLM did not read."""
+    lost = []
+    step = _alert_step(text)
+    if ALERT_IF not in step:
+        lost.append("a step `%s`, `%s`" % (ALERT_STEP, ALERT_IF))
+    if not re.search(r"^  issues: write$", text, re.M):
+        lost.append("`issues: write`, to tell him")
+    if "${{" in step.split("run: |", 1)[-1]:
+        lost.append("everything the alert says brought in through `env:`, none in its script")
+    new, more = alert_says(text, ""), alert_says(text, "12")
+    if not new or "issue create" not in new or "@Adonis80" not in new or "HTTP 400" not in new or "#7" not in new:
+        lost.append("an issue opened that @-mentions him with the reason, when none is open (it called %r)" % new)
+    if not more or "issue comment 12" not in more or "issue create" in more or "@Adonis80" not in more:
+        lost.append("the open issue added to, never a second opened (it called %r)" % more)
+    return lost
+
+
+ALERT_LOOSENINGS = (
+    ("the alert on a budget refusal too", lambda t: t.replace(ALERT_IF, "if: steps.read.outcome == 'failure'", 1)),
+    ("the alert never sent", lambda t: _without_step(t, ALERT_STEP)),
+    ("a second issue opened beside the open one", lambda t: t.replace('          if [ -n "$n" ]; then', '          if false; then', 1)),
+    ("the alert naming nobody", lambda t: t.replace('body="@$OWNER ', 'body="', 1)),
+    ("no right to tell him", lambda t: t.replace("  issues: write\n", "", 1)),
+)
+
+
+def _check_alert(quiet=False):
+    """review.yml tells him when GLM did not read; each loosening refused."""
+    try:
+        text = _read(REVIEW_WORKFLOW)
+    except OSError as e:
+        print("  alert: %s" % e)
+        return 1
+    lost = alert_faults(text)
+    if lost:
+        if not quiet:
+            print("  alert: %s must tell the Chairman when GLM did not read; it has lost %s"
+                  % (REVIEW_WORKFLOW, "; ".join(lost)))
+        return 1
+    bad = 0
+    for what, loosen in ALERT_LOOSENINGS:
+        changed = loosen(text)
+        if changed == text or not alert_faults(changed):
+            if not quiet:
+                print("  alert: the loosening '%s' %s" % (what, "no longer applies" if changed == text
+                                                          else "was not refused"))
+            bad += 1
+    if not bad and not quiet:
+        print("ok: when GLM does not read, for any reason but his budget, review.yml opens one issue "
+              "that @-mentions him with the reason or adds to the open one, its words through `env:` "
+              "alone; run against a fake gh, and each of %d loosenings refused" % len(ALERT_LOOSENINGS))
+    return bad
 
 
 CONTEXT_LOOSENINGS = (
@@ -5298,6 +5403,7 @@ def _selftest():
     failed += _check_caller_loosenings()
     failed += _check_context()
     failed += _check_brief()
+    failed += _check_alert()
     failed += _check_expressions()
     failed += _check_attempt_loosenings()
     failed += _check_more_loosenings()
