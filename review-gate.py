@@ -1525,6 +1525,33 @@ RISK_ORDINARY = ("*.js|*.mjs|*.cjs|*.jsx|*.ts|*.tsx|*.py|*.html|*.css|*.scss|*.j
 RISK_UNKNOWN = "*) risky=yes ;;"
 RISK_ARMS = (RISK_GATE, "*.md) ;;", RISK_PRICING, RISK_DATA, RISK_SIGN_IN, RISK_PERSONAL,
              RISK_SECRETS, RISK_BOUNDARY, RISK_RELEASE, RISK_ORDINARY, RISK_UNKNOWN)
+
+
+def risky(path):
+    """Whether a file is in a risky class: the arms both reviewers try, in their order (RISK_ARMS)."""
+    p = path.lower()
+    for arm in RISK_ARMS:
+        names, _, then = arm.partition(")")
+        if any(fnmatch.fnmatchcase(p, n) for n in names.split("|")):
+            return "risky=yes" in then
+    return True
+
+
+# The canary's check run, as `.github/workflows/canary.yml` names a plain one,
+# and how far back main's commits are asked for the newest that ran.
+CANARY_CHECK = "canary"
+CANARY_LOOKBACK = 30
+
+
+def machinery(paths):
+    """Whether a change touches the review machinery: a gate file, or any file in a risky class.
+
+    The canary runs after a merge that does, and the check holds every pull
+    request that does while the newest canary on main is red.
+    """
+    return bool(touches_the_gate(paths)) or any(risky(p) for p in paths)
+
+
 CLASS_RISKY = '[ "$risky" = no ] || class=risky'
 CLASS_ROLE = ('case "$class" in words|code) role=%s ;; *) role=%s ;; esac'
               % (ORDINARY_ROLE, RISKY_ROLE))
@@ -3687,6 +3714,252 @@ def _check_expressions(quiet=False):
     return bad
 
 
+# THE MONITOR (decision 0014's recovery, agreed with Astra, 6 October 2026): a
+# review ask never disappears silently. Its shell is lifted out of monitor.yml
+# whole and RUN against a fake `gh` and a short clock, on each way a read can
+# be lost — this incident's two among them — and on the ways it is not.
+MONITOR_WORKFLOW = ".github/workflows/monitor.yml"
+CANARY_WORKFLOW = ".github/workflows/canary.yml"
+MONITOR_CASES = (
+    # what, the review.yml runs since the ask (id, status, job count, review job), the
+    # badge's check runs, an open Reviewer-down issue and what it says, and what must follow
+    ("review.yml over GitHub's limit: its run fails with no jobs (5 October, #154)",
+     [(1, "completed", 0, None)], [], "", "", "could not load"),
+    ("the provider refusing the request's parameters (6 October, #154's read of 71f72f6)",
+     [(1, "completed", 1, "success")],
+     [("neutral", "Did not read: the provider refused the read: HTTP 404 from openrouter: No endpoints "
+                  "found that can handle the requested parameters.")], "", "", "HTTP 404"),
+    ("the same refusal, which review.yml has already told him of",
+     [(1, "completed", 1, "success")],
+     [("neutral", "Did not read: the provider refused the read: HTTP 404")], "12",
+     "@Adonis80 the reviewer could not read #7 at `abc`: the provider refused", None),
+    ("no run of review.yml at all", [], [], "", "", "no run of review.yml began"),
+    ("a run whose review job was skipped", [(1, "completed", 1, "skipped")], [], "", "",
+     "no run of review.yml began"),
+    ("a read started that never signed", [(1, "in_progress", 1, None)], [], "12", "", "had no verdict"),
+    ("a clean verdict from another app, which is no verdict", [(1, "in_progress", 1, None)],
+     [("success", "No findings", 1)], "", "", "had no verdict"),
+    ("a read signed clean", [(1, "completed", 1, "success")], [("success", "No findings")], "", "", None),
+    ("a read signed blocking", [(1, "completed", 1, "success")], [("failure", "Blocking findings")], "", "", None),
+    ("a read the budget parked, which is his own limit and not an outage", [(1, "completed", 1, "success")],
+     [("neutral", "Did not read: budget refused: the cash limit admits no read now, so the slice parks")],
+     "", "", None),
+)
+
+
+def monitor_says(text, runs, checks, open_issue, said):
+    """Run the monitor's shell against a fake `gh`. (exit status, the issue calls it made), or None."""
+    script = wake_script(text)
+    if script is None:
+        return None
+    asked = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 1))
+    signed = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + 1))
+    with tempfile.TemporaryDirectory() as d:
+        def put(name, obj):
+            with open(os.path.join(d, name), "w", encoding="utf-8") as f:
+                json.dump(obj, f)
+        put("pull.json", {"head": {"sha": "abc"}})
+        put("runs.json", {"workflow_runs": [{"id": i, "status": s} for i, s, _, _ in runs]})
+        for i, _, total, job in runs:
+            put("jobs-%d.json" % i, {"total_count": total, "jobs": [{"name": "review", "conclusion": job}] if total else []})
+        put("checks.json", {"check_runs": [{"app": {"id": REVIEWER_APP_ID if len(c) < 3 else c[2]}, "status": "completed",
+                                            "completed_at": signed, "conclusion": c[0], "output": {"title": c[1]}}
+                                           for c in checks]})
+        put("comments.json", [{"body": said}] if said else [])
+        bin_ = os.path.join(d, "bin")
+        os.mkdir(bin_)
+        with open(os.path.join(bin_, "gh"), "w", encoding="utf-8") as f:
+            f.write('#!/usr/bin/env bash\nD=%s\n' % shlex.quote(d) + r'''
+case "$1 $2" in
+  "issue list") printf '%s' "$OPEN_ISSUE"; exit 0 ;;
+  "issue comment"|"issue create") printf '%s\n' "$*" >> "$D/calls"; exit 0 ;;
+esac
+url=$2; jqf=.
+[ "${3:-}" = --jq ] && jqf=$4
+case "$url" in
+  */pulls/*) f=pull.json ;;
+  */check-runs*) f=checks.json ;;
+  */workflows/review.yml/runs*) f=runs.json ;;
+  */actions/runs/*/jobs*) id=${url#*/actions/runs/}; f=jobs-${id%%/*}.json ;;
+  */comments*) f=comments.json ;;
+  *) echo "unexpected gh api $url" >&2; exit 9 ;;
+esac
+jq -r "$jqf" < "$D/$f"
+''')
+        os.chmod(os.path.join(bin_, "gh"), 0o755)
+        env = dict(os.environ, PATH=bin_ + os.pathsep + os.environ.get("PATH", ""), GH_TOKEN="t", REPO="o/r", PR="7",
+                   ASKED=asked, OWNER="Adonis80", RUN="https://x/run/1", OPEN_ISSUE=open_issue,
+                   APPEAR="2", DEADLINE="4", TOLD_WAIT="1", POLL="0.2")
+        try:
+            p = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True, timeout=30)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        calls = open(os.path.join(d, "calls"), encoding="utf-8").read() if os.path.exists(os.path.join(d, "calls")) else ""
+    return p.returncode, calls
+
+
+def monitor_faults(text, review):
+    """What the monitor has lost of telling him a review ask disappeared."""
+    lost = []
+    cond = lambda t: (re.search(r"^    if: >-\n((?:      .*\n)+)", t, re.M) or [None, None])[1]
+    if not cond(text) or cond(text) != cond(review):
+        lost.append("the job's condition, review.yml's word for word, so it watches every ask and nothing else")
+    if re.search(r"^  (pull_request|push|workflow_dispatch|schedule)", text, re.M):
+        lost.append("no trigger but `issue_comment`, and no clock (library/reviewer-parking.md)")
+    if "secrets." in text or "environment:" in text:
+        lost.append("no secret and no environment: it reads and tells, and holds no key")
+    if "app.id == %d" % REVIEWER_APP_ID not in text:
+        lost.append("the badge known by the App's id, %d, as the gate knows it" % REVIEWER_APP_ID)
+    for what, runs, checks, issue, said, want in MONITOR_CASES:
+        got = monitor_says(text, runs, checks, issue, said)
+        if got is None:
+            lost.append("a shell the harness can run: one `run: |` block, no `${{ }}` in it")
+            break
+        rc, calls = got
+        if want is None and (rc != 0 or calls):
+            lost.append("when %s, nothing said (it exited %d and called %r)" % (what, rc, calls))
+        elif want is not None and (rc == 0 or want not in calls or "@Adonis80" not in calls
+                                   or ("issue comment 12" not in calls if issue else "issue create" not in calls)):
+            lost.append("when %s, the Chairman told on the one Reviewer-down issue, saying %r (it exited %d and "
+                        "called %r)" % (what, want, rc, calls))
+    return lost
+
+
+MONITOR_LOOSENINGS = (
+    ("the budget's park taken as an outage", lambda t: t.replace('"Did not read: budget refused"*) echo', '"never"*) echo', 1)),
+    ("a run with no jobs taken as one still to come", lambda t: t.replace('|| unloaded=yes', '|| :', 1)),
+    ("no deadline", lambda t: t.replace('[ "$(now)" -lt "$deadline" ] ||', 'true ||', 1)),
+    ("a verdict from any app", lambda t: t.replace("select(.app.id == 5000405 and", "select(", 1)),
+    ("a second word beside review.yml's", lambda t: t.replace('told && {', 'false && {', 1)),
+    ("a trigger on every push", lambda t: t.replace("on:\n  issue_comment:", "on:\n  push:\n  issue_comment:", 1)),
+    ("an ordinary comment watched", lambda t: t.replace("startsWith(github.event.comment.body, '/claude review') &&\n", "", 1)),
+)
+
+
+def _check_monitor(quiet=False):
+    try:
+        text, review = _read(MONITOR_WORKFLOW), _read(REVIEW_WORKFLOW)
+    except OSError as e:
+        if not quiet:
+            print("  monitor: %s" % e)
+        return 1
+    bad = 0
+    for f in monitor_faults(text, review):
+        if not quiet:
+            print("  monitor: %s must keep %s" % (MONITOR_WORKFLOW, f))
+        bad += 1
+    for what, loosen in MONITOR_LOOSENINGS:
+        changed = loosen(text)
+        if changed == text or not monitor_faults(changed, review):
+            if not quiet:
+                print("  monitor: the loosening %r %s" % (what, "no longer applies" if changed == text else "passed"))
+            bad += 1
+    if not bad and not quiet:
+        print("ok: a review ask is watched outside review.yml, on review.yml's own condition and no clock; its "
+              "shell, run on %d cases, tells the Chairman on the one Reviewer-down issue when review.yml cannot "
+              "load, starts no read, signs nothing by the deadline or does not read, this incident's two shapes "
+              "among them, and says nothing on a read or the budget's park; each of %d loosenings was refused"
+              % (len(MONITOR_CASES), len(MONITOR_LOOSENINGS)))
+    return bad
+
+
+# THE CANARY (decision 0014's recovery): what it must keep, held on the text,
+# since a real request is the one thing check.sh never sends. Its first run on
+# main is the proof that it works, and is cited where it lands.
+CANARY_MUST = (
+    ("on:\n  push:\n    branches: [main]\n  workflow_dispatch:\n", "no trigger but a push to main and a dispatch"),
+    ("    if: github.ref == 'refs/heads/main'\n", "the classifying job run from main alone"),
+    ("    if: needs.classify.outputs.machinery == 'yes' && github.ref == 'refs/heads/main'\n",
+     "the read run from main alone, and only after a machinery merge"),
+    ("    environment: %s\n" % KEY_ENVIRONMENT, "the door: the key readable from main alone"),
+    ("python3 review-gate.py machinery", "the merge classified by review-gate.py's machinery()"),
+    ("&& 'canary' ||", "a plain canary's check run named %r, which the hold reads" % CANARY_CHECK),
+    ('python3 "$reg/ask.py" "$reg/registry.json" "$role"', "the read sent through the real caller and registry"),
+    ('python3 "$reg/ask.py" record open "$ledger"', "the read recorded as an attempt"),
+    ('python3 "$reg/ask.py" record close "$ledger"', "the attempt closed with its outcome"),
+    ('python3 "$reg/ask.py" derive "$out"', "the verdict derived as a review's is"),
+    ("REVIEW_CASH_WEEKLY: ${{ secrets.REVIEW_CASH_WEEKLY }}", "the weekly limit, so the spending check admits it"),
+    ("if: failure() && (inputs.probe == '' || inputs.probe == 'none')",
+     "the Chairman told when a canary, and not a probe, fails"),
+    ('title="Reviewer down: GLM did not read"', "the one Reviewer-down issue"),
+)
+
+
+def canary_faults(text, review, caller):
+    lost = [what for line, what in CANARY_MUST if line not in text]
+    if re.search(r"^  (schedule|pull_request|issue_comment)", text, re.M):
+        lost.append("no clock and no trigger a branch can start (library/reviewer-parking.md)")
+    if sorted(set(re.findall(r"secrets\.([A-Z_]+)", text))) != ["OPENROUTER_API_KEY", "REVIEW_CASH_WEEKLY"]:
+        lost.append("no secret but the provider's key and the weekly limit")
+    # The schema it asks for is review.yml's own line, and the one the gate holds.
+    m = re.findall(r"^ *schema='(.*)'$", review, re.M)
+    try:
+        same = len(m) == 1 and json.loads(m[0]) == FINDINGS_SCHEMA
+    except ValueError:
+        same = False
+    if not same or """schema=$(sed -n "s/^ *schema='\\(.*\\)'$/\\1/p" .github/workflows/review.yml)""" not in text:
+        lost.append("the schema review.yml asks every read for, read from its one line")
+    if sorted(re.findall(r'^    "([a-z-]+)": lambda body, lim', caller, re.M)) != ["output-cap", "price-cap"]:
+        lost.append("a caller whose probes are the output cap and the price filter, and nothing else")
+    for w in (REVIEW_WORKFLOW, PRODUCT_WORKFLOW):
+        if "CANARY_PROBE" in _read(w):
+            lost.append("no probe set by %s" % w)
+    # Each probe adds its one limit, from the registry, and nothing else.
+    try:
+        spec = importlib.util.spec_from_file_location("ask_for_canary", CALLER)
+        ask = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(ask)
+        lim = {"input_price": 1.5, "output_price": 2.5, "output_tokens": 777, "context": 1000}
+        added = {}
+        for name, apply in ask.PROBES.items():
+            body = {"model": "m"}
+            apply(body, lim)
+            added[name] = body
+    except Exception:  # noqa: BLE001  (a caller that cannot be probed is the fault itself)
+        added = {}
+    if added != {"output-cap": {"model": "m", "max_tokens": 777},
+                 "price-cap": {"model": "m", "provider": {"max_price": {"prompt": 1.5, "completion": 2.5}}}}:
+        lost.append("each probe adding its one limit from the registry (it added %r)" % added)
+    return lost
+
+
+CANARY_LOOSENINGS = (
+    ("the door removed", lambda t: t.replace("    environment: reviewer\n", "", 1)),
+    ("a branch's dispatch let through", lambda t: t.replace(" && github.ref == 'refs/heads/main'\n", "\n", 1)),
+    ("a daily clock", lambda t: t.replace("  workflow_dispatch:\n", "  schedule:\n    - cron: '0 6 * * *'\n  workflow_dispatch:\n", 1)),
+    ("the reviewer's signing key held", lambda t: t.replace("          GH_TOKEN: ${{ github.token }}\n          PROBE:",
+                                                             "          KEY: ${{ secrets.REVIEWER_APP_KEY }}\n          GH_TOKEN: ${{ github.token }}\n          PROBE:", 1)),
+    ("a probe's failure told as an outage", lambda t: t.replace("if: failure() && (inputs.probe == '' || inputs.probe == 'none')", "if: failure()", 1)),
+    ("the read never recorded", lambda t: t.replace('python3 "$reg/ask.py" record open "$ledger"', 'echo 1 #', 1)),
+)
+
+
+def _check_canary(quiet=False):
+    try:
+        text, review, caller = _read(CANARY_WORKFLOW), _read(REVIEW_WORKFLOW), _read(CALLER)
+    except OSError as e:
+        if not quiet:
+            print("  canary: %s" % e)
+        return 1
+    bad = 0
+    for f in canary_faults(text, review, caller):
+        if not quiet:
+            print("  canary: %s must keep %s" % (CANARY_WORKFLOW, f))
+        bad += 1
+    for what, loosen in CANARY_LOOSENINGS:
+        changed = loosen(text)
+        if changed == text or not canary_faults(changed, review, caller):
+            if not quiet:
+                print("  canary: the loosening %r %s" % (what, "no longer applies" if changed == text else "passed"))
+            bad += 1
+    if not bad and not quiet:
+        print("ok: after a machinery merge, and only from main behind the `%s` door, the canary sends one tiny read "
+              "through the real caller and registry with review.yml's schema, recorded and admitted as an attempt, "
+              "and tells the Chairman when it fails; each of %d loosenings was refused"
+              % (KEY_ENVIRONMENT, len(CANARY_LOOSENINGS)))
+    return bad
+
+
 def _check_brief(path="AGENTS.md", quiet=False):
     """The reviewer's brief names every severity the schema asks for (#153's last read, advisory 5)."""
     try:
@@ -5380,10 +5653,42 @@ def _check_main():
         ([{"filename": ".github/workflows/a\n::stop-commands::x.yml"}], [ok], 0, "note:",
          "a workflow whose name carries a line break is announced, and starts no command"),
     ]
-    want_asked = ["/repos/o/r/commits/%s/check-runs" % head, "/repos/o/r/pulls/7/files"]
+    # THE CANARY HOLD: main's newest commits, newest first, each with its
+    # canary check runs. The newest canary that ran decides; one skipped or
+    # cancelled says nothing.
+    canary = lambda c, at="2026-10-06T20:00:00Z": dict(_run(c, app=ACTIONS_APP), name=CANARY_CHECK, completed_at=at)
+    red, green = [("m2", [canary("failure")])], [("m2", [canary("success")])]
+    cases += [
+        ([{"filename": "review-gate.py"}], [ok], 1, "the canary failed on main at m2",
+         "a machinery change read clean is held while the newest canary on main is red", red),
+        ([{"filename": "README.md"}], [ok], 0, "ok:",
+         "an ordinary change is not held by a red canary, nor asks after one", red),
+        ([{"filename": "review-gate.py"}], [ok], 0, "note:", "a green canary holds nothing", green),
+        ([{"filename": "model-registry/registry.json"}], [ok], 1, "the canary failed on main at m1",
+         "a canary skipped on the newest commit says nothing; the one before it, red, holds",
+         [("m3", [canary("skipped")]), ("m2", []), ("m1", [canary("failure")])]),
+        ([{"filename": "board/build.py"}], [ok], 0, "note:",
+         "a red canary re-run green on the same commit holds nothing",
+         [("m2", [canary("failure", "2026-10-06T20:00:00Z"), canary("success", "2026-10-06T21:00:00Z")])]),
+        ([{"filename": ".github/workflows/review.yml"}], [ok], 0, "note:",
+         "a failure under another name, or from another app, is no canary",
+         [("m2", [dict(canary("failure"), name="canary probe"), dict(canary("failure"), app={"id": 1})])]),
+    ]
     bad = 0
     real = urllib.request.urlopen
-    for files, runs, code, must, what in cases:
+    for files, runs, code, must, what, *rest in cases:
+        main_commits = rest[0] if rest else []
+        want_asked = sorted(["/repos/o/r/commits/%s/check-runs" % head, "/repos/o/r/pulls/7/files"]
+                            + (["/repos/o/r/commits"] + ["/repos/o/r/commits/%s/check-runs" % s for s, _ in main_commits]
+                               if machinery([f["filename"] for f in files]) else []))
+        if machinery([f["filename"] for f in files]) and main_commits:
+            # Asked back only as far as the canary that ran.
+            for i, (s, rs) in enumerate(main_commits):
+                if any(r["conclusion"] not in ("skipped", "cancelled") and r["name"] == CANARY_CHECK
+                       and r["app"].get("id") == ACTIONS_APP for r in rs):
+                    want_asked = [a for a in want_asked if not any(
+                        a == "/repos/o/r/commits/%s/check-runs" % later for later, _ in main_commits[i + 1:])]
+                    break
         asked = []
 
         def fake(req, *a, **k):
@@ -5393,6 +5698,10 @@ def _check_main():
             first = urllib.parse.parse_qs(parts.query).get("page", ["1"])[0] == "1"
             if parts.path.endswith("/files"):
                 body = files if first else []
+            elif parts.path == "/repos/o/r/commits":
+                body = [{"sha": s} for s, _ in main_commits]
+            elif parts.path.endswith("/check-runs") and head not in parts.path:
+                body = {"check_runs": dict(main_commits)[parts.path.split("/")[-2]] if first else []}
             elif parts.path.endswith("/check-runs"):
                 body = {"check_runs": runs if first else []}
             else:
@@ -5424,9 +5733,10 @@ def _check_main():
         # nothing else is: an annotation on every change would teach the same
         # blindness a green tick does.
         noticed = any(l.startswith("::notice ") for l in said.splitlines())
-        if noticed != (must == "note:"):
+        gate = bool(touches_the_gate([f["filename"] for f in files]))
+        if noticed != gate or gate != ("note:" in said):
             print("  main: %s — %s" % (what, "announced in the log but not on the check"
-                                       if must == "note:" else "annotated, and it is not a gate change"))
+                                       if gate else "annotated, and it is not a gate change"))
             bad += 1
         # And nothing else it prints is a runner command: the file names are the
         # pull request's writing, and one could otherwise start its own.
@@ -5435,14 +5745,15 @@ def _check_main():
         if stray:
             print("  main: %s — a line the runner would obey: %r" % (what, stray[0]))
             bad += 1
-        if sorted(set(asked)) != want_asked:
+        if sorted(set(asked)) != sorted(set(want_asked)):
             print("  main: %s — asked GitHub for %s; it must ask for exactly %s"
                   % (what, sorted(set(asked)), want_asked))
             bad += 1
     if not bad:
         print("ok: main() was run against a GitHub answering from a dictionary in %d case(s) — "
-              "it asked for the changed files and the check runs and nothing else, and a change "
-              "to the gate itself now opens on the one reviewer's clean read" % len(cases))
+              "it asked for the changed files and the check runs, and on a machinery change main's "
+              "newest canary, and nothing else; a change to the gate itself opens on the one "
+              "reviewer's clean read, and no machinery change opens while that canary is red" % len(cases))
     return bad
 
 
@@ -5575,6 +5886,11 @@ def _selftest():
     bad += hold(sorted(f for f in GATE_FILES if ([f], "risky") not in CLASS_CASES), [],
                 "every gate file has a class case that reads it as risky")
     bad += hold(touches_the_gate(["design/ARCHITECT.md", "AGENTS.md"]), [], "and which are not")
+    # machinery() reads a change as both reviewers' class does: the canary and
+    # its hold never call machinery what a reviewer reads as ordinary, or the
+    # other way round.
+    bad += hold([p for p, w in CLASS_CASES if p is not None and machinery(p) != (w == "risky")], [],
+                "machinery() agrees with every class case")
     # THE RETIRED ROUTES ARE HELD SHUT, not merely deleted. A later session
     # restoring a prose reader would have to get past these: the gate reads check
     # runs, so nothing a person or a bot can type is an answer.
@@ -5632,6 +5948,8 @@ def _selftest():
     failed += _check_caller_loosenings()
     failed += _check_context()
     failed += _check_brief()
+    failed += _check_monitor()
+    failed += _check_canary()
     failed += _check_alert()
     failed += _check_product_glm()
     failed += _check_expressions()
@@ -5693,9 +6011,40 @@ def _pages(url, token, key=None, params=None):
         page += 1
 
 
+# THE CANARY HOLDS THE MACHINERY (decision 0014's recovery, agreed with Astra,
+# 6 October 2026). `.github/workflows/canary.yml` sends one tiny real read
+# after every merge to main that touches the review machinery. While the newest
+# canary that ran on main is red, no pull request touching the machinery goes
+# green here: a broken rollout stops the next one. The revert, or a repair shown
+# safer, lands by the emergency route (`library/reviewer-parking.md`), and the
+# canary that runs after it lifts the hold. A canary skipped or cancelled says
+# nothing, so the newest that ran is looked for, back CANARY_LOOKBACK commits.
+
+
+def canary_red(api, token):
+    """The main commit whose canary failed, when the newest canary that ran on main did; else None."""
+    req = urllib.request.Request("%s/commits?sha=main&per_page=%d" % (api, CANARY_LOOKBACK),
+                                 headers={"Authorization": "Bearer " + token,
+                                          "Accept": "application/vnd.github+json"})
+    with urllib.request.urlopen(req) as r:
+        commits = json.load(r)
+    for c in commits if isinstance(commits, list) else []:
+        ran = [r for r in _pages("%s/commits/%s/check-runs" % (api, c.get("sha")), token, key="check_runs",
+                                 params={"check_name": CANARY_CHECK, "filter": "all"})
+               if r.get("name") == CANARY_CHECK and (r.get("app") or {}).get("id") == ACTIONS_APP
+               and r.get("status") == "completed" and r.get("conclusion") not in ("skipped", "cancelled")]
+        if ran:
+            newest = max(ran, key=lambda r: r.get("completed_at") or "")
+            return None if newest.get("conclusion") == "success" else c.get("sha")
+    return None
+
+
 def main(argv):
     if len(argv) == 2 and argv[1] == "--selftest":
         return _selftest()
+    if len(argv) == 2 and argv[1] == "machinery":
+        print("yes" if machinery([l for l in sys.stdin.read().splitlines() if l]) else "no")
+        return 0
     if len(argv) != 5:
         print("usage: review-gate.py <owner/repo> <pr-number> <head-sha> <token> | --selftest")
         return 2
@@ -5717,6 +6066,7 @@ def main(argv):
                            key="check_runs", params={"filter": "all"}))
         gate_files = touches_the_gate(files)
         answer, who = verdict(runs, head)
+        held = canary_red(api, token) if machinery(files) else None
     except urllib.error.HTTPError as e:
         if e.code in (401, 403):
             why = ("the workflow's token may not read this (it needs pull-requests: read and "
@@ -5740,6 +6090,11 @@ def main(argv):
         # else, and the note carries file names, which the pull request writes.
         print("::notice title=A change to the review machinery::"
               + note.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A"))
+    if held:
+        print("reason: the canary failed on main at %s, so no change to the review machinery goes green "
+              "until one passes: revert that change, or repair it, by the emergency route in "
+              "library/reviewer-parking.md" % held[:12])
+        return 1
     if answer == CLEAN:
         print("ok: %s has read %s and left nothing on it" % (REVIEWERS[who]["name"], head))
         return 0

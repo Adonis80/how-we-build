@@ -336,6 +336,17 @@ def outgoing(body, got):
     return None
 
 
+# THE CAP PROBE (decision 0014's recovery, PR 3). The canary, dispatched by hand
+# on main, may add one limit to a read to learn whether an endpoint serves it:
+# the output-token cap or the price filter, from the registry. No reviewer sets
+# CANARY_PROBE; a probe this list does not know is refused before sending.
+PROBES = {
+    "output-cap": lambda body, lim: body.__setitem__("max_tokens", lim["output_tokens"]),
+    "price-cap": lambda body, lim: _set(body, "provider.max_price",
+                                        {"prompt": lim["input_price"], "completion": lim["output_price"]}),
+}
+
+
 # THE SPENDING CHECK (decision 0014, D). A read in flight elsewhere may yet
 # send this many cash requests: the role's, and the one re-read of an answer
 # that came back short. Nothing stands behind the role since #156, so there is
@@ -754,6 +765,12 @@ def main(argv):
     ledger, attempt = os.environ.get("ATTEMPTS", ""), os.environ.get("ATTEMPT", "")
     lim = limits(reg, got["model"])
     body = build(got, provider, system, sys.stdin.read(), json.loads(schema_json))
+    probe = os.environ.get("CANARY_PROBE", "")
+    if probe not in ("", "none"):
+        if probe not in PROBES or lim is None:
+            return out({"is_error": True, "subtype": "request_refused",
+                        "result": "refused before sending: no probe %r with the registry's limits" % probe}, 1)
+        PROBES[probe](body, lim)
     # THE REQUEST AS IT WOULD LEAVE, checked before anything is sent: no prompt,
     # and no call to the key endpoint either.
     stop = outgoing(body, got)
