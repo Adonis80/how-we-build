@@ -83,7 +83,9 @@ jobs:
     runs-on: ubuntu-latest
     # THE DOOR, as review.yml's: the key is readable from main alone.
     environment: reviewer
-    timeout-minutes: 10
+    # Two reads of 300 s at most, one per distinct model and effort (#161's read,
+    # advisory 2), with the rest of the job on top.
+    timeout-minutes: 15
     permissions:
       contents: read
       # The spending check counts the reads in flight (decision 0014, D).
