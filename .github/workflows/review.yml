@@ -556,10 +556,15 @@ jobs:
           # Not counted is not none: `unknown`, and the check then sends nothing.
           # Every page of them, as wake.yml reads runs: `per_page` alone caps the count.
           inflight() {
-            local ids
-            ids=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/workflows/review.yml/runs?status=in_progress&per_page=100" \
-              --jq ".workflow_runs[] | select(.id != ${GITHUB_RUN_ID:-0}) | .id" 2>/dev/null) || { echo unknown; return; }
-            printf '%s' "$ids" | grep -c . || true
+            local ids w n=0
+            # Both reviewers spend cash since his ruling of 6 October 2026, so
+            # each counts the other's reads in flight as well as its own.
+            for w in review.yml review-product.yml; do
+              ids=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/workflows/$w/runs?status=in_progress&per_page=100" \
+                --jq ".workflow_runs[] | select(.id != ${GITHUB_RUN_ID:-0}) | .id" 2>/dev/null) || { echo unknown; return; }
+              n=$(( n + $(printf '%s' "$ids" | grep -c . || true) ))
+            done
+            echo "$n"
           }
           ask() {
             role=$1

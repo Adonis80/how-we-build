@@ -2112,22 +2112,6 @@ ROUTE_FIRST = "fell_back=no"
 ROUTE_DERIVE = ('derive() { python3 "$reg/ask.py" derive "$out" || printf \'{"is_error":true,"subtype":"not_derived"}\\n\' '
                 '> "$out"; }')
 ROUTE_LAST = 'echo "verdict=$verdict" >> "$GITHUB_OUTPUT"'
-# A product's code is private, and no provider but Anthropic has been cleared to
-# read it (25 September 2026: a session's own guard refused to send it
-# elsewhere). So review-product.yml speaks the claude-code interface alone, and
-# names neither another caller nor another provider's credential.
-PRODUCT_EGRESS = ("ask.py", "OPENROUTER", "openai-compatible")
-# The one use of ask.py a product's workflow may name (decision 0014): the
-# derivation of the verdict from the findings, which reads and writes the answer
-# file and makes no request (`_check_caller` runs it with the network refused).
-# Any other mention of ask.py is the caller that sends a read to another provider.
-PRODUCT_DERIVE = 'python3 "$reg/ask.py" derive "$out"'
-# And the other uses that read and write local files and make no request
-# (decision 0014): turning a second shortfall into a refusal, and the attempt
-# records. `_check_caller` runs them with the network refused too.
-PRODUCT_LOCAL = (PRODUCT_DERIVE, 'python3 "$reg/ask.py" incomplete "$out"',
-                 'python3 "$reg/ask.py" record open "$ledger"', 'python3 "$reg/ask.py" record close "$ledger"',
-                 'python3 "$reg/ask.py" record summary "$ledger"')
 # (what happens, the primary's exit and verdict, the fallback's, the fallback
 # role or none, seconds left when the fallback would start, what must follow:
 # the roles asked in order, and the verdict read or None for a read that fails).
@@ -2366,14 +2350,6 @@ def route_faults(text, path):
             lost.append("when %s, the roles %s asked and %s (it was %s)"
                         % (what, want[0], "the verdict %s read" % want[1] if want[1] else
                            "the read failed, never open", got))
-    if path == PRODUCT_WORKFLOW:
-        local = text
-        for use in PRODUCT_LOCAL:
-            local = local.replace(use, "")
-        said = [w for w in PRODUCT_EGRESS if w in local]
-        if said:
-            lost.append("no caller or credential but Anthropic's for a product's private code "
-                        "(it names %s)" % ", ".join(said))
     return lost
 
 
@@ -2433,7 +2409,6 @@ ROUTE_LOOSENINGS = (
     ("a shortfall left unsigned", None, lambda t: t.replace('            [ "$rc" -ne 0 ] || python3 "$reg/ask.py" incomplete "$out" || printf \'{"is_error":true,"subtype":"not_derived"}\\n\' > "$out"\n', "", 1)),
     ("a failed re-read taken as unread", None, lambda t: t.replace('then cp "$out.first" "$out"; rc=0; fi', "then :; fi", 1)),
     ("a re-read the budget refused signed blocking", None, lambda t: t.replace("if refused; then :; elif", "if false; then :; elif", 1)),
-    ("another provider for a product's code", PRODUCT_WORKFLOW, lambda t: t.replace("          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}\n", "          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}\n          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}\n", 1)),
 )
 
 
@@ -2467,9 +2442,8 @@ def _check_route_loosenings():
     if not bad:
         print("ok: each reviewer resolves its role from the registry — review.yml from the "
               "protected branch — reads once, hands a read that did not answer to its fallback, "
-              "and fails closed when none answers; the reading block was run in %d case(s), a "
-              "product's code goes to no provider but Anthropic, and each of %d loosenings was "
-              "refused" % (len(ROUTE_CASES), len(ROUTE_LOOSENINGS)))
+              "and fails closed when none answers; the reading block was run in %d case(s), and "
+              "each of %d loosenings was refused" % (len(ROUTE_CASES), len(ROUTE_LOOSENINGS)))
     return bad
 
 
@@ -2514,6 +2488,14 @@ def _check_registry():
         if bool(got[role]["fallback"]) != falls:
             fault("%s falls back to %r; nothing may stand behind a reviewer (his rulings, 5 and 6 "
                   "October 2026)" % (role, got[role]["fallback"]))
+    # A PRODUCT'S CODE GOES TO WHICHEVER PROVIDER THE REGISTRY NAMES (his ruling,
+    # 6 October 2026), so every provider a request is sent to over the network
+    # refuses to be served by anyone who stores or trains on it.
+    for name, prov in sorted((reg.get("providers") or {}).items()):
+        if prov.get("interface") == "openai-compatible" and \
+                ((prov.get("extra") or {}).get("provider") or {}).get("data_collection") != "deny":
+            fault("provider %s does not deny data collection, so a product's private code could be "
+                  "stored or trained on by whoever serves it" % name)
     # One edit, one file: the ordinary role moved to another model in a copy of
     # the registry, and nothing else, is what the resolver then answers.
     other = next((m for m in sorted(reg.get("models") or {}) if ORDINARY_ROLE in got
@@ -3623,7 +3605,7 @@ def alert_says(text, open_issue):
 
 
 def alert_faults(text):
-    """What review.yml has lost of telling him when GLM did not read."""
+    """What a reviewer has lost of telling him when GLM did not read."""
     lost = []
     step = _alert_step(text)
     if ALERT_IF not in step:
@@ -3633,7 +3615,7 @@ def alert_faults(text):
     if "${{" in step.split("run: |", 1)[-1]:
         lost.append("everything the alert says brought in through `env:`, none in its script")
     new, more = alert_says(text, ""), alert_says(text, "12")
-    if not new or "issue create" not in new or "@Adonis80" not in new or "HTTP 400" not in new or "#7" not in new:
+    if not new or "issue create" not in new or "@Adonis80" not in new or "HTTP 400" not in new:
         lost.append("an issue opened that @-mentions him with the reason, when none is open (it called %r)" % new)
     if not more or "issue comment 12" not in more or "issue create" in more or "@Adonis80" not in more:
         lost.append("the open issue added to, never a second opened (it called %r)" % more)
@@ -3650,30 +3632,32 @@ ALERT_LOOSENINGS = (
 
 
 def _check_alert(quiet=False):
-    """review.yml tells him when GLM did not read; each loosening refused."""
-    try:
-        text = _read(REVIEW_WORKFLOW)
-    except OSError as e:
-        print("  alert: %s" % e)
-        return 1
-    lost = alert_faults(text)
-    if lost:
-        if not quiet:
-            print("  alert: %s must tell the Chairman when GLM did not read; it has lost %s"
-                  % (REVIEW_WORKFLOW, "; ".join(lost)))
-        return 1
+    """Both reviewers tell him when GLM did not read; each loosening refused."""
     bad = 0
-    for what, loosen in ALERT_LOOSENINGS:
-        changed = loosen(text)
-        if changed == text or not alert_faults(changed):
+    for path in (REVIEW_WORKFLOW, PRODUCT_WORKFLOW):
+        try:
+            text = _read(path)
+        except OSError as e:
+            print("  alert: %s" % e)
+            return 1
+        lost = alert_faults(text)
+        if lost:
             if not quiet:
-                print("  alert: the loosening '%s' %s" % (what, "no longer applies" if changed == text
-                                                          else "was not refused"))
+                print("  alert: %s must tell the Chairman when GLM did not read; it has lost %s"
+                      % (path, "; ".join(lost)))
             bad += 1
+            continue
+        for what, loosen in ALERT_LOOSENINGS:
+            changed = loosen(text)
+            if changed == text or not alert_faults(changed):
+                if not quiet:
+                    print("  alert: in %s, the loosening '%s' %s" % (path, what, "no longer applies"
+                                                                    if changed == text else "was not refused"))
+                bad += 1
     if not bad and not quiet:
-        print("ok: when GLM does not read, for any reason but his budget, review.yml opens one issue "
-              "that @-mentions him with the reason or adds to the open one, its words through `env:` "
-              "alone; run against a fake gh, and each of %d loosenings refused" % len(ALERT_LOOSENINGS))
+        print("ok: when GLM does not read, for any reason but his budget, both reviewers open one issue "
+              "that @-mentions him with the reason or add to the open one, their words through `env:` "
+              "alone; run against a fake gh, and each of %d loosenings refused in each" % len(ALERT_LOOSENINGS))
     return bad
 
 

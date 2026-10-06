@@ -107,6 +107,10 @@ on:
 # product is reached only with the App's token, minted below and scoped to it.
 permissions:
   contents: read
+  # The spending check counts the reads in flight (decision 0014, D), and when
+  # GLM does not read the Chairman is told on an issue (his ruling, 6 October 2026).
+  actions: read
+  issues: write
 
 # No `concurrency:` block, for review.yml's reason: every ask runs.
 
@@ -622,6 +626,11 @@ jobs:
         continue-on-error: true
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # A product's code goes to whichever provider the registry names for
+          # the role (his ruling, 6 October 2026), with data collection denied.
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          REVIEW_CASH_WEEKLY: ${{ secrets.REVIEW_CASH_WEEKLY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ inputs.repo }}
           SHA: ${{ inputs.sha }}
           STARTED: ${{ steps.asked.outputs.started }}
@@ -641,10 +650,9 @@ jobs:
           }
           # THE ROLE, RESOLVED FROM THE REGISTRY in this repository's checkout,
           # which is main: the door admits no other ref (decision 0008). The
-          # product never names a model, and cannot pick its own reviewer. Only
-          # the claude-code interface is spoken here (see `ask()`), so every
-          # product read falls back until another provider is cleared
-          # for a product's private code.
+          # product never names a model, and cannot pick its own reviewer. Both
+          # interfaces are spoken here (see `ask()`), so a product's code goes to
+          # whichever provider the registry names (his ruling, 6 October 2026).
           reg="$GITHUB_WORKSPACE/model-registry"
           resolve() { python3 "$reg/resolve.py" "$reg/registry.json" "$@"; }
           EFFORT=$(resolve "$ROLE" effort) || fail "the registry could not resolve $ROLE"
@@ -776,6 +784,17 @@ jobs:
           # (decision 0014, A). A product's read is on the plan alone.
           ledger="$t/attempts.jsonl"
           : > "$ledger"
+          inflight() {
+            local ids w n=0
+            # Both reviewers spend cash since his ruling of 6 October 2026, so
+            # each counts the other's reads in flight as well as its own.
+            for w in review.yml review-product.yml; do
+              ids=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/workflows/$w/runs?status=in_progress&per_page=100" \
+                --jq ".workflow_runs[] | select(.id != ${GITHUB_RUN_ID:-0}) | .id" 2>/dev/null) || { echo unknown; return; }
+              n=$(( n + $(printf '%s' "$ids" | grep -c . || true) ))
+            done
+            echo "$n"
+          }
           ask() {
             role=$1
             { m=$(resolve "$role" model) && i=$(resolve "$role" interface) && e=$(resolve "$role" effort); } \
@@ -801,10 +820,15 @@ jobs:
                   --json-schema "$schema" \
                   --system-prompt "$(cat "$t/system.txt")" \
                   < "$t/prompt.txt" > "$out" 2> "$err" || r=$? ;;
-              # A product's code is private, and no provider but Anthropic has
-              # been cleared to read it: a role served any other way is refused
-              # here, and its fallback reads instead. Refused here, it was never
-              # sent, so it opens no record.
+              openai-compatible)
+                # Any provider the registry names reads a product's code (his
+                # ruling, 6 October 2026: "remove this rule where Anthropic is the
+                # only provider that is allowed the products private code"). The
+                # spending check runs inside the caller, before its request.
+                n=$(python3 "$reg/ask.py" record open "$ledger" "$role" "$model" "$interface") || n=""
+                ATTEMPTS="$ledger" ATTEMPT="$n" INFLIGHT="$(inflight)" \
+                  timeout --kill-after=60s "${2}s" python3 "$reg/ask.py" "$reg/registry.json" "$role" "$t/system.txt" "$schema" "$2" \
+                  < "$t/prompt.txt" > "$out" 2> "$err" || r=$? ;;
               *) printf '{"is_error":true,"subtype":"no_interface"}\n' > "$out"; : > "$err"; return 2 ;;
             esac
             [ -z "$n" ] || python3 "$reg/ask.py" record close "$ledger" "$n" "$r" "$out" || true
@@ -1041,6 +1065,27 @@ jobs:
       # as a read that did not happen, and the token is revoked rather than
       # left live for its hour. review-gate.py holds this step's lines one by
       # one (#68's seventh read), so rewording one means rewording it there.
+      # GLM DOWN, AND HE IS TOLD AT ONCE: review.yml's step, for a product's read
+      # (his ruling, 6 October 2026). It names no product and quotes none of its
+      # code: the reason the read gave, and the run.
+      - name: Tell the Chairman the reviewer is down
+        if: steps.read.outcome == 'failure' && !startsWith(steps.read.outputs.why, 'budget refused')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WHY: ${{ steps.read.outputs.why }}
+          OWNER: ${{ github.repository_owner }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          title="Reviewer down: GLM did not read"
+          body="@$OWNER the reviewer could not read a product's pull request: ${WHY:-no reason given}. Nothing stands behind GLM, so it stays unread until we find why the connection was lost and fix it. Run: $RUN"
+          n=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$n" ]; then
+            gh issue comment "$n" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+          fi
+
       - name: Leave nothing open
         if: always()
         env:
