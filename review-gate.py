@@ -1541,6 +1541,9 @@ def risky(path):
 # and how far back main's commits are asked for the newest that ran.
 CANARY_CHECK = "canary"
 CANARY_LOOKBACK = 30
+# How long a push to main may go without its canary's check run before that
+# silence is read as a canary that could not run.
+CANARY_GRACE = 15 * 60
 
 
 def machinery(paths):
@@ -2825,13 +2828,14 @@ def _check_spending(ask, path, quiet=False):
             if got.get("subtype") != sub or bool(chats) != sent or (sub is None and rc != 0):
                 fault("%s answered %s (%s) and %s a request" % (what, rc, got.get("subtype"),
                                                                "sent" if chats else "sent no"))
-            # The request as GLM's endpoints take it (6 October 2026): no
-            # output-token limit and no price limit, which together left OpenRouter
-            # no endpoint to serve #154's read.
+            # The request as GLM's endpoints take it (PR 3's cap probe, 6 October
+            # 2026): the registry's output-token cap, which was served, and no
+            # price filter, which was refused with #154's HTTP 404.
             for body in chats:
-                if "max_tokens" in body or "max_price" in (body.get("provider") or {}):
-                    fault("%s was sent with a limit no GLM endpoint serves (%s, %s)"
-                          % (what, body.get("max_tokens"), (body.get("provider") or {}).get("max_price")))
+                if body.get("max_tokens") != lim["output_tokens"] or "max_price" in (body.get("provider") or {}):
+                    fault("%s was sent with an output cap of %s, not the registry's %s, or with the price filter "
+                          "no endpoint serves (%s)" % (what, body.get("max_tokens"), lim["output_tokens"],
+                                                       (body.get("provider") or {}).get("max_price")))
             events = ask._events(led)
             if sent and not any(e.get("event") == "reserve" and isinstance(e.get("bound"), float) for e in events):
                 fault("%s was sent with nothing reserved for it" % what)
@@ -2884,7 +2888,7 @@ def _check_spending(ask, path, quiet=False):
     if not bad and not quiet:
         print("ok: before any cash request the spending check adds the week's settled cash, what is in flight and "
               "the request's most, and refuses past the weekly limit or the key's own, or on anything unknown, "
-              "sending nothing; an admitted request carries its output-token limit and price limit, is reserved "
+              "sending nothing; an admitted request carries the output cap the provider enforces and no price filter, its most an estimate, is reserved "
               "before it is sent, and keeps what the provider returned before a word is parsed; the provider's "
               "own limit is a budget refusal")
     return bad
@@ -3326,8 +3330,9 @@ CALLER_LOOSENINGS = (
     ("the outgoing request never checked", "    stop = outgoing(body, got)\n", "    stop = None\n"),
     ("the model swap let through", '    if body.get("model") != got["model"]:', '    if False:'),
     ("the data-collection ask not checked", '    if (body.get("provider") or {}).get("data_collection") != "deny":', '    if False:'),
-    ("a request sent with the output-token limit no endpoint serves", '    _merge(body, provider.get("extra") or {})\n', '    _merge(body, provider.get("extra") or {})\n    body["max_tokens"] = 100000\n'),
-    ("a request sent with the price limit no endpoint serves", '    _merge(body, provider.get("extra") or {})\n', '    _merge(body, provider.get("extra") or {})\n    _set(body, "provider.max_price", {"prompt": 0.5, "completion": 1.7})\n'),
+    ("a request sent without the output cap the provider enforces", '        body["max_tokens"] = lim["output_tokens"]\n', '        pass\n'),
+    ("the output cap left out of the request built", "json.loads(schema_json), lim)", "json.loads(schema_json))"),
+    ("a request sent with the price filter no endpoint serves", '    _merge(body, provider.get("extra") or {})\n', '    _merge(body, provider.get("extra") or {})\n    _set(body, "provider.max_price", {"prompt": 1.4, "completion": 4.4})\n'),
     ("the provider's limit in the body read as an error to fall back on", '        if limited(code, said):', '        if False:'),
     ("the provider's limit over HTTP read as an error to fall back on", '        if e.code == 402 or limited("", said):', '        if False:'),
 )
@@ -5657,6 +5662,9 @@ def _check_main():
     # canary check runs. The newest canary that ran decides; one skipped or
     # cancelled says nothing.
     canary = lambda c, at="2026-10-06T20:00:00Z": dict(_run(c, app=ACTIONS_APP), name=CANARY_CHECK, completed_at=at)
+    # Both pushes are dated from now, so the cases mean the same whenever they run (#162's read).
+    young = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 60))
+    old = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 86400))
     red, green = [("m2", [canary("failure")])], [("m2", [canary("success")])]
     cases += [
         ([{"filename": "review-gate.py"}], [ok], 1, "the canary failed on main at m2",
@@ -5666,29 +5674,31 @@ def _check_main():
         ([{"filename": "review-gate.py"}], [ok], 0, "note:", "a green canary holds nothing", green),
         ([{"filename": "model-registry/registry.json"}], [ok], 1, "the canary failed on main at m1",
          "a canary skipped on the newest commit says nothing; the one before it, red, holds",
-         [("m3", [canary("skipped")]), ("m2", []), ("m1", [canary("failure")])]),
+         [("m3", [canary("skipped")]), ("m2", [canary("skipped")]), ("m1", [canary("failure")])]),
+        ([{"filename": "review-gate.py"}], [ok], 1, "the canary failed on main at m2",
+         "a push to main with no canary at all, past the minutes one takes to appear, holds: canary.yml did not run",
+         [("m2", []), ("m1", [canary("success")])]),
+        ([{"filename": "review-gate.py"}], [ok], 0, "note:",
+         "a push of a minute ago whose canary has not appeared yet says nothing; the green before it decides",
+         [("m2young", []), ("m1", [canary("success")])]),
         ([{"filename": "board/build.py"}], [ok], 0, "note:",
          "a red canary re-run green on the same commit holds nothing",
          [("m2", [canary("failure", "2026-10-06T20:00:00Z"), canary("success", "2026-10-06T21:00:00Z")])]),
         ([{"filename": ".github/workflows/review.yml"}], [ok], 0, "note:",
          "a failure under another name, or from another app, is no canary",
-         [("m2", [dict(canary("failure"), name="canary probe"), dict(canary("failure"), app={"id": 1})])]),
+         [("m2", [dict(canary("failure"), name="canary probe"), dict(canary("failure"), app={"id": 1}),
+                  canary("success")])]),
     ]
     bad = 0
     real = urllib.request.urlopen
     for files, runs, code, must, what, *rest in cases:
         main_commits = rest[0] if rest else []
-        want_asked = sorted(["/repos/o/r/commits/%s/check-runs" % head, "/repos/o/r/pulls/7/files"]
-                            + (["/repos/o/r/commits"] + ["/repos/o/r/commits/%s/check-runs" % s for s, _ in main_commits]
-                               if machinery([f["filename"] for f in files]) else []))
-        if machinery([f["filename"] for f in files]) and main_commits:
-            # Asked back only as far as the canary that ran.
-            for i, (s, rs) in enumerate(main_commits):
-                if any(r["conclusion"] not in ("skipped", "cancelled") and r["name"] == CANARY_CHECK
-                       and r["app"].get("id") == ACTIONS_APP for r in rs):
-                    want_asked = [a for a in want_asked if not any(
-                        a == "/repos/o/r/commits/%s/check-runs" % later for later, _ in main_commits[i + 1:])]
-                    break
+        machine = machinery([f["filename"] for f in files])
+        # The changed files and the head's check runs, and on a machinery change
+        # main's commits and their canaries; never anything else.
+        need = {"/repos/o/r/commits/%s/check-runs" % head, "/repos/o/r/pulls/7/files"}
+        allowed = need | ({"/repos/o/r/commits"} | {"/repos/o/r/commits/%s/check-runs" % s for s, _ in main_commits}
+                          if machine else set())
         asked = []
 
         def fake(req, *a, **k):
@@ -5699,7 +5709,8 @@ def _check_main():
             if parts.path.endswith("/files"):
                 body = files if first else []
             elif parts.path == "/repos/o/r/commits":
-                body = [{"sha": s} for s, _ in main_commits]
+                body = [{"sha": s, "commit": {"committer": {"date": young if s.endswith("young") else old}}}
+                        for s, _ in main_commits]
             elif parts.path.endswith("/check-runs") and head not in parts.path:
                 body = {"check_runs": dict(main_commits)[parts.path.split("/")[-2]] if first else []}
             elif parts.path.endswith("/check-runs"):
@@ -5745,9 +5756,9 @@ def _check_main():
         if stray:
             print("  main: %s — a line the runner would obey: %r" % (what, stray[0]))
             bad += 1
-        if sorted(set(asked)) != sorted(set(want_asked)):
-            print("  main: %s — asked GitHub for %s; it must ask for exactly %s"
-                  % (what, sorted(set(asked)), want_asked))
+        if not need <= set(asked) <= allowed or machine != ("/repos/o/r/commits" in asked):
+            print("  main: %s — asked GitHub for %s; it must ask for %s, and on a machinery change "
+                  "main's commits, within %s" % (what, sorted(set(asked)), sorted(need), sorted(allowed)))
             bad += 1
     if not bad:
         print("ok: main() was run against a GitHub answering from a dictionary in %d case(s) — "
@@ -6029,10 +6040,18 @@ def canary_red(api, token):
     with urllib.request.urlopen(req) as r:
         commits = json.load(r)
     for c in commits if isinstance(commits, list) else []:
-        ran = [r for r in _pages("%s/commits/%s/check-runs" % (api, c.get("sha")), token, key="check_runs",
-                                 params={"check_name": CANARY_CHECK, "filter": "all"})
-               if r.get("name") == CANARY_CHECK and (r.get("app") or {}).get("id") == ACTIONS_APP
-               and r.get("status") == "completed" and r.get("conclusion") not in ("skipped", "cancelled")]
+        mine = [r for r in _pages("%s/commits/%s/check-runs" % (api, c.get("sha")), token, key="check_runs",
+                                  params={"check_name": CANARY_CHECK, "filter": "all"})
+                if r.get("name") == CANARY_CHECK and (r.get("app") or {}).get("id") == ACTIONS_APP]
+        # A CANARY THAT DID NOT RUN AT ALL IS RED (#161's read, advisory 3): every
+        # push to main starts one, skipped or not, so a commit with none, past
+        # the minutes one takes to appear, is a canary.yml GitHub would not load.
+        if not mine:
+            pushed = ((c.get("commit") or {}).get("committer") or {}).get("date") or ""
+            if pushed and pushed < time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - CANARY_GRACE)):
+                return c.get("sha")
+            continue
+        ran = [r for r in mine if r.get("status") == "completed" and r.get("conclusion") not in ("skipped", "cancelled")]
         if ran:
             newest = max(ran, key=lambda r: r.get("completed_at") or "")
             return None if newest.get("conclusion") == "success" else c.get("sha")

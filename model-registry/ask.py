@@ -61,12 +61,14 @@ its response lost, is unresolved. Cash (a provider billed per request) and plan
 (an allowance) are kept apart and never added; a cost not known is `unknown`,
 never 0. A route refused before sending opens no record.
 
-THE SPENDING CHECK (decision 0014, D). Before any cash request, primary,
-fallback or re-read: settled cash this week, from the provider's own key
-endpoint, plus what is reserved in flight, plus this request's most it can cost,
-must not pass the weekly limit (the secret REVIEW_CASH_WEEKLY), nor the key's
-own remaining limit. Every request carries an output-token limit and a price
-limit, so its most is known. Unknown headroom means no request. A refusal, here
+THE SPENDING CHECK (decision 0014, D). Before any cash request, the role's or
+its re-read: settled cash this week, from the provider's own key endpoint, plus
+what is reserved in flight, plus an estimate of this request's most, must not
+pass the weekly limit (the secret REVIEW_CASH_WEEKLY), nor the key's own
+remaining limit. Every request carries the registry's output-token cap, which
+the provider enforces; its price is the registry's, which no request enforces,
+so the most is an estimate until a price filter is proved. Unknown headroom
+means no request. A refusal, here
 or the provider's own limit, is `budget_refused`: the read parks, and nothing
 falls back. What the Chairman holds privately, the weekly limit, the key's
 limit, the headroom and the week's settled spend, reaches no log from here;
@@ -298,8 +300,8 @@ def derive(content, cut=False):
             "findings": shown, "omitted": omitted, "ignored": ["verdict"] if own else []}, None
 
 
-def build(got, provider, system, prompt, schema):
-    """The request body for one read."""
+def build(got, provider, system, prompt, schema, lim=None):
+    """The request body for one read; with the registry's limits, its output-token cap too."""
     body = {
         "model": got["model"],
         "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
@@ -308,11 +310,16 @@ def build(got, provider, system, prompt, schema):
     }
     _set(body, provider.get("effort_param") or "reasoning_effort", got["effort"])
     _merge(body, provider.get("extra") or {})
-    # No output-token limit and no price limit go with the request (6 October
-    # 2026): sent with them, as #153 built it, OpenRouter found no GLM 5.3
-    # endpoint to serve it ("HTTP 404 ... No endpoints found that can handle the
-    # requested parameters", #154's read). The spending check still bounds each
-    # request by the registry's price and output ceiling before it is sent.
+    # THE OUTPUT CAP GOES WITH THE REQUEST, AND THE PRICE FILTER DOES NOT (PR 3's
+    # cap probe, 6 October 2026, one variable at a time through the canary on
+    # main). The cap alone was served (run 37539011607: every GLM 5.3 endpoint
+    # lists max_tokens and writes at least 128,000), so the provider stops a
+    # read at the registry's output ceiling. The price filter alone, at the
+    # registry's price, was refused with #154's HTTP 404 (run 37539116285): it
+    # was #153's outage. So the price half of a request's most is the
+    # registry's figure, an estimate the provider does not enforce.
+    if lim:
+        body["max_tokens"] = lim["output_tokens"]
     return body
 
 
@@ -368,7 +375,12 @@ def limits(reg, model_id):
 
 
 def bound(lim, body_bytes):
-    """The most one request can cost: every byte a token at the input price, every allowed output token at the output price."""
+    """An estimate of the most one request can cost: every byte a token at the input price, every allowed output token at the output price.
+
+    The output tokens are capped by the provider (max_tokens goes with the
+    request); the prices are the registry's, which no request enforces yet, so
+    the figure is an estimate, never a guarantee, until a price filter is proved.
+    """
     tokens_in = min(body_bytes + FRAMING_TOKENS, lim["context"])
     return (tokens_in * lim["input_price"] + lim["output_tokens"] * lim["output_price"]) / 1e6
 
@@ -764,7 +776,7 @@ def main(argv):
         system = f.read()
     ledger, attempt = os.environ.get("ATTEMPTS", ""), os.environ.get("ATTEMPT", "")
     lim = limits(reg, got["model"])
-    body = build(got, provider, system, sys.stdin.read(), json.loads(schema_json))
+    body = build(got, provider, system, sys.stdin.read(), json.loads(schema_json), lim)
     probe = os.environ.get("CANARY_PROBE", "")
     if probe not in ("", "none"):
         if probe not in PROBES or lim is None:

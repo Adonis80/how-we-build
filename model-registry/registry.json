@@ -59,12 +59,12 @@
       "status": "active",
       "efforts": ["low", "high", "max"],
       "context_tokens": 1048576,
-      "price_usd_per_million": {"input": 0.5614, "output": 1.764},
+      "price_usd_per_million": {"input": 1.4, "output": 4.4},
       "max_output_tokens": 100000,
-      "limits_note": "The spending check bounds every cash request by price_usd_per_million and max_output_tokens before it is sent (decision 0014, D). Neither goes with the request since 6 October 2026: sent as max_tokens and provider.max_price, OpenRouter found no GLM 5.3 endpoint to serve it (HTTP 404, #154's read). max_output_tokens is a ceiling set on 5 October 2026 above what a review should write, not a measured figure.",
+      "limits_note": "The spending check estimates every cash request's most by price_usd_per_million and max_output_tokens before it is sent (decision 0014, D). PR 3's cap probe, through the canary on main on 6 October 2026, one variable at a time: max_tokens alone was served (run 37539011607), so it goes with every request and the provider stops a read there; provider.max_price alone, at the price then held here (0.5614 and 1.764), was refused with HTTP 404 (run 37539116285), so it does not go, and the price is an estimate the provider does not enforce. The price is the one GLM reads are billed at: of 41 endpoints the provider lists, the first party and most others charge 1.40 and 4.40 per million, and #154's read on 1a6727d was billed exactly that (244,556 in and 31,761 out, 0.482 USD). max_output_tokens is a ceiling set on 5 October 2026 above what a review should write, not a measured figure; every endpoint writes at least 128,000.",
       "note": "The consensus named GLM-5.3 on 18 September; the Chairman said GLM 5.2 on 22 September. 5.3 is current on OpenRouter and improves on 5.2, so it is pinned, as the amendment says. Reasoning is always on.",
-      "checked": "2026-09-25",
-      "source": "https://openrouter.ai/z-ai/glm-5.3 by web search on 25 September 2026: openrouter.ai is not reachable from the build session, so the first live read proves the id"
+      "checked": "2026-10-06",
+      "source": "https://openrouter.ai/z-ai/glm-5.3 by web search on 25 September 2026: openrouter.ai is not reachable from the build session, so the first live read proves the id; its endpoints, their parameters and list prices from the provider's public list on 6 October 2026, read by the canary's probe (run 37539011607)"
     },
     "z-ai/glm-5.3-flash": {
       "name": "GLM 5.3 Flash",

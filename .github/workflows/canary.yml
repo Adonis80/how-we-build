@@ -26,7 +26,9 @@ name: Canary
 # environment, which admits main alone, refuses it first.
 #
 # THE CAP PROBE (decision 0014's recovery, PR 3). Dispatched by hand with a probe,
-# the same read adds one limit, the output-token cap or the price filter, and the
+# the same read adds one limit: the price filter, the experiment still open, or
+# the output-token cap, which every request has carried since PR 3 proved it
+# served (run 37539011607), so that probe now repeats a plain read. The
 # job also says, from the provider's public list, which parameters each of the
 # model's endpoints serves, the most it writes, and its list price beside the
 # registry's: public figures, never what was spent. A probe runs under its own
@@ -83,7 +85,9 @@ jobs:
     runs-on: ubuntu-latest
     # THE DOOR, as review.yml's: the key is readable from main alone.
     environment: reviewer
-    timeout-minutes: 10
+    # Two reads of 300 s at most, one per distinct model and effort (#161's read,
+    # advisory 2), with the rest of the job on top.
+    timeout-minutes: 15
     permissions:
       contents: read
       # The spending check counts the reads in flight (decision 0014, D).
