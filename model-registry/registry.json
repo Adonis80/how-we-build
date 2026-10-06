@@ -61,7 +61,7 @@
       "context_tokens": 1048576,
       "price_usd_per_million": {"input": 0.5614, "output": 1.764},
       "max_output_tokens": 100000,
-      "limits_note": "Every cash request carries max_tokens at max_output_tokens and provider.max_price at price_usd_per_million, so its most is known before it is sent (decision 0014, D). A price here below the provider's refuses the request rather than paying more; max_output_tokens is a ceiling set on 5 October 2026 above what a review should write, not a measured figure.",
+      "limits_note": "The spending check bounds every cash request by price_usd_per_million and max_output_tokens before it is sent (decision 0014, D). Neither goes with the request since 6 October 2026: sent as max_tokens and provider.max_price, OpenRouter found no GLM 5.3 endpoint to serve it (HTTP 404, #154's read). max_output_tokens is a ceiling set on 5 October 2026 above what a review should write, not a measured figure.",
       "note": "The consensus named GLM-5.3 on 18 September; the Chairman said GLM 5.2 on 22 September. 5.3 is current on OpenRouter and improves on 5.2, so it is pinned, as the amendment says. Reasoning is always on.",
       "checked": "2026-09-25",
       "source": "https://openrouter.ai/z-ai/glm-5.3 by web search on 25 September 2026: openrouter.ai is not reachable from the build session, so the first live read proves the id"
