@@ -7,7 +7,8 @@
 # anything that looks like a secret (naming the place, never the value), a
 # model named anywhere but the registry, a review gate that no longer matches the reviewer's answers or has drifted from
 # the workflows that fetch them, a build board that no longer renders as
-# decision 0007 says, and, in a pull request, a commit no reviewer
+# decision 0007 says, a product read's rules that no longer refuse what decision
+# 0013 says they must, and, in a pull request, a commit no reviewer
 # has read clean — unread, or read and left a blocking finding on — or a change to the review
 # machinery while the newest canary on main is red. Nothing else. A read by anybody the
 # gate does not count is unread, not a shape of its own.
@@ -47,7 +48,7 @@ else
 fi
 
 # 2. Only these files exist at the root (plus .git and .github).
-allowed=" AGENTS.md CHARTER.md HOW-WE-BUILD.md README.md RICH-DATA.md board check.sh design juku-library library model-registry review-gate.py "
+allowed=" AGENTS.md CHARTER.md HOW-WE-BUILD.md README.md RICH-DATA.md board check.sh design juku-library library model-registry product-reads review-gate.py "
 while IFS= read -r f; do
   case "$f" in .git|.github) continue ;; esac
   case "$allowed" in
@@ -71,6 +72,9 @@ for f in $allowed; do
     # resolver, its OpenAI-compatible caller, and the reviewer's context
     # selector with its partner map (decision 0014), and nothing else.
     model-registry) [ -d "$f" ] && [ "$(ls -A model-registry | tr '\n' ' ')" = "ask.py context.py registry.json resolve.py " ] || { echo "FAIL: 'model-registry/' holds ask.py, context.py, registry.json and resolve.py, and nothing else."; fail=1; } ;;
+    # The product read's rules (decision 0013): the one module that says whether a
+    # read is asked for and paid, and nothing else. It is part of the review gate.
+    product-reads) [ -d "$f" ] && [ "$(LC_ALL=C ls -A product-reads | tr '\n' ' ')" = "ask.py kit reads.py setup.py " ] && [ "$(LC_ALL=C ls -A product-reads/kit | tr '\n' ' ')" = "AGENTS.starter.md gate.yml review-gate.py roadmap.starter.json verify.yml wake.yml " ] || { echo "FAIL: 'product-reads/' holds ask.py, reads.py, setup.py and kit/ (the starter kit's six files), and nothing else."; fail=1; } ;;
     # The rulebook's own library (the Chairman's ruling of 2 October 2026): the
     # papers and frozen records committed verbatim for a build to read from
     # GitHub (#103's amendment): .md pages directly inside, no subfolder,
@@ -214,13 +218,12 @@ fi
 # The gate's own rule is machine-checked before anything asks GitHub: one
 # implementation, held against the reviewer's real answers, the states a read
 # can arrive in, the fakes that once passed a looser test, the routes the gate
-# has stopped reading, and the six workflow files — the check, the reviewer,
-# the wake it calls, the door's standing proof, the product reviewer and the
-# board's build — which
-# must still agree with the register and with each other.
+# has stopped reading, and the workflow files — the check, the reviewer, the wake
+# it calls, the door's standing proof, the product reviewer, the asker and the
+# board's build — which must still agree with the register and with each other.
 # It runs unless review-gate.py's plan says it can say nothing new: an earlier
 # attempt of this same run passed it, or no file the pull request changes is
-# one it reads. Anything else, an error included, runs it (see SELFTEST_INPUTS).
+# one it reads. Anything else, an error included, runs it (see SELFTEST_NOT_READ).
 plan=$(python3 review-gate.py --selftest-plan 2>/dev/null | tail -n 1) || plan="run: the plan could not be made"
 case "$plan" in
   "skip: "*) echo "selftest: not run, ${plan#skip: }" ;;
@@ -230,6 +233,15 @@ esac
 # The build board's build (decision 0007): what the page may say, run on
 # made-up roadmaps, since the real ones are private and never reach this log.
 python3 -I board/build.py --selftest || { echo "FAIL: board/build.py no longer renders the board as decision 0007 says — see the case above."; fail=1; }
+# The product read's rules (decision 0013): the README's list, the ready mark, the
+# product's own check and the three kinds of not read, run on made-up cases and on
+# the real README, since a README edit that breaks the list would stop every read.
+python3 -I product-reads/reads.py --selftest || { echo "FAIL: product-reads/reads.py no longer refuses what decision 0013 says it must — see the case above."; fail=1; }
+# The asker and the setup script, each run against a GitHub kept in memory, and the
+# starter kit's own gate, which a new product runs as `verify`.
+python3 -I product-reads/ask.py --selftest || { echo "FAIL: product-reads/ask.py asks for what it should not, or leaves what it should ask for — see the case above."; fail=1; }
+python3 -I product-reads/setup.py --selftest || { echo "FAIL: product-reads/setup.py no longer sets a product up as decision 0013 says — see the case above."; fail=1; }
+python3 -I product-reads/kit/review-gate.py --selftest || { echo "FAIL: the starter kit's gate no longer counts what it must — see the case above."; fail=1; }
 fi
 # WHICH EVENTS THE GATE RUNS ON, WRITTEN AS WHAT IT SKIPS RATHER THAN WHAT IT
 # CATCHES. This read `pull_request|pull_request_review`, and this change removed

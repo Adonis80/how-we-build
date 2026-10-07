@@ -1,0 +1,40 @@
+name: verify
+
+# The product's own check. A read is asked of a commit only after this passes on
+# it, so nothing is paid for on work that does not even build. It starts as two
+# things true of any product, and the product adds its tests and builds here as
+# it grows: this file is the product's own after the first install.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: The gate still means what the rulebook's does
+        run: python3 review-gate.py --selftest
+      - name: AGENTS.md carries what every product carries
+        run: |
+          python3 - <<'PY'
+          import re, sys
+          text = open("AGENTS.md", encoding="utf-8").read()
+          first = text.splitlines()[0] if text.strip() else ""
+          bad = []
+          if not first.startswith("Rulebook: https://github.com/Adonis80/how-we-build"):
+              bad.append("AGENTS.md must begin with the Rulebook line")
+          if not re.search(r"(?m)^## Review guidelines\s*$", text):
+              bad.append("AGENTS.md must hold a `## Review guidelines` section")
+          if len(text.split()) >= 500:
+              bad.append("AGENTS.md must stay under 500 words")
+          for b in bad:
+              print("::error::" + b)
+          sys.exit(1 if bad else 0)
+          PY
