@@ -6157,6 +6157,8 @@ ASK_PROGRAM_LOOSENINGS = (
     ("a list of reads already asked, that GitHub would not give, taken as empty", "ask.py",
      'trouble.append(str(unanswered))\n            left["not asked: it could not be told what was asked already"] = len(chosen)\n            chosen = []',
      "asked = set()"),
+    ("a garbled answer taken for a rule's refusal", "ask.py",
+     "    except reads.Malformed as why:\n        raise Unanswered(str(why))\n", ""),
     ("an unanswered question ending the run green", "ask.py", "    if trouble:\n        raise Trouble(", "    if False:\n        raise Trouble("),
     ("a read that did not finish retried by itself", "reads.py", 'if state == "failed" and not again:', 'if state == "failed" and False:'),
     ("a read already running asked again", "reads.py", 'if state == "running":\n        raise', "if False:\n        raise"),
@@ -6206,8 +6208,8 @@ def _check_ask_program():
             bad += 1
     if not bad:
         print("ok: ask.py's selftest passes, and goes red on each of %d faults put into a copy (a commit asked "
-              "about twice, a question GitHub did not answer left unsaid or read as empty, a read that did not "
-              "finish retried, a read running asked again): the failed-read handling is shown, not claimed"
+              "about twice, a question GitHub did not answer left unsaid or read as empty or garbled, a read that "
+              "did not finish retried, a read running asked again): the failed-read handling is shown, not claimed"
               % len(ASK_PROGRAM_LOOSENINGS))
     return bad
 
