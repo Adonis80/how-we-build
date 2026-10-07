@@ -19,6 +19,14 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 fail=0
+# TWO STEPS, ONE CHECK (his ask, 7 October 2026: the full self-test ran on
+# every pull request and again when the verdict landed, about 22 minutes each).
+# check.yml runs this file twice in the one `check` job: CHECK_PART=selftest for
+# everything but the gate, then CHECK_PART=gate for the gate alone, so a re-run
+# can see which half an earlier attempt passed. Unset, by hand, it runs whole.
+part="${CHECK_PART:-whole}"
+case "$part" in whole|selftest|gate) ;; *) echo "FAIL: CHECK_PART is '$part'; it is selftest, gate or unset."; exit 1 ;; esac
+if [ "$part" != gate ]; then
 
 # 1. The operating page stays short.
 # Counted with python, not `wc -w`: wc answers differently by locale — it
@@ -210,11 +218,19 @@ fi
 # the wake it calls, the door's standing proof, the product reviewer and the
 # board's build — which
 # must still agree with the register and with each other.
-python3 review-gate.py --selftest || fail_gate=1
+# It runs unless review-gate.py's plan says it can say nothing new: an earlier
+# attempt of this same run passed it, or no file the pull request changes is
+# one it reads. Anything else, an error included, runs it (see SELFTEST_INPUTS).
+plan=$(python3 review-gate.py --selftest-plan 2>/dev/null | tail -n 1) || plan="run: the plan could not be made"
+case "$plan" in
+  "skip: "*) echo "selftest: not run, ${plan#skip: }" ;;
+  *) echo "selftest: run, ${plan#run: }"; python3 review-gate.py --selftest || fail_gate=1 ;;
+esac
 [ "${fail_gate:-0}" -eq 0 ] || { echo "FAIL: the review gate no longer matches the reviewer's answers, or has drifted from the workflows — see the cases above."; fail=1; }
 # The build board's build (decision 0007): what the page may say, run on
 # made-up roadmaps, since the real ones are private and never reach this log.
 python3 -I board/build.py --selftest || { echo "FAIL: board/build.py no longer renders the board as decision 0007 says — see the case above."; fail=1; }
+fi
 # WHICH EVENTS THE GATE RUNS ON, WRITTEN AS WHAT IT SKIPS RATHER THAN WHAT IT
 # CATCHES. This read `pull_request|pull_request_review`, and this change removed
 # the second of those triggers from check.yml, leaving that arm unreachable.
@@ -225,7 +241,7 @@ python3 -I board/build.py --selftest || { echo "FAIL: board/build.py no longer r
 # the gate and fails loudly for want of a pull request number instead. `push` is
 # main's own, which carries no pull request to judge; an empty name is a run by
 # hand on somebody's machine.
-case "${GITHUB_EVENT_NAME:-}" in push|"") : ;; *)
+[ "$part" = selftest ] || case "${GITHUB_EVENT_NAME:-}" in push|"") : ;; *)
   if [ -z "${GH_TOKEN:-}" ] || [ -z "${PR_NUMBER:-}" ] || [ -z "${HEAD_SHA:-}" ]; then
     echo "FAIL: the check cannot ask GitHub which commit the reviewer read — the workflow must set PR_NUMBER, HEAD_SHA and GH_TOKEN."; fail=1
   elif python3 review-gate.py "${GITHUB_REPOSITORY:-Adonis80/how-we-build}" "$PR_NUMBER" "$HEAD_SHA" "$GH_TOKEN"; then
@@ -236,6 +252,6 @@ case "${GITHUB_EVENT_NAME:-}" in push|"") : ;; *)
 ;; esac
 
 if [ "$fail" -eq 0 ]; then
-  echo "check.sh: all clear"
+  case "$part" in whole) echo "check.sh: all clear" ;; *) echo "check.sh: all clear ($part)" ;; esac
 fi
 exit "$fail"
