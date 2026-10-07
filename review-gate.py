@@ -108,6 +108,7 @@ import tempfile
 import textwrap
 import threading
 import time
+import types
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -304,8 +305,10 @@ REVIEWERS = {
 # a fifth file mattered.
 # board/build.py joins them (#113's fourth read): check.sh runs its selftest
 # before the verdict, so a change to it is a change to what the gate runs.
+# product-reads/ joins them (decision 0013): its rules decide whether a read is
+# asked for and paid, and check.sh runs its selftest before the verdict.
 GATE_FILES = ("check.sh", "review-gate.py", "board/build.py")
-GATE_DIRS = (".github/workflows/", "model-registry/")
+GATE_DIRS = (".github/workflows/", "model-registry/", "product-reads/")
 
 
 def touches_the_gate(paths):
@@ -1130,6 +1133,11 @@ def _check_review_loosenings():
 
 PRODUCT_NAMES = ('--arg name "%s"' % REVIEWER_CHECK, '"$REVIEWER_APP_ID" "%s"' % REVIEWER_CHECK)
 PASTED_INPUT = re.compile(r"^\s+[A-Z_]+: \$\{\{ inputs\.[a-z_]+ \}\}\s*$")
+# One read of a pull request at a time, never cut off (decision 0013). The group
+# line is the one place an input is named outside a variable, in a key GitHub
+# reads and no shell does, so it is the one line PASTED_INPUT does not refuse.
+PRODUCT_GROUP = "  group: review-product-${{ inputs.repo }}-${{ inputs.pr }}"
+PRODUCT_CONCURRENCY = "concurrency:\n" + PRODUCT_GROUP + "\n  cancel-in-progress: false\n"
 XTRACE = re.compile(r"\bset\s+-\w*x|\bxtrace\b")
 TOOL_PIN = r"npm install -g @anthropic-ai/claude-code@(\d+\.\d+\.\d+)\b"
 SCHEMA = re.compile(r"^\s*schema='([^']*)'\s*$", re.M)
@@ -1193,6 +1201,17 @@ def _without_step(text, name):
     """The text with the named step taken out whole."""
     span = _step_span(text, name)
     return text[:span[0]] + text[span[1]:] if span else text
+
+
+def _moved_step(text, name, before):
+    """The text with the named step taken out and put back just ahead of the step `before`."""
+    span = _step_span(text, name)
+    if not span or not _step_span(text, before):
+        return text
+    step = text[span[0]:span[1]]
+    rest = text[:span[0]] + text[span[1]:]
+    at = _step_span(rest, before)[0]
+    return rest[:at] + step + rest[at:]
 
 
 def _block(text, first, last, keep_comments=True):
@@ -1508,7 +1527,7 @@ CLASS_ARMS = (CLASS_CODE, "*.md) ;;", "*) class=code ;;")
 RISK_CASE = 'case "${f,,}" in'
 # The six classes, as the arms that name them, in the order they are tried.
 RISK_GATE = ("agents.md|*/agents.md|check.sh|*/check.sh|review-gate.py|*/review-gate.py|board/build.py|"
-             "model-registry/*|*/model-registry/*|.*|*/.*) risky=yes ;;")
+             "model-registry/*|*/model-registry/*|product-reads/*|*/product-reads/*|.*|*/.*) risky=yes ;;")
 RISK_PRICING = "*pric*|*payment*|*billing*|*invoice*|*checkout*|*quote*) risky=yes ;;"
 RISK_DATA = ("*.sql|*migration*|*schema*|supabase/*|*/supabase/*|*backfill*|*purge*|*truncate*|"
              "*wipe*|*seed*) risky=yes ;;")
@@ -1847,6 +1866,9 @@ CLASS_CASES = (
     # The registry and reviewer routing are the gate; pages about them are pages.
     (["model-registry/registry.json"], "risky"),
     (["model-registry/resolve.py"], "risky"),
+    (["product-reads/reads.py"], "risky"),
+    (["product-reads/kit/gate.yml"], "risky"),
+    (["library/product-joins.md"], "words"),
     (["library/model-registry.md"], "words"),
     (["juku-library/CLAUDE_OPEN_WEIGHT_MODEL_ROUTING_IMPLEMENTATION.md"], "words"),
 )
@@ -2073,6 +2095,7 @@ CLASS_LOOSENINGS = (
     ("an unknown kind never tried", None, _without_arm(RISK_UNKNOWN)),
     ("a certificate's kind called ordinary", None, lambda t: t.replace(RISK_ORDINARY, RISK_ORDINARY.replace("*.woff2)", "*.woff2|*.pem)", 1), 1)),
     ("the registry read as ordinary", None, lambda t: t.replace(RISK_GATE, RISK_GATE.replace("model-registry/*|*/model-registry/*|", "", 1), 1)),
+    ("the product read's rules read as ordinary", None, lambda t: t.replace(RISK_GATE, RISK_GATE.replace("product-reads/*|*/product-reads/*|", "", 1), 1)),
     ("an endpoint read as ordinary", None, lambda t: t.replace(RISK_BOUNDARY, RISK_BOUNDARY.replace("api/*|*/api/*|", "", 1), 1)),
     ("every script read as ordinary", None, lambda t: t.replace(RISK_RELEASE, RISK_RELEASE.replace("*.sh|", "", 1), 1)),
     ("a page's exit put before the gate", None, lambda t: t.replace("              %s\n              *.md) ;;\n" % RISK_GATE, "              *.md) ;;\n              %s\n" % RISK_GATE, 1)),
@@ -4694,6 +4717,66 @@ def _check_context_loosenings():
     return bad
 
 
+READS = "product-reads/reads.py"
+
+
+def _reads():
+    """product-reads/reads.py, loaded: the one place the product read's rules are said."""
+    spec = importlib.util.spec_from_file_location("reads", READS)
+    reads = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(reads)
+    return reads
+
+
+# The steps that decide whether a read is paid for, in the order they must run:
+# the shape of what was typed, this repository's checkout, the README's list, the
+# token, the head, the ready mark and the rest, and only then the check run that
+# says "reading" and the fetch the reader is given. None may follow another it
+# was meant to precede, or a read is paid for first and refused after.
+PRODUCT_ORDER = ("- name: What was asked", "- uses: actions/checkout@v4",
+                 "- name: A product this rulebook lists", "- name: Put on the badge",
+                 "- name: The commit asked for is the head", "- name: Ready, checked, and not yet read",
+                 "- name: Say it is reading", "- name: Gather what the reviewer reads",
+                 "- name: Read it")
+PRODUCT_ASKING = ("A product this rulebook lists", "The commit asked for is the head",
+                  "Ready, checked, and not yet read")
+# A refusal in those steps is the step failing. Any of these spellings turns it
+# into a message and a green step, which is a read paid for after it was refused.
+SWALLOWED = re.compile(r"\|\|\s*(?:true|:|echo|exit\s+0)\b|set\s+\+e|continue-on-error|if:\s*(?:always|failure)")
+
+
+def _product_asks(reads):
+    """The lines the run must say, each exactly once, as the rules module spells them."""
+    check = "python3 -I product-reads/reads.py"
+    return (
+        '[[ "$REPO" =~ %s ]] || { echo "::error::the product must be named Adonis80/NAME"; exit 1; }'
+        % reads.REPO.pattern,
+        '[[ "$AGAIN" =~ ^(true|false)$ ]] || { echo "::error::again is true or false"; exit 1; }',
+        '%s product "$REPO" README.md' % check,
+        '[ "$draft" = "false" ] || { echo "::error::$REPO pull request $PR is a draft; a draft is '
+        'not asked for a read"; exit 1; }',
+        'api() { curl -fsS -H "Authorization: token $TOKEN" -H "Accept: application/vnd.github+json" '
+        '"https://api.github.com/repos/$REPO/$1"; }',
+        'api "commits/$SHA" > "$t/commit.json"',
+        'api "commits/$parent" > "$t/parent.json"',
+        '%s ready "$t/commit.json" "$t/parent.json" "$SHA"' % check,
+        'api "commits/$SHA/check-runs?check_name=%s&filter=all&per_page=100" > "$t/verify.json"' % reads.VERIFY,
+        '%s verify "$t/verify.json" "$SHA"' % check,
+        'api "commits/$SHA/check-runs?check_name=%s&app_id=$REVIEWER_APP_ID&filter=all&per_page=100" > '
+        '"$t/read.json"' % reads.REVIEWER_CHECK,
+        'if [ "$AGAIN" = "true" ]; then',
+        '%s state "$t/read.json" "$SHA" "$REVIEWER_APP_ID" --again' % check,
+        '%s state "$t/read.json" "$SHA" "$REVIEWER_APP_ID"' % check,
+    )
+
+
+# What the ready check and the shape check are handed, each in its own step.
+PRODUCT_ENV = (("What was asked", "AGAIN: ${{ inputs.again }}"),
+               ("Ready, checked, and not yet read", "AGAIN: ${{ inputs.again }}"),
+               ("Ready, checked, and not yet read", "REVIEWER_APP_ID: ${{ secrets.REVIEWER_APP_ID }}"),
+               ("Ready, checked, and not yet read", "TOKEN: ${{ steps.badge.outputs.token }}"))
+
+
 def _check_product_wiring(review=None, product=None, readme=None, quiet=False):
     """review-product.yml, held to review.yml and to the rulebook's own map."""
     say = (lambda *a: None) if quiet else print
@@ -4723,10 +4806,14 @@ def _check_product_wiring(review=None, product=None, readme=None, quiet=False):
     if not USES_ENVIRONMENT.search(product):
         fault("does not run in the `%s` environment, so the App's key is readable from any "
               "branch and a product's badge can be forged" % KEY_ENVIRONMENT)
-    for pattern, what in ((r'^\s*concurrency:', "a concurrency block"),
-                          (r'^\s*cancel-in-progress:', "a cancel-in-progress setting")):
-        if re.search(pattern, product, re.M):
-            fault("has %s; for review.yml's reason, every ask runs" % what)
+    # One read of a pull request at a time, and a running read never cut off
+    # (decision 0013): this one block and no other. A different group would
+    # serialise other pull requests' reads behind this one, or none; a group that
+    # cancels would cut a read off after it was paid for.
+    if product.count(PRODUCT_CONCURRENCY) != 1 or len(re.findall(r'^\s*concurrency:', product, re.M)) != 1 \
+            or len(re.findall(r'^\s*cancel-in-progress:', product, re.M)) != 1:
+        fault("must hold one read of a pull request at a time and never cut one off: exactly the "
+              "block `%s` and no other concurrency setting" % PRODUCT_CONCURRENCY.strip().replace("\n", " "))
     for flag, why in (('--tools ""', "every built-in tool would be back on"),
                       ("--restricted", "it would read the settings files it is shown"),
                       ("--strict-mcp-config", "it could pick up MCP servers from elsewhere"),
@@ -4777,7 +4864,7 @@ def _check_product_wiring(review=None, product=None, readme=None, quiet=False):
     # A dispatch's inputs are typed, so they reach a script as variables only.
     for n, line in enumerate(product.splitlines(), 1):
         if "${{ inputs." in line and not line.startswith("run-name: ") \
-                and not PASTED_INPUT.match(line):
+                and line != PRODUCT_GROUP and not PASTED_INPUT.match(line):
             fault("line %d pastes an input into the workflow rather than passing it as a "
                   "variable — a typed value pasted into a script can run" % n)
     # This log is public and the product is not.
@@ -4863,29 +4950,57 @@ def _check_product_wiring(review=None, product=None, readme=None, quiet=False):
         fault("must end in a `%s` step that runs always, closes a check run it opened and never "
               "signed as neutral, goes red when that close does not take, and revokes the token; "
               "it has lost %s" % (PRODUCT_CLEANUP, "; ".join(lost)))
-    # Only products this rulebook lists — in the form, and refused at run time
-    # before any token is minted, since whether GitHub's API holds a dispatch
-    # to the form's `choice` is not something this file has watched happen
-    # (#68's first read). The two lists must agree, and name only products the
-    # README's map names.
-    options = re.findall(r"^\s+- (Adonis80/[A-Za-z0-9._-]+)\s*$", product, re.M)
-    block = re.search(r'case "\$REPO" in\n(.*?)\n\s*esac', product, re.S)
-    allowed = re.findall(r"^\s+(Adonis80/[A-Za-z0-9._-]+)\)\s*;;\s*$", block.group(1), re.M) \
-        if block else []
-    refused = bool(block) and re.search(r"^\s+\*\)[^\n]*exit 1", block.group(1), re.M)
-    if not options:
-        fault("names no product to read")
-    if sorted(allowed) != sorted(options) or not refused:
-        fault("must refuse, at run time, any product but the form's own list — its `case` allows "
-              "%s and the form offers %s" % (sorted(allowed), sorted(options)))
-    for repo in sorted(set(options) | set(allowed)):
-        if "`https://github.com/%s`" % repo not in readme:
-            fault("offers to read %s, which is not a product on the README's map" % repo)
+    # WHICH PRODUCT, ASKED OF THE README AND NEVER OF A LIST KEPT HERE (decision
+    # 0013). The form takes any text, and the run asks product-reads/reads.py
+    # whether the README on main lists it, before the badge is put on. A list in
+    # this file again would be a second list to drift, and a new product would
+    # need an edit here, which is the step this removes. The README's list is
+    # held readable here too: one that cannot be read stops every read.
+    reads = _reads()
+    if re.search(r"^\s+options:\s*$", product, re.M) or re.search(r"\btype:\s*choice\b", product):
+        fault("offers its products from a list kept in this file; the README's map is the one "
+              "list and the run asks it, so a new product is a line there and no edit here")
+    try:
+        reads.products(readme)
+    except reads.Refused as why:
+        fault("cannot read the README's list of products (%s), so it would stop every read" % why)
+    if reads.REVIEWER_CHECK != REVIEWER_CHECK:
+        fault("asks for the reviewer's check run as `%s` and the gate reads `%s`"
+              % (reads.REVIEWER_CHECK, REVIEWER_CHECK))
+    lines = [l.strip() for l in product.splitlines()]
+    for line in _product_asks(reads):
+        if lines.count(line) != 1:
+            fault("must say `%s` exactly once, which a read is refused without (decision 0013)" % line)
+    for name, line in PRODUCT_ENV:
+        span = _step_span(product, name)
+        if not span or line not in [l.strip() for l in product[span[0]:span[1]].splitlines()]:
+            fault("must hand its `%s` step `%s`" % (name, line))
+    # The order is the guard: a read paid for before it is refused is not refused.
+    at = [product.find(step) for step in PRODUCT_ORDER]
+    if -1 in at or at != sorted(at) or product.count("uses: actions/checkout") != 1:
+        fault("must run %s in that order, with this repository checked out once, before the "
+              "reviewer reads anything" % ", ".join(s.split(": ", 1)[-1] for s in PRODUCT_ORDER))
+    if not re.search(r"uses: actions/checkout@v4\n\s+with:\n\s+persist-credentials: false", product):
+        fault("must check this repository out without leaving a credential in it")
+    for name in PRODUCT_ASKING:
+        span = _step_span(product, name)
+        if not span:
+            fault("has no `%s` step" % name)
+        elif SWALLOWED.search(product[span[0]:span[1]]):
+            fault("lets the `%s` step go green after a refusal (`||` into a message, `set +e`, "
+                  "continue-on-error): a read would be paid for after it was refused" % name)
+    # `again` is off unless a builder who has looked turns it on.
+    again = re.search(r"^      again:\n((?:        .*\n)+)", product, re.M)
+    if not again or "        type: boolean\n" not in again.group(1) \
+            or "        default: false\n" not in again.group(1):
+        fault("must offer `again` as a boolean that is false unless set; true by default would "
+              "re-ask every read that did not finish, by itself")
     if not bad:
         say("ok: the product reviewer answers only a writer's dispatch, behind the `%s` door, "
-            "with a token scoped to the one product; it reads the exact head against the "
-            "product's protected branch, gives the reviewer %s's model, effort, tool, flags "
-            "and instruction line for line, and leaves nothing open whatever happens"
+            "with a token scoped to the one product, and only after the README lists the product "
+            "and the commit is the ready mark, passed its own check and was not read; it reads the "
+            "exact head against the product's protected branch, gives the reviewer %s's model, "
+            "effort, tool, flags and instruction line for line, and leaves nothing open whatever happens"
             % (KEY_ENVIRONMENT, REVIEW_WORKFLOW))
     return bad
 
@@ -4914,7 +5029,6 @@ PRODUCT_LOOSENINGS = (
     ("a cancel-in-progress setting alone", lambda t: t.replace("    timeout-minutes: 55\n", "    timeout-minutes: 55\n    cancel-in-progress: true\n", 1)),
     ("the base fetched beside the right diff", lambda t: t.replace(PRODUCT_DIFF, PRODUCT_DIFF + "  # .base.sha", 1)),
     ("a different size ceiling", lambda t: t.replace('"$bytes" -gt 600000', '"$bytes" -gt 900000', 1)),
-    ("no product at all", lambda t: t.replace("          - Adonis80/Hemz-OS\n", "", 1).replace("            Adonis80/Hemz-OS) ;;\n", "", 1)),
     ("the token unscoped", lambda t: t.replace(PRODUCT_SCOPE, "{}", 1)),
     ("an input pasted", lambda t: t.replace('echo "asked: $REPO', 'echo "asked: ${{ inputs.repo }}', 1)),
     ("the shell traced", lambda t: t.replace("set -euo pipefail\n", "set -euxo pipefail\n", 1)),
@@ -4923,10 +5037,6 @@ PRODUCT_LOOSENINGS = (
     ("the verdict's shape altered", lambda t: t.replace('"enum":["blocking","advisory","needs-context"]', '"enum":["advisory"]', 1)),
     ("a conclusion GitHub writes", lambda t: t.replace("conclusion=neutral", "conclusion=skipped", 1)),
     ("the run created finished", lambda t: t.replace('status:"in_progress"', 'status:"completed"', 1)),
-    ("a repository not on the map", lambda t: t.replace("          - Adonis80/Hemz-OS\n", "          - Adonis80/Hemz-OS\n          - Adonis80/elsewhere\n", 1)),
-    ("one on both lists but not the map", lambda t: t.replace("          - Adonis80/Hemz-OS\n", "          - Adonis80/Hemz-OS\n          - Adonis80/elsewhere\n", 1).replace("            Adonis80/Hemz-OS) ;;\n", "            Adonis80/Hemz-OS) ;;\n            Adonis80/elsewhere) ;;\n", 1)),
-    ("any product let through at run time", lambda t: t.replace("            Adonis80/Hemz-OS) ;;\n", "            Adonis80/*) ;;\n", 1)),
-    ("the refusal at run time removed", lambda t: t.replace('*) echo "::error::$REPO is not a product this reviewer reads"; exit 1 ;;', "*) ;;", 1)),
     ("the token's reach taken on trust", lambda t: t.replace('if [ "$reach" != "$REPO" ]; then', "if false; then", 1)),
     ("the check run renamed where it opens", lambda t: t.replace('--arg name "juku-reviewer"', '--arg name "juku-review"', 1)),
     ("the check run renamed where it is read back", lambda t: t.replace('"$REVIEWER_APP_ID" "juku-reviewer"', '"$REVIEWER_APP_ID" "juku-review"', 1)),
@@ -4956,6 +5066,32 @@ PRODUCT_LOOSENINGS = (
     ("a wider grant wanted", lambda t: t.replace(PRODUCT_GRANT[0], PRODUCT_GRANT[0].replace('"contents":"read"', '"contents":"read","issues":"write"'), 1)),
     ("the grant taken on trust", lambda t: t.replace(PRODUCT_GRANT[1], "granted=$want", 1)),
     ("another secret written as the key", lambda t: t.replace('"$APP_KEY" > "$key"', '"$APP_ID" > "$key"', 1)),
+    # Which product, asked of the README and never of a list kept here (decision 0013).
+    ("a list of products back in the form", lambda t: t.replace("        type: string\n      pr:", "        type: choice\n        options:\n          - Adonis80/Hemz-OS\n      pr:", 1)),
+    ("the README never asked", lambda t: t.replace("product-reads/reads.py product", "true", 1)),
+    ("the README asked of another file", lambda t: t.replace('product "$REPO" README.md', 'product "$REPO" HOW-WE-BUILD.md', 1)),
+    ("the README asked after the token is minted", lambda t: _moved_step(t, "A product this rulebook lists", "Ready, checked, and not yet read")),
+    ("the shape of the product never checked", lambda t: re.sub(r'^( +)\[\[ "\$REPO" =~ [^\n]*\n', r'\1true\n', t, count=1, flags=re.M)),
+    ("the checkout after the token", lambda t: t.replace("      - uses: actions/checkout@v4\n        with:\n          persist-credentials: false\n\n", "", 1).replace("      - name: Gather what the reviewer reads\n", "      - uses: actions/checkout@v4\n        with:\n          persist-credentials: false\n\n      - name: Gather what the reviewer reads\n", 1)),
+    ("a credential left in the checkout", lambda t: t.replace("persist-credentials: false", "persist-credentials: true", 1)),
+    # The commit itself: not a draft, the ready mark, its own check, not yet read.
+    ("a draft let through", lambda t: t.replace('[ "$draft" = "false" ] ||', 'true ||', 1)),
+    ("the ready mark never checked", lambda t: t.replace("product-reads/reads.py ready", "true", 1)),
+    ("the product's own check never checked", lambda t: t.replace("product-reads/reads.py verify", "true", 1)),
+    ("its own check asked for by another name", lambda t: t.replace("check_name=verify", "check_name=check", 1)),
+    ("whether it was read never asked", lambda t: t.replace("product-reads/reads.py state", "true", 2)),
+    ("any App's read counted", lambda t: t.replace("&app_id=$REVIEWER_APP_ID", "", 1)),
+    ("a read that did not finish re-asked by default", lambda t: t.replace("        default: false\n", "        default: true\n", 1)),
+    ("a read that did not finish always re-asked", lambda t: t.replace('state "$t/read.json" "$SHA" "$REVIEWER_APP_ID"\n', 'state "$t/read.json" "$SHA" "$REVIEWER_APP_ID" --again\n', 1)),
+    ("an error answer taken for an answer", lambda t: t.replace("curl -fsS", "curl -sS", 1)),
+    ("a refusal turned into a message", lambda t: t.replace('"$t/parent.json" "$SHA"\n', '"$t/parent.json" "$SHA" || true\n', 1)),
+    ("the ready check allowed to fail", lambda t: _in_step(t, "Ready, checked, and not yet read", "        env:\n", "        continue-on-error: true\n        env:\n")),
+    ("the ready check after the run is opened", lambda t: _moved_step(t, "Ready, checked, and not yet read", "Gather what the reviewer reads")),
+    ("the head checked after the ready mark", lambda t: _moved_step(t, "The commit asked for is the head", "Say it is reading")),
+    # One read of a pull request at a time, never cut off.
+    ("a different group", lambda t: t.replace("  group: review-product-", "  group: review-", 1)),
+    ("a read cut off", lambda t: t.replace("  cancel-in-progress: false\n", "  cancel-in-progress: true\n", 1)),
+    ("no group at all", lambda t: t.replace(PRODUCT_CONCURRENCY, "", 1)),
 )
 
 
@@ -5558,6 +5694,1034 @@ def _check_product_loosenings():
     if not bad:
         print("ok: each of %d loosenings of %s was applied to the real file and refused"
               % (len(PRODUCT_LOOSENINGS), PRODUCT_WORKFLOW))
+    return bad
+
+
+# THE NEW STEPS' SHELL, RUN. The pins above hold what the workflow says; they cannot
+# say whether it works, and the first draft of the head step did not: jq's `//`
+# treats false as absent, so a pull request that was not a draft read as no answer
+# and every read was refused. That is a bug no line-for-line match can see. So the
+# two steps that decide whether a read is paid for are RUN, here, against a `curl`
+# that answers from a table, as the wake is run against a `gh` that fails on cue.
+# Each case is a state the product's pull request can be in; each must come out as
+# the rules say, and none may print a word the product holds.
+STUB_CURL = r"""#!/usr/bin/env python3
+import json, os, re, sys
+args = sys.argv[1:]
+fail = any(a.startswith("-") and not a.startswith("--") and "f" in a[1:] for a in args)
+url = next(a for a in args if a.startswith("https://"))
+for pattern, status, body in json.load(open(os.environ["STUB_ROUTES"])):
+    if re.search(pattern, url):
+        break
+else:
+    sys.stderr.write("the stub does not recognise: " + url + "\n")
+    sys.exit(97)
+if fail and status >= 400:
+    sys.exit(22)
+out = args[args.index("-o") + 1] if "-o" in args else None
+(open(out, "w") if out else sys.stdout).write(json.dumps(body))
+"""
+RUN_HEAD, RUN_STEP = "c" * 40, "d" * 40
+RUN_SECRET = "SECRET-PRODUCT-WORDS"
+HEAD_STEP = "The commit asked for is the head"
+READY_STEP = "Ready, checked, and not yet read"
+
+
+def _step_script(text, name):
+    """The shell of the named step, dedented, or None if it has none or holds a ${{ }}."""
+    span = _step_span(text, name)
+    if not span:
+        return None
+    body = text[span[0]:span[1]].splitlines()
+    start = next((n for n, l in enumerate(body) if re.match(r"^\s*run:\s*\|\s*$", l)), None)
+    if start is None:
+        return None
+    indent = len(body[start]) - len(body[start].lstrip())
+    out = []
+    for l in body[start + 1:]:
+        if l.strip() and (len(l) - len(l.lstrip())) <= indent:
+            break
+        out.append(l[indent + 2:] if l.strip() else "")
+    script = "\n".join(out)
+    return None if "${{" in script else script
+
+
+def _run_steps(script, routes, env):
+    """(exit status, everything it printed) for one step against a table of answers."""
+    with tempfile.TemporaryDirectory() as d:
+        binned = os.path.join(d, "bin")
+        os.mkdir(binned)
+        with open(os.path.join(binned, "curl"), "w", encoding="utf-8") as f:
+            f.write(STUB_CURL)
+        os.chmod(os.path.join(binned, "curl"), 0o755)
+        table = os.path.join(d, "routes.json")
+        with open(table, "w", encoding="utf-8") as f:
+            json.dump(routes, f)
+        temp = os.path.join(d, "tmp")
+        os.mkdir(temp)
+        e = dict(os.environ)
+        e.update({"PATH": binned + os.pathsep + os.environ.get("PATH", ""), "STUB_ROUTES": table,
+                  "RUNNER_TEMP": temp, "GITHUB_OUTPUT": os.path.join(d, "out"), "TOKEN": "not-a-token",
+                  "REPO": "Adonis80/zed", "PR": "7", "SHA": RUN_HEAD, "REVIEWER_APP_ID": str(REVIEWER_APP_ID),
+                  "AGAIN": "false"})
+        e.update(env)
+        try:
+            p = subprocess.run(["bash", "-c", script], env=e, capture_output=True, text=True, timeout=120)
+        except (OSError, subprocess.SubprocessError) as exc:
+            return None, "could not be run (%s)" % exc
+        return p.returncode, p.stdout + p.stderr
+
+
+def _stamp_ago(minutes):
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 60 * minutes))
+
+
+def _preflight_cases(reads):
+    """[(what, step, routes, env, should pass)], built from the rules module's own shapes."""
+    head, beneath = RUN_HEAD, RUN_STEP
+    mark = "%s\n\nReview-Ready: yes\nReview-Parent: %s\n" % (RUN_SECRET, beneath)
+    marked = reads._commit(mark, sha=head)
+    below = reads._commit("x", sha=beneath, parents=())
+    below["parents"] = []
+    marked["parents"] = [{"sha": beneath}]
+
+    def run(name="juku-reviewer", app=REVIEWER_APP_ID, status="completed", conclusion="success", ago=5, sha=head):
+        return {"name": name, "app": {"id": app}, "head_sha": sha, "status": status,
+                "conclusion": conclusion, "started_at": _stamp_ago(ago)}
+
+    def routes(commit=marked, parent=below, verify=None, read=None, read_latest=None, status=200,
+               parent_status=200):
+        return [
+            (r"/commits/%s$" % head, status, commit),
+            (r"/commits/%s$" % beneath, parent_status, parent),
+            (r"check_name=verify&filter=all&per_page=100$", 200,
+             {"check_runs": [run(name="verify")] if verify is None else verify}),
+            (r"check_name=juku-reviewer&app_id=%d&filter=all&per_page=100$" % REVIEWER_APP_ID, 200,
+             {"check_runs": [] if read is None else read}),
+            # What the same question gets without `filter=all`: only the newest run of that name.
+            (r"check_name=juku-reviewer&app_id=%d&per_page=100$" % REVIEWER_APP_ID, 200,
+             {"check_runs": [] if read_latest is None else read_latest}),
+        ]
+
+    def pr(**kw):
+        body = {"state": "open", "draft": False, "title": RUN_SECRET, "head": {"sha": head, "repo": {"full_name": "Adonis80/zed"}},
+                "base": {"repo": {"default_branch": "main"}}}
+        for k, v in kw.items():
+            if v is None:
+                body.pop(k, None)
+            else:
+                body[k] = v
+        return [(r"/pulls/7$", 200, body)]
+
+    P, H = READY_STEP, HEAD_STEP
+    Q, L = "What was asked", "A product this rulebook lists"
+    lost = run(status="in_progress", conclusion=None, ago=90)
+    going = run(status="in_progress", conclusion=None, ago=3)
+    hidden = [run(conclusion="neutral", ago=2), run(conclusion="success", ago=30)]
+    return [
+        ("a product, a pull request and a commit named as they should be", Q, [], {}, True),
+        ("a product of another owner", Q, [], {"REPO": "Evil/zed"}, False),
+        ("a product named with a path", Q, [], {"REPO": "Adonis80/zed/../x"}, False),
+        ("no product", Q, [], {"REPO": ""}, False),
+        ("a pull request numbered 0", Q, [], {"PR": "0"}, False),
+        ("a pull request numbered with a leading zero", Q, [], {"PR": "07"}, False),
+        ("a pull request named in words", Q, [], {"PR": "latest"}, False),
+        ("a commit named by its first seven characters", Q, [], {"SHA": RUN_HEAD[:7]}, False),
+        ("a commit in capitals", Q, [], {"SHA": RUN_HEAD.upper()}, False),
+        ("again said as maybe", Q, [], {"AGAIN": "maybe"}, False),
+        ("again said as true", Q, [], {"AGAIN": "true"}, True),
+        ("a product the README lists", L, [], {"REPO": "Adonis80/Hemz-OS"}, True),
+        ("a product the README does not list", L, [], {"REPO": "Adonis80/not-a-product"}, False),
+        ("a listed product named in other letters", L, [], {"REPO": "Adonis80/hemz-os"}, False),
+        ("a pull request that is open and not a draft", H, pr(), {}, True),
+        ("a draft", H, pr(draft=True), {}, False),
+        ("a pull request with no draft field", H, pr(draft=None), {}, False),
+        ("a closed pull request", H, pr(state="closed"), {}, False),
+        ("a head that moved", H, pr(head={"sha": "f" * 40, "repo": {"full_name": "Adonis80/zed"}}), {}, False),
+        ("a fork's head", H, pr(head={"sha": head, "repo": {"full_name": "Evil/zed"}}), {}, False),
+        ("a pull request GitHub cannot find", H, [(r"/pulls/7$", 404, {"message": "Not Found"})], {}, False),
+        ("a ready commit with its own check passed and no read", P, routes(), {}, True),
+        ("a head that is no ready mark", P, routes(commit=reads._commit(RUN_SECRET, sha=head, parents=(beneath,))), {}, False),
+        ("a ready mark that changed files", P, routes(commit=dict(marked, commit=dict(marked["commit"], tree={"sha": "other"}))), {}, False),
+        # A second round: the first mark was read and left findings, a fix followed, and the
+        # new mark names the fix. The first mark is still in the history; nothing asks.
+        ("a second round: an earlier mark was read, then a fix, then a new mark", P,
+         routes(parent=reads._commit("a fix", sha=beneath, parents=("e" * 40,)),
+                read=[run(conclusion="failure", sha="e" * 40)]), {}, True),
+        ("its own check never run", P, routes(verify=[]), {}, False),
+        ("its own check failed", P, routes(verify=[run(name="verify", conclusion="failure")]), {}, False),
+        ("a clean read already on it", P, routes(read=[run()]), {}, False),
+        ("findings already on it", P, routes(read=[run(conclusion="failure")]), {}, False),
+        ("a read in progress", P, routes(read=[going]), {}, False),
+        ("a read in progress, asked again", P, routes(read=[going]), {"AGAIN": "true"}, False),
+        ("a read that ended without a verdict", P, routes(read=[run(conclusion="neutral")]), {}, False),
+        ("a read that ended without a verdict, asked again", P, routes(read=[run(conclusion="neutral")]), {"AGAIN": "true"}, True),
+        ("a read lost past the hour", P, routes(read=[lost]), {}, False),
+        ("a read lost past the hour, asked again", P, routes(read=[lost]), {"AGAIN": "true"}, True),
+        ("a verdict hidden behind a newer run with none, asked again", P,
+         routes(read=hidden, read_latest=[hidden[0]]), {"AGAIN": "true"}, False),
+        ("a commit GitHub cannot find", P, routes(status=404), {}, False),
+        ("the commit beneath it gone", P, routes(parent_status=404), {}, False),
+    ]
+
+
+def _check_preflight_run(product=None, quiet=False):
+    """The head step and the ready step, run against a table of answers."""
+    say = (lambda *a: None) if quiet else print
+    try:
+        product = _read(PRODUCT_WORKFLOW) if product is None else product
+        reads = _reads()
+    except OSError as e:
+        say("  wiring: %s" % e)
+        return 1
+    bad = 0
+    for what, step, routes, env, ok in _preflight_cases(reads):
+        script = _step_script(product, step)
+        if script is None:
+            say("  wiring: %s has no `%s` step this build can run" % (PRODUCT_WORKFLOW, step))
+            return bad + 1
+        code, printed = _run_steps(script, routes, env)
+        if code is None or code == 97:
+            say("  wiring: %s, `%s`, %s: asked GitHub for something the table does not hold (%s)"
+                % (PRODUCT_WORKFLOW, step, what, printed.strip().splitlines()[-1:] or "?"))
+            bad += 1
+        elif (code == 0) != ok:
+            say("  wiring: %s, `%s`, %s: came out %s where it must come out %s"
+                % (PRODUCT_WORKFLOW, step, what, "green" if code == 0 else "red", "green" if ok else "red"))
+            bad += 1
+        elif RUN_SECRET in printed:
+            say("  wiring: %s, `%s`, %s: printed words the product holds into a public log" % (PRODUCT_WORKFLOW, step, what))
+            bad += 1
+    if not bad:
+        say("ok: the four steps that decide whether a read is paid for were run on %d states (what was typed "
+            "wrong, a product the README does not list, a draft, a closed or moved head, a fork, no mark, a "
+            "mark that changed files, a second round above an earlier mark, no passing check of its own, a "
+            "clean or failing read, a read going, ended or lost, a verdict hidden behind a newer run), came "
+            "out as the rules say in each, and printed nothing the product holds" % len(_preflight_cases(reads)))
+    return bad
+
+
+# Each reintroduces a fault the cases above must see, in the shell itself.
+PREFLIGHT_LOOSENINGS = (
+    ("a draft read by `// empty`", lambda t: t.replace(".draft | tostring", ".draft // empty", 1)),
+    ("a draft let through", lambda t: t.replace('[ "$draft" = "false" ] ||', 'true ||', 1)),
+    ("a moved head let through", lambda t: t.replace('[ "$head" = "$SHA" ]', "true", 1)),
+    ("a fork let through", lambda t: t.replace('[ "$from" = "$REPO" ]', "true", 1)),
+    ("the ready mark never asked", lambda t: t.replace("product-reads/reads.py ready", "true", 1)),
+    ("the product's own check never asked", lambda t: t.replace("product-reads/reads.py verify", "true", 1)),
+    ("whether it was read never asked", lambda t: t.replace("product-reads/reads.py state", "true", 2)),
+    ("the latest run of a name only", lambda t: t.replace("&filter=all&per_page=100\" > \"$t/read.json\"", "&per_page=100\" > \"$t/read.json\"", 1)),
+    ("a failed answer taken for an answer", lambda t: t.replace("curl -fsS", "curl -sS", 1)),
+    ("`again` ignored", lambda t: t.replace('if [ "$AGAIN" = "true" ]; then', "if false; then", 1)),
+    ("`again` always on", lambda t: t.replace('if [ "$AGAIN" = "true" ]; then', "if true; then", 1)),
+    ("the pull request's earlier commits asked about again", lambda t: t.replace(
+        '          api "commits/$parent" > "$t/parent.json"\n',
+        '          api "commits/$parent" > "$t/parent.json"\n          api "pulls/$PR/commits?per_page=100&page=1" > "$t/earlier.json"\n', 1)),
+    ("another owner's product let through", lambda t: re.sub(r'^( +)\[\[ "\$REPO" =~ [^\n]*\n', r'\1true\n', t, count=1, flags=re.M)),
+    ("a pull request named in words let through", lambda t: t.replace('[[ "$PR" =~ ^[1-9][0-9]{0,6}$ ]]', "true", 1)),
+    ("a short commit let through", lambda t: t.replace('[[ "$SHA" =~ ^[0-9a-f]{40}$ ]]', "true", 1)),
+    ("again taken as anything", lambda t: t.replace('[[ "$AGAIN" =~ ^(true|false)$ ]]', "true", 1)),
+    ("the README never asked", lambda t: t.replace("product-reads/reads.py product", "true", 1)),
+)
+
+
+def _check_preflight_loosenings():
+    """Every loosening above must turn the run of the two steps red, and none may miss."""
+    try:
+        product = _read(PRODUCT_WORKFLOW)
+    except OSError as e:
+        print("  wiring: %s" % e)
+        return 1
+    bad = 0
+    for what, loosen in PREFLIGHT_LOOSENINGS:
+        changed = loosen(product)
+        if changed == product:
+            print("  wiring: the loosening '%s' no longer applies to %s — rewrite it against the "
+                  "file as it stands, or it proves nothing" % (what, PRODUCT_WORKFLOW))
+            bad += 1
+        elif _check_preflight_run(product=changed, quiet=True) == 0:
+            print("  wiring: %s with %s passes the run of its own steps — the case for it is gone"
+                  % (PRODUCT_WORKFLOW, what))
+            bad += 1
+    if not bad:
+        print("ok: each of %d faults put back into those four steps was seen by running them"
+              % len(PREFLIGHT_LOOSENINGS))
+    return bad
+
+
+# THE ASKER (decision 0013, #148). It starts review-product.yml for every pull
+# request of a listed product that is ready to be read, and it holds the App's
+# key to look at the products, so it is held as the product reviewer is: behind
+# the door, a token for one product at a time with its grant and its reach checked,
+# the key kept out of the program that does the asking. And it is the one timer
+# under this rulebook, by the Chairman's ruling of 4 October 2026 ("One timer in
+# the rulebook only"): exactly one schedule, every ten minutes, beside the person's
+# dispatch and nothing else. The loosenings below that add a second clock, a faster
+# one or any other trigger, or take the clock away, are what keep it that one.
+ASK_WORKFLOW = ".github/workflows/ask-product-reads.yml"
+ASK_SCOPE = ("body=$(jq -cn --arg r \"${REPO#*/}\" '{repositories: [$r], permissions: {contents: \"read\", "
+             "pull_requests: \"read\", checks: \"read\"}}')")
+ASK_GRANT = "want='{\"checks\":\"read\",\"contents\":\"read\",\"pull_requests\":\"read\"}'"
+ASK_REVOKE = ("revoke() { [ -z \"$tok\" ] || curl -sS --max-time 20 -o /dev/null -X DELETE -H \"Authorization: token $tok\" \\\n"
+              "            -H \"Accept: application/vnd.github+json\" \"https://api.github.com/installation/token\" || true; tok=\"\"; }")
+ASK_DISPATCH_ENV = "DISPATCH: ${{ github.event_name == 'schedule' && 'true' || inputs.dispatch }}"
+ASK_HOLDS = (
+    (ASK_SCOPE, "a token scoped to one product with contents, pull requests and checks read alone"),
+    (ASK_GRANT, "the grant checked against read alone"),
+    (PRODUCT_GRANT[1], "the grant read from GitHub's answer"),
+    ('if [ "$granted" != "$want" ]; then', "a grant that is more, or less, refused"),
+    ('"https://api.github.com/installation/repositories"', "the token's reach asked of GitHub"),
+    ('if [ "$reach" != "$REPO" ]; then', "a token reaching past the one product refused"),
+    ('echo "::add-mask::$tok"', "the token masked in the log"),
+    ('products=$(python3 -I product-reads/reads.py list README.md) || { echo "::error::the README\'s product list could not be read: $products"; exit 1; }',
+     "the products read from the README by the one parser, and why not said when it cannot be read"),
+    ('inst=$(curl -sS --max-time 20 -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \\\n'
+     '              "https://api.github.com/repos/$REPO/installation" | jq -r \'.id // empty\') || inst=""',
+     "one product's installation lookup failing without ending the loop"),
+    ('reach=$(curl -sS --max-time 20 -H "Authorization: token $tok" -H "Accept: application/vnd.github+json" \\\n'
+     '              "https://api.github.com/installation/repositories" | jq -r \'[.repositories[].full_name] | join(",")\') || reach=""',
+     "one product's reach lookup failing without ending the loop"),
+    ('for REPO in $products; do', "every product the README lists, and no other"),
+    ('if [ "$DISPATCH" = "true" ]; then flag="--dispatch"; fi', "an ask only when one was asked for"),
+    ('[[ "$DISPATCH" =~ ^(true|false)$ ]] || { echo "::error::dispatch is true or false"; exit 1; }', "dispatch typed true or false"),
+    ('env -u APP_KEY -u APP_ID PRODUCT_TOKEN="$tok" REVIEWER_APP_ID="$APP_ID" python3 -I product-reads/ask.py "$REPO" $flag || rc=$?',
+     "the App's key and id kept out of the program that asks"),
+    ('[ "$rc" -eq 0 ] || failed=1', "one product's trouble remembered"),
+    ('[ "$failed" -eq 0 ]', "a job that is red when any product could not be looked at"),
+    (ASK_DISPATCH_ENV, "the choice passed as a variable, a timed run always asking and a person's run asking only if told to"),
+    ("GH_TOKEN: ${{ github.token }}", "this repository's own token, for the one dispatch"),
+)
+ASK_ON = 'on:\n  schedule:\n    - cron: "*/10 * * * *"\n  workflow_dispatch:\n    inputs:\n'
+ASK_PERMISSIONS = "permissions:\n  contents: read\n  actions: write\n"
+ASK_CONCURRENCY = "concurrency:\n  group: ask-product-reads\n  cancel-in-progress: false\n"
+# The grant and reach are checked before the program that reads a product runs.
+ASK_ORDER = (ASK_SCOPE, 'if [ "$granted" != "$want" ]; then', 'if [ "$reach" != "$REPO" ]; then',
+             'python3 -I product-reads/ask.py "$REPO" $flag')
+
+
+def _check_ask_wiring(ask=None, product=None, quiet=False):
+    """ask-product-reads.yml, held to the door, one product per token, and one timer."""
+    say = (lambda *a: None) if quiet else print
+    try:
+        ask = _read(ASK_WORKFLOW) if ask is None else ask
+        product = _read(PRODUCT_WORKFLOW) if product is None else product
+    except OSError as e:
+        say("  wiring: %s" % e)
+        return 1
+    bad = 0
+
+    def fault(what):
+        nonlocal bad
+        say("  wiring: %s %s" % (ASK_WORKFLOW, what))
+        bad += 1
+
+    if triggers(ask) != ["schedule", "workflow_dispatch"]:
+        fault("triggers on %s; it must be one schedule and workflow_dispatch and nothing else — never a "
+              "branch's own event, and the one timer under this rulebook (his ruling, 4 October 2026)"
+              % triggers(ask))
+    if ask.count(ASK_ON) != 1 or len(re.findall(r"^\s*-?\s*cron:", ask, re.M)) != 1 \
+            or len(re.findall(r"^\s+schedule:", ask, re.M)) != 1:
+        fault("must have exactly one schedule, `*/10 * * * *`, every ten minutes (`%s`)"
+              % ASK_ON.strip().replace("\n", " "))
+    if not USES_ENVIRONMENT.search(ask):
+        fault("does not run in the `%s` environment, so the App's key is readable from any branch"
+              % KEY_ENVIRONMENT)
+    for line, what in ASK_HOLDS:
+        if line not in ask:
+            fault("has lost %s (`%s`)" % (what, line))
+    if ask.count(ASK_PERMISSIONS) != 1 or len(re.findall(r"^\s*permissions:", ask, re.M)) != 1:
+        fault("must ask for contents read and actions write at the workflow, in one `permissions:` "
+              "block and no other: it reads, and it may start the one workflow here")
+    if ask.count(ASK_CONCURRENCY) != 1 or len(re.findall(r"^\s*concurrency:", ask, re.M)) != 1:
+        fault("must run one asker at a time, never cutting one off: exactly `%s`"
+              % ASK_CONCURRENCY.strip().replace("\n", " "))
+    at = [ask.find(line) for line in ASK_ORDER]
+    runs = [l for l in ask.splitlines() if "product-reads/ask.py" in l and not l.strip().startswith("#")]
+    if -1 in at or at != sorted(at) or len(runs) != 1:
+        fault("runs the program that asks before its token's grant and reach are checked, or more than "
+              "once (%s)" % " < ".join(ASK_ORDER))
+    if ask.count("uses: actions/checkout") != 1 or not re.search(
+            r"uses: actions/checkout@v4\n\s+with:\n\s+persist-credentials: false", ask):
+        fault("must check this repository out once, with no credential left in it")
+    if ASK_REVOKE not in ask or len(re.findall(r"^            revoke$", ask, re.M)) != 1 \
+            or len(re.findall(r"^              revoke$", ask, re.M)) != 2:
+        fault("must revoke a product's token as soon as it has been used, whatever happens (`revoke()`), "
+              "after the ask and before each early `continue`")
+    held = ask.replace(ASK_REVOKE, "")
+    if SWALLOWED.search(held):
+        fault("swallows an error (`||` into a message or a true, `set +e`, continue-on-error)")
+    if _jwt(ask) is None or _jwt(ask) != _jwt(product):
+        fault("signs the App's JWT differently from %s" % PRODUCT_WORKFLOW)
+    for n, line in enumerate(ask.splitlines(), 1):
+        if "${{ inputs." in line and not PASTED_INPUT.match(line):
+            fault("line %d pastes an input into the workflow rather than passing it as a variable" % n)
+    if XTRACE.search(ask):
+        fault("traces its shell, which prints what it holds into a public log")
+    if len(re.findall(r"secrets\.", ask)) != 2 or re.search(r"secrets\.", ask.partition("\n    steps:\n")[0]):
+        fault("must name exactly the App's id and key as secrets, and only in the step that mints")
+    unbounded = [l.strip() for l in ask.splitlines() if re.search(r"\bcurl\s", l)
+                 and not l.strip().startswith("#") and "--max-time" not in l
+                 and not l.strip().startswith("-H") and not l.strip().startswith('"https://')]
+    if unbounded:
+        fault("makes a request with no time limit (`%s`)" % unbounded[0])
+    choice = re.search(r"^      dispatch:\n((?:        .*\n)+)", ask, re.M)
+    if not choice or "        type: boolean\n" not in choice.group(1) or "        default: false\n" not in choice.group(1):
+        fault("must offer `dispatch` as a boolean that is false unless set: by default it only says what it would ask")
+    if [l for l in ask.splitlines() if not l.strip().startswith("#") and re.search(r"\bagain\b", l)]:
+        fault("passes `again`; the asker never retries a read that did not finish, only a builder does")
+    if not bad:
+        say("ok: the asker runs on its one ten-minute timer and when a person starts it, behind the `%s` door, "
+            "looking at each product the README lists with a token scoped to it, read alone, its grant and "
+            "reach checked, the key kept from the program that asks; a timed run asks, a person's run asks "
+            "only if told to, and nothing retries a read that did not finish" % KEY_ENVIRONMENT)
+    return bad
+
+
+ASK_LOOSENINGS = (
+    ("a second clock", lambda t: t.replace('    - cron: "*/10 * * * *"\n', '    - cron: "*/10 * * * *"\n    - cron: "0 * * * *"\n', 1)),
+    ("a faster clock", lambda t: t.replace('"*/10 * * * *"', '"* * * * *"', 1)),
+    ("a slower clock", lambda t: t.replace('"*/10 * * * *"', '"0 * * * *"', 1)),
+    ("no clock", lambda t: t.replace('  schedule:\n    - cron: "*/10 * * * *"\n', "", 1)),
+    ("a push", lambda t: t.replace("  workflow_dispatch:\n    inputs:", "  push:\n  workflow_dispatch:\n    inputs:", 1)),
+    ("a pull request's own copy", lambda t: t.replace("  workflow_dispatch:\n    inputs:", "  pull_request:\n  workflow_dispatch:\n    inputs:", 1)),
+    ("a timed run that only says what it would ask", lambda t: t.replace(ASK_DISPATCH_ENV, "DISPATCH: ${{ inputs.dispatch }}", 1)),
+    ("a person's run that always asks", lambda t: t.replace(ASK_DISPATCH_ENV, "DISPATCH: ${{ 'true' }}", 1)),
+    ("the door removed", lambda t: t.replace("    environment: reviewer\n", "", 1)),
+    ("asking by default", lambda t: t.replace("        default: false\n", "        default: true\n", 1)),
+    ("a wider grant wanted", lambda t: t.replace('checks: "read"}}', 'checks: "read", issues: "write"}}', 1)),
+    ("a token that writes", lambda t: t.replace('pull_requests: "read"', 'pull_requests: "write"', 1)),
+    ("the grant taken on trust", lambda t: t.replace(PRODUCT_GRANT[1], "granted=$want", 1)),
+    ("the grant printed, not checked", lambda t: t.replace('if [ "$granted" != "$want" ]; then', "if false; then", 1)),
+    ("the reach never asked", lambda t: t.replace('"https://api.github.com/installation/repositories"', '"https://api.github.com/"', 1)),
+    ("the reach printed, not checked", lambda t: t.replace('if [ "$reach" != "$REPO" ]; then', "if false; then", 1)),
+    ("the token left unmasked", lambda t: t.replace('            echo "::add-mask::$tok"\n', "", 1)),
+    ("the key left in the program's hands", lambda t: t.replace("env -u APP_KEY -u APP_ID PRODUCT_TOKEN=", "env PRODUCT_TOKEN=", 1)),
+    ("only the id kept back", lambda t: t.replace("env -u APP_KEY -u APP_ID", "env -u APP_KEY", 1)),
+    ("a list kept in the file", lambda t: t.replace('products=$(python3 -I product-reads/reads.py list README.md)', 'products="Adonis80/Hemz-OS"', 1)),
+    ("a broken list read as none", lambda t: t.replace('product-reads/reads.py list README.md)', 'product-reads/reads.py list README.md || true)', 1)),
+    ("every ask, whatever was chosen", lambda t: t.replace('if [ "$DISPATCH" = "true" ]; then flag="--dispatch"; fi', 'flag="--dispatch"', 1)),
+    ("a choice that is not true or false", lambda t: t.replace('[[ "$DISPATCH" =~ ^(true|false)$ ]] || { echo "::error::dispatch is true or false"; exit 1; }', "true", 1)),
+    ("a product's trouble forgotten", lambda t: t.replace('[ "$rc" -eq 0 ] || failed=1', "true", 1)),
+    ("a red job switched off", lambda t: t.replace('[ "$failed" -eq 0 ]\n', 'true\n', 1)),
+    ("more than read at the workflow", lambda t: t.replace("  contents: read\n  actions: write\n", "  contents: write\n  actions: write\n", 1)),
+    ("a second permissions block", lambda t: t.replace("    timeout-minutes: 30\n", "    timeout-minutes: 30\n    permissions: write-all\n", 1)),
+    ("another group", lambda t: t.replace("  group: ask-product-reads\n", "  group: ask\n", 1)),
+    ("an asker cut off", lambda t: t.replace("  cancel-in-progress: false\n", "  cancel-in-progress: true\n", 1)),
+    ("the JWT's lifetime altered", lambda t: t.replace("$((now + 540))", "$((now + 3600))", 1)),
+    ("the token never revoked", lambda t: t.replace("            revoke\n            [ \"$rc\" -eq 0 ] || failed=1", "            [ \"$rc\" -eq 0 ] || failed=1", 1)),
+    ("a request with no time limit", lambda t: t.replace('curl -sS --max-time 20 -X POST', 'curl -sS -X POST', 1)),
+    ("the shell traced", lambda t: t.replace("set -euo pipefail\n", "set -euxo pipefail\n", 1)),
+    ("an input pasted", lambda t: t.replace('echo "::error::dispatch is true or false"', 'echo "${{ inputs.dispatch }}"', 1)),
+    ("a credential left in the checkout", lambda t: t.replace("persist-credentials: false", "persist-credentials: true", 1)),
+    ("a secret above the steps", lambda t: t.replace("    environment: reviewer\n", "    environment: reviewer\n    env:\n      KEY: ${{ secrets.REVIEWER_APP_KEY }}\n", 1)),
+    ("a third secret", lambda t: t.replace("          " + ASK_DISPATCH_ENV + "\n", "          " + ASK_DISPATCH_ENV + "\n          OTHER: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}\n", 1)),
+    ("the program run before the grant is checked", lambda t: t.replace('echo "::add-mask::$tok"\n', 'echo "::add-mask::$tok"\n            python3 -I product-reads/ask.py "$REPO"\n', 1)),
+    ("a retry of a read that did not finish", lambda t: t.replace(' python3 -I product-reads/ask.py "$REPO" $flag', ' python3 -I product-reads/ask.py "$REPO" $flag again', 1)),
+)
+
+
+def _check_ask_loosenings():
+    """Every loosening above must turn the asker's wiring red, and none may miss."""
+    try:
+        ask = _read(ASK_WORKFLOW)
+    except OSError as e:
+        print("  wiring: %s" % e)
+        return 1
+    bad = 0
+    for what, loosen in ASK_LOOSENINGS:
+        changed = loosen(ask)
+        if changed == ask:
+            print("  wiring: the loosening '%s' no longer applies to %s — rewrite it against the "
+                  "file as it stands, or it proves nothing" % (what, ASK_WORKFLOW))
+            bad += 1
+        elif _check_ask_wiring(ask=changed, quiet=True) == 0:
+            print("  wiring: %s with %s passes the check — the guard for it is gone" % (ASK_WORKFLOW, what))
+            bad += 1
+    if not bad:
+        print("ok: each of %d loosenings of %s was applied to the real file and refused"
+              % (len(ASK_LOOSENINGS), ASK_WORKFLOW))
+    return bad
+
+
+# THE FAILED-READ HANDLING, HELD UNDER THE TIMER (the Chairman's ruling of 4 October
+# 2026: the clock is on only after it passes). The timer comes back every ten minutes,
+# so the property that matters is that it cannot buy a read twice or retry one that went
+# wrong, and that a question GitHub does not answer is a red run. ask.py's selftest runs
+# seven timed runs against a made-up product to show it. This holds that selftest to
+# account: each fault below is put into a copy of the program and its selftest must go
+# red, so the proof cannot be deleted, or worn thin, while the clock stays on.
+ASK_PROGRAM_LOOSENINGS = (
+    ("a commit asked about again", "ask.py", 'if "Review %s#%s at %s" % (repo, number, sha) in asked:', "if False:"),
+    ("an unanswered question left unsaid", "ask.py",
+     'trouble.append("#%s: %s" % (number, unanswered))\n                continue', "continue"),
+    ("a list of reads already asked, that GitHub would not give, taken as empty", "ask.py",
+     'trouble.append(str(unanswered))\n            left["not asked: it could not be told what was asked already"] = len(chosen)\n            chosen = []',
+     "asked = set()"),
+    ("an unanswered question ending the run green", "ask.py", "    if trouble:\n        raise Trouble(", "    if False:\n        raise Trouble("),
+    ("a read that did not finish retried by itself", "reads.py", 'if state == "failed" and not again:', 'if state == "failed" and False:'),
+    ("a read already running asked again", "reads.py", 'if state == "running":\n        raise', "if False:\n        raise"),
+)
+
+
+def _ask_selftest_of(sources):
+    """The exit status of ask.py's own selftest, run on the given copies in a directory of their own."""
+    with tempfile.TemporaryDirectory() as d:
+        os.makedirs(os.path.join(d, "product-reads"))
+        for name, text in sources.items():
+            with open(os.path.join(d, "product-reads", name), "w", encoding="utf-8") as f:
+                f.write(text)
+        with open(os.path.join(d, "README.md"), "w", encoding="utf-8") as f:
+            f.write(_read("README.md"))
+        try:
+            p = subprocess.run([sys.executable, "-I", os.path.join(d, "product-reads", "ask.py"), "--selftest"],
+                               cwd=d, capture_output=True, text=True, timeout=120)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return p.returncode
+
+
+def _check_ask_program():
+    """ask.py's selftest passes, and goes red on each fault that would let the timer ask twice or retry."""
+    try:
+        sources = {name: _read("product-reads/" + name) for name in ("ask.py", "reads.py")}
+    except OSError as e:
+        print("  wiring: %s" % e)
+        return 1
+    bad = 0
+    if _ask_selftest_of(sources) != 0:
+        print("  wiring: product-reads/ask.py's own selftest does not pass on a clean copy, so the failed-read "
+              "handling the clock rests on is not shown")
+        return 1
+    for what, name, old, new in ASK_PROGRAM_LOOSENINGS:
+        if sources[name].count(old) != 1:
+            print("  wiring: the fault '%s' no longer applies to product-reads/%s — rewrite it against the "
+                  "file as it stands, or it proves nothing" % (what, name))
+            bad += 1
+            continue
+        changed = dict(sources)
+        changed[name] = sources[name].replace(old, new, 1)
+        if _ask_selftest_of(changed) == 0:
+            print("  wiring: ask.py's selftest passes with %s — the timed runs no longer prove the failed-read "
+                  "handling the clock is on for" % what)
+            bad += 1
+    if not bad:
+        print("ok: ask.py's selftest passes, and goes red on each of %d faults put into a copy (a commit asked "
+              "about twice, a question GitHub did not answer left unsaid or read as empty, a read that did not "
+              "finish retried, a read running asked again): the failed-read handling is shown, not claimed"
+              % len(ASK_PROGRAM_LOOSENINGS))
+    return bad
+
+
+# THE STARTER KIT (decision 0013, #148): what a new product's repository is given
+# so that its gate means what this one means. It is copied there, from one
+# reviewed commit, by product-reads/setup.py, so a product does not hold a
+# version of the gate that was never read. Held here, so none of the four files
+# can drift from the rulebook's own without this build going red:
+#   - the gate script gives the verdict this file's `verdict()` gives, on every
+#     one-run and every two-run case below, and says what the builder must do;
+#   - the wake is the rulebook's wake with two changes and none other, and its
+#     shell is run against a `gh` that fails at one call at a time, as the
+#     rulebook's is;
+#   - the gate and verify workflows have the shape the wake, the ready check and
+#     the setup script all assume;
+#   - the starter AGENTS.md satisfies the check that ships beside it, and the
+#     starter roadmap is one the board can read.
+KIT_DIR = "product-reads/kit/"
+KIT_NAMES = ("review-gate.py", "gate.yml", "wake.yml", "verify.yml", "AGENTS.starter.md",
+             "roadmap.starter.json")
+KIT_WAKE_SHA = ('          sha=$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)',
+                '          sha="$SHA"')
+KIT_WAKE_MINE = ("""          mine='select(.name=="check") | select(.event!="issue_comment")'""",
+                 """          mine='select(.name=="gate") | select(.event!="issue_comment")'""")
+KIT_WAKE_IF = "if: github.event.check_run.app.id == %d && github.event.check_run.name == '%s'" % (
+    REVIEWER_APP_ID, REVIEWER_CHECK)
+KIT_WAKE_ENV = ("GH_TOKEN: ${{ github.token }}", "SHA: ${{ github.event.check_run.head_sha }}",
+                "REPO: ${{ github.repository }}")
+KIT_GATE_RUN = 'python3 review-gate.py "$REPO" "$HEAD_SHA" "$GH_TOKEN"'
+
+
+def _kit_files():
+    return dict((n, _read(KIT_DIR + n)) for n in KIT_NAMES)
+
+
+def _load_text(name, text):
+    """A module from source text, so a loosened copy can be run without being written."""
+    module = types.ModuleType(name)
+    exec(compile(text, name, "exec"), module.__dict__)
+    return module
+
+
+def _kit_runs(head):
+    """Every one-run shape worth asking, and (below) every pair of representative ones."""
+    other = "b" * 40
+    one = []
+    for app in (REVIEWER_APP_ID, 15368, None, str(REVIEWER_APP_ID)):
+        for name in (REVIEWER_CHECK, "check", "juku-review"):
+            for sha in (head, other):
+                for status in ("completed", "in_progress", "queued"):
+                    for conclusion in ("success", "failure", "neutral", "cancelled", "timed_out",
+                                       "skipped", "stale", "action_required", None):
+                        run = {"name": name, "head_sha": sha, "status": status, "conclusion": conclusion}
+                        if app is not None:
+                            run["app"] = {"id": app}
+                        one.append(run)
+    mine = [{"app": {"id": REVIEWER_APP_ID}, "name": REVIEWER_CHECK, "head_sha": head,
+             "status": s, "conclusion": c} for s, c in (("completed", "success"), ("completed", "failure"),
+                                                          ("completed", "neutral"), ("in_progress", None))]
+    mine += [{"app": {"id": 15368}, "name": REVIEWER_CHECK, "head_sha": head, "status": "completed",
+              "conclusion": "failure"}, {"app": {"id": REVIEWER_APP_ID}, "name": REVIEWER_CHECK,
+                                         "head_sha": other, "status": "completed", "conclusion": "success"}]
+    pairs = [[a, b] for a in mine for b in mine]
+    return [[r] for r in one] + pairs + [[]]
+
+
+def _agents_step(verify):
+    """The shell script of verify.yml's AGENTS.md step: the python it feeds `python3 -`."""
+    m = re.search(r"python3 - <<'PY'\n(.*?)\n\s+PY\n", verify, re.S)
+    return textwrap.dedent(m.group(1)) if m else None
+
+
+def _run_agents_step(script, agents):
+    with tempfile.TemporaryDirectory() as d:
+        with open(os.path.join(d, "AGENTS.md"), "w", encoding="utf-8") as f:
+            f.write(agents)
+        try:
+            return subprocess.run([sys.executable, "-I", "-"], input=script, cwd=d, text=True,
+                                  capture_output=True, timeout=60).returncode
+        except (OSError, subprocess.SubprocessError):
+            return None
+
+
+def _check_kit(kit=None, wake=None, quiet=False, deep=True):
+    """product-reads/kit/, held to the rulebook's own gate and wake."""
+    say = (lambda *a: None) if quiet else print
+    try:
+        kit = _kit_files() if kit is None else kit
+        wake = _read(WAKE_WORKFLOW) if wake is None else wake
+        reads = _reads()
+    except OSError as e:
+        say("  wiring: %s" % e)
+        return 1
+    bad = 0
+
+    def fault(what):
+        nonlocal bad
+        say("  wiring: %s %s" % (KIT_DIR, what))
+        bad += 1
+
+    # 1. The gate script: the rulebook's verdict on every case, and its own words.
+    head = "a" * 40
+    try:
+        mod = _load_text("kit_gate", kit["review-gate.py"])
+    except Exception as e:  # a kit gate that does not even load is the worst drift
+        fault("review-gate.py does not load (%s)" % type(e).__name__)
+        mod = None
+    if mod is not None:
+        if (mod.REVIEWER_APP_ID, mod.REVIEWER_CHECK) != (REVIEWER_APP_ID, REVIEWER_CHECK):
+            fault("review-gate.py counts App %s's `%s`, and the rulebook's gate counts App %s's `%s`"
+                  % (mod.REVIEWER_APP_ID, mod.REVIEWER_CHECK, REVIEWER_APP_ID, REVIEWER_CHECK))
+        words = {FINDINGS: mod.FINDINGS, CLEAN: mod.CLEAN, UNREAD: mod.UNREAD}
+        if words != {FINDINGS: "findings", CLEAN: "clean", UNREAD: "unread"}:
+            fault("review-gate.py names its three answers otherwise: %s" % words)
+        differ = 0
+        for runs in _kit_runs(head):
+            try:
+                if mod.verdict(runs, head) != verdict(runs, head)[0]:
+                    differ += 1
+            except Exception:
+                differ += 1
+        if differ:
+            fault("review-gate.py differs from this file's verdict() on %d of its cases" % differ)
+        for needle in ("Review-Ready: yes", "Review-Parent:"):
+            if needle not in mod.reason(UNREAD, head):
+                fault("review-gate.py no longer tells a builder to mark the commit ready (%s)" % needle)
+        if 'urllib.parse.urlencode({"filter": "all", "per_page": "100", "page": str(page)})' not in kit["review-gate.py"]:
+            fault("review-gate.py must ask for every check run on the commit, every page of them: on "
+                  "`latest` a finding could be retired by asking again, and on one page by a busy commit")
+        if reads.REVIEWER_CHECK != REVIEWER_CHECK:
+            fault("the rules and the gate name the reviewer's check differently")
+
+    # 2. The wake: the rulebook's, with the commit from the check run and `gate`.
+    expected = wake_script(wake)
+    if expected is None:
+        fault("cannot read the rulebook's wake to derive the kit's from")
+    else:
+        for old, new in (KIT_WAKE_SHA, KIT_WAKE_MINE):
+            expected = expected.replace(old.strip(), new.strip(), 1)
+        script = wake_script(kit["wake.yml"])
+        if script is None:
+            fault("wake.yml has no one shell block free of ${{ }}, so it cannot be run to be held")
+        elif script != expected:
+            fault("wake.yml's shell is not the rulebook's wake.yml's with the commit taken from the "
+                  "check run and `gate` re-run, and nothing else")
+        elif deep:
+            for what, env, red in SWALLOW_CASES:
+                if "SWALLOW_HEAD" in env:
+                    continue
+                code, why = swallow_verdict(script, dict(env, SHA="deadbeef"))
+                if why or (code != 0) != red:
+                    fault("wake.yml's shell, with %s, %s" % (what, why or (
+                        "came out %s where it must come out %s" % ("green" if code == 0 else "red",
+                                                                    "red" if red else "green"))))
+    if triggers(kit["wake.yml"]) != ["check_run"] or "    types: [completed]\n" not in kit["wake.yml"]:
+        fault("wake.yml must wake on a check run completing and on nothing else")
+    if KIT_WAKE_IF not in kit["wake.yml"]:
+        fault("wake.yml must wake only for the reviewer's own check run, by App and by name (`%s`)" % KIT_WAKE_IF)
+    if re.findall(r"^permissions:\n((?:  .*\n)+)", kit["wake.yml"], re.M) != ["  actions: write\n"] \
+            or kit["wake.yml"].count("permissions:") != 1:
+        fault("wake.yml may ask for actions write and nothing else")
+    lines = [l.strip() for l in kit["wake.yml"].splitlines()]
+    for line in KIT_WAKE_ENV:
+        if lines.count(line) != 1:
+            fault("wake.yml must hand its shell `%s`" % line)
+
+    # 3. The gate workflow.
+    gate = kit["gate.yml"]
+    if triggers(gate) != ["pull_request"] or "    types: [opened, synchronize, reopened]\n" not in gate:
+        fault("gate.yml must run on a pull request opened, pushed to or reopened, and no other event: "
+              "an edit changes nothing the gate answers on, and each run is a billed minute in a private repository")
+    if re.findall(r"^permissions:\n((?:  .*\n)+)", gate, re.M) != ["  contents: read\n  checks: read\n"] \
+            or gate.count("permissions:") != 1:
+        fault("gate.yml may read contents and checks and nothing else")
+    if not re.search(r"^jobs:\n  gate:\n", gate, re.M) or gate.count("\n  gate:") != 1:
+        fault("gate.yml's one job must be called `gate`, the name the wake re-runs")
+    if '          - run: ' + KIT_GATE_RUN not in gate.replace("      - run: ", "          - run: ", 1) and \
+            "      - run: " + KIT_GATE_RUN not in gate:
+        fault("gate.yml must run `%s`" % KIT_GATE_RUN)
+    for line in ("HEAD_SHA: ${{ github.event.pull_request.head.sha }}", "GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}",
+                 "REPO: ${{ github.repository }}"):
+        if line not in gate:
+            fault("gate.yml must hand its script `%s`" % line)
+    if not re.search(r"uses: actions/checkout@v4\n\s+with:\n\s+persist-credentials: false", gate):
+        fault("gate.yml must check out without leaving a credential")
+    if 'select(.name=="gate")' not in kit["wake.yml"]:
+        fault("wake.yml and gate.yml disagree about the gate's name")
+
+    # 4. verify: its job is the name the ready check asks for, and its AGENTS.md step holds.
+    verify = kit["verify.yml"]
+    if not re.search(r"^jobs:\n  %s:\n" % re.escape(reads.VERIFY), verify, re.M):
+        fault("verify.yml's job must be called `%s`, the name the ready check asks for" % reads.VERIFY)
+    if triggers(verify) != ["pull_request"]:
+        fault("verify.yml must run on a pull request, which is where the ready commit is pushed")
+    if "run: python3 review-gate.py --selftest" not in verify:
+        fault("verify.yml must run the kit gate's own selftest")
+    script = _agents_step(verify)
+    starter = kit["AGENTS.starter.md"]
+    if script is None:
+        fault("verify.yml has no AGENTS.md step this build can run")
+    elif deep:
+        cases = ((starter, 0, "the starter AGENTS.md"),
+                 (starter.split("\n", 1)[1], 1, "an AGENTS.md without the Rulebook line"),
+                 (starter.replace("## Review guidelines", "## Notes"), 1, "an AGENTS.md without its review guidelines"),
+                 (starter + "word " * 600, 1, "an AGENTS.md of 600 words"),
+                 ("", 1, "an empty AGENTS.md"))
+        for text, want, what in cases:
+            got = _run_agents_step(script, text)
+            if got != want:
+                fault("verify.yml's AGENTS.md step answers %s for %s, and must answer %s" % (got, what, want))
+
+    # 5. The starter roadmap is one the board reads.
+    try:
+        road = json.loads(kit["roadmap.starter.json"])
+        spec = importlib.util.spec_from_file_location("board_build", "board/build.py")
+        build = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(build)
+        build.items_of("starter", road)
+        build.milestones("starter", road)
+    except Exception as e:
+        fault("roadmap.starter.json is not a roadmap the board can read (%s)" % type(e).__name__)
+    if not bad:
+        say("ok: the starter kit's gate gives the rulebook's verdict on %d cases and says how to mark a "
+            "commit ready; its wake is the rulebook's wake with two changes and fails loudly in each of "
+            "%d places it is made to; its workflows have the shape the wake, the ready check and the "
+            "setup script assume; its AGENTS.md passes its own check, and its roadmap is one the board reads"
+            % (len(_kit_runs(head)), len([c for c in SWALLOW_CASES if "SWALLOW_HEAD" not in c[1]])))
+    return bad
+
+
+KIT_LOOSENINGS = (
+    ("the gate counts another App", "review-gate.py", lambda t: t.replace("REVIEWER_APP_ID = 5000405", "REVIEWER_APP_ID = 15368", 1)),
+    ("the gate counts another check", "review-gate.py", lambda t: t.replace('REVIEWER_CHECK = "juku-reviewer"', 'REVIEWER_CHECK = "check"', 1)),
+    ("a neutral read counted clean", "review-gate.py", lambda t: t.replace('{"success": CLEAN, "failure": FINDINGS}', '{"success": CLEAN, "failure": FINDINGS, "neutral": CLEAN}', 1)),
+    ("findings retired by a clean read", "review-gate.py", lambda t: t.replace("    if FINDINGS in said:\n        return FINDINGS\n", "", 1)),
+    ("the commit never checked", "review-gate.py", lambda t: t.replace('    if run.get("head_sha") != head:\n        return None\n', "", 1)),
+    ("a run still going counted", "review-gate.py", lambda t: t.replace('    if run.get("status") != "completed":\n        return None\n', "", 1)),
+    ("the App never checked", "review-gate.py", lambda t: t.replace('    if (run.get("app") or {}).get("id") != REVIEWER_APP_ID:\n        return None\n', "", 1)),
+    ("the latest check runs only", "review-gate.py", lambda t: t.replace('"filter": "all"', '"filter": "latest"', 1)),
+    ("one page of check runs", "review-gate.py", lambda t: t.replace('"per_page": "100", "page": str(page)', '"per_page": "100"', 1)),
+    ("the builder not told to mark ready", "review-gate.py", lambda t: t.replace("`Review-Ready: yes`", "a ready comment", 1)),
+    ("the wake re-runs another check", "wake.yml", lambda t: t.replace('select(.name=="gate")', 'select(.name=="check")', 1)),
+    ("anyone's check run wakes it", "wake.yml", lambda t: t.replace("    # The reviewer's own check run, and nobody else's: its App's id and its name.\n    " + KIT_WAKE_IF + "\n", "", 1)),
+    ("another App's check run wakes it", "wake.yml", lambda t: t.replace("app.id == 5000405", "app.id == 15368", 1)),
+    ("any check run of the App wakes it", "wake.yml", lambda t: t.replace(" && github.event.check_run.name == 'juku-reviewer'", "", 1)),
+    ("a wider token", "wake.yml", lambda t: t.replace("permissions:\n  actions: write\n", "permissions:\n  actions: write\n  contents: write\n", 1)),
+    ("a clock", "wake.yml", lambda t: t.replace("on:\n  check_run:", "on:\n  schedule:\n    - cron: '*/5 * * * *'\n  check_run:", 1)),
+    ("a re-run swallowed", "wake.yml", lambda t: t.replace('if gh api -X POST "repos/$REPO/actions/runs/$id/rerun" >/dev/null 2>&1; then', 'if gh api -X POST "repos/$REPO/actions/runs/$id/rerun" >/dev/null 2>&1 || true; then', 1)),
+    ("the commit from the wrong place", "wake.yml", lambda t: t.replace('sha="$SHA"', 'sha="$GITHUB_SHA"', 1)),
+    ("a pull request's number looked up", "wake.yml", lambda t: t.replace('sha="$SHA"', 'sha=$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)', 1)),
+    ("the commit not handed to the shell", "wake.yml", lambda t: t.replace("          SHA: ${{ github.event.check_run.head_sha }}\n", "", 1)),
+    ("the gate run on a push", "gate.yml", lambda t: t.replace("on:\n  pull_request:", "on:\n  push:\n  pull_request:", 1)),
+    ("another event types", "gate.yml", lambda t: t.replace("[opened, synchronize, reopened]", "[opened]", 1)),
+    ("a run on every edit", "gate.yml", lambda t: t.replace("[opened, synchronize, reopened]", "[opened, synchronize, reopened, edited]", 1)),
+    ("a token that writes", "gate.yml", lambda t: t.replace("  checks: read\n", "  checks: write\n", 1)),
+    ("the job renamed", "gate.yml", lambda t: t.replace("\n  gate:\n", "\n  review:\n", 1)),
+    ("another command", "gate.yml", lambda t: t.replace(KIT_GATE_RUN, 'python3 review-gate.py --selftest', 1)),
+    ("a credential left in the checkout", "gate.yml", lambda t: t.replace("persist-credentials: false", "persist-credentials: true", 1)),
+    ("the verify job renamed", "verify.yml", lambda t: t.replace("\n  verify:\n", "\n  check:\n", 1)),
+    ("the gate's selftest dropped", "verify.yml", lambda t: t.replace("run: python3 review-gate.py --selftest", "run: true", 1)),
+    ("the Rulebook line not required", "verify.yml", lambda t: t.replace('if not first.startswith("Rulebook: https://github.com/Adonis80/how-we-build"):', "if False:", 1)),
+    ("the review guidelines not required", "verify.yml", lambda t: t.replace('if not re.search(r"(?m)^## Review guidelines\\s*$", text):', "if False:", 1)),
+    ("the word cap not held", "verify.yml", lambda t: t.replace("if len(text.split()) >= 500:", "if False:", 1)),
+    ("a verify that runs on a push", "verify.yml", lambda t: t.replace("on:\n  pull_request:", "on:\n  push:\n  pull_request:", 1)),
+    ("a starter that breaks its own check", "AGENTS.starter.md", lambda t: t.replace("Rulebook:", "See:", 1)),
+    ("a starter with no review guidelines", "AGENTS.starter.md", lambda t: t.replace("## Review guidelines", "## Notes", 1)),
+    ("a starter roadmap the board cannot read", "roadmap.starter.json", lambda t: t.replace('"items": []', '"items": "none"', 1)),
+)
+
+
+def _check_kit_loosenings():
+    """Every loosening above, applied to the real kit file, must turn _check_kit red."""
+    try:
+        kit = _kit_files()
+    except OSError as e:
+        print("  wiring: %s" % e)
+        return 1
+    bad = 0
+    for what, name, loosen in KIT_LOOSENINGS:
+        changed = loosen(kit[name])
+        if changed == kit[name]:
+            print("  wiring: the loosening '%s' no longer applies to %s%s — rewrite it against the "
+                  "file as it stands, or it proves nothing" % (what, KIT_DIR, name))
+            bad += 1
+        elif _check_kit(kit=dict(kit, **{name: changed}), quiet=True) == 0:
+            print("  wiring: %s%s with %s passes the check — the guard for it is gone" % (KIT_DIR, name, what))
+            bad += 1
+    if not bad:
+        print("ok: each of %d loosenings of the starter kit was applied to the real file and refused"
+              % len(KIT_LOOSENINGS))
+    return bad
+
+
+# THE ASKER'S SHELL, RUN. It promises that one product's trouble does not stop the others
+# being looked at, and the first draft did not keep it: under `set -e` and `pipefail` a
+# curl that timed out ended the whole loop. Text pins cannot see that, so the step is
+# run here against a GitHub that answers from a scenario, one product at a time failing
+# in each way it can: its installation lookup timing out, no token minted, a token wider
+# than asked, a token that reaches a second repository, the program failing. Each must
+# leave the others asked and the job red; and the App's key must never reach the program.
+ASK_STEP = "Look at each product and ask"
+STUB_ASK_CURL = r"""#!/usr/bin/env python3
+import json, os, re, sys
+args = sys.argv[1:]
+scenario = json.loads(os.environ["ASK_SCENARIO"])
+url = next(a for a in args if a.startswith("https://"))
+def header(name):
+    for i, a in enumerate(args):
+        if a == "-H" and args[i + 1].lower().startswith(name.lower() + ":"):
+            return args[i + 1].split(":", 1)[1].strip()
+    return ""
+log = open(os.environ["ASK_LOG"], "a")
+m = re.match(r"https://api.github.com/repos/(Adonis80/[^/]+)/installation$", url)
+if m:
+    if m.group(1) in scenario.get("timeout", []):
+        sys.exit(28)
+    print(json.dumps({"id": 1}))
+    sys.exit(0)
+if url.endswith("/access_tokens"):
+    body = json.loads(args[args.index("-d") + 1])
+    name = body["repositories"][0]
+    full = "Adonis80/" + name
+    if full in scenario.get("mint_timeout", []):
+        sys.exit(28)
+    if full in scenario.get("garbled", []):
+        print("<html>not json at all")
+        sys.exit(0)
+    if full in scenario.get("notoken", []):
+        print(json.dumps({"message": "no"}))
+        sys.exit(0)
+    perms = {"checks": "read", "contents": "read", "pull_requests": "read", "metadata": "read"}
+    if full in scenario.get("wide", []):
+        perms["issues"] = "write"
+    if full in scenario.get("badperms", []):
+        perms = "oops"
+    print(json.dumps({"token": "tok-" + name, "permissions": perms}))
+    sys.exit(0)
+if url.endswith("/installation/repositories"):
+    name = header("Authorization").split("tok-", 1)[-1]
+    if "Adonis80/" + name in scenario.get("reach_timeout", []):
+        sys.exit(28)
+    reach = scenario.get("reach", {}).get("Adonis80/" + name, ["Adonis80/" + name])
+    print(json.dumps({"repositories": [{"full_name": r} for r in reach]}))
+    sys.exit(0)
+if url.endswith("/installation/token") and "DELETE" in args:
+    log.write("REVOKED %s\n" % header("Authorization").split(" ", 1)[-1])
+    sys.exit(0)
+sys.stderr.write("the stub does not recognise: " + url + "\n")
+sys.exit(97)
+"""
+STUB_ASK_OPENSSL = """#!/usr/bin/env bash
+case "$1" in
+  base64) base64 -w0 ;;
+  dgst) cat > /dev/null; printf 'signature' ;;
+  *) exit 97 ;;
+esac
+"""
+STUB_ASK_PYTHON = """#!/usr/bin/env bash
+case "$*" in
+  *ask.py*)
+    repo=$(printf '%s' "$*" | sed -E 's/.*ask\\.py ([^ ]+).*/\\1/')
+    printf 'ASKED %s | KEY=%s ID=%s TOKEN=%s APPID=%s FLAGS=%s\\n' "$repo" "${APP_KEY:-unset}" "${APP_ID:-unset}" "${PRODUCT_TOKEN:-unset}" "${REVIEWER_APP_ID:-unset}" "$(printf '%s' "$*" | grep -o -- '--dispatch' || true)" >> "$ASK_LOG"
+    case " $ASK_FAILS " in *" $repo "*) exit 1 ;; *" $repo=3 "*) exit 3 ;; esac
+    exit 0 ;;
+  *) exec "$REAL_PY" "$@" ;;
+esac
+"""
+ASK_README = ("# t\n\n## Products under this rulebook\n\n- **A** — `https://github.com/Adonis80/a` one.\n"
+              "- **B** — `https://github.com/Adonis80/b` two.\n- **C** — `https://github.com/Adonis80/c` three.\n\n## Next\n")
+ASK_BROKEN_README = "# t\n\n## Products under this rulebook\n\nNone listed here.\n"
+
+
+def _run_ask(script, scenario=None, fails="", readme=ASK_README, env=None):
+    """(exit status, printed, the log the stubs kept) for the asker's step against a scenario."""
+    with tempfile.TemporaryDirectory() as d:
+        binned, work, temp = (os.path.join(d, n) for n in ("bin", "work", "tmp"))
+        for path in (binned, work, temp, os.path.join(work, "product-reads")):
+            os.makedirs(path)
+        for name, body in (("curl", STUB_ASK_CURL), ("openssl", STUB_ASK_OPENSSL), ("python3", STUB_ASK_PYTHON)):
+            with open(os.path.join(binned, name), "w", encoding="utf-8") as f:
+                f.write(body)
+            os.chmod(os.path.join(binned, name), 0o755)
+        with open(os.path.join(work, "README.md"), "w", encoding="utf-8") as f:
+            f.write(readme)
+        with open("product-reads/reads.py", encoding="utf-8") as src, \
+                open(os.path.join(work, "product-reads", "reads.py"), "w", encoding="utf-8") as dst:
+            dst.write(src.read())
+        log = os.path.join(d, "log")
+        e = dict(os.environ)
+        e.update({"PATH": binned + os.pathsep + os.environ.get("PATH", ""), "REAL_PY": sys.executable,
+                  "RUNNER_TEMP": temp, "ASK_LOG": log, "ASK_SCENARIO": json.dumps(scenario or {}),
+                  "ASK_FAILS": fails, "APP_ID": str(REVIEWER_APP_ID), "APP_KEY": "KEY-MATERIAL",
+                  "GH_TOKEN": "this-repository", "DISPATCH": "false"})
+        e.update(env or {})
+        try:
+            p = subprocess.run(["bash", "-c", script], cwd=work, env=e, capture_output=True, text=True, timeout=120)
+        except (OSError, subprocess.SubprocessError) as exc:
+            return None, "could not be run (%s)" % exc, ""
+        try:
+            kept = open(log, encoding="utf-8").read()
+        except OSError:
+            kept = ""
+        return p.returncode, p.stdout + p.stderr, kept
+
+
+def _check_ask_run(ask=None, quiet=False):
+    """The asker's step, run against a GitHub that fails one product at a time."""
+    say = (lambda *a: None) if quiet else print
+    try:
+        ask = _read(ASK_WORKFLOW) if ask is None else ask
+    except OSError as e:
+        say("  wiring: %s" % e)
+        return 1
+    script = _step_script(ask, ASK_STEP)
+    if script is None:
+        say("  wiring: %s has no `%s` step this build can run" % (ASK_WORKFLOW, ASK_STEP))
+        return 1
+    bad = 0
+    repos = ["Adonis80/a", "Adonis80/b", "Adonis80/c"]
+
+    def fault(what):
+        nonlocal bad
+        say("  wiring: %s, run: %s" % (ASK_WORKFLOW, what))
+        bad += 1
+
+    cases = (
+        ("every product looked at and asked", {}, "", ASK_README, {}, 0, repos, 3),
+        ("one product's installation lookup timing out", {"timeout": ["Adonis80/a"]}, "", ASK_README, {}, 1, repos[1:], 2),
+        ("one product that mints no token", {"notoken": ["Adonis80/b"]}, "", ASK_README, {}, 1, [repos[0], repos[2]], 2),
+        ("one product whose mint times out", {"mint_timeout": ["Adonis80/b"]}, "", ASK_README, {}, 1, [repos[0], repos[2]], 2),
+        ("one product whose mint answers with something that is not JSON", {"garbled": ["Adonis80/b"]}, "", ASK_README, {}, 1, [repos[0], repos[2]], 2),
+        ("one product whose grant cannot be read", {"badperms": ["Adonis80/b"]}, "", ASK_README, {}, 1, [repos[0], repos[2]], 3),
+        ("one product whose reach lookup times out", {"reach_timeout": ["Adonis80/b"]}, "", ASK_README, {}, 1, [repos[0], repos[2]], 3),
+        ("one product whose token is wider than asked", {"wide": ["Adonis80/b"]}, "", ASK_README, {}, 1, [repos[0], repos[2]], 3),
+        ("one product whose token reaches a second repository",
+         {"reach": {"Adonis80/b": ["Adonis80/b", "Adonis80/other"]}}, "", ASK_README, {}, 1, [repos[0], repos[2]], 3),
+        ("the program failing for one product", {}, "Adonis80/b", ASK_README, {}, 1, repos, 3),
+        ("the program unable to get an answer from one product's GitHub (exit 3)", {}, "Adonis80/b=3", ASK_README, {}, 1, repos, 3),
+        ("a README list that cannot be read", {}, "", ASK_BROKEN_README, {}, 1, [], 0),
+        ("asking not chosen", {}, "", ASK_README, {"DISPATCH": "false"}, 0, repos, 3),
+        ("asking chosen", {}, "", ASK_README, {"DISPATCH": "true"}, 0, repos, 3),
+        ("a choice that is neither", {}, "", ASK_README, {"DISPATCH": "maybe"}, 1, [], 0),
+        ("no App key", {}, "", ASK_README, {"APP_KEY": ""}, 1, [], 0),
+    )
+    for what, scenario, fails, readme, env, code_want, asked_want, revoked_want in cases:
+        code, printed, kept = _run_ask(script, scenario, fails, readme, env)
+        asked = [l.split()[1] for l in kept.splitlines() if l.startswith("ASKED ")]
+        revoked = [l for l in kept.splitlines() if l.startswith("REVOKED ")]
+        if code is None:
+            fault("%s: %s" % (what, printed))
+            continue
+        if (code != 0) != bool(code_want):
+            fault("%s: came out %s where it must come out %s" % (what, "green" if code == 0 else "red", "red" if code_want else "green"))
+        if asked != asked_want:
+            fault("%s: asked %s, and must ask %s" % (what, asked, asked_want))
+        if len(revoked) != revoked_want:
+            fault("%s: revoked %d token(s), and must revoke %d: a token is never left live" % (what, len(revoked), revoked_want))
+        for line in kept.splitlines():
+            if line.startswith("ASKED "):
+                repo = line.split()[1]
+                if "KEY=unset ID=unset" not in line or "TOKEN=tok-%s " % repo.split("/")[1] not in line \
+                        or "APPID=%d" % REVIEWER_APP_ID not in line:
+                    fault("%s: the program was handed the App's key or id, or the wrong token: %s" % (what, line))
+                if ("--dispatch" in line) != (env.get("DISPATCH") == "true"):
+                    fault("%s: the program was told to ask %s" % (what, "when it should not" if "--dispatch" in line else "not to when it should"))
+    code, printed, kept = _run_ask(script, {}, "", ASK_BROKEN_README, {})
+    if "could not be read" not in printed:
+        fault("a README list that cannot be read goes unexplained in the log")
+    if not bad:
+        say("ok: the asker's shell was run against a GitHub failing one product at a time (a timeout, no token, "
+            "a wider token, a second repository, the program failing, a README that cannot be read): the "
+            "others are still looked at, the job is red, every token is revoked, the App's key never reaches "
+            "the program, and nothing is asked unless it was chosen")
+    return bad
+
+
+ASK_RUN_LOOSENINGS = (
+    ("one product's timeout ending the loop", lambda t: t.replace(""" | jq -r '.id // empty') || inst=\"\"""", """ | jq -r '.id // empty')""", 1)),
+    ("a failed reach lookup ending the loop", lambda t: t.replace(' || reach=""', "", 1)),
+    ("a failed mint ending the loop", lambda t: t.replace(' || : > "$RUNNER_TEMP/mint.json"', "", 1)),
+    ("an unreadable grant ending the loop", lambda t: t.replace(' || granted=""', "", 1)),
+    ("an unreadable token ending the loop", lambda t: t.replace(' || tok=""', "", 1)),
+    ("an unreadable README list said nothing", lambda t: t.replace(""" || { echo "::error::the README's product list could not be read: $products"; exit 1; }""", "", 1)),
+    ("the first product's trouble stopping the rest", lambda t: t.replace("""or GitHub did not answer"; failed=1; continue; }""", """or GitHub did not answer"; exit 1; }""", 1)),
+    ("a wider token let through", lambda t: t.replace('if [ "$granted" != "$want" ]; then', "if false; then", 1)),
+    ("a second repository let through", lambda t: t.replace('if [ "$reach" != "$REPO" ]; then', "if false; then", 1)),
+    ("the App's key left in the program's hands", lambda t: t.replace("env -u APP_KEY -u APP_ID PRODUCT_TOKEN=", "env PRODUCT_TOKEN=", 1)),
+    ("a failed ask forgotten", lambda t: t.replace('[ "$rc" -eq 0 ] || failed=1', "true", 1)),
+    ("a token left live after the ask", lambda t: t.replace("            revoke\n            [ \"$rc\" -eq 0 ] || failed=1", "            [ \"$rc\" -eq 0 ] || failed=1", 1)),
+    ("asking whatever was chosen", lambda t: t.replace('if [ "$DISPATCH" = "true" ]; then flag="--dispatch"; fi', 'flag="--dispatch"', 1)),
+    ("a red job turned green", lambda t: t.replace('[ "$failed" -eq 0 ]\n', 'true\n', 1)),
+)
+
+
+def _check_ask_run_loosenings():
+    """Every fault above, put back into the asker's shell, must be seen by running it."""
+    try:
+        ask = _read(ASK_WORKFLOW)
+    except OSError as e:
+        print("  wiring: %s" % e)
+        return 1
+    bad = 0
+    for what, loosen in ASK_RUN_LOOSENINGS:
+        changed = loosen(ask)
+        if changed == ask:
+            print("  wiring: the loosening '%s' no longer applies to %s — rewrite it against the "
+                  "file as it stands, or it proves nothing" % (what, ASK_WORKFLOW))
+            bad += 1
+        elif _check_ask_run(ask=changed, quiet=True) == 0:
+            print("  wiring: %s with %s passes the run of its own shell — the case for it is gone" % (ASK_WORKFLOW, what))
+            bad += 1
+    if not bad:
+        print("ok: each of %d faults put back into the asker's shell was seen by running it" % len(ASK_RUN_LOOSENINGS))
     return bad
 
 
@@ -6330,6 +7494,15 @@ def _selftest():
     failed += _check_wiring()
     failed += _check_product_wiring()
     failed += _check_product_loosenings()
+    failed += _check_preflight_run()
+    failed += _check_preflight_loosenings()
+    failed += _check_ask_wiring()
+    failed += _check_ask_loosenings()
+    failed += _check_ask_run()
+    failed += _check_ask_run_loosenings()
+    failed += _check_ask_program()
+    failed += _check_kit()
+    failed += _check_kit_loosenings()
     failed += _check_board_loosenings()
     failed += _check_review_loosenings()
     failed += _check_read_loosenings()
