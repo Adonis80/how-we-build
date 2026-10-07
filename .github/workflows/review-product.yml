@@ -801,6 +801,9 @@ jobs:
             { m=$(resolve "$role" model) && i=$(resolve "$role" interface) && e=$(resolve "$role" effort); } \
               || { model=unknown effort=unknown; printf '{"is_error":true,"subtype":"unresolved"}\n' > "$out"; : > "$err"; return 2; }
             model=$m interface=$i effort=$e
+            # A conversation role is a seat in a chat app, never called (decision
+            # 0015): refused here, before any record, request or spend.
+            case "$(resolve "$role" kind)" in callable) ;; *) printf '{"is_error":true,"subtype":"conversation_role"}\n' > "$out"; : > "$err"; return 2 ;; esac
             case "$effort" in max) ;; *) printf '{"is_error":true,"subtype":"no_effort"}\n' > "$out"; : > "$err"; return 2 ;; esac
             echo "reading as $role: $model at effort $effort, for at most $2 s"
             local r=0 n=""
@@ -848,13 +851,25 @@ jobs:
             } >> "$t/prompt.txt"
             for f in "$@"; do
               case "$f" in /*|*..*|*[!A-Za-z0-9._/-]*) continue ;; esac
-              size=$(git -C "$t/product" cat-file -s "$SHA:$f" 2>/dev/null) || { printf '\n===== %s: not in this change =====\n' "$f" >> "$t/prompt.txt"; continue; }
+              # A RULEBOOK PAGE A PRODUCT'S WORDS POINT AT (decision 0015): one the
+              # product does not have, under library/, is read from this public
+              # repository's own checkout and labelled as the rulebook's. Nothing
+              # else of the rulebook's is ever added.
+              src=product
+              if size=$(git -C "$t/product" cat-file -s "$SHA:$f" 2>/dev/null); then :
+              elif case "$f" in library/*.md) true ;; *) false ;; esac && [ -f "$GITHUB_WORKSPACE/$f" ]; then src=rulebook size=$(wc -c < "$GITHUB_WORKSPACE/$f")
+              else printf '\n===== %s: not in this change =====\n' "$f" >> "$t/prompt.txt"; continue; fi
               if [ $((added + size)) -gt 200000 ]; then
                 printf '\n===== %s: %s bytes, left out: past the re-read limit =====\n' "$f" "$size" >> "$t/prompt.txt"
                 continue
               fi
-              printf '\n===== %s =====\n' "$f" >> "$t/prompt.txt"
-              git -C "$t/product" show "$SHA:$f" >> "$t/prompt.txt"
+              if [ "$src" = rulebook ]; then
+                printf '\n===== rulebook:%s =====\n' "$f" >> "$t/prompt.txt"
+                cat "$GITHUB_WORKSPACE/$f" >> "$t/prompt.txt"
+              else
+                printf '\n===== %s =====\n' "$f" >> "$t/prompt.txt"
+                git -C "$t/product" show "$SHA:$f" >> "$t/prompt.txt"
+              fi
               added=$((added + size)) any=yes
             done
             echo "</more>" >> "$t/prompt.txt"
