@@ -608,6 +608,21 @@ jobs:
             echo "the source the change imports could not be linked, so this read carries the touched files alone"
             printf '\n===== the source the change imports could not be linked; only the touched files are here =====\n' >> "$pages"
           fi
+          # THE RULEBOOK PAGES A CHANGE POINTS AT (decision 0015's repair, after
+          # Adonis80/Hemz-OS#139): a library page an added line names, which the
+          # product does not have, is carried from this public repository's own
+          # checkout and labelled as the rulebook's, at most four, so words that
+          # point into the rulebook are read beside what they point at rather
+          # than left for a re-read the reviewer must ask for by exact path.
+          rb=0
+          for f in $(grep -E '^[+]' "$t/diff.txt" | grep -oE '(^|[^A-Za-z0-9._/-])library/[A-Za-z0-9._-]+[.]md' | grep -oE 'library/[A-Za-z0-9._-]+[.]md' | sort -u); do
+            [ "$rb" -lt 4 ] || break
+            g cat-file -e "$SHA:$f" 2>/dev/null && continue
+            [ -r "$GITHUB_WORKSPACE/$f" ] || continue
+            { echo; echo "===== rulebook:$f ====="; cat "$GITHUB_WORKSPACE/$f"; } >> "$pages"
+            rb=$((rb + 1))
+          done
+          # (end of the rulebook pages)
           rm -rf "$t/tree.txt" "$t/sources" "$t/linked.txt"
           rm -f "$t/page"
           echo "pages bytes: $(wc -c < "$pages")"

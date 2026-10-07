@@ -3824,6 +3824,125 @@ MORE_PRODUCT_LOOSENINGS = (
 )
 
 
+# THE RULEBOOK PAGES A PRODUCT CHANGE POINTS AT (decision 0015's repair, after
+# Adonis80/Hemz-OS#139, where two reads in a row could not see the pages the
+# change pointed at): the product reader's first read carries a library page an
+# added line names, from this repository's checkout, labelled as the rulebook's;
+# never one a removed line names, never one the product has, never anything but
+# a library page, and at most four. The block is run from the file's own text.
+RB_BEGIN = "# THE RULEBOOK PAGES A CHANGE POINTS AT"
+RB_END = "# (end of the rulebook pages)"
+RB_TREE = ("library/reviewer.md", "library/consultant.md", "library/deploy.md", "library/money.md",
+           "library/two-stacks.md", "library/build-board.md")
+# (what, the diff's lines, the pages it must carry)
+RB_CASES = (
+    ("pages an added line points at", ["+Brief: the rulebook's `library/reviewer.md`.",
+                                      "+the consultant (rulebook `library/consultant.md`)"],
+     ["library/consultant.md", "library/reviewer.md"]),
+    ("a page only a removed line names", ["-Brief: `library/deploy.md`"], []),
+    ("a page the product has", ["+see library/build-board.md"], []),
+    ("a page the rulebook lacks", ["+see library/rulebook-files.md"], []),
+    ("names that are not a rulebook library page", ["+check.sh, juku-library/README.md and xlibrary/money.md"], []),
+    ("more than four", ["+library/reviewer.md library/consultant.md library/deploy.md library/money.md "
+                        "library/two-stacks.md"],
+     ["library/consultant.md", "library/deploy.md", "library/money.md", "library/reviewer.md"]),
+)
+
+
+def rb_says(text, diff_lines):
+    """Run the product reader's own rulebook-pages block on a made-up change. The pages it carried, or None."""
+    lines = text.splitlines()
+    try:
+        a = next(i for i, l in enumerate(lines) if l.strip().startswith(RB_BEGIN))
+        b = next(i for i, l in enumerate(lines) if i > a and l.strip() == RB_END)
+    except StopIteration:
+        return None
+    body = textwrap.dedent("\n".join(lines[a:b + 1]))
+    with tempfile.TemporaryDirectory() as d:
+        product, rulebook = os.path.join(d, "product"), os.path.join(d, "rulebook")
+        for root, files in ((rulebook, RB_TREE), (product, ("library/build-board.md", "a.md"))):
+            for f in files:
+                os.makedirs(os.path.dirname(os.path.join(root, f)) or root, exist_ok=True)
+                with open(os.path.join(root, f), "w", encoding="utf-8") as h:
+                    h.write("the page %s, as %s holds it\n" % (f, os.path.basename(root)))
+        try:
+            for cmd in (["init", "-q"], ["add", "-A"], ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "t"]):
+                subprocess.run(["git", "-C", product] + cmd, check=True, capture_output=True, timeout=30)
+            sha = subprocess.run(["git", "-C", product, "rev-parse", "HEAD"], capture_output=True, text=True,
+                                 check=True, timeout=30).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            return None
+        with open(os.path.join(d, "diff.txt"), "w", encoding="utf-8") as h:
+            h.write("diff --git a/AGENTS.md b/AGENTS.md\n--- a/AGENTS.md\n+++ b/AGENTS.md\n@@ -1 +1 @@\n"
+                    + "\n".join(diff_lines) + "\n")
+        pages = os.path.join(d, "pages.txt")
+        open(pages, "w").close()
+        script = "set -euo pipefail\nt='%s'; pages='%s'\ng() { git -C '%s' \"$@\"; }\n%s\n" % (d, pages, product, body)
+        try:
+            p = subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=60,
+                               env=dict(os.environ, SHA=sha, GITHUB_WORKSPACE=rulebook))
+            wrote = open(pages, encoding="utf-8").read()
+        except (OSError, subprocess.SubprocessError):
+            return None
+    if p.returncode != 0:
+        return None
+    carried = re.findall(r"^===== rulebook:(\S+) =====$", wrote, re.M)
+    # Every page carried is the rulebook's own text, under its label.
+    for f in carried:
+        if "the page %s, as rulebook holds it" % f not in wrote:
+            return None
+    if "as product holds it" in wrote or re.search(r"^===== (?!rulebook:)", wrote, re.M):
+        return None
+    return sorted(carried)
+
+
+def rb_faults(text):
+    lost = []
+    for what, diff_lines, want in RB_CASES:
+        got = rb_says(text, diff_lines)
+        if got != sorted(want):
+            lost.append("%s carrying %s (it carried %s)" % (what, sorted(want), got))
+    return lost
+
+
+RB_LOOSENINGS = (
+    ("a removed line's page carried", lambda t: t.replace("grep -E '^[+]' \"$t/diff.txt\"", "cat \"$t/diff.txt\"", 1)),
+    ("the product's own page shadowed", lambda t: t.replace('g cat-file -e "$SHA:$f" 2>/dev/null && continue', ':', 1)),
+    ("a page unlabelled", lambda t: t.replace('echo "===== rulebook:$f ====="', 'echo "===== $f ====="', 1)),
+    ("no limit", lambda t: t.replace('[ "$rb" -lt 4 ] || break', ':', 1)),
+    ("any name ending library/", lambda t: t.replace("'(^|[^A-Za-z0-9._/-])library/", "'library/", 1)),
+    ("no rulebook page at all", lambda t: t.replace('[ -r "$GITHUB_WORKSPACE/$f" ] || continue', 'continue', 1)),
+)
+
+
+def _check_rulebook_pages():
+    try:
+        text = _read(PRODUCT_WORKFLOW)
+    except OSError as e:
+        print("  wiring: %s" % e)
+        return 1
+    lost = rb_faults(text)
+    if lost:
+        print("  wiring: %s must carry the rulebook pages a change points at, and only those; it has lost %s"
+              % (PRODUCT_WORKFLOW, "; ".join(lost)))
+        return 1
+    bad = 0
+    for what, loosen in RB_LOOSENINGS:
+        changed = loosen(text)
+        if changed == text:
+            print("  wiring: the loosening '%s' no longer applies to %s — rewrite it against the file as it stands, "
+                  "or it proves nothing" % (what, PRODUCT_WORKFLOW))
+            bad += 1
+        elif not rb_faults(changed):
+            print("  wiring: %s with %s passes the rulebook-pages hold — the guard for it is gone" % (PRODUCT_WORKFLOW, what))
+            bad += 1
+    if not bad:
+        print("ok: a product's read carries the rulebook library pages its added lines name and it lacks, labelled "
+              "as the rulebook's, at most four, run in %d case(s), and each of %d loosenings refused"
+              % (len(RB_CASES), len(RB_LOOSENINGS)))
+    return bad
+
+
 def _check_more_loosenings():
     bad = 0
     for path in (REVIEW_WORKFLOW, PRODUCT_WORKFLOW):
@@ -6229,6 +6348,7 @@ def _selftest():
     failed += _check_expressions()
     failed += _check_attempt_loosenings()
     failed += _check_more_loosenings()
+    failed += _check_rulebook_pages()
     failed += _check_context_loosenings()
     failed += _check_pick_loosenings()
     failed += _check_link_loosenings()
