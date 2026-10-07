@@ -1,6 +1,6 @@
 {
-  "about": "The one place a model is named (decision 0008, issue #103, on the 18 September consensus in juku-library/). Every other file asks for a role. How to ask, inspect and switch: library/model-registry.md. A switch is one edit to this file, reviewed like any other change to the gate, unless the pinned reviewer tool does not know the new model: then the pin moves in both reviewers too, proved first on a full-size read (#130). The reviewer roles are decision 0008's own assignment, except that no reader is the lead's own model, and since his ruling of 30 September GLM 5.3 at max reads the risky classes too. Since his rulings of 5 and 6 October 2026 only open-weight models review and nothing stands behind GLM: when it does not answer, the commit stays unread, the Chairman is told at once, and the work is to find why the connection to GLM was lost and fix it. The reviewer roles' effort is the Chairman's ruling of 28 September 2026, every read at max. The max-subagent role is what every product's max subagent file is set to, his ruling of the same day (library/max-subagent.md).",
-  "version": "2026-10-06.1",
+  "about": "The one place a model is named (decision 0008, issue #103, on the 18 September consensus in juku-library/). Every other file asks for a role. How to ask, inspect and switch: library/model-registry.md. A switch is one edit to this file, reviewed like any other change to the gate, unless the pinned reviewer tool does not know the new model: then the pin moves in both reviewers too, proved first on a full-size read (#130). The reviewer roles are decision 0008's own assignment, except that no reader is the lead's own model, and since his ruling of 30 September GLM 5.3 at max reads the risky classes too. Since his rulings of 5 and 6 October 2026 only open-weight models review and nothing stands behind GLM: when it does not answer, the commit stays unread, the Chairman is told at once, and the work is to find why the connection to GLM was lost and fix it. The reviewer roles' effort is the Chairman's ruling of 28 September 2026, every read at max. The max-subagent role is what every product's max subagent file is set to, his ruling of the same day (library/max-subagent.md). The conversation roles (decision 0015) are held in a chat app, never called: kind conversation, an app and a picker label in place of a provider and a credential, and the assignment recorded apart from its proof (status assigned until that seat is read back; proved names the evidence). No caller sends one a request.",
+  "version": "2026-10-07.1",
   "reviewed": "2026-09-25",
   "decision": "https://github.com/Adonis80/how-we-build/issues/103",
   "providers": {
@@ -18,9 +18,23 @@
         "usage": {"include": true},
         "provider": {"require_parameters": true, "data_collection": "deny"}
       },
-      "note": "First provider, not the only one: any OpenAI-compatible endpoint (a LiteLLM proxy, a direct provider) is a new entry here and nothing else. No model list is sent, so OpenRouter never substitutes another model; the caller also refuses an answer from any model but the one pinned. data_collection deny keeps a product's private code off providers that store it.",
+      "note": "First provider, not the only one: any OpenAI-compatible endpoint (a LiteLLM proxy, a direct provider) is a new entry here and nothing else. No model list is sent, so OpenRouter never substitutes another model; the caller also refuses an answer from any model but the one pinned. data_collection deny asks only for providers who promise not to store or train on the prompt: their promise, not proof; ask.py refuses to send a request without it.",
       "checked": "2026-09-25",
       "source": "https://openrouter.ai/docs/api-reference/overview"
+    }
+  },
+  "apps": {
+    "claude-app": {
+      "name": "The Claude app: Projects and Cowork, at claude.ai",
+      "selects": "the conversation's own model picker, set by the session, or by the Chairman's tap where a session cannot",
+      "checked": "2026-10-07",
+      "source": "library/project-instructions.md, the route a session sets a Project by"
+    },
+    "chatgpt-app": {
+      "name": "The ChatGPT app: the consultant's Projects",
+      "selects": "the conversation's own model picker, set by a Claude session through the Chrome extension",
+      "checked": "2026-10-07",
+      "source": "library/consultant.md, and the Juku OS Project text"
     }
   },
   "models": {
@@ -32,6 +46,50 @@
       "efforts": ["low", "medium", "high", "xhigh", "max"],
       "checked": "2026-09-25",
       "source": "Anthropic's model id as the build session's environment names it; efforts are the pinned Claude Code tool's own --help, run 24 September 2026"
+    },
+    "claude-app/opus-5.5": {
+      "name": "Claude Opus 5.5",
+      "app": "claude-app",
+      "picker": "Claude Opus 5.5",
+      "open_weight": false,
+      "status": "active",
+      "efforts": ["high"],
+      "read_back": null,
+      "checked": "2026-10-07",
+      "source": "The Chairman's Juku OS Project text, the five debate seats as he gave them to the audit session (decision 0015) on 7 October 2026. A picker label is a claim until a session reads it back in the app, and a read-back proves the label, never the backend model"
+    },
+    "claude-app/fable-5.1": {
+      "name": "Claude Fable 5.1",
+      "app": "claude-app",
+      "picker": "Claude Fable 5.1",
+      "open_weight": false,
+      "status": "active",
+      "efforts": ["high"],
+      "read_back": null,
+      "checked": "2026-10-07",
+      "source": "The Chairman's Juku OS Project text, the five debate seats as he gave them to the audit session (decision 0015) on 7 October 2026. A picker label is a claim until a session reads it back in the app, and a read-back proves the label, never the backend model"
+    },
+    "chatgpt-app/gpt-6.1-sol": {
+      "name": "GPT-6.1 Sol",
+      "app": "chatgpt-app",
+      "picker": "GPT-6.1 Sol",
+      "open_weight": false,
+      "status": "active",
+      "efforts": ["high"],
+      "read_back": null,
+      "checked": "2026-10-07",
+      "source": "The Chairman's Juku OS Project text, the five debate seats as he gave them to the audit session (decision 0015) on 7 October 2026. A picker label is a claim until a session reads it back in the app, and a read-back proves the label, never the backend model"
+    },
+    "chatgpt-app/gpt-6-astra": {
+      "name": "GPT-6 Astra",
+      "app": "chatgpt-app",
+      "picker": "GPT-6 Astra",
+      "open_weight": false,
+      "status": "active",
+      "efforts": ["high", "max"],
+      "read_back": null,
+      "checked": "2026-10-07",
+      "source": "The Chairman's Juku OS Project text, the five debate seats as he gave them to the audit session (decision 0015) on 7 October 2026. A picker label is a claim until a session reads it back in the app, and a read-back proves the label, never the backend model"
     },
     "claude-sonnet-5": {
       "name": "Claude Sonnet 5",
@@ -59,12 +117,12 @@
       "status": "active",
       "efforts": ["low", "high", "max"],
       "context_tokens": 1048576,
-      "price_usd_per_million": {"input": 0.5614, "output": 1.764},
+      "price_usd_per_million": {"input": 1.4, "output": 4.4},
       "max_output_tokens": 100000,
-      "limits_note": "Every cash request carries max_tokens at max_output_tokens and provider.max_price at price_usd_per_million, so its most is known before it is sent (decision 0014, D). A price here below the provider's refuses the request rather than paying more; max_output_tokens is a ceiling set on 5 October 2026 above what a review should write, not a measured figure.",
+      "limits_note": "The spending check estimates every cash request's most by price_usd_per_million and max_output_tokens before it is sent (decision 0014, D). PR 3's cap probe, through the canary on main on 6 October 2026, one variable at a time: max_tokens alone was served (run 37539011607), so it goes with every request and the provider stops a read there; provider.max_price alone, at the price then held here (0.5614 and 1.764), was refused with HTTP 404 (run 37539116285), so it does not go, and the price is an estimate the provider does not enforce. The price is the one GLM reads are billed at: of 41 endpoints the provider lists, the first party and most others charge 1.40 and 4.40 per million, and #154's read on 1a6727d was billed exactly that (244,556 in and 31,761 out, 0.482 USD). max_output_tokens is a ceiling set on 5 October 2026 above what a review should write, not a measured figure; every endpoint writes at least 128,000.",
       "note": "The consensus named GLM-5.3 on 18 September; the Chairman said GLM 5.2 on 22 September. 5.3 is current on OpenRouter and improves on 5.2, so it is pinned, as the amendment says. Reasoning is always on.",
-      "checked": "2026-09-25",
-      "source": "https://openrouter.ai/z-ai/glm-5.3 by web search on 25 September 2026: openrouter.ai is not reachable from the build session, so the first live read proves the id"
+      "checked": "2026-10-06",
+      "source": "https://openrouter.ai/z-ai/glm-5.3 by web search on 25 September 2026: openrouter.ai is not reachable from the build session, so the first live read proves the id; its endpoints, their parameters and list prices from the provider's public list on 6 October 2026, read by the canary's probe (run 37539011607)"
     },
     "z-ai/glm-5.3-flash": {
       "name": "GLM 5.3 Flash",
@@ -159,6 +217,51 @@
       "effort": "max",
       "fallback": null,
       "use": "The effort ladder's max step: the project subagent every product carries as .claude/agents/max-subagent.md, whose model and effort are this role's (library/max-subagent.md; his ruling, 28 September 2026). No fallback: a product's file names one model."
+    },
+    "lead": {
+      "kind": "conversation",
+      "model": "claude-app/opus-5.5",
+      "effort": "high",
+      "fallback": null,
+      "status": "assigned",
+      "proved": null,
+      "use": "The CTO's seat in the capped head-office debate, round one (decision 0015; library/consultant.md). Assigned, not proved: proving it needs that seat's own read-back."
+    },
+    "consultant": {
+      "kind": "conversation",
+      "model": "chatgpt-app/gpt-6.1-sol",
+      "effort": "high",
+      "fallback": null,
+      "status": "assigned",
+      "proved": null,
+      "use": "The consultant's seat: the debate's round one, and ordinary consulting (library/consultant.md). Assigned, not proved."
+    },
+    "lead-step-up": {
+      "kind": "conversation",
+      "model": "claude-app/fable-5.1",
+      "effort": "high",
+      "fallback": null,
+      "status": "assigned",
+      "proved": null,
+      "use": "The CTO's seat when both sides step up together (decision 0015). Assigned, not proved."
+    },
+    "consultant-step-up": {
+      "kind": "conversation",
+      "model": "chatgpt-app/gpt-6-astra",
+      "effort": "high",
+      "fallback": null,
+      "status": "assigned",
+      "proved": null,
+      "use": "The consultant's seat when both sides step up together (decision 0015). Assigned, not proved."
+    },
+    "breaker": {
+      "kind": "conversation",
+      "model": "chatgpt-app/gpt-6-astra",
+      "effort": "max",
+      "fallback": null,
+      "status": "assigned",
+      "proved": null,
+      "use": "One attempt alone to break an agreed decision before anything irreversible or with real money reaches the Chairman (decision 0015). Assigned, not proved."
     }
   }
 }

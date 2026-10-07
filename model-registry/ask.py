@@ -61,12 +61,14 @@ its response lost, is unresolved. Cash (a provider billed per request) and plan
 (an allowance) are kept apart and never added; a cost not known is `unknown`,
 never 0. A route refused before sending opens no record.
 
-THE SPENDING CHECK (decision 0014, D). Before any cash request, primary,
-fallback or re-read: settled cash this week, from the provider's own key
-endpoint, plus what is reserved in flight, plus this request's most it can cost,
-must not pass the weekly limit (the secret REVIEW_CASH_WEEKLY), nor the key's
-own remaining limit. Every request carries an output-token limit and a price
-limit, so its most is known. Unknown headroom means no request. A refusal, here
+THE SPENDING CHECK (decision 0014, D). Before any cash request, the role's or
+its re-read: settled cash this week, from the provider's own key endpoint, plus
+what is reserved in flight, plus an estimate of this request's most, must not
+pass the weekly limit (the secret REVIEW_CASH_WEEKLY), nor the key's own
+remaining limit. Every request carries the registry's output-token cap, which
+the provider enforces; its price is the registry's, which no request enforces,
+so the most is an estimate until a price filter is proved. Unknown headroom
+means no request. A refusal, here
 or the provider's own limit, is `budget_refused`: the read parks, and nothing
 falls back. What the Chairman holds privately, the weekly limit, the key's
 limit, the headroom and the week's settled spend, reaches no log from here;
@@ -298,8 +300,8 @@ def derive(content, cut=False):
             "findings": shown, "omitted": omitted, "ignored": ["verdict"] if own else []}, None
 
 
-def build(got, provider, system, prompt, schema, limits=None):
-    """The request body for one read; with `limits`, its output-token limit and its price limit too."""
+def build(got, provider, system, prompt, schema, lim=None):
+    """The request body for one read; with the registry's limits, its output-token cap too."""
     body = {
         "model": got["model"],
         "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
@@ -308,16 +310,54 @@ def build(got, provider, system, prompt, schema, limits=None):
     }
     _set(body, provider.get("effort_param") or "reasoning_effort", got["effort"])
     _merge(body, provider.get("extra") or {})
-    if limits:
-        # The most a request can cost is known only if both are set: the
-        # tokens it may write, and the price per million it may be charged.
-        body["max_tokens"] = limits["output_tokens"]
-        _set(body, "provider.max_price", {"prompt": limits["input_price"], "completion": limits["output_price"]})
+    # THE OUTPUT CAP GOES WITH THE REQUEST, AND THE PRICE FILTER DOES NOT (PR 3's
+    # cap probe, 6 October 2026, one variable at a time through the canary on
+    # main). The cap alone was served (run 37539011607: every GLM 5.3 endpoint
+    # lists max_tokens and writes at least 128,000), so the provider stops a
+    # read at the registry's output ceiling. The price filter alone, at the
+    # registry's price, was refused with #154's HTTP 404 (run 37539116285): it
+    # was #153's outage. So the price half of a request's most is the
+    # registry's figure, an estimate the provider does not enforce.
+    if lim:
+        body["max_tokens"] = lim["output_tokens"]
     return body
 
 
-# THE SPENDING CHECK (decision 0014, D). A read is re-read at most once, so a
-# read in flight elsewhere may yet send this many cash requests.
+def outgoing(body, got):
+    """Why the request may not leave as built, or None.
+
+    Checked on the body exactly as it would be sent, after the provider's own
+    settings are merged in (decision 0014, E; the Chairman's condition of 6
+    October 2026), so a registry edit cannot widen what leaves: the pinned model
+    and no other, no list of models to substitute, and the ask for providers who
+    promise not to store or train on the prompt. That is the provider's promise,
+    not proof of what it does.
+    """
+    if body.get("model") != got["model"]:
+        return "the request names another model than the one pinned"
+    for k in ("models", "route"):
+        if k in body:
+            return "the request carries %s, which would let the provider serve another model" % k
+    if (body.get("provider") or {}).get("data_collection") != "deny":
+        return "the request does not ask for providers who promise not to store or train on it"
+    return None
+
+
+# THE CAP PROBE (decision 0014's recovery, PR 3). The canary, dispatched by hand
+# on main, may add one limit to a read to learn whether an endpoint serves it:
+# the output-token cap or the price filter, from the registry. No reviewer sets
+# CANARY_PROBE; a probe this list does not know is refused before sending.
+PROBES = {
+    "output-cap": lambda body, lim: body.__setitem__("max_tokens", lim["output_tokens"]),
+    "price-cap": lambda body, lim: _set(body, "provider.max_price",
+                                        {"prompt": lim["input_price"], "completion": lim["output_price"]}),
+}
+
+
+# THE SPENDING CHECK (decision 0014, D). A read in flight elsewhere may yet
+# send this many cash requests: the role's, and the one re-read of an answer
+# that came back short. Nothing stands behind the role since #156, so there is
+# no fallback's. review-gate.py holds it to the most today's route sends.
 RUN_ATTEMPTS = 2
 # Tokens a request's framing adds beyond its bytes: a token is at least a byte.
 FRAMING_TOKENS = 1000
@@ -335,7 +375,12 @@ def limits(reg, model_id):
 
 
 def bound(lim, body_bytes):
-    """The most one request can cost: every byte a token at the input price, every allowed output token at the output price."""
+    """An estimate of the most one request can cost: every byte a token at the input price, every allowed output token at the output price.
+
+    The output tokens are capped by the provider (max_tokens goes with the
+    request); the prices are the registry's, which no request enforces yet, so
+    the figure is an estimate, never a guarantee, until a price filter is proved.
+    """
     tokens_in = min(body_bytes + FRAMING_TOKENS, lim["context"])
     return (tokens_in * lim["input_price"] + lim["output_tokens"] * lim["output_price"]) / 1e6
 
@@ -346,8 +391,13 @@ def admit(base_url, key, lim, body_bytes, ledger, attempt, weekly, inflight, fet
     Settled cash this week comes from the provider's own key endpoint; in-flight
     reservations are this job's unresolved cash attempts at their bounds, and
     every other read in flight at the most a read can send; then this request's
-    bound. All of it must fit under the weekly limit, when it is set, and the
-    key's own remaining limit, when the key has one. Unknown anything is no call.
+    bound. This job's finished cash attempts are counted too, at their cost (or
+    bound, if none came back), and in full: a rise in the provider's figure may
+    be another job's, and nothing it reports ties a rise to this job's own
+    requests, so none is credited. A request already shown is counted twice
+    for the rest of the job, which errs toward refusing. All of it must fit
+    under the weekly limit, when it is set, and the key's own remaining limit,
+    when the key has one. Unknown anything is no call.
     """
     fetch = fetch or urllib.request.urlopen
     if lim is None:
@@ -360,11 +410,19 @@ def admit(base_url, key, lim, body_bytes, ledger, attempt, weekly, inflight, fet
     except (TypeError, ValueError):
         return None, "the reads in flight elsewhere could not be counted, so the headroom is unknown", ""
     reserved = others * RUN_ATTEMPTS * bound(lim, lim["context"])
+    finished = 0.0
     for a in attempts(ledger):
-        if a["attempt"] != str(attempt) and a.get("billing") == "cash" and a["unresolved"]:
+        if a["attempt"] == str(attempt) or a.get("billing") != "cash" or not a.get("sent", True):
+            continue
+        if a["unresolved"]:
             if not _number(a.get("bound")):
                 return None, "an earlier attempt in this job is unresolved with no bound, so the headroom is unknown", ""
             reserved += a["bound"]
+            continue
+        cost = a["cost"] if _number(a.get("cost")) else a.get("bound")
+        if not _number(cost):
+            return None, "an earlier attempt in this job finished with no cost and no bound, so the headroom is unknown", ""
+        finished += cost
     try:
         req = urllib.request.Request(base_url.rstrip("/") + "/key", headers={"Authorization": "Bearer " + key})
         with fetch(req, timeout=30) as r:
@@ -383,12 +441,12 @@ def admit(base_url, key, lim, body_bytes, ledger, attempt, weekly, inflight, fet
             return None, "the weekly limit is set but is not a positive amount", ""
         if not _number(data.get("usage_weekly")):
             return None, "the provider did not say what was spent this week", ""
-        caps.append(limit - data["usage_weekly"])
+        caps.append(limit - data["usage_weekly"] - finished)
         basis.append("the week's spend the provider reported against the weekly limit")
     if data.get("limit_remaining") is not None:
         if not isinstance(data["limit_remaining"], (int, float)) or isinstance(data["limit_remaining"], bool):
             return None, "the provider's remaining limit is not an amount", ""
-        caps.append(data["limit_remaining"])
+        caps.append(data["limit_remaining"] - finished)
         basis.append("the key's own remaining limit")
     if not caps:
         return None, "no weekly limit is set and the key has no limit of its own, so the headroom is unknown", ""
@@ -529,6 +587,7 @@ OUTCOMES = {
     "unreachable": ("unreachable, response lost", True, False),
     "no_credential": ("not sent: no credential", False, True),
     "unresolved": ("not sent: unresolved", False, True),
+    "request_refused": ("not sent: the request failed its check before sending", False, True),
 }
 
 
@@ -705,6 +764,13 @@ def main(argv):
         got = resolve.resolve(reg, role)
     except (OSError, ValueError, resolve.Unresolved) as e:
         return out({"is_error": True, "subtype": "unresolved", "result": str(e)}, 1)
+    # A CONVERSATION ROLE IS NEVER CALLED (decision 0015): it is a seat in a chat
+    # app, so this fails here, before a credential is looked for, a ledger opened
+    # or a byte sent, and says why rather than "no interface".
+    if got.get("kind") != "callable":
+        return out({"is_error": True, "subtype": "conversation_role",
+                    "result": "%s is a %s role, held in %s, not called: no request is sent and nothing is spent"
+                              % (role, got.get("kind"), got.get("app") or "a chat app")}, 1)
     if got["interface"] != "openai-compatible":
         return out({"is_error": True, "subtype": "unresolved",
                     "result": "%s is served through %s, not this caller" % (role, got["interface"])}, 1)
@@ -718,6 +784,18 @@ def main(argv):
     ledger, attempt = os.environ.get("ATTEMPTS", ""), os.environ.get("ATTEMPT", "")
     lim = limits(reg, got["model"])
     body = build(got, provider, system, sys.stdin.read(), json.loads(schema_json), lim)
+    probe = os.environ.get("CANARY_PROBE", "")
+    if probe not in ("", "none"):
+        if probe not in PROBES or lim is None:
+            return out({"is_error": True, "subtype": "request_refused",
+                        "result": "refused before sending: no probe %r with the registry's limits" % probe}, 1)
+        PROBES[probe](body, lim)
+    # THE REQUEST AS IT WOULD LEAVE, checked before anything is sent: no prompt,
+    # and no call to the key endpoint either.
+    stop = outgoing(body, got)
+    if stop:
+        note("refused before sending: %s" % stop)
+        return out({"is_error": True, "subtype": "request_refused", "result": "refused before sending: %s" % stop}, 1)
     data = json.dumps(body).encode("utf-8")
     # THE SPENDING CHECK, before the request and never after (decision 0014, D).
     most, why, basis = admit(got["base_url"], key, lim, len(data), ledger, attempt,

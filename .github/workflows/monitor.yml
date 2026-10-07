@@ -1,0 +1,116 @@
+name: Monitor
+
+# A REVIEW ASK NEVER DISAPPEARS SILENTLY (decision 0014's recovery, agreed by the
+# CTO and Astra on 6 October 2026). On 5 October review.yml grew past what
+# GitHub will load, and from 15:38 every `/claude review` started a run that
+# failed with no jobs: nothing was read, nothing was signed, and nobody was told
+# until a session went looking (#154). Whatever review.yml says about itself
+# needs review.yml to load and run, so the watch is here, in a file of its own.
+#
+# On the same ask review.yml answers, it waits for the verdict: the badge's
+# check run on the head, signed after the ask. A read, either way, is the end
+# of it, and so is a read the budget parked, which is the Chairman's own limit
+# and not an outage. Anything else tells the Chairman on the Reviewer-down
+# issue: no run of review.yml starting a read (it never appeared, could not be
+# loaded, or skipped its job), no verdict by the deadline, or a verdict that
+# did not read. review.yml tells him of a read that did not happen itself; this
+# adds its own word only when that one has not landed in three minutes.
+# An ordinary comment starts nothing here: the job's condition is review.yml's,
+# word for word, and review-gate.py holds the two equal.
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  actions: read
+  checks: read
+  pull-requests: read
+  issues: write
+
+jobs:
+  watch:
+    if: >-
+      github.event.issue.pull_request != null &&
+      startsWith(github.event.comment.body, '/claude review') &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - name: Watch the read this ask started
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.issue.number }}
+          ASKED: ${{ github.event.comment.created_at }}
+          OWNER: ${{ github.repository_owner }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        # review-gate.py lifts this block out whole and RUNS it against a fake
+        # `gh` and clock, on each way a read can be lost. Keep it one `run: |`
+        # block with no `${{ }}` inside.
+        run: |
+          set -euo pipefail
+          now() { date +%s; }
+          asked=$(date -d "$ASKED" +%s)
+          # A run starts within minutes; a read's job is 55 minutes, and ten more
+          # cover the queue and the signing.
+          appear=$(( asked + ${APPEAR:-600} ))
+          deadline=$(( asked + ${DEADLINE:-3900} ))
+          sha=$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)
+          title="Reviewer down: GLM did not read"
+          told() {
+            local n
+            n=$(gh issue list --repo "$REPO" --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')
+            [ -n "$n" ] && gh api "repos/$REPO/issues/$n/comments?since=$ASKED&per_page=100" --jq '.[].body' | grep -qF "#$PR at \`$sha\`"
+          }
+          down() {
+            local n body="@$OWNER the review asked on #$PR at \`$sha\` ${1%.}. Nothing stands behind GLM, so the commit stays unread until we find why and fix it. Monitor: $RUN"
+            n=$(gh issue list --repo "$REPO" --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')
+            if [ -n "$n" ]; then
+              gh issue comment "$n" --repo "$REPO" --body "$body"
+            else
+              gh issue create --repo "$REPO" --title "$title" --body "$body"
+            fi
+            echo "down: $1"
+            exit 1
+          }
+          started=no
+          unread=""
+          while :; do
+            # THE VERDICT: the badge's own check run, by the App's id, signed since the ask.
+            v=$(gh api "repos/$REPO/commits/$sha/check-runs?check_name=juku-reviewer&filter=all&per_page=100" \
+              --jq "[.check_runs[] | select(.app.id == 5000405 and .status == \"completed\" and .completed_at >= \"$ASKED\")] | sort_by(.completed_at) | last // empty | [.conclusion, .output.title] | @tsv")
+            if [ -n "$v" ]; then
+              c=${v%%$'\t'*}
+              said=${v#*$'\t'}
+              case "$c" in
+                success|failure) echo "read: $c"; exit 0 ;;
+                neutral)
+                  case "$said" in "Did not read: budget refused"*) echo "parked on the budget: not an outage"; exit 0 ;; esac
+                  told && { echo "not read, and review.yml told him: $said"; exit 0; }
+                  [ -n "$unread" ] || unread=$(now)
+                  [ "$(now)" -lt $(( unread + ${TOLD_WAIT:-180} )) ] || down "was not read: ${said#Did not read: }" ;;
+                *) down "was signed $c, which no read writes" ;;
+              esac
+            fi
+            # THE RUN: one of review.yml's, since the ask, whose review job started.
+            if [ "$started" = no ]; then
+              runs=$(gh api "repos/$REPO/actions/workflows/review.yml/runs?event=issue_comment&created=%3E%3D$ASKED&per_page=100" \
+                --jq '.workflow_runs[] | [.id, .status] | @tsv')
+              unloaded=no
+              while IFS=$'\t' read -r id status; do
+                [ -n "$id" ] || continue
+                jobs=$(gh api "repos/$REPO/actions/runs/$id/jobs?per_page=100" \
+                  --jq '"\(.total_count) " + ([.jobs[] | select(.name == "review") | .conclusion // "running"] | join(","))')
+                case "${jobs#* }" in *running*|*success*|*failure*|*cancelled*|*timed_out*) started=yes ;; esac
+                [ "$status" != completed ] || [ "${jobs%% *}" != 0 ] || unloaded=yes
+              done <<< "$runs"
+              if [ "$started" = no ] && [ "$(now)" -ge "$appear" ]; then
+                [ "$unloaded" = no ] || down "started no read: review.yml's run failed with no jobs, so GitHub could not load the file"
+                down "started no read: no run of review.yml began its review job within $(( (appear - asked) / 60 )) minutes"
+              fi
+            fi
+            [ "$(now)" -lt "$deadline" ] || down "had no verdict $(( (deadline - asked) / 60 )) minutes after the ask"
+            sleep "${POLL:-60}"
+          done
