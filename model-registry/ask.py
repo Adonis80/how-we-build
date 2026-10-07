@@ -764,6 +764,13 @@ def main(argv):
         got = resolve.resolve(reg, role)
     except (OSError, ValueError, resolve.Unresolved) as e:
         return out({"is_error": True, "subtype": "unresolved", "result": str(e)}, 1)
+    # A CONVERSATION ROLE IS NEVER CALLED (decision 0015): it is a seat in a chat
+    # app, so this fails here, before a credential is looked for, a ledger opened
+    # or a byte sent, and says why rather than "no interface".
+    if got.get("kind") != "callable":
+        return out({"is_error": True, "subtype": "conversation_role",
+                    "result": "%s is a %s role, held in %s, not called: no request is sent and nothing is spent"
+                              % (role, got.get("kind"), got.get("app") or "a chat app")}, 1)
     if got["interface"] != "openai-compatible":
         return out({"is_error": True, "subtype": "unresolved",
                     "result": "%s is served through %s, not this caller" % (role, got["interface"])}, 1)

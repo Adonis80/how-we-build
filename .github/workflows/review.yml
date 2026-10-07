@@ -571,6 +571,9 @@ jobs:
             { m=$(resolve "$role" model) && i=$(resolve "$role" interface) && e=$(resolve "$role" effort); } \
               || { model=unknown effort=unknown; printf '{"is_error":true,"subtype":"unresolved"}\n' > "$out"; : > "$err"; return 2; }
             model=$m interface=$i effort=$e
+            # A conversation role is a seat in a chat app, never called (decision
+            # 0015): refused here, before any record, request or spend.
+            case "$(resolve "$role" kind)" in callable) ;; *) printf '{"is_error":true,"subtype":"conversation_role"}\n' > "$out"; : > "$err"; return 2 ;; esac
             case "$effort" in max) ;; *) printf '{"is_error":true,"subtype":"no_effort"}\n' > "$out"; : > "$err"; return 2 ;; esac
             echo "reading as $role: $model at effort $effort, for at most $2 s"
             local r=0 n=""

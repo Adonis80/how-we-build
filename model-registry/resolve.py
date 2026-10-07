@@ -5,9 +5,18 @@
     resolve.py REGISTRY ROLE FIELD    that field alone
     resolve.py REGISTRY --check       the registry checked whole; ok, or why not
 
-Fields: role, model, name, provider, interface, base_url, credential, effort,
-effort_checked, fallback, version. `fallback` is the role to read on when this
-one does not answer, or empty: never a model, so a switch is still one edit.
+Fields: role, kind, model, name, provider, interface, base_url, credential,
+effort, effort_checked, fallback, app, picker, assignment, proved, version.
+`fallback` is the role to read on when this one does not answer, or empty:
+never a model, so a switch is still one edit.
+
+A role is one of two kinds (decision 0015). `callable`, the default, is called
+through an interface with a credential. `conversation` is a seat held in a chat
+app (the lead, the consultant, their step-ups, the breaker): it resolves to an
+app, a picker label and an effort, with no interface and no credential, so no
+caller can send it a request; its `assignment` (assigned or operational) is
+kept apart from `proved`, the evidence of a read-back. Any other kind is an
+error, never read as either.
 
 It fails closed. A role it cannot resolve cleanly — unknown, a model not in the
 registry or not active, a provider or interface it does not know, an effort the
@@ -19,10 +28,12 @@ import re
 import sys
 
 INTERFACES = ("claude-code", "openai-compatible")
+KINDS = ("callable", "conversation")
+ASSIGNMENTS = ("assigned", "operational")
 USABLE = ("active", "fallback", "canary")
 STATUSES = ("candidate", "canary", "active", "fallback", "deprecated", "blocked")
-FIELDS = ("role", "model", "name", "provider", "interface", "base_url", "credential", "effort",
-          "effort_checked", "fallback", "version")
+FIELDS = ("role", "kind", "model", "name", "provider", "interface", "base_url", "credential", "effort",
+          "effort_checked", "fallback", "app", "picker", "assignment", "proved", "version")
 # A role name is the only thing another file may say, so it is a plain word.
 ROLE_NAME = re.compile(r"^[a-z][a-z0-9-]*$")
 DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -50,6 +61,12 @@ def _entry(reg, name):
 def resolve(reg, name):
     """Every field of role `name`, as a dict of strings."""
     role, entry = _entry(reg, name)
+    # THE KIND, CHECKED FIRST AND NEVER GUESSED (decision 0015): an unknown kind
+    # is refused, never read as a conversation, so a typo cannot quietly turn a
+    # reviewer into a seat no caller may call, or the other way round.
+    kind = entry.get("kind", "callable")
+    if kind not in KINDS:
+        raise Unresolved("%s has kind %r; a role is %s" % (role, kind, " or ".join(KINDS)))
     model_id = entry.get("model")
     model = (reg.get("models") or {}).get(model_id)
     if not isinstance(model, dict):
@@ -57,6 +74,11 @@ def resolve(reg, name):
     if model.get("status") not in USABLE:
         raise Unresolved("%s names %s, whose status is %r: only %s may hold a role"
                          % (role, model_id, model.get("status"), "/".join(USABLE)))
+    if kind == "conversation":
+        return _conversation(reg, role, entry, model_id, model)
+    if model.get("app"):
+        raise Unresolved("%s is a callable role on %s, a chat app's model: an app route has no interface "
+                         "to call" % (role, model_id))
     provider_name = model.get("provider")
     provider = (reg.get("providers") or {}).get(provider_name)
     if not isinstance(provider, dict):
@@ -83,18 +105,53 @@ def resolve(reg, name):
     elif not isinstance(fallback, str) or fallback not in (reg.get("roles") or {}):
         raise Unresolved("%s falls back to %r, which is not a role" % (role, fallback))
     got = {
-        "role": role, "model": model_id, "name": model.get("name", ""), "provider": provider_name,
+        "role": role, "kind": "callable", "model": model_id, "name": model.get("name", ""), "provider": provider_name,
         "interface": interface, "base_url": provider.get("base_url", ""),
         "credential": provider["credential"], "effort": effort,
         "effort_checked": "yes" if efforts is not None else "no", "fallback": fallback,
+        "app": "", "picker": "", "assignment": "", "proved": "",
         "version": str(reg.get("version", "")),
     }
+    return _lines(role, got)
+
+
+def _lines(role, got):
     # Each value becomes one line of a workflow's outputs: a line break in one
     # would be an output of its own.
     for key, value in got.items():
         if not isinstance(value, str) or "\n" in value or "\r" in value:
             raise Unresolved("%s's %s is not one line of text" % (role, key))
     return got
+
+
+def _conversation(reg, role, entry, model_id, model):
+    """A seat held in a chat app: its app, picker label and effort, and nothing a caller could use."""
+    app = model.get("app")
+    if model.get("provider") or not isinstance(app, str) or app not in (reg.get("apps") or {}):
+        raise Unresolved("%s is a conversation role on %s, which is not a chat app's model (no app the "
+                         "registry lists, or a provider an API caller could reach)" % (role, model_id))
+    picker = model.get("picker")
+    if not isinstance(picker, str) or not picker.strip():
+        raise Unresolved("%s names no picker label" % model_id)
+    effort, efforts = entry.get("effort"), model.get("efforts")
+    if not isinstance(effort, str) or not isinstance(efforts, list) or effort not in efforts:
+        raise Unresolved("%s asks %s for effort %r, which it does not list (%s)"
+                         % (role, model_id, effort, "/".join(efforts or [])))
+    if entry.get("fallback") is not None:
+        raise Unresolved("%s falls back to %r; a conversation seat that is out is handed off, never "
+                         "silently swapped" % (role, entry.get("fallback")))
+    assignment, proved = entry.get("status"), entry.get("proved")
+    if assignment not in ASSIGNMENTS:
+        raise Unresolved("%s's status is %r; a seat is %s" % (role, assignment, " or ".join(ASSIGNMENTS)))
+    if assignment == "operational" and not (isinstance(proved, str) and proved.strip()):
+        raise Unresolved("%s is operational with nothing proving it; until its read-back is named it "
+                         "is assigned" % role)
+    return _lines(role, {
+        "role": role, "kind": "conversation", "model": model_id, "name": model.get("name", ""),
+        "provider": "", "interface": "", "base_url": "", "credential": "", "effort": effort,
+        "effort_checked": "yes", "fallback": "", "app": app, "picker": picker,
+        "assignment": assignment, "proved": proved or "", "version": str(reg.get("version", "")),
+    })
 
 
 def check(reg):
@@ -110,6 +167,9 @@ def check(reg):
             faults.append("%s has status %r" % (mid, model.get("status")))
         if not DATE.match(str(model.get("checked", ""))) or not model.get("source"):
             faults.append("%s does not say when it was checked and where" % mid)
+    for aid, app in sorted((reg.get("apps") or {}).items()):
+        if not DATE.match(str(app.get("checked", ""))) or not app.get("source"):
+            faults.append("app %s does not say when it was checked and where" % aid)
     for name in sorted(reg.get("roles") or {}):
         if not ROLE_NAME.match(name):
             faults.append("role %r is not a plain word" % name)

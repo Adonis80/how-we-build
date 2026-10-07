@@ -139,6 +139,11 @@ RESOLVER = "model-registry/resolve.py"
 ORDINARY_ROLE = "reviewer-main"
 RISKY_ROLE = "reviewer-risky"
 FALLBACK_ROLE = "reviewer-fallback"
+# THE CONVERSATION ROLES (decision 0015): the seats of the capped head-office
+# debate, held in a chat app and never called. Every other role is callable, and
+# _check_registry holds the two sets apart; _check_conversation proves that the
+# resolver, the caller and both reviewers' ask() refuse to call one.
+CONVERSATION_ROLES = ("lead", "consultant", "lead-step-up", "consultant-step-up", "breaker")
 # And every read is at one effort, whatever its class: his ruling of 28
 # September 2026 ("models now"), in his words, "every read at max". It
 # supersedes decision 0005's "max only for reviews of the risky classes"
@@ -2525,23 +2530,26 @@ def _check_route_loosenings():
 # one effort every read is owed and with nothing behind it, every networked
 # provider asking for providers who promise not to store or train on what it
 # sends, and a switch that is one edit to the one file.
-def _check_registry():
+def _check_registry(path=REGISTRY, quiet=False):
     bad = 0
 
     def fault(what):
         nonlocal bad
-        print("  registry: %s" % what)
+        if not quiet:
+            print("  registry: %s" % what)
         bad += 1
 
     try:
         spec = importlib.util.spec_from_file_location("resolve", RESOLVER)
         resolve = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(resolve)
-        reg = resolve.load(REGISTRY)
+        reg = resolve.load(path)
     except (OSError, ValueError, ImportError, AttributeError) as e:
         fault("could not be read: %s" % e)
         return bad
     for f in resolve.check(reg):
+        fault(f)
+    for f in _role_slot_faults(resolve, reg):
         fault(f)
     # NOTHING STANDS BEHIND A REVIEWER (his rulings, 5 and 6 October 2026): only
     # open-weight models review, and when GLM does not answer the commit stays
@@ -2571,8 +2579,10 @@ def _check_registry():
                   "stored or trained on by whoever serves it" % name)
     # One edit, one file: the ordinary role moved to another model in a copy of
     # the registry, and nothing else, is what the resolver then answers.
+    # Another model a caller can reach: a chat app's model is never a reviewer's
+    # (decision 0015), so the switch is to one with a provider.
     other = next((m for m in sorted(reg.get("models") or {}) if ORDINARY_ROLE in got
-                  and m != got[ORDINARY_ROLE]["model"]), None)
+                  and m != got[ORDINARY_ROLE]["model"] and (reg["models"][m] or {}).get("provider")), None)
     if ORDINARY_ROLE in got and other:
         moved = json.loads(json.dumps(reg))
         moved["roles"][ORDINARY_ROLE]["model"] = other
@@ -2597,10 +2607,228 @@ def _check_registry():
             fault("%s resolved; it must fail closed" % what)
         except resolve.Unresolved:
             pass
-    if not bad:
+    if not bad and not quiet:
         print("ok: the registry resolves %s and %s, both at %s with nothing behind them; a "
               "switch is one edit to %s, and an unknown role or a blocked model fails closed"
               % (ORDINARY_ROLE, RISKY_ROLE, REVIEW_EFFORT, REGISTRY))
+    return bad
+
+
+def _role_slot_faults(resolve, reg):
+    """A conversation role in a reviewer, coder or subagent slot, or a callable one in a debate seat."""
+    faults = []
+    roles = reg.get("roles") or {}
+    for name in CONVERSATION_ROLES:
+        if name not in roles:
+            faults.append("the debate seat %s is missing (decision 0015)" % name)
+    for name in sorted(roles):
+        try:
+            kind = resolve.resolve(reg, name)["kind"]
+        except resolve.Unresolved:
+            continue  # resolve.check has said why
+        want = "conversation" if name in CONVERSATION_ROLES else "callable"
+        if kind != want:
+            faults.append("%s is a %s role; %s (decision 0015)" % (
+                name, kind, "a debate seat is held in a chat app, never called" if want == "conversation"
+                else "a reviewer, coder or subagent slot is called, so it cannot be a chat app's seat"))
+    return faults
+
+
+# A CONVERSATION ROLE IS NEVER CALLED (decision 0015), held where each caller
+# lives: the resolver gives it no interface and no credential and refuses a kind
+# it does not know; ask.py refuses it before a credential, a ledger or a request;
+# and each reviewer's own ask(), run here from the workflow's text with every
+# tool stubbed, refuses it before it records, sends or spends anything.
+CONVERSATION_ASK_GUARD = ('case "$(resolve "$role" kind)" in callable) ;; *) printf \'{"is_error":true,"subtype":"conversation_role"}\\n\' '
+                          '> "$out"; : > "$err"; return 2 ;; esac')
+
+
+def _workflow_ask(text):
+    """The `ask() {` function of a reviewer's Read it step, as the job defines it, or None."""
+    span = _step_span(text, "Read it")
+    r = text[span[0]:span[1]] if span else ""
+    m = re.search(r"^( +)ask\(\) \{\n.*?^\1\}\n", r, re.M | re.S)
+    return textwrap.dedent(m.group(0)) if m else None
+
+
+def _check_conversation(quiet=False):
+    bad = 0
+
+    def fault(what):
+        nonlocal bad
+        if not quiet:
+            print("  conversation: %s" % what)
+        bad += 1
+    try:
+        spec = importlib.util.spec_from_file_location("resolve", RESOLVER)
+        resolve = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(resolve)
+        reg = resolve.load(REGISTRY)
+    except (OSError, ValueError, ImportError, AttributeError) as e:
+        fault("the registry could not be read: %s" % e)
+        return bad
+    # 1. The resolver: each seat resolves to an app, a picker and an effort, with
+    # nothing a caller could use, and a kind it does not know is refused.
+    for name in CONVERSATION_ROLES:
+        try:
+            got = resolve.resolve(reg, name)
+        except resolve.Unresolved as e:
+            fault("%s did not resolve: %s" % (name, e))
+            continue
+        if got["kind"] != "conversation" or got["interface"] or got["credential"] or got["base_url"] \
+                or not got["app"] or not got["picker"] or got["assignment"] not in ("assigned", "operational"):
+            fault("%s resolved with something a caller could use, or without its app, picker or assignment (%s)"
+                  % (name, got))
+    callable_role = ORDINARY_ROLE
+    for what, change, role in (
+            ("an unknown kind on a callable role", lambda r: r["roles"][callable_role].update(kind="chat"), callable_role),
+            ("an unknown kind on a seat", lambda r: r["roles"]["lead"].update(kind="chat"), "lead"),
+            # given a provider too, so only the app guard stands in its way
+            ("a callable role on a chat app's model", lambda r: (r["models"][r["roles"]["lead"]["model"]].update(
+                provider=r["models"][r["roles"][callable_role]["model"]]["provider"], efforts=["max"]),
+                r["roles"][callable_role].update(model=r["roles"]["lead"]["model"])), callable_role),
+            ("a seat on a model an API caller reaches", lambda r: r["roles"]["lead"].update(
+                model=r["roles"][callable_role]["model"], effort="max"), "lead"),
+            ("a seat called operational with nothing proving it", lambda r: r["roles"]["lead"].update(
+                status="operational", proved=None), "lead")):
+        bent = json.loads(json.dumps(reg))
+        try:
+            change(bent)
+            resolve.resolve(bent, role)
+            fault("%s resolved; it must be refused" % what)
+        except resolve.Unresolved:
+            pass
+        except (KeyError, TypeError) as e:
+            fault("%s could not be set up (%s)" % (what, e))
+    # 2. The slots: a seat in a reviewer's place, or a reviewer in a seat, faults.
+    for what, change in (
+            ("a conversation role in a reviewer slot", lambda r: r["roles"][callable_role].update(
+                kind="conversation", model=r["roles"]["lead"]["model"], effort=r["roles"]["lead"]["effort"],
+                status="assigned", fallback=None)),
+            ("a conversation role in the subagent slot", lambda r: r["roles"]["max-subagent"].update(
+                kind="conversation", model=r["roles"]["lead"]["model"], effort=r["roles"]["lead"]["effort"],
+                status="assigned", fallback=None)),
+            ("an API role in a debate seat", lambda r: r["roles"]["breaker"].update(
+                kind="callable", model=r["roles"][callable_role]["model"], effort="max"))):
+        bent = json.loads(json.dumps(reg))
+        try:
+            change(bent)
+        except (KeyError, TypeError) as e:
+            fault("%s could not be set up (%s)" % (what, e))
+            continue
+        # Through _check_registry itself, so the rule is held where the gate runs it.
+        with tempfile.TemporaryDirectory() as d:
+            bent_path = os.path.join(d, "registry.json")
+            with open(bent_path, "w", encoding="utf-8") as f:
+                json.dump(bent, f)
+            real_out, sys.stdout = sys.stdout, io.StringIO()
+            try:
+                _check_registry(bent_path)
+                said = sys.stdout.getvalue()
+            finally:
+                sys.stdout = real_out
+            # The slot rule's own words, not any other fault the bend causes.
+            if "slot is called" not in said and "debate seat is held" not in said:
+                fault("%s passed the registry check's slot rule" % what)
+    if _role_slot_faults(resolve, reg):
+        fault("the registry itself puts a role in the wrong slot: %s" % _role_slot_faults(resolve, reg))
+    # 3. The caller: asked for a seat, it refuses before a credential, a ledger
+    # or a byte leaves, and says why.
+    try:
+        spec = importlib.util.spec_from_file_location("ask", CALLER)
+        ask = importlib.util.module_from_spec(spec)
+        sys.path.insert(0, os.path.dirname(os.path.abspath(CALLER)))
+        try:
+            spec.loader.exec_module(ask)
+        finally:
+            sys.path.pop(0)
+    except (OSError, ImportError) as e:
+        fault("the caller could not be loaded: %s" % e)
+        return bad
+    sent = []
+    real_urlopen = urllib.request.urlopen
+    urllib.request.urlopen = lambda *a, **k: sent.append(a) or (_ for _ in ()).throw(AssertionError("sent"))
+    real_out, real_in = sys.stdout, sys.stdin
+    with tempfile.TemporaryDirectory() as d:
+        ledger = os.path.join(d, "attempts.jsonl")
+        system = os.path.join(d, "system.txt")
+        with open(system, "w", encoding="utf-8") as f:
+            f.write("s")
+        keep = {k: os.environ.get(k) for k in ("ATTEMPTS", "ATTEMPT", "OPENROUTER_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN")}
+        os.environ.update(ATTEMPTS=ledger, ATTEMPT="1", OPENROUTER_API_KEY="k", CLAUDE_CODE_OAUTH_TOKEN="k")
+        try:
+            for name in CONVERSATION_ROLES:
+                sys.stdout, sys.stdin = io.StringIO(), io.StringIO("p")
+                with open(os.devnull, "w") as quiet_err:
+                    real_err, sys.stderr = sys.stderr, quiet_err
+                    try:
+                        rc = ask.main(["ask.py", REGISTRY, name, system, "{}", "60"])
+                    finally:
+                        sys.stderr = real_err
+                said = sys.stdout.getvalue()
+                sys.stdout = real_out
+                try:
+                    answer = json.loads(said)
+                except ValueError:
+                    answer = {}
+                if rc == 0 or answer.get("subtype") != "conversation_role" or sent or os.path.exists(ledger):
+                    fault("the caller, asked for %s, did not refuse it as a conversation role before anything "
+                          "was sent or recorded (exit %s, %s)" % (name, rc, said.strip()[:120]))
+        except Exception as e:  # noqa: BLE001
+            fault("the caller raised %s for a conversation role" % type(e).__name__)
+        finally:
+            sys.stdout, sys.stdin = real_out, real_in
+            urllib.request.urlopen = real_urlopen
+            for k, v in keep.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+    # 4. Each reviewer's own ask(), run from the workflow's text: the seat is
+    # refused before it records, sends or spends, whatever interface a stub claims.
+    for path in (REVIEW_WORKFLOW, PRODUCT_WORKFLOW):
+        try:
+            text = open(path, encoding="utf-8").read()
+        except OSError as e:
+            fault("%s could not be read: %s" % (path, e))
+            continue
+        fn = _workflow_ask(text)
+        if not fn:
+            fault("%s has no ask() in its Read it step" % path)
+            continue
+        if CONVERSATION_ASK_GUARD not in fn or fn.find(CONVERSATION_ASK_GUARD) > fn.find("record open"):
+            fault("%s's ask() does not refuse a conversation role before it records an attempt" % path)
+        with tempfile.TemporaryDirectory() as d:
+            script = textwrap.dedent("""\
+                set -uo pipefail
+                out='{d}/out.json'; err='{d}/err.txt'; ledger='{d}/ledger'; reg='{d}'; schema='{{}}'
+                resolve() {{ case "$2" in model) echo m ;; interface) echo "$IFACE" ;; effort) echo max ;; kind) echo conversation ;; *) echo "" ;; esac; }}
+                python3() {{ echo "python3 $*" >> '{d}/ran'; }}
+                claude() {{ echo "claude $*" >> '{d}/ran'; }}
+                timeout() {{ echo "timeout $*" >> '{d}/ran'; }}
+                inflight() {{ echo 0; }}
+                """).format(d=d) + fn + '\nask lead 60; echo "rc=$?"\n'
+            for iface in ("claude-code", "openai-compatible"):
+                try:
+                    p = subprocess.run(["bash", "-c", script], env=dict(os.environ, IFACE=iface,
+                                       CLAUDE_CODE_OAUTH_TOKEN="k"), capture_output=True, text=True, timeout=30)
+                    said = open(os.path.join(d, "out.json"), encoding="utf-8").read() \
+                        if os.path.exists(os.path.join(d, "out.json")) else ""
+                    ran = os.path.exists(os.path.join(d, "ran"))
+                except (OSError, subprocess.SubprocessError) as e:
+                    fault("%s's ask() could not be run: %s" % (path, e))
+                    continue
+                if "rc=0" in p.stdout or '"conversation_role"' not in said or ran:
+                    fault("%s's ask(), given a conversation role its stub calls %s, did not refuse it before "
+                          "recording or calling anything (%s; %s)" % (path, iface, p.stdout.strip()[-40:], said.strip()))
+                for f in ("out.json", "ran"):
+                    if os.path.exists(os.path.join(d, f)):
+                        os.remove(os.path.join(d, f))
+    if not bad and not quiet:
+        print("ok: the %d debate seats resolve to an app, a picker and an effort with no interface or credential, "
+              "an unknown kind is refused and never read as a seat, a seat sits in no reviewer, coder or subagent "
+              "slot and no callable role in a seat, and the caller and both reviewers' ask() refuse a seat before "
+              "they record, send or spend anything" % len(CONVERSATION_ROLES))
     return bad
 
 
@@ -3420,6 +3648,7 @@ def attempts_say(text, steps):
                 model) case "$1" in {models} esac ;;
                 interface) echo "$STEP_IFACE" ;;
                 effort) echo max ;;
+                kind) echo callable ;;
               esac
             }}
             """).format(d=d, reg=os.path.abspath(os.path.dirname(CALLER)), models=models)
@@ -3506,6 +3735,23 @@ MORE_CASES = (
 )
 
 
+# THE PRODUCT READER ALONE (decision 0015): a rulebook page a product's words
+# point at, absent from the product, is added from this repository's checkout and
+# labelled as the rulebook's; nothing else of the rulebook's is, and a product
+# page of the same name is the product's.
+MORE_RULEBOOK = {"library/reviewer.md": "a rulebook page\n", "check.sh": "echo rulebook\n", "a.md": "the rulebook's a\n"}
+MORE_PRODUCT_CASES = (
+    ("a rulebook page the product points at", ["library/reviewer.md"], True, {"rulebook:library/reviewer.md"},
+     ("a rulebook page",), ()),
+    ("a rulebook file that is not a library page", ["check.sh"], False, set(), ("check.sh: not in this change",),
+     ("echo rulebook",)),
+    # (a real page's name, so the repository's own link check holds; the made-up rulebook lacks it)
+    ("a library page neither has", ["library/deploy.md"], False, set(), ("library/deploy.md: not in this change",), ()),
+    ("a page the product has, never the rulebook's of that name", ["a.md"], True, {"a.md"}, ("page a",),
+     ("the rulebook's a",)),
+)
+
+
 def more_says(text, path, asked):
     """Run the file's real `more()` on `asked`. (it returned yes, the prompt it wrote), or None."""
     fn = _block(text, lambda l: l == "more() {", lambda l: l == "}")
@@ -3516,6 +3762,10 @@ def more_says(text, path, asked):
         os.makedirs(tree)
         for f, body in MORE_TREE.items():
             open(os.path.join(tree, f), "w").write(body)
+        rulebook = os.path.join(d, "rulebook")
+        for f, body in MORE_RULEBOOK.items():
+            os.makedirs(os.path.dirname(os.path.join(rulebook, f)), exist_ok=True)
+            open(os.path.join(rulebook, f), "w").write(body)
         try:
             for cmd in (["init", "-q"], ["add", "-A"], ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "t"]):
                 subprocess.run(["git", "-C", tree] + cmd, check=True, capture_output=True, timeout=30)
@@ -3530,7 +3780,7 @@ def more_says(text, path, asked):
             tree, d, body, " ".join("'%s'" % a for a in asked))
         try:
             p = subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=60,
-                               env=dict(os.environ, SHA=sha))
+                               env=dict(os.environ, SHA=sha, GITHUB_WORKSPACE=rulebook))
             wrote = open(prompt, encoding="utf-8").read()
         except (OSError, subprocess.SubprocessError):
             return None
@@ -3541,13 +3791,15 @@ def more_says(text, path, asked):
 
 def more_faults(text, path):
     lost = []
-    for what, asked, again, added, marks, never in MORE_CASES:
+    for what, asked, again, added, marks, never in MORE_CASES + (MORE_PRODUCT_CASES if path == PRODUCT_WORKFLOW else ()):
         got = more_says(text, path, asked)
         if got is None:
             lost.append("a `more()` that runs (%s)" % what)
             continue
         yes, wrote = got
         given = set(re.findall(r"^===== (\S+) =====$", wrote, re.M))
+        # A product's re-read names a rulebook page as the rulebook's; this
+        # repository's own re-read never reaches past its head.
         if (yes != again or given != added or not all(m in wrote for m in marks)
                 or any(n in wrote for n in never) or "<more>" not in wrote or "</more>" not in wrote):
             lost.append("%s answering %s with %s added (it answered %s with %s)"
@@ -3561,6 +3813,14 @@ MORE_LOOSENINGS = (
     ("the re-read unbounded", lambda t: t.replace("-gt 200000 ]; then", "-gt 2000000 ]; then", 1)),
     ("a re-read with nothing added", lambda t: t.replace('            [ "$any" = yes ]\n', "            true\n", 1)),
     ("a missing file unnamed", lambda t: t.replace(": not in this change =====", ": =====", 1)),
+)
+MORE_PRODUCT_LOOSENINGS = (
+    ("any rulebook file added", lambda t: t.replace('case "$f" in library/*.md) true ;; *) false ;; esac', 'true', 1)),
+    ("a rulebook page unlabelled", lambda t: t.replace("===== rulebook:%s =====", "===== %s =====", 1)),
+    ("the rulebook's page over the product's own", lambda t: t.replace(
+        'if size=$(git -C "$t/product" cat-file -s "$SHA:$f" 2>/dev/null); then :\n              elif',
+        'if false; then :\n              elif', 1)),
+    ("no rulebook page at all", lambda t: t.replace('[ -f "$GITHUB_WORKSPACE/$f" ]', 'false', 1)),
 )
 
 
@@ -3577,7 +3837,7 @@ def _check_more_loosenings():
             print("  wiring: %s must add only what a short read named, once; it has lost %s" % (path, "; ".join(lost)))
             bad += 1
             continue
-        for what, loosen in MORE_LOOSENINGS:
+        for what, loosen in MORE_LOOSENINGS + (MORE_PRODUCT_LOOSENINGS if path == PRODUCT_WORKFLOW else ()):
             changed = loosen(text)
             if changed == text:
                 print("  wiring: the loosening '%s' no longer applies to %s — rewrite it against the file as it "
@@ -3589,7 +3849,9 @@ def _check_more_loosenings():
     if not bad:
         print("ok: each reviewer's own more() adds a named file that exists, never tries a path out of the "
               "repository, names a missing one, stops at the re-read's 200 KB, and asks no re-read with nothing "
-              "added; run in %d case(s) a file, and each of %d loosenings refused" % (len(MORE_CASES), len(MORE_LOOSENINGS)))
+              "added, and the product's adds only a rulebook library page it lacks, labelled as the rulebook's; run in "
+              "%d case(s) a file, and each of %d loosenings refused" % (len(MORE_CASES) + len(MORE_PRODUCT_CASES),
+                                                                      len(MORE_LOOSENINGS) + len(MORE_PRODUCT_LOOSENINGS)))
     return bad
 
 
@@ -5955,6 +6217,7 @@ def _selftest():
     failed += _check_class_loosenings()
     failed += _check_route_loosenings()
     failed += _check_registry()
+    failed += _check_conversation()
     failed += _check_caller()
     failed += _check_caller_loosenings()
     failed += _check_context()
