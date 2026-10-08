@@ -4199,12 +4199,14 @@ def _check_more_loosenings():
 
 # THE CONTEXT PILOT, ON THE REAL TREE (decision 0014, F(1) and order item 4).
 # The selector is run on this repository as it stands, with a one-line change:
-# a README-only change stays near 60 KB and a one-line code change near 120 KB,
-# while a risky change still gets every file whole. A code read carries the
-# registry; a words read names it as left out with its size. The bounds are the
-# pilot's: a tree that outgrows them turns this red, for the month review.
-CONTEXT_WORDS_MAX = 60000
-CONTEXT_CODE_MAX = 120000
+# a README-only change and a one-line code change are given their partners and
+# the pages naming them, and no page that names neither, while a risky change
+# still gets every file whole. A code read carries the registry; a words read
+# names it as left out with its size. What each is given is printed against the
+# pilot's targets as growth for the month review, never a failure (his ruling,
+# 8 October 2026, decision 0017): a tree that grows is read, not refused.
+CONTEXT_WORDS_TARGET = 60000
+CONTEXT_CODE_TARGET = 120000
 
 
 def _check_context(path=None, quiet=False):
@@ -4242,15 +4244,14 @@ def _check_context(path=None, quiet=False):
     for pattern, theirs in getattr(ctx, "PARTNERS", ()):
         if risky(pattern) and all(risky(p.split("#")[0]) for p in theirs):
             fault("the partner entry for %s brings only risky files, which no selection reaches" % pattern)
+    sizes = []
     try:
         given, left, size = run("words", ["README.md"])
-        if size > CONTEXT_WORDS_MAX:
-            fault("a README-only change is given %d bytes, past the pilot's %d" % (size, CONTEXT_WORDS_MAX))
+        sizes.append(size)
         if not any(m.startswith("%s: " % REGISTRY) and re.search(r": \d+ bytes, left out", m) for m in left):
             fault("a words read does not name %s as left out with its size" % REGISTRY)
         given, left, size = run("code", ["HOW-WE-BUILD.md"])
-        if size > CONTEXT_CODE_MAX:
-            fault("a one-line code change is given %d bytes, past the pilot's %d" % (size, CONTEXT_CODE_MAX))
+        sizes.append(size)
         for want, why in ((REGISTRY, "a code read carries the registry (F(1))"),
                           ("check.sh", "its partner"), ("library/reviewer.md", "a page that names it"),
                           ("README.md", "the README's index")):
@@ -4263,6 +4264,16 @@ def _check_context(path=None, quiet=False):
         if sorted(given) != pool or left:
             fault("a risky change is not given every page whole and the registry (missing %s)"
                   % sorted(set(pool) - set(given))[:5])
+        # Over-selection, held without a size: a page that names no changed file
+        # and is no partner of one is left out, named with its size.
+        picked = ctx.select("words", ["HOW-WE-BUILD.md", "a.md", "names-a.md", "stray.md"], ["a.md"],
+                            "diff --git a/a.md b/a.md\n@@ -1,1 +1,1 @@\n-a\n+b\n",
+                            read=lambda f: {"names-a.md": "see a.md\n"}.get(f, "page\n"))
+        got = {re.split(r"[,:]", m)[0] for m, t, b in picked if t is not None}
+        if got != {"HOW-WE-BUILD.md", "a.md", "names-a.md"}:
+            fault("a change to a.md is given %s, not the operating page, a.md and the page naming it" % sorted(got))
+        if not any(t is None and m.startswith("stray.md: ") for m, t, b in picked):
+            fault("a page naming no changed file is not named as left out")
         # A touched file past the pilot's limit is given the sections it touches.
         big = "# Big\n\n" + "".join("## Part %d\n\n%s\n" % (i, "words " * 2000) for i in range(8))
         picked = ctx.select("words", ["HOW-WE-BUILD.md", "big.md"], ["big.md"],
@@ -4274,11 +4285,16 @@ def _check_context(path=None, quiet=False):
                   % (ctx.WHOLE, part))
     except Exception as e:  # noqa: BLE001
         fault("the selector raised %s" % type(e).__name__)
+    if not quiet and len(sizes) == 2:
+        for what, size, target in (("a README-only change", sizes[0], CONTEXT_WORDS_TARGET),
+                                   ("a one-line code change", sizes[1], CONTEXT_CODE_TARGET)):
+            print("size: %s is given %d bytes (target %d%s)" % (
+                what, size, target, ", %d over: growth for the month review, never a failure" % (size - target)
+                if size > target else ""))
     if not bad and not quiet:
-        print("ok: the context pilot gives a README-only change at most %d bytes and a one-line code change at most "
-              "%d, with its partners, the pages naming it and on a code read the registry, names every other file "
-              "with its size, gives a large file the sections it touches, and gives a risky change every file whole"
-              % (CONTEXT_WORDS_MAX, CONTEXT_CODE_MAX))
+        print("ok: the context pilot gives a change its partners, the pages naming it and on a code read the "
+              "registry, and no page naming none of it; names every other file with its size, gives a large file "
+              "the sections it touches, and gives a risky change every file whole")
     return bad
 
 

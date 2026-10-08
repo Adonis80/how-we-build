@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # The rulebook's own guard. CI runs it on every push and pull request.
-# It refuses: an operating page over its word cap, a screen law over its own, a
-# root, design or library file that is not on its list or missing from it, a
-# library page over its size or unscoped, a link to a page that does not exist,
+# It refuses: a root, design or library file that is not on its list or missing
+# from it, a library page unscoped, a link to a page that does not exist,
 # an index row that opens its first page on words that page does not say,
 # anything that looks like a secret (naming the place, never the value), a
 # model named anywhere but the registry, a review gate that no longer matches the reviewer's answers or has drifted from
@@ -17,6 +16,10 @@
 # gone with the second: see review-gate.py on CROSS_VENDOR. A header describing
 # a state the file can no longer reach is the drift this guard exists to catch,
 # so it is corrected here rather than left for the next reader to discover.
+# Sizes it reports and never refuses: the operating page, the screen law and
+# each library page are measured against a target and the number printed (his
+# ruling, 8 October 2026, decision 0017). A change is never failed for length
+# alone; it reconciles the rules it touches, which the cold review holds.
 set -euo pipefail
 cd "$(dirname "$0")"
 fail=0
@@ -29,23 +32,14 @@ part="${CHECK_PART:-whole}"
 case "$part" in whole|selftest|gate) ;; *) echo "FAIL: CHECK_PART is '$part'; it is selftest, gate or unset."; exit 1 ;; esac
 if [ "$part" != gate ]; then
 
-# 1. The operating page stays short.
-# Counted with python, not `wc -w`: wc answers differently by locale — it
-# splits on the em dash in C.UTF-8 and not in C — so the same bytes passed on
-# a session's machine and failed in CI. On 7 September 2026 that cost a build
-# in the Alma repo, whose identical guard was fixed the same way. A cap must
-# mean one thing wherever it is measured.
-# The cap was 500 from 28 August to 12 September 2026, when the two-lead rules
-# could not fit under it without spending a rule the page requires. It moved to
-# 600 in the pull request that needed it, for that stated reason, and 600 is the
-# ceiling: from here a rule in means a rule out. See *Changing the rulebook*.
-words=$(python3 -c 'import sys; print(len(open(sys.argv[1],encoding="utf-8").read().split()))' HOW-WE-BUILD.md)
-if [ "$words" -gt 600 ]; then
-  echo "FAIL: HOW-WE-BUILD.md is $words words; the cap is 600."
-  fail=1
-else
-  echo "ok: HOW-WE-BUILD.md is $words words (cap 600)"
-fi
+# 1. Sizes, reported. Counted with python, not `wc -w`, which answers
+# differently by locale, so a number means one thing wherever it is measured.
+words_of() { python3 -c 'import sys; print(len(open(sys.argv[1],encoding="utf-8").read().split()))' "$1"; }
+size_line() { # name, measured, target, unit
+  if [ "$2" -gt "$3" ]; then echo "size: $1 is $2 $4, $(( $2 - $3 )) over its $3 target — a reading, never a failure"
+  else echo "size: $1 is $2 $4 (target $3)"; fi
+}
+size_line HOW-WE-BUILD.md "$(words_of HOW-WE-BUILD.md)" 600 words
 
 # 2. Only these files exist at the root (plus .git and .github).
 allowed=" AGENTS.md CHARTER.md HOW-WE-BUILD.md README.md RICH-DATA.md board check.sh design juku-library library model-registry product-reads review-gate.py "
@@ -86,16 +80,10 @@ for f in $allowed; do
 done
 [ "$fail" -eq 0 ] && echo "ok: file list unchanged"
 
-# 2b. The design pages: a fixed list, and a law that stays law-sized.
+# 2b. The design pages: a fixed list.
 # The screen law is carried here once so every product reads the same one; a
 # product's own constitution holds only what is true there and points at this.
-lawwords=$(python3 -c 'import sys; print(len(open(sys.argv[1],encoding="utf-8").read().split()))' design/SCREEN-LAW.md)
-if [ "$lawwords" -gt 450 ]; then
-  echo "FAIL: design/SCREEN-LAW.md is $lawwords words; the cap is 450 - a rule in means a rule out."
-  fail=1
-else
-  echo "ok: design/SCREEN-LAW.md is $lawwords words (cap 450)"
-fi
+size_line design/SCREEN-LAW.md "$(words_of design/SCREEN-LAW.md)" 450 words
 design_allowed=" ARCHITECT.md BRIEF_TEMPLATE.md REVIEW_RUBRIC.md SCREEN-LAW.md SCREEN_SPEC_TEMPLATE.md "
 while IFS= read -r f; do
   case "$design_allowed" in
@@ -112,13 +100,14 @@ done
 # 2c. The library: one page per topic, opened only when a task touches it (his
 # ruling of 23 September 2026, decision 0005, issue #75). The README is its
 # index, both ways: a page the README does not name is never opened, and a
-# name with no page sends a session nowhere. Each page is one topic in at most
-# 4000 bytes, the machine's proxy for the decision's 1,000 tokens, and says
-# whom it binds and when to open it. A link to a page from anywhere in this
-# repository must resolve too, not only the README's: a list of the files to
-# search would be one more list to drift. With no page named there is no
+# name with no page sends a session nowhere. Each page is one topic, says whom
+# it binds and when to open it, and has its size reported against 4000 bytes,
+# the machine's proxy for the decision's 1,000 tokens. A link to a page from
+# anywhere in this repository must resolve too, not only the README's: a list
+# of the files to search would be one more list to drift. With no page named there is no
 # library, and that passes: the check exists before the pages it holds.
 lib_fail=0
+lib_max=0
 # A page name starts at a name boundary: a folder that merely ends in
 # "library" (juku-library/, <product>-library/) holds papers, not library
 # pages, and its files are not links to library/.
@@ -134,7 +123,8 @@ for f in "${pages[@]}"; do
   grep -qxF "$f" <<< "$named" || { echo "FAIL: '$f' is not named in the README, so no session is sent to it."; lib_fail=1; }
   [ -f "$f" ] || { echo "FAIL: '$f' is not a file."; lib_fail=1; continue; }
   b=$(wc -c < "$f" | tr -d ' ')
-  [ "$b" -le 4000 ] || { echo "FAIL: '$f' is $b bytes; a library page's cap is 4000 - split the topic or cut history."; lib_fail=1; }
+  [ "$b" -le "$lib_max" ] || lib_max=$b
+  [ "$b" -le 4000 ] || size_line "$f" "$b" 4000 bytes
   grep -q -E '^Scope: .+ Open when: .+' "$f" || { echo "FAIL: '$f' has no 'Scope: … Open when: …' line."; lib_fail=1; }
 done
 for f in $named; do
@@ -172,7 +162,8 @@ if [ "$lib_fail" -ne 0 ]; then
 elif [ "${#pages[@]}" -eq 0 ]; then
   echo "ok: no library pages yet, and nothing names or links one"
 else
-  echo "ok: ${#pages[@]} library pages, each named by the README, each at most 4000 bytes and scoped, every link to one resolves, and each index row opens the first page it names on that page's own words"
+  echo "size: the largest library page is $lib_max bytes (target 4000)"
+  echo "ok: ${#pages[@]} library pages, each named by the README and scoped, every link to one resolves, and each index row opens the first page it names on that page's own words"
 fi
 
 # 3. Nothing that looks like a secret, anywhere.

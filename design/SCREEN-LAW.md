@@ -1,6 +1,6 @@
 # The screen law
 
-How every screen, in every product, earns its look, and so does a prototype or picture of one put to the Chairman. One page — this repository's `check.sh` caps it at 450 words. The Interaction Architect designs by this; reviewers judge by this; nobody re-explains it.
+How every screen, in every product, earns its look, and so does a prototype or picture of one put to the Chairman. One page — this repository's `check.sh` reports its size against a 450-word target. The Interaction Architect designs by this; reviewers judge by this; nobody re-explains it.
 
 Each product adds a constitution of its own holding only what is true there — its money rules, its units, its domain law — and pointing here for the rest. A rule changes only with the Chairman's eyes on a screen that proves the change.
 
