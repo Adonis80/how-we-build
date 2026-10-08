@@ -2264,6 +2264,11 @@ ROUTE_CASES = (
      FALLBACK_ROLE, 600, ([ORDINARY_ROLE], "blocking"), (0, "clean"), False),
     ("the role is short, naming no path a read may fetch", (0, "shortbadpath"), (0, "clean"),
      FALLBACK_ROLE, 600, ([ORDINARY_ROLE], "blocking"), (0, "clean")),
+    # The break test's third (8 October 2026): four files asked for, three kept,
+    # and a clean re-read on the three signed. A request past the re-read's is
+    # refused whole, so the clean re-read it would have had never happens.
+    ("the role is short of four files, and a re-read would be clean", (0, "shortfour"), (0, "clean"),
+     FALLBACK_ROLE, 600, ([ORDINARY_ROLE], "blocking"), (0, "clean")),
     ("the role is short, and its re-read fails", (0, "short"), (0, "clean"),
      FALLBACK_ROLE, 600, ([ORDINARY_ROLE, ORDINARY_ROLE], "blocking"), (1, "")),
     ("the role is short, and no time is left to read again", (0, "short"), (0, "clean"),
@@ -2321,6 +2326,7 @@ def route_says(block, first, second, fallback, left, again=(0, "clean"), more_ok
                     short: [{{severity: "needs-context", text: "a finding", files: ["check.sh"]}}],
                     shortmix: [{{severity: "needs-context", text: "a finding", files: ["check.sh"]}}, {{severity: "blocking", text: "another", files: []}}],
                     shortbadpath: [{{severity: "needs-context", text: "a finding", files: ["../outside"]}}],
+                    shortfour: [{{severity: "needs-context", text: "a finding", files: ["a.md", "b.md", "c.md", "d.md"]}}],
                     clean: []}}[$v] // [{{severity: "critical", text: "a finding"}}]) as $f
                   | {{result: ((if $n == "1" then {{findings: $f}} else {{findings: $f, review: $w}} end
                                | if $v == "stray" then . + {{verdict: "clean"}} else . end
@@ -2505,6 +2511,9 @@ ROUTE_LOOSENINGS = (
     ("a budget refusal handed to the fallback", None, lambda t: t.replace('[ -n "$FALLBACK" ] && ! refused && ', '[ -n "$FALLBACK" ] && ', 1)),
     ("a shortfall handed to the fallback", None, lambda t: t.replace("blocking|needs-context) return 0 ;;", "blocking) return 0 ;;", 1)),
     ("a shortfall never re-read", None, lambda t: t.replace('&& more $needed; then', '&& false; then', 1)),
+    ("a request read again on the answer's own list", None, lambda t: t.replace(
+        'needed=$(python3 "$reg/ask.py" request "$out" || true)',
+        "needed=$(jq -r '.result // empty' \"$out\" | jq -r '(.needs // []) | join(\" \")' 2>/dev/null || true)", 1)),
     ("a shortfall left unsigned", None, lambda t: t.replace('            [ "$rc" -ne 0 ] || python3 "$reg/ask.py" incomplete "$out" || printf \'{"is_error":true,"subtype":"not_derived"}\\n\' > "$out"\n', "", 1)),
     ("a failed re-read taken as unread", None, lambda t: t.replace('then cp "$out.first" "$out"; rc=0; fi', "then :; fi", 1)),
     ("a re-read the budget refused signed blocking", None, lambda t: t.replace("if refused; then :; elif", "if false; then :; elif", 1)),
@@ -3459,11 +3468,24 @@ def _check_caller(path=None, quiet=False):
     if obj is None or obj.get("ignored") != ["verdict"] or obj.get("findings") != [
             {"severity": "blocking", "text": "b"}, {"severity": "advisory", "text": "a"}]:
         fault("the findings were not carried on as typed, or the model's own verdict not named as ignored (%s)" % obj)
+    # Every file a shortfall asks for is kept, each once: none trimmed, none
+    # filtered, so a request that cannot be met whole is refused whole (the
+    # break test of 8 October 2026: four paths asked, three kept, and the re-read
+    # on those three signed clean).
     obj, _ = ask.derive(answer([finding("needs-context", "n", ["a.md", "../up", "/etc/x", "b c", "a.md", "x/y.py",
                                                                  "z.sh", "four.md"])]))
-    if obj is None or obj.get("needs") != ["a.md", "x/y.py", "z.sh"]:
-        fault("a shortfall's files were not the paths a read may fetch, each once, at most %d (%s)"
-              % (getattr(ask, "NEEDED", 0), obj and obj.get("needs")))
+    if obj is None or obj.get("needs") != ["a.md", "../up", "/etc/x", "b c", "x/y.py", "z.sh", "four.md"]:
+        fault("a shortfall's files were not every file it asked for, each once (%s)" % (obj and obj.get("needs")))
+    request = getattr(ask, "request", None)
+    for what, needs, want in (
+            ("three paths a read may fetch", ["a.md", "x/y.py", "z.sh"], ["a.md", "x/y.py", "z.sh"]),
+            ("the break test's third: four paths a read may fetch", ["a.md", "b.md", "c.md", "d.md"], None),
+            ("a fetchable path beside one out of the repository", ["a.md", "../up"], None),
+            ("a path with a space", ["b c"], None),
+            ("nothing asked for", [], None)):
+        got = request(needs)[0] if request else "no request()"
+        if got != want:
+            fault("a request of %s was answered %s, not %s" % (what, got, want or "a refusal"))
     obj, _ = ask.derive(clean)
     if obj is None or obj.get("ignored") != []:
         fault("a read that sent no verdict of its own was said to have had one ignored (%s)" % obj)
@@ -3557,7 +3579,7 @@ def _check_caller(path=None, quiet=False):
                     ("a second shortfall", answer([finding("needs-context", "n", ["check.sh"])]), "blocking",
                      "incomplete read: needed check.sh"),
                     ("a second shortfall naming no fetchable path", answer([finding("needs-context", "n", ["../x"])]),
-                     "blocking", "incomplete read: needed files it did not name as paths"),
+                     "blocking", "incomplete read: needed ../x"),
                     ("a clean re-read", clean, "clean", None)):
                 rc, got, err = run({"is_error": False, "result": content})
                 with contextlib.redirect_stderr(io.StringIO()):
@@ -3567,6 +3589,18 @@ def _check_caller(path=None, quiet=False):
                                                                      for x in body.get("findings", []))):
                     fault("%s was signed %s, not %s%s (%s)" % (what, body.get("verdict"), want,
                                                               " saying %r" % says if says else "", body))
+            # What a re-read must add, asked of the first answer: printed and 0
+            # only when every file can be asked for; else 1 and nothing printed.
+            for what, files, want in (
+                    ("a request a re-read can meet", ["a.md", "x/y.py"], (0, "a.md x/y.py")),
+                    ("the break test's third: four files", ["a.md", "b.md", "c.md", "d.md"], (1, "")),
+                    ("a request naming a path out of the repository", ["a.md", "../x"], (1, ""))):
+                run({"is_error": False, "result": answer([finding("needs-context", "n", files)])})
+                said = io.StringIO()
+                with contextlib.redirect_stdout(said), contextlib.redirect_stderr(io.StringIO()):
+                    code = ask.main(["ask.py", "request", f])
+                if (code, said.getvalue().strip()) != want:
+                    fault("%s: `ask.py request` answered %s, not %s" % (what, (code, said.getvalue().strip()), want))
         except AssertionError as e:
             fault("deriving a verdict reached for the network: %s" % e)
         finally:
@@ -3681,8 +3715,12 @@ CALLER_LOOSENINGS = (
     # A read short of context (decision 0014, F(2)).
     ("a shortfall taken as a clean read", '    if short:\n', '    if False:\n'),
     ("a shortfall naming no file taken", '            or any(severity(f) == "needs-context" and not _files(f) for f in findings)):', '            ):'),
-    ("any path a shortfall names fetched", "            if PATH.fullmatch(p) and p not in out:", "            if p not in out:"),
-    ("a shortfall's files unbounded", "    return out[:NEEDED]", "    return out"),
+    ("a shortfall's files filtered", "            if p not in out:", "            if PATH.fullmatch(p) and p not in out:"),
+    ("a shortfall's files trimmed", "    return out\n\n\ndef request(", "    return out[:NEEDED]\n\n\ndef request("),
+    ("a request past the re-read's files met", "    if len(needs) > NEEDED:", "    if False:"),
+    ("a request naming a path a read may not fetch met", "    if bad:\n        return None", "    if False:\n        return None"),
+    ("a request of nothing met", '    if not needs:\n        return None, "it named no file"', '    if False:\n        return None, "it named no file"'),
+    ("a refused request printed for a re-read", "    if paths is None:", "    if False:"),
     ("a second shortfall left unsigned", '    if not isinstance(got, dict) or got.get("verdict") != "needs-context":\n        return', '    return'),
     # One record per attempt (decision 0014, A).
     ("an attempt never closed counted as resolved", 'a["unresolved"] = not a.get("closed") or not a.get("settled", True)', 'a["unresolved"] = False'),
@@ -3877,14 +3915,39 @@ def _check_attempt_loosenings():
 # of the repository or of odd characters is never tried, a missing one is named,
 # the re-read stops at 200 KB, and with nothing added there is no re-read.
 # (what is asked, whether a re-read follows, files added, markers it must write, paths never named).
-MORE_TREE = {"a.md": "page a\n", "big.md": "x" * 150000 + "\n", "b.md": "y" * 100000 + "\n"}
+# huge.py is the size review-gate.py was when the break test of 8 October 2026
+# asked for it beside a small file.
+MORE_TREE = {"a.md": "page a\n", "big.md": "x" * 150000 + "\n", "b.md": "y" * 100000 + "\n",
+             "huge.py": "z" * 479081 + "\n", "c.md": "page c\n", "d.md": "page d\n"}
+# A re-read happens only on every file asked for, whole (the break test: a
+# re-read on part of the request signed what it never saw). Each case: what,
+# the files asked for, whether it is read again, the files it adds, words the
+# prompt must hold, words it must not.
 MORE_CASES = (
     ("a page that exists", ["a.md"], True, {"a.md"}, (), ()),
+    ("nothing asked for", [], False, set(), (), ()),
+    ("every file asked for, each whole", ["a.md", "b.md", "c.md"], True, {"a.md", "b.md", "c.md"}, (), ()),
     ("paths out of the repository or of odd characters", ["../a.md", "/etc/passwd", "a b.md"], False, set(), (),
      ("../a.md", "/etc/passwd", "a b.md")),
+    ("a good file beside a path a read may not fetch", ["a.md", "../a.md"], False, {"a.md"}, (), ()),
     ("a file the change does not have", ["missing.md"], False, set(), ("missing.md: not in this change",), ()),
-    ("more than the re-read holds", ["big.md", "b.md"], True, {"big.md"},
+    ("more than the re-read holds", ["big.md", "b.md"], False, {"big.md"},
      ("b.md: 100001 bytes, left out: past the re-read limit",), ()),
+    ("the break test's first: a small file and a missing one", ["a.md", "missing.md"], False, {"a.md"},
+     ("missing.md: not in this change",), ()),
+    ("the break test's second: a small file and a 479,082-byte one", ["a.md", "huge.py"], False, {"a.md"},
+     ("huge.py: 479082 bytes, left out: past the re-read limit",), ()),
+)
+# The same refusals with the re-read's limit raised, so they rest on the request
+# being met and not on where the limit sits; and with it raised past the large
+# file, the same request met whole is read again.
+MORE_RAISED = (
+    ("-gt 400000 ]", ("the break test's first, the limit raised", ["a.md", "missing.md"], False, {"a.md"},
+                      ("missing.md: not in this change",), ())),
+    ("-gt 400000 ]", ("the break test's second, the limit raised short of the file", ["a.md", "huge.py"], False,
+                      {"a.md"}, ("huge.py: 479082 bytes, left out: past the re-read limit",), ())),
+    ("-gt 600000 ]", ("the break test's second, the limit raised past the file, so met whole", ["a.md", "huge.py"],
+                      True, {"a.md", "huge.py"}, (), ())),
 )
 
 
@@ -3944,8 +4007,10 @@ def more_says(text, path, asked):
 
 def more_faults(text, path):
     lost = []
-    for what, asked, again, added, marks, never in MORE_CASES + (MORE_PRODUCT_CASES if path == PRODUCT_WORKFLOW else ()):
-        got = more_says(text, path, asked)
+    cases = [(text, c) for c in MORE_CASES + (MORE_PRODUCT_CASES if path == PRODUCT_WORKFLOW else ())]
+    cases += [(text.replace("-gt 200000 ]", limit, 1), c) for limit, c in MORE_RAISED]
+    for run_on, (what, asked, again, added, marks, never) in cases:
+        got = more_says(run_on, path, asked)
         if got is None:
             lost.append("a `more()` that runs (%s)" % what)
             continue
@@ -3962,10 +4027,15 @@ def more_faults(text, path):
 
 
 MORE_LOOSENINGS = (
-    ("any path tried", lambda t: t.replace("              case \"$f\" in /*|*..*|*[!A-Za-z0-9._/-]*) continue ;; esac\n", "", 1)),
+    ("any path tried", lambda t: t.replace("              case \"$f\" in /*|*..*|*[!A-Za-z0-9._/-]*) short=yes; continue ;; esac\n", "", 1)),
     ("the re-read unbounded", lambda t: t.replace("-gt 200000 ]; then", "-gt 2000000 ]; then", 1)),
     ("a re-read with nothing added", lambda t: t.replace('            [ "$any" = yes ]\n', "            true\n", 1)),
-    ("a missing file unnamed", lambda t: t.replace(": not in this change =====", ": =====", 1)),
+    ("a re-read on part of the request", lambda t: t.replace('            [ "$short" = no ] || return 1\n', "", 1)),
+    ("a refused path not counted short", lambda t: t.replace("*[!A-Za-z0-9._/-]*) short=yes; continue ;; esac",
+                                                              "*[!A-Za-z0-9._/-]*) continue ;; esac", 1)),
+    ("a missing file not counted short", lambda t: t.replace("; short=yes; continue", "; continue", 1)),
+    ("a file past the limit not counted short", lambda t: t.replace("                short=yes; continue\n",
+                                                                     "                continue\n", 1)),
 )
 MORE_PRODUCT_LOOSENINGS = (
     ("any rulebook file added", lambda t: t.replace('case "$f" in library/*.md) true ;; *) false ;; esac', 'true', 1)),

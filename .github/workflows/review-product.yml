@@ -942,7 +942,7 @@ jobs:
           # review.yml's `more()`, the product's files read out of its objects
           # at the head, never printed (decision 0014, F(2)).
           more() {
-            local f size added=0 any=no
+            local f size added=0 any=no short=no
             {
               echo
               echo "You said this read needed more. The files you named, as this change would leave"
@@ -951,7 +951,7 @@ jobs:
               echo "<more>"
             } >> "$t/prompt.txt"
             for f in "$@"; do
-              case "$f" in /*|*..*|*[!A-Za-z0-9._/-]*) continue ;; esac
+              case "$f" in /*|*..*|*[!A-Za-z0-9._/-]*) short=yes; continue ;; esac
               # A RULEBOOK PAGE A PRODUCT'S WORDS POINT AT (decision 0015): one the
               # product does not have, under library/, is read from this public
               # repository's own checkout and labelled as the rulebook's. Nothing
@@ -959,10 +959,10 @@ jobs:
               src=product
               if size=$(git -C "$t/product" cat-file -s "$SHA:$f" 2>/dev/null); then :
               elif case "$f" in library/*.md) true ;; *) false ;; esac && [ -f "$GITHUB_WORKSPACE/$f" ]; then src=rulebook size=$(wc -c < "$GITHUB_WORKSPACE/$f")
-              else printf '\n===== %s: not in this change =====\n' "$f" >> "$t/prompt.txt"; continue; fi
+              else printf '\n===== %s: not in this change =====\n' "$f" >> "$t/prompt.txt"; short=yes; continue; fi
               if [ $((added + size)) -gt 200000 ]; then
                 printf '\n===== %s: %s bytes, left out: past the re-read limit =====\n' "$f" "$size" >> "$t/prompt.txt"
-                continue
+                short=yes; continue
               fi
               if [ "$src" = rulebook ]; then
                 printf '\n===== rulebook:%s =====\n' "$f" >> "$t/prompt.txt"
@@ -974,6 +974,11 @@ jobs:
               added=$((added + size)) any=yes
             done
             echo "</more>" >> "$t/prompt.txt"
+            # Every file asked for, whole, or no re-read at all: a re-read on part of
+            # the request could clear on what it never saw (the break test, 8 October
+            # 2026), so a file missing, refused or past the limit leaves the read
+            # incomplete.
+            [ "$short" = no ] || return 1
             [ "$any" = yes ]
           }
           # A verdict that opens the gate counts only with a review behind it:
@@ -1031,7 +1036,7 @@ jobs:
           # A read short of context is read once more, never twice: review.yml's
           # block, with this file's paths (decision 0014, F(2)).
           if [ "$rc" -eq 0 ] && [ "$(jq -r '.result // empty' "$out" 2>/dev/null | jq -r '.verdict // empty' 2>/dev/null || true)" = needs-context ]; then
-            needed=$(jq -r '.result // empty' "$out" | jq -r '(.needs // []) | join(" ")' 2>/dev/null || true)
+            needed=$(python3 "$reg/ask.py" request "$out" || true)
             left=$(( STARTED + limit * 60 - $(date +%s) ))
             # shellcheck disable=SC2086
             if [ -n "$needed" ] && [ "$left" -ge 60 ] && more $needed; then
