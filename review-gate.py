@@ -2855,6 +2855,136 @@ def _check_conversation(quiet=False):
     return bad
 
 
+# THE SELF-TEST'S PLAN, HELD (his ask, 7 October 2026). The rule run on its
+# cases; the command run end to end on a GitHub answering from a dictionary;
+# check.sh and check.yml held to calling it as the rule assumes; and every file
+# this gate names held to being one the plan counts as the self-test's input.
+PLAN_CASES = (
+    # (what, event, files, earlier steps, the plan's word)
+    ("an earlier attempt of this run passed the self-test", "pull_request", ["review-gate.py"],
+     [("selftest", "success"), ("gate", "failure")], "skip"),
+    ("an earlier attempt failed it", "pull_request", ["review-gate.py"], [("selftest", "failure")], "run"),
+    ("an earlier attempt skipped the step", "pull_request", ["review-gate.py"], [("selftest", "skipped")], "run"),
+    ("an earlier attempt passed another step only", "pull_request", ["board/robots.txt", "check.sh"],
+     [("gate", "success")], "run"),
+    ("a push to main", "push", [], None, "run"),
+    ("a run by hand", "", None, None, "run"),
+    ("files that could not be read", "pull_request", None, None, "run"),
+    ("no file listed", "pull_request", [], None, "run"),
+    ("a change to the gate", "pull_request", ["review-gate.py"], None, "run"),
+    ("a change to a workflow", "pull_request", [".github/workflows/review.yml"], None, "run"),
+    ("a change to the registry", "pull_request", ["model-registry/registry.json"], None, "run"),
+    ("a change to the board's build", "pull_request", ["board/build.py"], None, "run"),
+    ("papers, which the context pilot reads", "pull_request", ["juku-library/README.md"], None, "run"),
+    ("a library page", "pull_request", ["library/money.md"], None, "run"),
+    ("a file never seen before", "pull_request", ["board/new.txt"], None, "run"),
+    ("one input among files it never reads", "pull_request", ["board/robots.txt", "check.sh"], None, "run"),
+    ("only files it never reads", "pull_request", ["board/robots.txt", "board/vercel.json"], None, "skip"),
+)
+
+
+def _plan_net(files, jobs, fail=None):
+    """An urlopen for the plan: the pull request's files and an earlier attempt's jobs, one page each."""
+    def urlopen(req, timeout=None):
+        parts = urllib.parse.urlsplit(req.full_url)
+        page = urllib.parse.parse_qs(parts.query).get("page", ["1"])[0]
+        if fail and parts.path.endswith(fail):
+            raise urllib.error.HTTPError(req.full_url, 403, "no", {}, None)
+        if parts.path.endswith("/pulls/7/files"):
+            return _Answer(json.dumps(files if page == "1" else []).encode("utf-8"))
+        if parts.path.endswith("/actions/runs/9/attempts/1/jobs"):
+            return _Answer(json.dumps({"jobs": jobs if page == "1" else []}).encode("utf-8"))
+        raise urllib.error.URLError("no route: %s" % parts.path)
+    return urlopen
+
+
+def _check_selftest_plan(quiet=False):
+    bad = 0
+
+    def fault(what):
+        nonlocal bad
+        if not quiet:
+            print("  plan: %s" % what)
+        bad += 1
+    for what, event, files, earlier, want in PLAN_CASES:
+        got = selftest_plan(event, files, earlier)[0]
+        if got != want:
+            fault("%s: the plan says %s, not %s" % (what, got, want))
+    # The command, end to end: what GitHub answers is all that decides.
+    jobs_passed = [{"name": SELFTEST_JOB, "steps": [{"name": SELFTEST_STEP, "conclusion": "success"},
+                                                    {"name": "gate", "conclusion": "failure"}]}]
+    jobs_other = [{"name": "another", "steps": [{"name": SELFTEST_STEP, "conclusion": "success"}]}]
+    papers = [{"filename": "board/robots.txt"}]
+    renamed = [{"filename": "board/vercel.json", "previous_filename": "check.sh"}]
+    env = {"GITHUB_EVENT_NAME": "pull_request", "GITHUB_REPOSITORY": "o/r", "PR_NUMBER": "7",
+           "GH_TOKEN": "t", "GITHUB_RUN_ID": "9"}
+    commands = (
+        ("a re-run whose first attempt passed the self-test", "2", [{"filename": "review-gate.py"}],
+         jobs_passed, None, "skip"),
+        ("a first attempt", "1", [{"filename": "review-gate.py"}], jobs_passed, None, "run"),
+        ("a re-run whose passing step was in another job", "2", [{"filename": "review-gate.py"}],
+         jobs_other, None, "run"),
+        ("only a file it never reads", "1", papers, [], None, "skip"),
+        ("a rename away from an input", "1", renamed, [], None, "run"),
+        ("the files refused", "1", papers, [], "/files", "run"),
+        ("a re-run whose jobs are refused, on an input", "2", [{"filename": "check.sh"}], jobs_passed,
+         "/jobs", "run"))
+    for what, attempt, files, jobs, fail, want in commands:
+        real, out = urllib.request.urlopen, sys.stdout
+        urllib.request.urlopen, sys.stdout = _plan_net(files, jobs, fail), io.StringIO()
+        try:
+            _selftest_plan_main(dict(env, GITHUB_RUN_ATTEMPT=attempt))
+            said = sys.stdout.getvalue().strip()
+        except Exception as e:  # noqa: BLE001
+            said = "raised %s" % type(e).__name__
+        finally:
+            urllib.request.urlopen, sys.stdout = real, out
+        if not said.startswith(want + ": "):
+            fault("%s: the command said %r, not %s" % (what, said, want))
+    # check.sh asks the plan first, runs the self-test on anything but a skip,
+    # and runs its gate only outside the self-test step; check.yml runs the two
+    # steps in that order, named as the plan reads them, with leave to read them.
+    try:
+        sh, yml = _read("check.sh"), _read(CHECK_WORKFLOW)
+    except OSError as e:
+        fault(str(e))
+        return bad
+    for line in (PLAN_ASK, PLAN_SKIP, PLAN_RUN, PLAN_GATE):
+        if line not in sh:
+            fault("check.sh has lost `%s`" % line)
+    if len(re.findall(r"(?<![\w/.-])review-gate\.py --selftest(?![-\w])", sh)) != 1:
+        fault("check.sh runs the full self-test other than once, behind the plan")
+    steps = re.findall(r"^      - name: (\S+)\n        run: bash check\.sh\n        env:\n          CHECK_PART: (\S+)$",
+                       yml, re.M)
+    if steps != [(SELFTEST_STEP, "selftest"), ("gate", "gate")]:
+        fault("%s's steps are %s, not the self-test then the gate, named as the plan reads them"
+              % (CHECK_WORKFLOW, steps))
+    if not re.search(r"^  %s:$" % SELFTEST_JOB, yml, re.M) or "actions: read" not in yml:
+        fault("%s has no `%s` job, or no `actions: read` for the plan to read an earlier attempt"
+              % (CHECK_WORKFLOW, SELFTEST_JOB))
+    # Every file this gate names, and every workflow, is an input.
+    try:
+        tree = set(subprocess.run(["git", "ls-files"], capture_output=True, text=True, check=True,
+                                  timeout=30).stdout.split())
+    except (OSError, subprocess.SubprocessError):
+        tree = set()
+    named = {v for v in globals().values() if isinstance(v, str) and v in tree}
+    named |= {f for f in tree if f.startswith(".github/workflows/")}
+    named |= {"check.sh", "review-gate.py", "board/build.py", "README.md", "HOW-WE-BUILD.md", "AGENTS.md"}
+    missed = sorted(f for f in named if not selftest_input(f))
+    if missed:
+        fault("the self-test reads %s, which the plan would skip it for" % ", ".join(missed))
+    for f in SELFTEST_NOT_READ:
+        if f not in tree:
+            fault("%s is listed as never read but is not in the tree; the list is measured, never guessed" % f)
+    if not bad and not quiet:
+        print("ok: the self-test runs on any change to what it reads and is skipped only for files it never opens, "
+              "or on a re-run whose earlier attempt passed it on the same commit; the rule run on %d case(s), the "
+              "command on %d answers GitHub could give, and check.sh and check.yml held to calling it so"
+              % (len(PLAN_CASES), len(commands)))
+    return bad
+
+
 # THE CALLER, model-registry/ask.py: the OpenAI-compatible read, and the one place
 # a verdict is made. What it must do is run here on answers a provider could
 # give, never on a network: refuse a model it did not pin (no silent
@@ -7509,6 +7639,7 @@ def _selftest():
     failed += _check_class_loosenings()
     failed += _check_route_loosenings()
     failed += _check_registry()
+    failed += _check_selftest_plan()
     failed += _check_conversation()
     failed += _check_caller()
     failed += _check_caller_loosenings()
@@ -7614,9 +7745,91 @@ def canary_red(api, token):
     return None
 
 
+# THE SELF-TEST, RUN ONLY WHEN IT CAN SAY SOMETHING NEW (his ask, 7 October
+# 2026: the full `--selftest` ran on every pull request and again when the
+# verdict landed, about 22 minutes each). check.yml runs check.sh in two steps,
+# `selftest` and then `gate`, and the first asks `--selftest-plan` before the
+# heavy run. The plan says skip in two cases only, and run in every other,
+# including any error, a push to main and a run by hand:
+#   - an earlier attempt of this very run passed its `selftest` step. A re-run
+#     is the same run, so the same commit and the same files: the wake re-runs a
+#     check to read a verdict that has landed, and the self-test it would repeat
+#     has already passed on exactly this tree;
+#   - no file the pull request changes is one the self-test reads. Measured on
+#     7 October 2026 with every Python process of a full self-test logging the
+#     files it opened in this checkout: it opened every tracked file but the two
+#     below, pages and papers included (the context pilot's words selection
+#     carries any page that names the touched file, so any page's text can move
+#     its bound). So the list is of what it does NOT read, and anything new,
+#     never measured, runs it.
+SELFTEST_STEP = "selftest"
+SELFTEST_JOB = "check"
+# check.sh's lines that ask the plan and act on it, held by _check_selftest_plan.
+PLAN_ASK = 'plan=$(python3 review-gate.py --selftest-plan 2>/dev/null | tail -n 1) || plan="run: the plan could not be made"'
+PLAN_SKIP = '  "skip: "*) echo "selftest: not run, ${plan#skip: }" ;;'
+PLAN_RUN = '  *) echo "selftest: run, ${plan#run: }"; python3 review-gate.py --selftest || fail_gate=1 ;;'
+PLAN_GATE = '[ "$part" = selftest ] || case "${GITHUB_EVENT_NAME:-}" in push|"") : ;; *)'
+SELFTEST_NOT_READ = ("board/robots.txt", "board/vercel.json")
+
+
+def selftest_input(path):
+    """Whether the full self-test reads `path`, so a change to it must run it: all but the measured few."""
+    return path not in SELFTEST_NOT_READ
+
+
+def selftest_plan(event, files, earlier_steps):
+    """("run" or "skip", why). `files`: the pull request's changed paths, or None when
+    they could not be read; `earlier_steps`: the previous attempt's (name, conclusion)
+    steps of this job, or None when there is none or it could not be read."""
+    if earlier_steps and (SELFTEST_STEP, "success") in earlier_steps:
+        return "skip", "an earlier attempt of this same run passed the self-test on this same commit"
+    if event != "pull_request":
+        return "run", "not a pull request (%s)" % (event or "a run by hand")
+    if files is None:
+        return "run", "the pull request's files could not be read"
+    if not files:
+        return "run", "GitHub listed no changed file"
+    hit = sorted(set(f for f in files if selftest_input(f)))
+    if hit:
+        return "run", "it changes what the self-test reads: %s%s" % (
+            ", ".join(hit[:6]), " and %d more" % (len(hit) - 6) if len(hit) > 6 else "")
+    return "skip", "none of its %d changed file(s) is read by the self-test" % len(files)
+
+
+def _selftest_plan_main(env):
+    """The plan for this run, from the environment check.yml sets. Prints one line."""
+    event, repo, num = env.get("GITHUB_EVENT_NAME", ""), env.get("GITHUB_REPOSITORY", ""), env.get("PR_NUMBER", "")
+    token, run, attempt = env.get("GH_TOKEN", ""), env.get("GITHUB_RUN_ID", ""), env.get("GITHUB_RUN_ATTEMPT", "")
+    api = "https://api.github.com/repos/%s" % repo
+    earlier = None
+    if token and repo and run.isdigit() and attempt.isdigit() and int(attempt) > 1:
+        try:
+            for job in _pages("%s/actions/runs/%s/attempts/%d/jobs" % (api, run, int(attempt) - 1), token, key="jobs"):
+                if job.get("name") == SELFTEST_JOB:
+                    earlier = [(st.get("name"), st.get("conclusion")) for st in job.get("steps") or []]
+        except Exception:  # noqa: BLE001 — unread is "run", never "skip"
+            earlier = None
+    files = None
+    if event == "pull_request" and token and repo and num.isdigit():
+        try:
+            files = []
+            for f in _pages("%s/pulls/%s/files" % (api, num), token):
+                files += [n for n in (f.get("filename"), f.get("previous_filename")) if n]
+            # GitHub lists at most 3,000 files; at that size, read them all.
+            if len(files) >= 3000:
+                files = None
+        except Exception:  # noqa: BLE001
+            files = None
+    what, why = selftest_plan(event, files, earlier)
+    print("%s: %s" % (what, why))
+    return 0
+
+
 def main(argv):
     if len(argv) == 2 and argv[1] == "--selftest":
         return _selftest()
+    if len(argv) == 2 and argv[1] == "--selftest-plan":
+        return _selftest_plan_main(os.environ)
     if len(argv) == 2 and argv[1] == "machinery":
         print("yes" if machinery([l for l in sys.stdin.read().splitlines() if l]) else "no")
         return 0
