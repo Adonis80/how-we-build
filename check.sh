@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The rulebook's own guard. CI runs it on every push and pull request.
 # It refuses: an operating page over its word cap, a screen law over its own, a
-# root, design or library file that is not on its list or missing from it, a
+# front-end guide that is not HyperSolid alone, a root or library file that is not on its list or missing from it, a
 # library page over its size or unscoped, a link to a page that does not exist,
 # an index row that opens its first page on words that page does not say,
 # anything that looks like a secret (naming the place, never the value), a
@@ -48,7 +48,7 @@ else
 fi
 
 # 2. Only these files exist at the root (plus .git and .github).
-allowed=" AGENTS.md CHARTER.md HOW-WE-BUILD.md README.md RICH-DATA.md board check.sh design juku-library library model-registry product-reads review-gate.py "
+allowed=" AGENTS.md CHARTER.md HOW-WE-BUILD.md README.md RICH-DATA.md board check.sh juku-library library model-registry product-reads review-gate.py "
 while IFS= read -r f; do
   case "$f" in .git|.github) continue ;; esac
   case "$allowed" in
@@ -56,13 +56,12 @@ while IFS= read -r f; do
     *) echo "FAIL: '$f' is not on the file list ($allowed)."; fail=1 ;;
   esac
 done < <(ls -A)
-# Both ways, as the design list already is: an unexpected file fails, and so
+# Both ways: an unexpected file fails, and so
 # does a missing one — otherwise deleting CHARTER.md or README.md passes.
 # A directory of the same name is not the file: `-e` would pass a tracked
 # `CHARTER.md/` that holds nothing this repository reads.
 for f in $allowed; do
   case "$f" in
-    design) [ -d "$f" ] || { echo "FAIL: '$f' is missing, or is not a directory; the root list is a fixed set."; fail=1; } ;;
     # The build board (decision 0007): its gate's three files and the build that renders it, and nothing else. No roadmap data lives here.
     board) { [ -d "$f" ] && [ "$(ls -A board | tr '\n' ' ')" = "build.py middleware.js robots.txt vercel.json " ]; } || { echo "FAIL: 'board/' holds only build.py, middleware.js, robots.txt and vercel.json."; fail=1; } ;;
     # Git keeps no empty directory, so an absent library is the empty one, and
@@ -86,28 +85,35 @@ for f in $allowed; do
 done
 [ "$fail" -eq 0 ] && echo "ok: file list unchanged"
 
-# 2b. The design pages: a fixed list, and a law that stays law-sized.
-# The screen law is carried here once so every product reads the same one; a
-# product's own constitution holds only what is true there and points at this.
-lawwords=$(python3 -c 'import sys; print(len(open(sys.argv[1],encoding="utf-8").read().split()))' design/SCREEN-LAW.md)
-if [ "$lawwords" -gt 450 ]; then
-  echo "FAIL: design/SCREEN-LAW.md is $lawwords words; the cap is 450 - a rule in means a rule out."
-  fail=1
-else
-  echo "ok: design/SCREEN-LAW.md is $lawwords words (cap 450)"
-fi
-design_allowed=" ARCHITECT.md BRIEF_TEMPLATE.md REVIEW_RUBRIC.md SCREEN-LAW.md SCREEN_SPEC_TEMPLATE.md "
-while IFS= read -r f; do
-  case "$design_allowed" in
-    *" $f "*) ;;
-    *) echo "FAIL: 'design/$f' is not on the design file list ($design_allowed)."; fail=1 ;;
-  esac
-done < <(ls -A design)
-# The list is both ways: an unexpected page fails, and a missing one fails too,
-# or a later change could quietly delete a role, a form or the rubric and stay green.
-for f in $design_allowed; do
-  [ -f "design/$f" ] || { echo "FAIL: 'design/$f' is missing; the design pages are a fixed set."; fail=1; }
+# 2b. One front-end guide (his ruling, 8 October 2026: "we should be left with
+# only library/hypersolid.md"). It holds the screen law, carried once so every
+# product reads the same one; a product's own constitution holds only what is
+# true there and points at it. The law stays law-sized. The guide's old pages
+# stay gone: none exists outside juku-library/, whose records are history, and
+# nothing else names one. The names are spelled without ".md" so this file is
+# not a hit of its own.
+guide=library/hypersolid.md
+old_pages="library/screen-design design/ARCHITECT design/BRIEF_TEMPLATE design/SCREEN_SPEC_TEMPLATE design/REVIEW_RUBRIC design/SCREEN-LAW"
+for o in $old_pages; do
+  [ ! -e "$o.md" ] || { echo "FAIL: '$o.md' exists; $guide is the only front-end guide."; fail=1; }
+  if grep -R -n -F --exclude-dir=.git --exclude-dir=juku-library "$o.md" . | cut -d: -f1,2 | sed 's/^/  /' | grep . ; then
+    echo "FAIL: the place(s) above name '$o.md'; point at $guide instead."; fail=1
+  fi
 done
+if [ ! -f "$guide" ]; then
+  echo "FAIL: '$guide' is missing; it is the only front-end guide."; fail=1
+else
+  for h in "Distillation rule" "Spatial layer" "Screen law"; do
+    grep -q -E "^## $h( |$)" "$guide" || { echo "FAIL: '$guide' has no '## $h' heading."; fail=1; }
+  done
+  lawwords=$(python3 -c 'import re,sys; m=re.search(r"^## Screen law\n(.*?)(?=^## |\Z)", open(sys.argv[1],encoding="utf-8").read(), re.S|re.M); print(len(m.group(1).split()) if m else 0)' "$guide")
+  if [ "$lawwords" -gt 450 ]; then
+    echo "FAIL: the screen law in $guide is $lawwords words; the cap is 450 - a rule in means a rule out."
+    fail=1
+  else
+    echo "ok: $guide is the only front-end guide; its screen law is $lawwords words (cap 450)"
+  fi
+fi
 
 # 2c. The library: one page per topic, opened only when a task touches it (his
 # ruling of 23 September 2026, decision 0005, issue #75). The README is its
@@ -134,7 +140,9 @@ for f in "${pages[@]}"; do
   grep -qxF "$f" <<< "$named" || { echo "FAIL: '$f' is not named in the README, so no session is sent to it."; lib_fail=1; }
   [ -f "$f" ] || { echo "FAIL: '$f' is not a file."; lib_fail=1; continue; }
   b=$(wc -c < "$f" | tr -d ' ')
-  [ "$b" -le 4000 ] || { echo "FAIL: '$f' is $b bytes; a library page's cap is 4000 - split the topic or cut history."; lib_fail=1; }
+  # HyperSolid is one page by his ruling of 8 October 2026, so it has its own cap.
+  cap=4000; [ "$f" != "$guide" ] || cap=6500
+  [ "$b" -le "$cap" ] || { echo "FAIL: '$f' is $b bytes; its cap is $cap - split the topic or cut history."; lib_fail=1; }
   grep -q -E '^Scope: .+ Open when: .+' "$f" || { echo "FAIL: '$f' has no 'Scope: … Open when: …' line."; lib_fail=1; }
 done
 for f in $named; do
@@ -142,6 +150,9 @@ for f in $named; do
 done
 while IFS= read -r hit; do
   f=${hit##*:}
+  # A frozen record in juku-library/ may still link a retired guide page (2b):
+  # it is history, and 2b already holds that the page stays gone.
+  case "${hit%:*} $old_pages " in juku-library/*" ${f%.md} "*) continue ;; esac
   # The page is held to the name pattern; the file linking it is any path in
   # the repository, so it is printed escaped, as a page name the pattern
   # refuses is above: a control character in a path reaches a public log.
@@ -172,7 +183,7 @@ if [ "$lib_fail" -ne 0 ]; then
 elif [ "${#pages[@]}" -eq 0 ]; then
   echo "ok: no library pages yet, and nothing names or links one"
 else
-  echo "ok: ${#pages[@]} library pages, each named by the README, each at most 4000 bytes and scoped, every link to one resolves, and each index row opens the first page it names on that page's own words"
+  echo "ok: ${#pages[@]} library pages, each named by the README, each at most 4000 bytes ($guide 6500) and scoped, every link to one resolves, and each index row opens the first page it names on that page's own words"
 fi
 
 # 3. Nothing that looks like a secret, anywhere.

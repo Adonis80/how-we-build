@@ -1490,8 +1490,8 @@ def _check_read_loosenings():
 # to it changes a reader. Nor are the pages whose words are law here:
 # HOW-WE-BUILD.md and CHARTER.md at the root (twice on 9 September a trim
 # weakened what the operating page required, and a reader caught it where no
-# machine could: #79's first read), RICH-DATA.md's data rules and the capped
-# design/SCREEN-LAW.md (#79's third read), and a product's PRODUCT.md and
+# machine could: #79's first read), RICH-DATA.md's data rules, the capped
+# screen law in library/hypersolid.md (#79's third read), and a product's PRODUCT.md and
 # design/CONSTITUTION.md (#79's fourth and sixth reads). Nor is anything in a
 # dot-directory, where .github and .claude keep settings and agents'
 # instructions whatever their extension.
@@ -1521,7 +1521,7 @@ def _check_read_loosenings():
 # ordinary; of this repository's last 57, 28 risky and 29 ordinary.
 CLASS_FIRST = "class=words"
 CLASS_RISK_FIRST = "risky=no"
-CLASS_CODE = ("AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|design/*|"
+CLASS_CODE = ("AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|library/hypersolid.md|design/*|"
               "PRODUCT.md|.*|*/.*) class=code ;;")
 CLASS_ARMS = (CLASS_CODE, "*.md) ;;", "*) class=code ;;")
 RISK_CASE = 'case "${f,,}" in'
@@ -1762,12 +1762,12 @@ CLASS_CASES = (
     ([], "words"),
     (["README.md"], "words"),
     (["library/topics/reviewer.md"], "words"),
-    (["design/ARCHITECT.md", "library/topics/reviewer.md"], "code"),
+    (["design/NOTES.md", "library/topics/reviewer.md"], "code"),
     (["docs/README.md"], "words"),
     (["docs/reviewer.md"], "words"),
-    (["design/ARCHITECT.md"], "code"),
-    (["design/REVIEW_RUBRIC.md", "docs/reviewer.md"], "code"),
-    (["design/SCREEN_SPEC_TEMPLATE.md"], "code"),
+    (["design/NOTES.md"], "code"),
+    (["design/RUBRIC.md", "docs/reviewer.md"], "code"),
+    (["design/SPEC.md"], "code"),
     (["docs/HOW-WE-BUILD.md", "docs/CHARTER.md"], "words"),
     (["a page with spaces.md"], "words"),
     (["AGENTS.md"], "risky"),
@@ -1775,7 +1775,7 @@ CLASS_CASES = (
     (["README.md", "CHARTER.md"], "code"),
     (["README.md", "library/deploy.md"], "words"),
     (["RICH-DATA.md"], "code"),
-    (["design/SCREEN-LAW.md"], "code"),
+    (["library/hypersolid.md"], "code"),
     (["design/CONSTITUTION.md", "README.md"], "code"),
     (["PRODUCT.md"], "code"),
     (["NAMES.md", "docs/guide.md"], "words"),
@@ -2047,6 +2047,7 @@ CLASS_LOOSENINGS = (
     ("the charter read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("CHARTER.md|", "", 1), 1)),
     ("the data rules read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("RICH-DATA.md|", "", 1), 1)),
     ("the design pages read as pages", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("design/*|", "", 1), 1)),
+    ("the front-end guide read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("library/hypersolid.md|", "", 1), 1)),
     ("an arm for an unlisted extension", None, lambda t: t.replace("              *.md) ;;\n", "              *.sql) ;;\n              *.md) ;;\n", 1)),
     ("the left-out count dropped", REVIEW_WORKFLOW, lambda t: t.replace("          " + REVIEW_COUNT_IN + "\n", "", 1)),
     ("blocking signed as a pass", None, lambda t: _in_step(t, "Sign the verdict", "          else\n            conclusion=failure", "          else\n            conclusion=success")),
@@ -7601,7 +7602,7 @@ def _selftest():
          "findings on a gate change still shut it"),
         (["review-gate.py"], [], (UNREAD, None), "and an unread gate change is still unread"),
         (["README.md"], [_run("success", sha=head)], (CLEAN, "claude"), "an ordinary change still clears"),
-        (["design/SCREEN-LAW.md", "README.md"], [_run("success", sha=head)], (CLEAN, "claude"),
+        (["library/hypersolid.md", "README.md"], [_run("success", sha=head)], (CLEAN, "claude"),
          "and so does one touching several ordinary files"),
     ]
     # gate_note() is the whole of what a gate change now buys, so it is held to
@@ -7641,7 +7642,7 @@ def _selftest():
     # of its own. `GATE_DIRS` is held by the class's own directory arms.
     bad += hold(sorted(f for f in GATE_FILES if ([f], "risky") not in CLASS_CASES), [],
                 "every gate file has a class case that reads it as risky")
-    bad += hold(touches_the_gate(["design/ARCHITECT.md", "AGENTS.md"]), [], "and which are not")
+    bad += hold(touches_the_gate(["design/NOTES.md", "AGENTS.md"]), [], "and which are not")
     # machinery() reads a change as both reviewers' class does: the canary and
     # its hold never call machinery what a reviewer reads as ordinary, or the
     # other way round.
