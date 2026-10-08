@@ -4,6 +4,7 @@
     ask.py REGISTRY ROLE SYSTEM_FILE SCHEMA_JSON SECONDS < prompt > answer.json
     ask.py derive ANSWER_FILE
     ask.py incomplete ANSWER_FILE
+    ask.py request ANSWER_FILE                          prints the paths a re-read must supply
     ask.py record open LEDGER ROLE MODEL INTERFACE      prints the attempt's id
     ask.py record close LEDGER ATTEMPT EXIT ANSWER_FILE
     ask.py record summary LEDGER
@@ -47,11 +48,14 @@ unescaped quote) is signed as a refusal with the whole answer for its review
 with nothing beside it but fences. The job's summary gets the answer's shape.
 
 A READ THAT NEEDS MORE SAYS SO (decision 0014, F(2)). A finding of severity
-`needs-context` names at most NEEDED files the read was not given. With no
-blocking finding beside it, the verdict is `needs-context`: the workflow signs
-nothing, adds those files and reads once more, and `ask.py incomplete FILE`
-turns a second shortfall into a refusal, "incomplete read: needed X". A real
-blocking finding always speaks first.
+`needs-context` names the files the read was not given. With no blocking
+finding beside it, the verdict is `needs-context`, and its `needs` keep every
+file asked for, nothing dropped. `ask.py request FILE` answers whether that
+request can be met whole: at most NEEDED paths, each one a read may fetch. The
+workflow then reads once more only if every one of them is added whole;
+otherwise, or on a second shortfall, `ask.py incomplete FILE` turns it into a
+refusal, "incomplete read: needed X", so a clean second answer can never stand
+on a request that was not met. A real blocking finding always speaks first.
 
 ONE RECORD PER ATTEMPT (decision 0014, A). `record open` writes an attempt to
 the job's ledger before its request is sent; the caller writes what the
@@ -221,14 +225,31 @@ def _files(f):
 
 
 def needed(findings):
-    """The files the needs-context findings name, each once, in order, only paths a read may fetch, at most NEEDED."""
+    """Every file the needs-context findings name, each once, in order: none dropped.
+
+    A request past NEEDED, or naming what a read may not fetch, stays the request
+    it was, so it is refused as a whole rather than read again on part of it (the
+    break test of 8 October 2026: three paths kept of four, and the re-read signed).
+    """
     out = []
     for f in findings:
         for p in _files(f):
             p = p.strip()
-            if PATH.fullmatch(p) and p not in out:
+            if p not in out:
                 out.append(p)
-    return out[:NEEDED]
+    return out
+
+
+def request(needs):
+    """(the paths a re-read must add, None), or (None, why) when the request cannot be met whole."""
+    if not needs:
+        return None, "it named no file"
+    if len(needs) > NEEDED:
+        return None, "it named %d files, past the re-read's %d" % (len(needs), NEEDED)
+    bad = [p for p in needs if not isinstance(p, str) or not PATH.fullmatch(p)]
+    if bad:
+        return None, "it named %d path(s) a read may not fetch" % len(bad)
+    return list(needs), None
 
 
 def kept_refusal(found, prose, cut, content):
@@ -559,8 +580,9 @@ def incomplete_file(path):
         return
     if not isinstance(got, dict) or got.get("verdict") != "needs-context":
         return
-    files = got.get("needs") or []
-    said = "incomplete read: needed %s" % (", ".join(files) if files else "files it did not name as paths")
+    files = [str(x) for x in got.get("needs") or []]
+    said = _cut("incomplete read: needed %s" % (", ".join(files) if files else "files it did not name as paths"),
+                FINDING_CAP)
     got = dict(got, verdict="blocking",
                findings=[{"severity": "blocking", "text": said}] + list(got.get("findings") or []),
                review=_cut("%s.\n\n%s" % (said[0].upper() + said[1:], got.get("review") or ""), REVIEW_CAP))
@@ -726,7 +748,26 @@ def note(text):
         pass
 
 
+def request_file(path):
+    """Print the paths a needs-context answer's re-read must add, space-separated: exit 0; 1 when it cannot be met whole."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            got = json.loads(json.load(f).get("result") or "")
+        needs = got.get("needs") if isinstance(got, dict) and got.get("verdict") == "needs-context" else None
+    except (OSError, ValueError, TypeError, AttributeError):
+        needs = None
+    paths, why = request(needs if isinstance(needs, list) else [])
+    if paths is None:
+        # Counted, never named: a product's file names are its own, and this summary is public.
+        note("no re-read: the request cannot be met whole, %s" % why)
+        return 1
+    print(" ".join(paths))
+    return 0
+
+
 def main(argv):
+    if len(argv) == 3 and argv[1] == "request":
+        return request_file(argv[2])
     if len(argv) == 3 and argv[1] == "derive":
         derive_file(argv[2])
         return 0

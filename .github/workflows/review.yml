@@ -607,9 +607,9 @@ jobs:
           }
           # The files a read short of context named, added once to what it is
           # given, as data (decision 0014, F(2)): from the head, plain paths
-          # only, 200 KB at most. No file added is no re-read.
+          # only, 200 KB at most, and every one of them whole or no re-read.
           more() {
-            local f size added=0 any=no
+            local f size added=0 any=no short=no
             {
               echo
               echo "You said this read needed more. The files you named, as this change would leave"
@@ -618,17 +618,22 @@ jobs:
               echo "<more>"
             } >> /tmp/prompt.txt
             for f in "$@"; do
-              case "$f" in /*|*..*|*[!A-Za-z0-9._/-]*) continue ;; esac
-              size=$(git cat-file -s "HEAD:$f" 2>/dev/null) || { printf '\n===== %s: not in this change =====\n' "$f" >> /tmp/prompt.txt; continue; }
+              case "$f" in /*|*..*|*[!A-Za-z0-9._/-]*) short=yes; continue ;; esac
+              size=$(git cat-file -s "HEAD:$f" 2>/dev/null) || { printf '\n===== %s: not in this change =====\n' "$f" >> /tmp/prompt.txt; short=yes; continue; }
               if [ $((added + size)) -gt 200000 ]; then
                 printf '\n===== %s: %s bytes, left out: past the re-read limit =====\n' "$f" "$size" >> /tmp/prompt.txt
-                continue
+                short=yes; continue
               fi
               printf '\n===== %s =====\n' "$f" >> /tmp/prompt.txt
               git show "HEAD:$f" >> /tmp/prompt.txt
               added=$((added + size)) any=yes
             done
             echo "</more>" >> /tmp/prompt.txt
+            # Every file asked for, whole, or no re-read at all: a re-read on part of
+            # the request could clear on what it never saw (the break test, 8 October
+            # 2026), so a file missing, refused or past the limit leaves the read
+            # incomplete.
+            [ "$short" = no ] || return 1
             [ "$any" = yes ]
           }
           # A verdict that opens the gate counts only with a review behind it:
@@ -695,15 +700,18 @@ jobs:
           # A READ SHORT OF CONTEXT IS READ ONCE MORE, NEVER TWICE (decision
           # 0014, F(2)): an answer whose only findings are `needs-context` is
           # not signed. The same role reads again, in this job, with the files
-          # it named added; a second shortfall, a re-read that fails, or no file
-          # to add signs blocking, "incomplete read: needed X". A real blocking
-          # finding beside it was a refusal already, and is never re-read.
+          # it named added; a second shortfall, a re-read that fails, or a
+          # request that cannot be met whole (more than three files, a path a
+          # read may not fetch, or one `more()` cannot add whole; `ask.py
+          # request` keeps every file asked for) signs blocking, "incomplete
+          # read: needed X". A real blocking finding beside it was a refusal
+          # already, and is never re-read.
           # The re-read is the whole read again, cold, with the files added
           # after the pages: it is not shown the first answer, so it judges the
           # change afresh rather than defending a verdict, and its cost is a
           # record of its own.
           if [ "$rc" -eq 0 ] && [ "$(jq -r '.result // empty' "$out" 2>/dev/null | jq -r '.verdict // empty' 2>/dev/null || true)" = needs-context ]; then
-            needed=$(jq -r '.result // empty' "$out" | jq -r '(.needs // []) | join(" ")' 2>/dev/null || true)
+            needed=$(python3 "$reg/ask.py" request "$out" || true)
             left=$(( STARTED + limit * 60 - $(date +%s) ))
             # shellcheck disable=SC2086
             if [ -n "$needed" ] && [ "$left" -ge 60 ] && more $needed; then
