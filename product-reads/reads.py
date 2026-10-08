@@ -68,6 +68,11 @@ class Refused(Exception):
     pass
 
 
+class Malformed(Refused):
+    """GitHub answered, but not in a shape a rule reads: no rule's refusal, so the asker
+    fails its run on it (decision 0013's amendment), while review-product.yml refuses it."""
+
+
 def github(token):
     """`call(method, path, body=None) -> (status, json or None)`. No body is ever kept
     from an error, and nothing about a request is printed."""
@@ -145,13 +150,13 @@ def ready(commit, parent, sha):
         if commit["commit"]["tree"]["sha"] != parent["commit"]["tree"]["sha"]:
             raise Refused("the ready mark changes files; it must change none")
     except (KeyError, TypeError, AttributeError):
-        raise Refused("the commit's answer was not in the shape the ready check reads")
+        raise Malformed("the commit's answer was not in the shape the ready check reads")
 
 
 def _runs(answer):
     runs = answer.get("check_runs") if isinstance(answer, dict) else answer
     if not isinstance(runs, list):
-        raise Refused("the check runs were not in the shape the check reads")
+        raise Malformed("the check runs were not in the shape the check reads")
     return [r for r in runs if isinstance(r, dict)]
 
 

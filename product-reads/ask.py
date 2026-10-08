@@ -81,6 +81,8 @@ def ready_to_read(call, repo, sha, app_id, now):
         reads.verified(get("commits/%s/check-runs?check_name=%s&filter=all&per_page=100" % (sha, reads.VERIFY)), sha)
         reads.unread(get("commits/%s/check-runs?check_name=%s&app_id=%s&filter=all&per_page=100"
                          % (sha, reads.REVIEWER_CHECK, app_id)), app_id, sha, now)
+    except reads.Malformed as why:
+        raise Unanswered(str(why))
     except reads.Refused as why:
         return str(why)
     except (KeyError, TypeError, IndexError):
@@ -361,6 +363,24 @@ def _selftest():
     except Trouble:
         pass
     want("and nothing was asked", api.dispatched, [])
+    # An answer GitHub gave, but in a shape no rule reads, is the same: a failed run, never a
+    # rule's refusal that leaves the run green.
+    class Garbled(Product):
+        """A 200 for pull request 64's commit with no `commit` in it, and for 65's check runs with no list."""
+        def __call__(self, method, path, body=None):
+            if method == "GET" and path.endswith("/commits/%040x" % 64):
+                return 200, {"sha": "%040x" % 64, "parents": [{"sha": reads.BENEATH}]}
+            if method == "GET" and "/commits/%040x/check-runs" % 65 in path:
+                return 200, {"check_runs": "none"}
+            return Product.__call__(self, method, path, body)
+
+    api = Garbled([make(64), make(65), make(66)])
+    try:
+        run(api, api, repo, app, now, True, say=lambda *_: None)
+        bad.append("two answers in a shape no rule reads ended a run green")
+    except Trouble as why:
+        want("both garbled answers are named", "#64" in str(why) and "#65" in str(why), True)
+    want("the pull request that could be read was still asked", [d["inputs"]["pr"] for d in api.dispatched], ["66"])
     # And a rule's refusal is not that: every case above that was left alone left the run green.
 
     if bad:
