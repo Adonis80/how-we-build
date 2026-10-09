@@ -1564,6 +1564,8 @@ def risky(path):
 # The canary's check run, as `.github/workflows/canary.yml` names a plain one,
 # and how far back main's commits are asked for the newest that ran.
 CANARY_CHECK = "canary"
+# How a skipped canary job is named: canary.yml's name expression, unevaluated.
+CANARY_UNEVALUATED = "&& 'canary' ||"
 CANARY_LOOKBACK = 30
 # How long a push to main may go without its canary's check run before that
 # silence is read as a canary that could not run.
@@ -7446,6 +7448,15 @@ def _check_main():
         ([{"filename": "board/build.py"}], [ok], 0, "note:",
          "a red canary re-run green on the same commit holds nothing",
          [("m2", [canary("failure", "2026-10-06T20:00:00Z"), canary("success", "2026-10-06T21:00:00Z")])]),
+        ([{"filename": "review-gate.py"}], [ok], 0, "note:",
+         "a canary job skipped on a words-only merge, named by its unevaluated expression, says nothing; the green before it decides",
+         [("m2", [dict(canary("skipped"), name="(inputs.probe == '' || inputs.probe == 'none') && 'canary' || "
+                                                  "format('canary probe {0}', inputs.probe)")]),
+          ("m1", [canary("success")])]),
+        ([{"filename": "review-gate.py"}], [ok], 1, "the canary failed on main at m2",
+         "a failure under the unevaluated expression is no green either: only a skipped one is passed over",
+         [("m2", [dict(canary("failure"), name="(inputs.probe == '' || inputs.probe == 'none') && 'canary' || x")]),
+          ("m1", [canary("success")])]),
         ([{"filename": ".github/workflows/review.yml"}], [ok], 0, "note:",
          "a failure under another name, or from another app, is no canary",
          [("m2", [dict(canary("failure"), name="canary probe"), dict(canary("failure"), app={"id": 1}),
@@ -7814,9 +7825,18 @@ def canary_red(api, token):
     with urllib.request.urlopen(req) as r:
         commits = json.load(r)
     for c in commits if isinstance(commits, list) else []:
+        # A SKIPPED CANARY KEEPS ITS NAME UNEVALUATED (9 October 2026): canary.yml
+        # names the job by an expression, and GitHub does not evaluate it for a
+        # job it skips, so a words-only merge left a run named by the expression
+        # itself; asked for by name, it was missing, and every machinery pull
+        # request was held on a canary that was never red (#173 on cb01d64). So
+        # every run is fetched, and a skipped one under that expression counts
+        # as the skipped canary it is.
         mine = [r for r in _pages("%s/commits/%s/check-runs" % (api, c.get("sha")), token, key="check_runs",
-                                  params={"check_name": CANARY_CHECK, "filter": "all"})
-                if r.get("name") == CANARY_CHECK and (r.get("app") or {}).get("id") == ACTIONS_APP]
+                                  params={"filter": "all"})
+                if (r.get("name") == CANARY_CHECK or (r.get("conclusion") == "skipped"
+                                                      and CANARY_UNEVALUATED in (r.get("name") or "")))
+                and (r.get("app") or {}).get("id") == ACTIONS_APP]
         # A CANARY THAT DID NOT RUN AT ALL IS RED (#161's read, advisory 3): every
         # push to main starts one, skipped or not, so a commit with none, past
         # the minutes one takes to appear, is a canary.yml GitHub would not load.
