@@ -130,8 +130,28 @@
       "open_weight": true,
       "licence": "unknown, not checked",
       "status": "active",
-      "checked": "2026-09-25",
-      "source": "https://openrouter.ai/z-ai/glm-5.3-flash by web search on 25 September 2026; efforts not checked, so none is listed; not yet called"
+      "efforts": ["low", "high", "max"],
+      "context_tokens": 1048576,
+      "price_usd_per_million": {"input": 0.15, "output": 0.5},
+      "max_output_tokens": 100000,
+      "limits_note": "Priced for decision 0018's reviewer bake-off (his ask, 9 October 2026). The price is second-hand, from his brief of that day, until the canary's endpoint probe reads the provider's list; context_tokens and max_output_tokens are ceilings for the spending check, not measured figures, set at GLM 5.3's so a read is never reserved below its most.",
+      "checked": "2026-10-09",
+      "source": "https://openrouter.ai/z-ai/glm-5.3-flash by web search on 25 September 2026; efforts listed on 9 October 2026 for the bake-off, where the first replay proves them"
+    },
+    "xiaomi/mimo-v2.6-pro": {
+      "name": "MiMo V2.6 Pro",
+      "provider": "openrouter",
+      "open_weight": true,
+      "licence": "unknown, not checked",
+      "status": "canary",
+      "efforts": ["low", "high", "max"],
+      "context_tokens": 1048576,
+      "price_usd_per_million": {"input": 0.43, "output": 0.87},
+      "max_output_tokens": 100000,
+      "limits_note": "A candidate for the reviewer roles in decision 0018's bake-off, held by no role until it is scored. The price is second-hand, from his brief of 9 October 2026, until the canary's endpoint probe reads the provider's list; context_tokens and max_output_tokens are ceilings for the spending check, not measured figures.",
+      "note": "Xiaomi's. Second-hand, it leads the open-weight models on the Artificial Analysis Intelligence Index (46, against GLM 5.3's 45 and Opus 5.5's 58). Public benchmarks shortlist; our own role tests decide (MODEL-ROLES-CONSENSUS-2026-10-03, rule 8).",
+      "checked": "2026-10-09",
+      "source": "his brief of 9 October 2026; the id follows the provider's naming and is not read, since openrouter.ai is not reachable from the build session: the canary's endpoint probe and first replay prove it"
     },
     "moonshotai/kimi-k3": {
       "name": "Kimi K3",
@@ -174,7 +194,7 @@
       "model": "z-ai/glm-5.3",
       "effort": "max",
       "fallback": null,
-      "use": "Reads every change in a risky class, always whole (decision 0008, rule 1), on GLM 5.3 at max (his ruling, 30 September 2026: \"GLM 5.3 at max should also be the lead reviewer for risky changes.\"). Nothing stands behind it (his rulings of 5 and 6 October 2026: \"Sonnet should not be used for a fallback review from now on. Only open weight models should be used as reviews.\" and \"I don't want to have a backup if GLM is down because GLM is currently the only LLM that wins on a cost to price ratio therefore if GLM is down, I need you to inform me immediately and the protocol should be that we figure out why we lost connection to GLM and fix that.\"). If it does not answer, the commit stays unread and the Chairman is told."
+      "use": "Reads every change in a risky class (decision 0008, rule 1), as a selection like every read since decision 0018, on GLM 5.3 at max (his ruling, 30 September 2026: \"GLM 5.3 at max should also be the lead reviewer for risky changes.\"). Nothing stands behind it (his rulings of 5 and 6 October 2026: \"Sonnet should not be used for a fallback review from now on. Only open weight models should be used as reviews.\" and \"I don't want to have a backup if GLM is down because GLM is currently the only LLM that wins on a cost to price ratio therefore if GLM is down, I need you to inform me immediately and the protocol should be that we figure out why we lost connection to GLM and fix that.\"). If it does not answer, the commit stays unread and the Chairman is told."
     },
     "reviewer-frontend": {
       "model": "moonshotai/kimi-k3",
