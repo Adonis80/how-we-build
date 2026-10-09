@@ -223,6 +223,8 @@ jobs:
               reg["roles"][role]["model"], reg["roles"][role]["fallback"], reg["roles"][role]["effort"] = model, None, "max"
           json.dump(reg, open(dst, "w"), indent=1)
           PY
+          # A head only a pull request's own ref holds is fetched by its commit.
+          for c in "$HEAD_SHA" "$BASE_SHA"; do git cat-file -e "$c^{commit}" 2>/dev/null || git fetch -q origin "$c"; done
           git worktree add -q --detach "$t/head" "$HEAD_SHA"
           # review.yml's own blocks, lifted from main's file: nothing restated here.
           python3 - .github/workflows/review.yml "$t/replay.sh" <<'PY'
