@@ -175,9 +175,9 @@ jobs:
           # the pages whose words are law here (HOW-WE-BUILD.md, CHARTER.md,
           # RICH-DATA.md's data rules, and a product's PRODUCT.md: a
           # trim that weakened the operating page was caught by a reader twice
-          # on 9 September, and never by a machine), every design page (the
-          # screen law, a product's constitution, and the role, rubric and
-          # templates that shape every screen: #79's thirteenth read) and anything in a
+          # on 9 September, and never by a machine), the front-end guide
+          # (library/hypersolid.md, which holds the screen law), every design
+          # page (a product's constitution: #79's thirteenth read) and anything in a
           # dot-directory (.github, .claude: settings and agents' instructions,
           # whatever their extension). The README and the library are pages
           # again (decision 0008's PR 0): since #102 the README is a map and
@@ -212,7 +212,7 @@ jobs:
           git diff -z --name-only --no-renames "origin/${{ github.event.repository.default_branch }}...${{ steps.head.outputs.sha }}" > "$RUNNER_TEMP/changed.txt"
           while IFS= read -r -d '' f; do
             case "$f" in
-              AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|design/*|PRODUCT.md|.*|*/.*) class=code ;;
+              AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|library/hypersolid.md|design/*|PRODUCT.md|.*|*/.*) class=code ;;
               *.md) ;;
               *) class=code ;;
             esac
