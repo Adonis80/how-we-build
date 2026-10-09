@@ -1604,12 +1604,10 @@ READ_MODEL = '--model "$model"'
 RISK_TOLD = ('if [ "$CLASS" != risky ]; then',
              'echo "release machinery, or the review gate, that is a finding: say which file, so its '
              'name joins the rule."')
-# review.yml's pages (decision 0014, F(1) and the context pilot): a risky
-# change is given every page whole and the registry with them, as every
-# non-page read was before; a words or code change is given model-registry/
-# context.py's selection — HOW-WE-BUILD.md, the README's index, each touched
-# file, its partners both ways, every page naming one, and on a code read the
-# registry. What is left out is named with its size, and the reviewer is told
+# review.yml's pages (decisions 0014 and 0018): every change, risky or not, is
+# given model-registry/context.py's selection — HOW-WE-BUILD.md, the README's
+# index, each touched file, its partners both ways, every page naming one, and
+# on a code or risky read the registry; no read is given every file. What is left out is named with its size, and the reviewer is told
 # so and how to ask for it: without those, a read short of a file is silent
 # about it. The selector is main's, and the block is run, not read, on a
 # made-up tree below, with the real selector.
@@ -1644,8 +1642,12 @@ PAGES_CASES = (
     ("code", ["CHARTER.md"], {"HOW-WE-BUILD.md", "README.md", "CHARTER.md", "model-registry/registry.json"}),
     ("code", ["HOW-WE-BUILD.md"], {"HOW-WE-BUILD.md", "README.md", "check.sh", "library/deploy.md",
                                    "model-registry/registry.json"}),
-    ("risky", ["check.sh"], set(PAGES_TREE)),
-    ("risky", ["library/reviewer.md", "x.sql"], set(PAGES_TREE)),
+    # A risky change is a class, never every file (decision 0018): its selection,
+    # with the registry, and the gate the check runs as its partner.
+    ("risky", ["check.sh"], {"HOW-WE-BUILD.md", "README.md", "check.sh", "library/rulebook-files.md",
+                             "review-gate.py", "model-registry/registry.json"}),
+    ("risky", ["library/reviewer.md", "x.sql"], {"HOW-WE-BUILD.md", "README.md", "library/reviewer.md",
+                                                 "model-registry/registry.json"}),
 )
 # And the verdict says how thoroughly it was read (#79's eighth read): a clean
 # read at high with pages alone must not look like one at max with everything.
@@ -2077,7 +2079,7 @@ CLASS_LOOSENINGS = (
     ("a model written into the call", None, lambda t: t.replace(READ_MODEL + " \\", "--model a-model-named-here \\", 1)),
     ("the selector read from the head", REVIEW_WORKFLOW, lambda t: t.replace(REVIEW_SELECT[0], 'cp model-registry/context.py "$RUNNER_TEMP/context.py"', 1)),
     ("every change given the risky read's pages", REVIEW_WORKFLOW, lambda t: t.replace(REVIEW_SELECT[1], REVIEW_SELECT[1].replace('"$class"', "risky"), 1)),
-    ("every change given the selection", REVIEW_WORKFLOW, lambda t: t.replace(REVIEW_SELECT[1], REVIEW_SELECT[1].replace('"$class"', "code"), 1)),
+    ("every change read as words", REVIEW_WORKFLOW, lambda t: t.replace(REVIEW_SELECT[1], REVIEW_SELECT[1].replace('"$class"', "words"), 1)),
     ("a file left out unnamed", REVIEW_WORKFLOW, lambda t: t.replace(REVIEW_SELECT[1], REVIEW_SELECT[1] + "\n          sed -i '/left out/d' /tmp/pages.txt", 1)),
     ("the reviewer not told", REVIEW_WORKFLOW, lambda t: t.replace(REVIEW_TOLD[1], 'echo "."', 1)),
     ("a thin read let pass clean", REVIEW_WORKFLOW, lambda t: t.replace("you will be read once more with it.", "say so.", 1)),
@@ -3483,6 +3485,10 @@ def _check_caller(path=None, quiet=False):
             ("the break test's third: four paths a read may fetch", ["a.md", "b.md", "c.md", "d.md"], None),
             ("a fetchable path beside one out of the repository", ["a.md", "../up"], None),
             ("a path with a space", ["b c"], None),
+            ("one unit of a file, by a name with a space", ["a.md#Part one"], ["a.md#Part one"]),
+            ("a unit of a path out of the repository", ["../a.md#x"], None),
+            ("a unit with no name", ["a.md#"], None),
+            ("a unit whose name a shell would expand", ["a.md#$(x)"], None),
             ("nothing asked for", [], None)):
         got = request(needs)[0] if request else "no request()"
         if got != want:
@@ -3593,7 +3599,8 @@ def _check_caller(path=None, quiet=False):
             # What a re-read must add, asked of the first answer: printed and 0
             # only when every file can be asked for; else 1 and nothing printed.
             for what, files, want in (
-                    ("a request a re-read can meet", ["a.md", "x/y.py"], (0, "a.md x/y.py")),
+                    ("a request a re-read can meet", ["a.md", "x/y.py"], (0, "a.md\nx/y.py")),
+                    ("a request for a unit by its name", ["a.md#Part one", "x/y.py#f"], (0, "a.md#Part one\nx/y.py#f")),
                     ("the break test's third: four files", ["a.md", "b.md", "c.md", "d.md"], (1, "")),
                     ("a request naming a path out of the repository", ["a.md", "../x"], (1, ""))):
                 run({"is_error": False, "result": answer([finding("needs-context", "n", files)])})
@@ -3919,7 +3926,9 @@ def _check_attempt_loosenings():
 # huge.py is the size review-gate.py was when the break test of 8 October 2026
 # asked for it beside a small file.
 MORE_TREE = {"a.md": "page a\n", "big.md": "x" * 150000 + "\n", "b.md": "y" * 100000 + "\n",
-             "huge.py": "z" * 479081 + "\n", "c.md": "page c\n", "d.md": "page d\n"}
+             "huge.py": "z" * 479081 + "\n", "c.md": "page c\n", "d.md": "page d\n",
+             "gate.py": "def wanted():\n    return 'the unit asked for'\n\n\ndef other():\n    return 'not asked'\n"
+                        + "x = %r\n" % ("w" * 300000)}
 # A re-read happens only on every file asked for, whole (the break test: a
 # re-read on part of the request signed what it never saw). Each case: what,
 # the files asked for, whether it is read again, the files it adds, words the
@@ -3938,6 +3947,13 @@ MORE_CASES = (
      ("missing.md: not in this change",), ()),
     ("the break test's second: a small file and a 479,082-byte one", ["a.md", "huge.py"], False, {"a.md"},
      ("huge.py: 479082 bytes, left out: past the re-read limit",), ()),
+    # One unit of a large file, alone (decision 0018): what a reader asks for
+    # instead of the file, met whole, and nothing of the file beside it.
+    ("one function of a large file", ["gate.py#wanted"], True, {"gate.py#wanted"}, ("the unit asked for",),
+     ("not asked", "wwww")),
+    ("a unit the file does not have", ["a.md", "gate.py#missing"], False, {"a.md"},
+     ("gate.py#missing: not in this change",), ()),
+    ("a unit of a path out of the repository", ["../gate.py#wanted"], False, set(), (), ("the unit asked for",)),
 )
 # The same refusals with the re-read's limit raised, so they rest on the request
 # being met and not on where the limit sits; and with it raised past the large
@@ -3992,12 +4008,17 @@ def more_says(text, path, asked):
             return None
         prompt = os.path.join(d, "prompt.txt")
         open(prompt, "w").close()
+        # main's selector, where each reviewer finds it: review.yml's copy in
+        # RUNNER_TEMP, the product reader's in this repository's checkout.
+        shutil.copy(CONTEXT, os.path.join(d, "context.py"))
+        os.makedirs(os.path.join(rulebook, "model-registry"), exist_ok=True)
+        shutil.copy(CONTEXT, os.path.join(rulebook, CONTEXT))
         body = "\n".join(l.replace("/tmp/", d + "/") for l in fn)
         script = "set -euo pipefail\ncd '%s'\nt='%s'\n%s\nif more %s; then echo yes; else echo no; fi\n" % (
             tree, d, body, " ".join("'%s'" % a for a in asked))
         try:
             p = subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=60,
-                               env=dict(os.environ, SHA=sha, GITHUB_WORKSPACE=rulebook))
+                               env=dict(os.environ, SHA=sha, GITHUB_WORKSPACE=rulebook, RUNNER_TEMP=d))
             wrote = open(prompt, encoding="utf-8").read()
         except (OSError, subprocess.SubprocessError):
             return None
@@ -4198,14 +4219,18 @@ def _check_more_loosenings():
     return bad
 
 
-# THE CONTEXT PILOT, ON THE REAL TREE (decision 0014, F(1) and order item 4).
-# The selector is run on this repository as it stands, with a one-line change:
-# a README-only change stays near 60 KB and a one-line code change near 120 KB,
-# while a risky change still gets every file whole. A code read carries the
-# registry; a words read names it as left out with its size. The bounds are the
-# pilot's: a tree that outgrows them turns this red, for the month review.
-CONTEXT_WORDS_MAX = 60000
-CONTEXT_CODE_MAX = 120000
+# THE SELECTION, ON THE REAL TREE (decisions 0014 and 0018). The selector is run
+# on this repository as it stands, with a one-line change: a README-only change
+# and a one-line code change are given their partners and the pages naming them,
+# and a one-line change to check.sh, risky, is given its partners too, the
+# gate's sections naming it by name, and the registry, and nothing else whole.
+# No read is given every file (his ruling, 9 October 2026: "Yes, I want the full
+# read narrowing switched on now."). What each is given is printed against its
+# target as a reading, never a failure (decision 0017); what it must and must
+# not be given is held, which is coverage, before any size.
+CONTEXT_WORDS_TARGET = 60000
+CONTEXT_CODE_TARGET = 120000
+CONTEXT_RISKY_TARGET = 150000
 
 
 def _check_context(path=None, quiet=False):
@@ -4233,25 +4258,21 @@ def _check_context(path=None, quiet=False):
         given = {re.split(r"[,:]", m)[0]: b for m, t, b in picked if t is not None}
         left = [m for m, t, b in picked if t is None]
         return given, left, sum(b for m, t, b in picked if t is not None) + len(diff.encode("utf-8"))
-    pool = sorted(f for f in tree if re.search(r"\.(md|sh|py|ya?ml)$", f) or f == REGISTRY)
-    # A partner entry whose files are all risky is never run: a risky read is
-    # given every file whole, and only a words or code read is selected.
-    arms = RISK_GATE.split(")")[0].split("|")
 
-    def risky(f):
-        return any(fnmatch.fnmatchcase(f.lower(), a) for a in arms)
-    for pattern, theirs in getattr(ctx, "PARTNERS", ()):
-        if risky(pattern) and all(risky(p.split("#")[0]) for p in theirs):
-            fault("the partner entry for %s brings only risky files, which no selection reaches" % pattern)
+    def made_up(cls, files, changed, diff):
+        """What a made-up tree is given: (the files given, whole or in part, the markers, the files left out)."""
+        picked = ctx.select(cls, sorted(files), changed, diff, read=lambda f: files.get(f))
+        given = {re.split(r"[,:]", m)[0] for m, t, b in picked if t is not None}
+        left = {m.split(":")[0] for m, t, b in picked if t is None}
+        return given, [m for m, t, b in picked if t is not None], left, {m: t for m, t, b in picked if t is not None}
+    sizes = []
     try:
         given, left, size = run("words", ["README.md"])
-        if size > CONTEXT_WORDS_MAX:
-            fault("a README-only change is given %d bytes, past the pilot's %d" % (size, CONTEXT_WORDS_MAX))
+        sizes.append(("a README-only change", size, CONTEXT_WORDS_TARGET))
         if not any(m.startswith("%s: " % REGISTRY) and re.search(r": \d+ bytes, left out", m) for m in left):
             fault("a words read does not name %s as left out with its size" % REGISTRY)
         given, left, size = run("code", ["HOW-WE-BUILD.md"])
-        if size > CONTEXT_CODE_MAX:
-            fault("a one-line code change is given %d bytes, past the pilot's %d" % (size, CONTEXT_CODE_MAX))
+        sizes.append(("a one-line code change", size, CONTEXT_CODE_TARGET))
         for want, why in ((REGISTRY, "a code read carries the registry (F(1))"),
                           ("check.sh", "its partner"), ("library/reviewer.md", "a page that names it"),
                           ("README.md", "the README's index")):
@@ -4260,11 +4281,51 @@ def _check_context(path=None, quiet=False):
         given, left, size = run("words", ["library/rulebook-files.md"])
         if "check.sh" not in given:
             fault("a change to library/rulebook-files.md is not given check.sh, its partner")
+        # A RISKY CHANGE IS A CLASS, NEVER EVERY FILE (decision 0018).
         given, left, size = run("risky", ["check.sh"])
-        if sorted(given) != pool or left:
-            fault("a risky change is not given every page whole and the registry (missing %s)"
-                  % sorted(set(pool) - set(given))[:5])
-        # A touched file past the pilot's limit is given the sections it touches.
+        sizes.append(("a one-line change to check.sh, risky", size, CONTEXT_RISKY_TARGET))
+        for want, why in ((REGISTRY, "a risky read carries the registry"),
+                          (".github/workflows/check.yml", "the workflow that runs it"),
+                          ("review-gate.py", "the gate it runs, as its sections naming check.sh"),
+                          ("library/rulebook-files.md", "its partner")):
+            if want not in given:
+                fault("a one-line change to check.sh is not given %s: %s" % (want, why))
+        for never in ("RICH-DATA.md", "board/build.py", "CHARTER.md"):
+            if never in given:
+                fault("a one-line change to check.sh is given %s, which names nothing it changed" % never)
+        if len(given) >= len(tree) // 2:
+            fault("a risky change is given %d of %d files: every file, near enough" % (len(given), len(tree)))
+        # Coverage on a made-up tree. An omitted partner that changes the verdict
+        # is selected: the workflow that runs a check, and the function of a large
+        # gate that names it, while the gate's other functions and a page naming
+        # nothing changed are left out, named with their sizes.
+        gate = "".join("def other_%d():\n    %r\n\n\n" % (i, "x" * 3000) for i in range(30))
+        gate += "def runs_the_check():\n    return 'check.sh runs this'\n"
+        files = {"HOW-WE-BUILD.md": "page\n", "README.md": "# map\n\n## Where each topic lives\n\nrows\n",
+                 "check.sh": "echo the guard\n", "review-gate.py": gate, ".github/workflows/check.yml": "run: check.sh\n",
+                 "library/rulebook-files.md": "Scope: x. Open when: y.\n", "stray.md": "names nothing changed\n",
+                 REGISTRY: "{}\n"}
+        got, marks, left_out, texts = made_up("risky", files, ["check.sh"],
+                                               "diff --git a/check.sh b/check.sh\n@@ -1,1 +1,1 @@\n-a\n+b\n")
+        want = {"HOW-WE-BUILD.md", "README.md", "check.sh", "review-gate.py", ".github/workflows/check.yml",
+                "library/rulebook-files.md", REGISTRY}
+        if got != want or "stray.md" not in left_out:
+            fault("a risky change to check.sh on a made-up tree is given %s, not %s with stray.md left out"
+                  % (sorted(got), sorted(want)))
+        gate_part = "".join(t for m, t in texts.items() if m.startswith("review-gate.py"))
+        if "def runs_the_check" not in gate_part or "def other_1(" in gate_part:
+            fault("a large partner was not given as its one function naming the touched file")
+        # Over-selection, held without a size: a page that names no changed file
+        # and is no partner of one is left out, named with its size.
+        picked = ctx.select("words", ["HOW-WE-BUILD.md", "a.md", "names-a.md", "stray.md"], ["a.md"],
+                            "diff --git a/a.md b/a.md\n@@ -1,1 +1,1 @@\n-a\n+b\n",
+                            read=lambda f: {"names-a.md": "see a.md\n"}.get(f, "page\n"))
+        got = {re.split(r"[,:]", m)[0] for m, t, b in picked if t is not None}
+        if got != {"HOW-WE-BUILD.md", "a.md", "names-a.md"}:
+            fault("a change to a.md is given %s, not the operating page, a.md and the page naming it" % sorted(got))
+        if not any(t is None and m.startswith("stray.md: ") for m, t, b in picked):
+            fault("a page naming no changed file is not named as left out")
+        # A touched file past the limit is given the sections it touches.
         big = "# Big\n\n" + "".join("## Part %d\n\n%s\n" % (i, "words " * 2000) for i in range(8))
         picked = ctx.select("words", ["HOW-WE-BUILD.md", "big.md"], ["big.md"],
                             "diff --git a/big.md b/big.md\n@@ -30,1 +30,1 @@\n-a\n+b\n",
@@ -4273,13 +4334,34 @@ def _check_context(path=None, quiet=False):
         if len(part) != 1 or not 0 < part[0] < len(big) // 2:
             fault("a touched file past %d bytes was not given as the sections its hunks fall in (%s)"
                   % (ctx.WHOLE, part))
+        # MORE COMES WHEN THE READER ASKS: one unit of a file, alone.
+        road = json.dumps({"items": [{"id": "P1", "plain": "one"}, {"id": "P2", "plain": "two"}]}, indent=2)
+        for text, want, has, hasnt in ((gate, "review-gate.py#runs_the_check", "check.sh runs this", "other_1"),
+                                       (big, "big.md#Part 3", "## Part 3", "## Part 4"),
+                                       ("# T\n\n## 6. Evidence\n\nkept\n\n## 7. Other\n\nnot\n", "PRODUCT.md#6",
+                                        "kept", "not"),
+                                       (road, "roadmap.json#P2", '"two"', '"one"')):
+            got = ctx.unit(text, *want.split("#", 1))
+            if not got or has not in got or hasnt in got:
+                fault("%s was not given as that unit alone" % want)
+        if ctx.unit(gate, "review-gate.py", "no_such_thing") is not None:
+            fault("a unit a file does not have was given as something")
+        items = ctx.touched_items(road, "diff --git a/roadmap.json b/roadmap.json\n@@ -9,1 +9,1 @@\n-a\n+b\n",
+                                  "roadmap.json")
+        if not items or '"two"' not in items or '"one"' in items:
+            fault("a change to one roadmap item was not given that item alone (%r)" % items)
     except Exception as e:  # noqa: BLE001
         fault("the selector raised %s" % type(e).__name__)
+    if not quiet and len(sizes) == 3:
+        for what, size, target in sizes:
+            print("size: %s is given %d bytes (target %d%s)" % (
+                what, size, target, ", %d over: a reading, never a failure" % (size - target)
+                if size > target else ""))
     if not bad and not quiet:
-        print("ok: the context pilot gives a README-only change at most %d bytes and a one-line code change at most "
-              "%d, with its partners, the pages naming it and on a code read the registry, names every other file "
-              "with its size, gives a large file the sections it touches, and gives a risky change every file whole"
-              % (CONTEXT_WORDS_MAX, CONTEXT_CODE_MAX))
+        print("ok: every read is a selection: a change is given its partners, a large one as its sections naming "
+              "the change, the pages naming it and on a code or risky read the registry, and no page naming none "
+              "of it; every other file is named with its size, a large file is given the sections it touches, a "
+              "risky change is given no file it does not touch or need, and a unit asked for is given alone")
     return bad
 
 
@@ -4880,16 +4962,18 @@ def _check_product_glm(quiet=False):
 
 
 CONTEXT_LOOSENINGS = (
-    ("the registry dropped from a code read", "            give(REGISTRY, read(REGISTRY))", "            pass"),
-    ("a risky read given the selection", '    if cls not in ("words", "code"):', '    if cls == "none":'),
+    ("the registry dropped from a code read", "        give(REGISTRY, read(REGISTRY))", "        pass"),
+    ("a risky read given every file whole", "    touched = [f for f in changed if f in tree]\n",
+     "    touched = [f for f in changed if f in tree]\n    if cls == \"risky\":\n        touched = list(pool)\n"),
     ("a file left out unnamed", "            out.append((LEFT_OUT % (f, size), None))", "            pass"),
-    ("every page given to the pilot", "            if not text or not any(t in text for t in touched):", "            if not text:"),
+    ("every page given to the pilot", "        if not text or not any(t in text for t in touched):", "        if not text:"),
     ("the operating page's partner lost", '    ("HOW-WE-BUILD.md", ["check.sh"]),\n', ""),
-    ("a partner entry no selection reaches", '    ("check.sh", ["library/rulebook-files.md"]),\n',
-     '    ("model-registry/*", ["model-registry/ask.py"]),\n    ("check.sh", ["library/rulebook-files.md"]),\n'),
+    ("the gate's partners lost", ") + GATE_PARTNERS\n", ")\n"),
     ("a partner never brought back", "            out.extend(matched)", "            pass"),
-    ("a large file given whole", '            if len(text.encode("utf-8")) <= WHOLE:', "            if True:"),
-    ("the pages naming a change not given", "                give(f, text)\n        if cls", "                pass\n        if cls"),
+    ("a large file given whole", '        if len(text.encode("utf-8")) <= WHOLE:', "        if True:"),
+    ("a large partner given whole", '        elif text is None or len(text.encode("utf-8")) <= WHOLE:', "        elif True:"),
+    ("the pages naming a change not given", "            give(f, text)\n    if cls", "            pass\n    if cls"),
+    ("any unit given for the one asked", "if n is not None and (n == name", "if True or (n == name"),
 )
 
 
@@ -6192,7 +6276,7 @@ ASK_HOLDS = (
     (ASK_DISPATCH_ENV, "the choice passed as a variable, a timed run always asking and a person's run asking only if told to"),
     ("GH_TOKEN: ${{ github.token }}", "this repository's own token, for the one dispatch"),
 )
-ASK_ON = 'on:\n  schedule:\n    - cron: "*/10 * * * *"\n  workflow_dispatch:\n    inputs:\n'
+ASK_ON = 'on:\n  schedule:\n    - cron: "7-59/10 * * * *"\n  workflow_dispatch:\n    inputs:\n'
 ASK_PERMISSIONS = "permissions:\n  contents: read\n  actions: write\n"
 ASK_CONCURRENCY = "concurrency:\n  group: ask-product-reads\n  cancel-in-progress: false\n"
 # The grant and reach are checked before the program that reads a product runs.
@@ -6222,7 +6306,7 @@ def _check_ask_wiring(ask=None, product=None, quiet=False):
               % triggers(ask))
     if ask.count(ASK_ON) != 1 or len(re.findall(r"^\s*-?\s*cron:", ask, re.M)) != 1 \
             or len(re.findall(r"^\s+schedule:", ask, re.M)) != 1:
-        fault("must have exactly one schedule, `*/10 * * * *`, every ten minutes (`%s`)"
+        fault("must have exactly one schedule, `7-59/10 * * * *`, every ten minutes (`%s`)"
               % ASK_ON.strip().replace("\n", " "))
     if not USES_ENVIRONMENT.search(ask):
         fault("does not run in the `%s` environment, so the App's key is readable from any branch"
@@ -6279,10 +6363,10 @@ def _check_ask_wiring(ask=None, product=None, quiet=False):
 
 
 ASK_LOOSENINGS = (
-    ("a second clock", lambda t: t.replace('    - cron: "*/10 * * * *"\n', '    - cron: "*/10 * * * *"\n    - cron: "0 * * * *"\n', 1)),
-    ("a faster clock", lambda t: t.replace('"*/10 * * * *"', '"* * * * *"', 1)),
-    ("a slower clock", lambda t: t.replace('"*/10 * * * *"', '"0 * * * *"', 1)),
-    ("no clock", lambda t: t.replace('  schedule:\n    - cron: "*/10 * * * *"\n', "", 1)),
+    ("a second clock", lambda t: t.replace('    - cron: "7-59/10 * * * *"\n', '    - cron: "7-59/10 * * * *"\n    - cron: "0 * * * *"\n', 1)),
+    ("a faster clock", lambda t: t.replace('"7-59/10 * * * *"', '"* * * * *"', 1)),
+    ("a slower clock", lambda t: t.replace('"7-59/10 * * * *"', '"0 * * * *"', 1)),
+    ("no clock", lambda t: t.replace('  schedule:\n    - cron: "7-59/10 * * * *"\n', "", 1)),
     ("a push", lambda t: t.replace("  workflow_dispatch:\n    inputs:", "  push:\n  workflow_dispatch:\n    inputs:", 1)),
     ("a pull request's own copy", lambda t: t.replace("  workflow_dispatch:\n    inputs:", "  pull_request:\n  workflow_dispatch:\n    inputs:", 1)),
     ("a timed run that only says what it would ask", lambda t: t.replace(ASK_DISPATCH_ENV, "DISPATCH: ${{ inputs.dispatch }}", 1)),

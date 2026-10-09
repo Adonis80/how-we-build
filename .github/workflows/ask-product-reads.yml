@@ -37,10 +37,15 @@ name: Ask for product reads
 # BUILT, NOT YET RUN. review-gate.py holds each line of this file against cases,
 # and product-reads/ask.py runs its rules against a made-up product. Neither is a
 # run. The first live tick, once this is on main, is its proof.
+#
+# OFF THE BUSY MINUTES (decision 0018). On "*/10" it ran three times on 8
+# October: GitHub delays and drops scheduled runs at the top of the hour and
+# on round minutes, when everyone's schedules fire. Minute 7 and every ten
+# after is the same clock, still the one schedule (his ruling, 4 October 2026).
 
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "7-59/10 * * * *"
   workflow_dispatch:
     inputs:
       dispatch:

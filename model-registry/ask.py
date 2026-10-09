@@ -4,7 +4,7 @@
     ask.py REGISTRY ROLE SYSTEM_FILE SCHEMA_JSON SECONDS < prompt > answer.json
     ask.py derive ANSWER_FILE
     ask.py incomplete ANSWER_FILE
-    ask.py request ANSWER_FILE                          prints the paths a re-read must supply
+    ask.py request ANSWER_FILE                          prints the files or units a re-read must supply, one a line
     ask.py record open LEDGER ROLE MODEL INTERFACE      prints the attempt's id
     ask.py record close LEDGER ATTEMPT EXIT ANSWER_FILE
     ask.py record summary LEDGER
@@ -214,8 +214,11 @@ def _shown(findings):
     return typed[:FINDINGS_SHOWN], max(0, len(typed) - FINDINGS_SHOWN)
 
 
-# A path the read may ask for: relative, inside the repository, plain characters.
-PATH = re.compile(r"(?!/)(?!.*(?:^|/)\.\.(?:/|$))[A-Za-z0-9._/-]{1,200}")
+# A path the read may ask for: relative, inside the repository, plain characters;
+# or one unit of a file, `path#name` (decision 0018): a heading, a step's name, a
+# definition's or a roadmap item's id, in printable characters a shell cannot
+# expand or split on.
+PATH = re.compile(r"(?!/)(?!.*(?:^|/)\.\.(?:/|$))[A-Za-z0-9._/-]{1,200}(?:#[^\x00-\x1f\x7f#*?\[\]`$\\\"]{1,120})?")
 
 
 def _files(f):
@@ -452,7 +455,7 @@ def admit(base_url, key, lim, body_bytes, ledger, attempt, weekly, inflight, fet
         return None, "the provider's key endpoint did not answer, so the cash settled this week is unknown", ""
     if not isinstance(data, dict):
         return None, "the provider's key endpoint answered no data, so the cash settled this week is unknown", ""
-    caps, basis = [], []
+    caps, basis, names = [], [], []
     if weekly not in (None, ""):
         try:
             limit = float(weekly)
@@ -464,15 +467,19 @@ def admit(base_url, key, lim, body_bytes, ledger, attempt, weekly, inflight, fet
             return None, "the provider did not say what was spent this week", ""
         caps.append(limit - data["usage_weekly"] - finished)
         basis.append("the week's spend the provider reported against the weekly limit")
+        names.append("the weekly limit, REVIEW_CASH_WEEKLY")
     if data.get("limit_remaining") is not None:
         if not isinstance(data["limit_remaining"], (int, float)) or isinstance(data["limit_remaining"], bool):
             return None, "the provider's remaining limit is not an amount", ""
         caps.append(data["limit_remaining"] - finished)
         basis.append("the key's own remaining limit")
+        names.append("the key's own limit at the provider")
     if not caps:
         return None, "no weekly limit is set and the key has no limit of its own, so the headroom is unknown", ""
     if reserved + this > min(caps):
-        return None, "this request at its most, with what is in flight, would pass the cash limit", ""
+        # Which limit refused it, never the amount: the amount is his, held privately.
+        return None, ("this request at its most, with what is in flight, would pass the cash limit; the limit "
+                      "that refused it is %s" % names[caps.index(min(caps))]), ""
     return this, None, " and ".join(basis)
 
 
@@ -749,7 +756,7 @@ def note(text):
 
 
 def request_file(path):
-    """Print the paths a needs-context answer's re-read must add, space-separated: exit 0; 1 when it cannot be met whole."""
+    """Print what a needs-context answer's re-read must add, one a line: exit 0; 1 when it cannot be met whole."""
     try:
         with open(path, encoding="utf-8") as f:
             got = json.loads(json.load(f).get("result") or "")
@@ -761,7 +768,7 @@ def request_file(path):
         # Counted, never named: a product's file names are its own, and this summary is public.
         note("no re-read: the request cannot be met whole, %s" % why)
         return 1
-    print(" ".join(paths))
+    print("\n".join(paths))
     return 0
 
 
