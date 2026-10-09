@@ -117,6 +117,13 @@ fi
 # library, and that passes: the check exists before the pages it holds.
 lib_fail=0
 lib_max=0
+# Library pages a cleanup merged or deleted (#174). A frozen record in
+# juku-library/ keeps its text, so it may still link one, as history; the page
+# stays gone, and any other link to it fails below like any broken link.
+retired_pages="library/reviewer-one-vendor"
+for o in $retired_pages; do
+  [ ! -e "$o.md" ] || { echo "FAIL: '$o.md' exists; it was retired and only frozen records may still name it."; lib_fail=1; }
+done
 # A page name starts at a name boundary: a folder that merely ends in
 # "library" (juku-library/, <product>-library/) holds papers, not library
 # pages, and its files are not links to library/.
@@ -143,9 +150,9 @@ for f in $named; do
 done
 while IFS= read -r hit; do
   f=${hit##*:}
-  # A frozen record in juku-library/ may still link a retired guide page (2b):
-  # it is history, and 2b already holds that the page stays gone.
-  case "${hit%:*} $old_pages " in juku-library/*" ${f%.md} "*) continue ;; esac
+  # A frozen record in juku-library/ may still link a retired guide page (2b)
+  # or a retired library page (above): it is history, and both stay gone.
+  case "${hit%:*} $old_pages $retired_pages " in juku-library/*" ${f%.md} "*) continue ;; esac
   # The page is held to the name pattern; the file linking it is any path in
   # the repository, so it is printed escaped, as a page name the pattern
   # refuses is above: a control character in a path reaches a public log.
