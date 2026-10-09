@@ -489,7 +489,8 @@ jobs:
           # left out is named with its size, so a reader that needed one says
           # so. The picker is handed the title and the two pages and nothing
           # else, and prints numbers alone: this log is public. Should it fail
-          # for any reason, the two pages are carried whole, as before.
+          # for any reason, the two pages are carried as any page is: whole up
+          # to 40 KB, else named with their size, for the reader to ask by unit.
           # review-gate.py runs it against the cases it holds.
           for f in roadmap.json PRODUCT.md; do
             g show "$SHA:$f" > "$t/carried.$f" 2>/dev/null || : > "$t/carried.$f"
@@ -558,7 +559,7 @@ jobs:
             cat "$t/picked.txt" >> "$pages"
             added=$((added + $(wc -c < "$t/picked.txt")))
           else
-            echo "the slice's pages could not be picked, so roadmap.json and PRODUCT.md are carried whole"
+            echo "the slice's pages could not be picked, so roadmap.json and PRODUCT.md are carried as any page is"
             for f in roadmap.json PRODUCT.md; do add "$f" || echo "carried page not found in $REPO: $f"; done
           fi
           rm -f "$t/carried.roadmap.json" "$t/carried.PRODUCT.md" "$t/picked.txt" "$t/title.txt"

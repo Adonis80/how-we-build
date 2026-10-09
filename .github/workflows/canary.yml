@@ -275,12 +275,17 @@ jobs:
             reg="$T/reg"; out="$T/resp.json"; err="$T/err.txt"; book="$T/attempts.jsonl"; : > "$book"
             role=reviewer-main; [ "$CLASS" != risky ] || role=reviewer-risky
             reads=0
+            # Both reads end within 48 minutes of the gather's end, so with a gather of a few
+            # minutes they stay inside the 55-minute job; review.yml bounds its own reads by its job's start.
+            deadline=$(( $(date +%s) + 48 * 60 ))
             once() {
-              local n rc=0
+              local n rc=0 secs
+              secs=$(( deadline - $(date +%s) )); [ "$secs" -le 1500 ] || secs=1500
+              [ "$secs" -ge 60 ] || { echo "no time left for another read"; return 0; }
               reads=$((reads + 1))
               n=$(python3 "$reg/ask.py" record open "$book" "$role" "$(python3 "$reg/resolve.py" "$reg/registry.json" "$role" model)" openai-compatible)
-              ATTEMPTS="$book" ATTEMPT="$n" INFLIGHT="$(inflight)" timeout --kill-after=30s 1500s \
-                python3 "$reg/ask.py" "$reg/registry.json" "$role" /tmp/system.txt "$schema" 1500 < /tmp/prompt.txt > "$out" 2> "$err" || rc=$?
+              ATTEMPTS="$book" ATTEMPT="$n" INFLIGHT="$(inflight)" timeout --kill-after=30s "${secs}s" \
+                python3 "$reg/ask.py" "$reg/registry.json" "$role" /tmp/system.txt "$schema" "$secs" < /tmp/prompt.txt > "$out" 2> "$err" || rc=$?
               python3 "$reg/ask.py" record close "$book" "$n" "$rc" "$out" || true
               [ "$rc" -ne 0 ] || python3 "$reg/ask.py" derive "$out" || printf "{\"is_error\":true,\"subtype\":\"not_derived\"}\n" > "$out"
             }

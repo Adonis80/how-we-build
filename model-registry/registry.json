@@ -1,5 +1,5 @@
 {
-  "about": "The one place a model is named (decision 0008, issue #103, on the 18 September consensus in juku-library/). Every other file asks for a role. How to ask, inspect and switch: library/model-registry.md. A switch is one edit to this file, reviewed like any other change to the gate, unless the pinned reviewer tool does not know the new model: then the pin moves in both reviewers too, proved first on a full-size read (#130). The reviewer roles are decision 0008's own assignment, except that no reader is the lead's own model, and since his ruling of 30 September GLM 5.3 at max reads the risky classes too. Since his rulings of 5 and 6 October 2026 only open-weight models review and nothing stands behind GLM: when it does not answer, the commit stays unread, the Chairman is told at once, and the work is to find why the connection to GLM was lost and fix it. The reviewer roles' effort is the Chairman's ruling of 28 September 2026, every read at max. The max-subagent role is what every product's max subagent file is set to, his ruling of the same day (library/max-subagent.md). The conversation roles (decision 0015) are held in a chat app, never called: kind conversation, an app and a picker label in place of a provider and a credential, and the assignment recorded apart from its proof (status assigned until that seat is read back; proved names the evidence). No caller sends one a request.",
+  "about": "The one place a model is named (decision 0008, issue #103, on the 18 September consensus in juku-library/). Every other file asks for a role. How to ask, inspect and switch: library/model-registry.md. A switch is one edit to this file, reviewed like any other change to the gate, unless the pinned reviewer tool does not know the new model: then the pin moves in both reviewers too, proved first on a full-size read (#130). The reviewer roles are decision 0008's own assignment, except that no reader is the lead's own model, and since the bake-off of 9 October 2026 (his ask that day) both reviewer roles are GLM 5.3 Flash at max, superseding his ruling of 30 September that GLM 5.3 at max reads the risky classes too. Since his rulings of 5 and 6 October 2026 only open-weight models review and nothing stands behind GLM: when it does not answer, the commit stays unread, the Chairman is told at once, and the work is to find why the connection to GLM was lost and fix it. The reviewer roles' effort is the Chairman's ruling of 28 September 2026, every read at max. The max-subagent role is what every product's max subagent file is set to, his ruling of the same day (library/max-subagent.md). The conversation roles (decision 0015) are held in a chat app, never called: kind conversation, an app and a picker label in place of a provider and a credential, and the assignment recorded apart from its proof (status assigned until that seat is read back; proved names the evidence). No caller sends one a request.",
   "version": "2026-10-07.1",
   "reviewed": "2026-09-25",
   "decision": "https://github.com/Adonis80/how-we-build/issues/103",
@@ -132,11 +132,11 @@
       "status": "active",
       "efforts": ["low", "high", "max"],
       "context_tokens": 1048576,
-      "price_usd_per_million": {"input": 0.15, "output": 0.5},
+      "price_usd_per_million": {"input": 0.225, "output": 0.75},
       "max_output_tokens": 100000,
-      "limits_note": "Priced for decision 0018's reviewer bake-off (his ask, 9 October 2026). The price is second-hand, from his brief of that day, until the canary's endpoint probe reads the provider's list; context_tokens and max_output_tokens are ceilings for the spending check, not measured figures, set at GLM 5.3's so a read is never reserved below its most.",
+      "limits_note": "The reviewer roles' model since the bake-off of 9 October 2026. The price is the dearest of the provider's 33 endpoints as the canary's endpoint probe read them that day (run 37949541008): most bill 0.15 and 0.50 per million, the dearest 0.225 and 0.75, and the spending check reserves at the dearest, so a read is never reserved below its most. context_tokens and max_output_tokens are ceilings for the spending check, not measured figures, set at GLM 5.3's.",
       "checked": "2026-10-09",
-      "source": "https://openrouter.ai/z-ai/glm-5.3-flash by web search on 25 September 2026; efforts listed on 9 October 2026 for the bake-off, where the first replay proves them"
+      "source": "https://openrouter.ai/z-ai/glm-5.3-flash; its endpoints and list prices from the provider's public list, read by the canary's endpoint probe on 9 October 2026; max effort served on all eight bake-off replays"
     },
     "xiaomi/mimo-v2.6-pro": {
       "name": "MiMo V2.6 Pro",
@@ -185,16 +185,16 @@
   },
   "roles": {
     "reviewer-main": {
-      "model": "z-ai/glm-5.3",
+      "model": "z-ai/glm-5.3-flash",
       "effort": "max",
       "fallback": null,
-      "use": "Reads every ordinary change: pages and ordinary code (decision 0008, rule 2). Nothing stands behind it: if it does not answer, the commit stays unread and the Chairman is told."
+      "use": "Reads every ordinary change: pages and ordinary code (decision 0008, rule 2), on GLM 5.3 Flash since the bake-off of 9 October 2026 (his ask that day: \"find the most capable model for price and performance\"; the cheapest arm that caught every defect GLM 5.3 caught, with no more false blockers; the scores are on the pull request that switched it). Nothing stands behind it: if it does not answer, the commit stays unread and the Chairman is told."
     },
     "reviewer-risky": {
-      "model": "z-ai/glm-5.3",
+      "model": "z-ai/glm-5.3-flash",
       "effort": "max",
       "fallback": null,
-      "use": "Reads every change in a risky class (decision 0008, rule 1), as a selection like every read since decision 0018, on GLM 5.3 at max (his ruling, 30 September 2026: \"GLM 5.3 at max should also be the lead reviewer for risky changes.\"). Nothing stands behind it (his rulings of 5 and 6 October 2026: \"Sonnet should not be used for a fallback review from now on. Only open weight models should be used as reviews.\" and \"I don't want to have a backup if GLM is down because GLM is currently the only LLM that wins on a cost to price ratio therefore if GLM is down, I need you to inform me immediately and the protocol should be that we figure out why we lost connection to GLM and fix that.\"). If it does not answer, the commit stays unread and the Chairman is told."
+      "use": "Reads every change in a risky class (decision 0008, rule 1), as a selection like every read since decision 0018, on GLM 5.3 Flash at max since the bake-off of 9 October 2026, which his ask of that day ordered: the switch goes to the cheapest arm that catches every defect GLM 5.3 catches with no more false blockers, superseding his ruling of 30 September 2026 (\"GLM 5.3 at max should also be the lead reviewer for risky changes.\") for this role. Nothing stands behind it (his rulings of 5 and 6 October 2026: \"Sonnet should not be used for a fallback review from now on. Only open weight models should be used as reviews.\" and \"I don't want to have a backup if GLM is down because GLM is currently the only LLM that wins on a cost to price ratio therefore if GLM is down, I need you to inform me immediately and the protocol should be that we figure out why we lost connection to GLM and fix that.\"). If it does not answer, the commit stays unread and the Chairman is told."
     },
     "reviewer-frontend": {
       "model": "moonshotai/kimi-k3",

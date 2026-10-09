@@ -151,6 +151,10 @@ def _md_end(lines, i):
     return len(lines)
 
 
+# What a file's lines before its first unit are asked for by: `path#opening`.
+OPENING = "opening"
+
+
 def unit(text, path, name):
     """The unit of a file a reader asked for by name (`path#name`), whole, or None when it has none.
 
@@ -168,7 +172,11 @@ def unit(text, path, name):
         return json.dumps(item, ensure_ascii=False, indent=1) + "\n" if item is not None else None
     lines = text.splitlines(keepends=True)
     number = re.fullmatch(r"§?\s?(\d+(?:\.\d+)*)\.?", name) if path.endswith(".md") else None
-    for n, i, j in spans_of(text, path):
+    spans = spans_of(text, path)
+    # A unit named `opening` is that unit; only a file with none gives its opening.
+    if name == OPENING and not any(n == OPENING for n, _, _ in spans):
+        return next(("".join(lines[i:j]) for n, i, j in spans if n is None), None)
+    for n, i, j in spans:
         if n is not None and (n == name or (number and re.match(r"§?\s?%s[.\s]" % re.escape(number.group(1)), n + " "))):
             return "".join(lines[i:j])
     return None
@@ -204,7 +212,7 @@ def naming(text, path, touched):
         body = "".join(lines[i:j])
         if any(t in body for t in touched):
             keep.update(range(i, j))
-            names.append(n or "its opening, line %d" % (i + 1))
+            names.append(n or OPENING)
     return (_joined(lines, keep) if keep else None), names
 
 
