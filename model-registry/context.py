@@ -172,9 +172,11 @@ def unit(text, path, name):
         return json.dumps(item, ensure_ascii=False, indent=1) + "\n" if item is not None else None
     lines = text.splitlines(keepends=True)
     number = re.fullmatch(r"§?\s?(\d+(?:\.\d+)*)\.?", name) if path.endswith(".md") else None
-    for n, i, j in spans_of(text, path):
-        if n is None and name == OPENING:
-            return "".join(lines[i:j])
+    spans = spans_of(text, path)
+    # A unit named `opening` is that unit; only a file with none gives its opening.
+    if name == OPENING and not any(n == OPENING for n, _, _ in spans):
+        return next(("".join(lines[i:j]) for n, i, j in spans if n is None), None)
+    for n, i, j in spans:
         if n is not None and (n == name or (number and re.match(r"§?\s?%s[.\s]" % re.escape(number.group(1)), n + " "))):
             return "".join(lines[i:j])
     return None

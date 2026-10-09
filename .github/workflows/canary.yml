@@ -275,7 +275,8 @@ jobs:
             reg="$T/reg"; out="$T/resp.json"; err="$T/err.txt"; book="$T/attempts.jsonl"; : > "$book"
             role=reviewer-main; [ "$CLASS" != risky ] || role=reviewer-risky
             reads=0
-            # Both reads inside minute 50 of the 55-minute job, as review.yml bounds its own.
+            # Both reads end within 48 minutes of the gather's end, so with a gather of a few
+            # minutes they stay inside the 55-minute job; review.yml bounds its own reads by its job's start.
             deadline=$(( $(date +%s) + 48 * 60 ))
             once() {
               local n rc=0 secs
