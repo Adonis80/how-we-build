@@ -223,10 +223,9 @@ fi
 # until the push that
 # answers it makes a commit the reviewer reads afresh. The CTO's answer to a
 # finding is not clearance — the proposer does not clear its own change.
-# A change to the review machinery used to need the other vendor's read alone,
-# and since his ruling of 22 September 2026 retiring Codex there is no other
-# vendor: it clears on the one reviewer's read, like everything else. The gate
-# says so on the run rather than letting a green imply otherwise.
+# A change to the review machinery clears on the one reviewer's read, like
+# everything else (his ruling, 22 September 2026). The gate says so on the run
+# rather than letting a green imply otherwise.
 # The gate's own rule is machine-checked before anything asks GitHub: one
 # implementation, held against the reviewer's real answers, the states a read
 # can arrive in, the fakes that once passed a looser test, the routes the gate
