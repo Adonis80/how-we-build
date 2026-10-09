@@ -43,6 +43,17 @@ name: Ask for product reads
 # delays and drops scheduled runs on round minutes, when everyone's schedules
 # fire. Minute 7 and every ten after is the same clock, still the one schedule
 # (his ruling, 4 October 2026).
+#
+# THE CLOCK INSIDE THE TICK (9 October 2026). Minute 7 did not mend it: the
+# schedule had fired 7 times since its first tick (7 October, 23:48 UTC, run
+# 37704348679), 3 to 7 hours apart, and none from 09:25 to 17:08 UTC on 9
+# October, minute 7 in place since 15:58. GitHub runs a schedule when it can
+# and drops what it cannot, and no cron line changes that. So a tick that lands keeps the ruling itself: it
+# looks, then every ten minutes again, LOOKS times in all (32, about five
+# hours, inside the job's limit), and a newer run waiting its turn, a tick or
+# a person's, takes over at its next look. One tick in five hours keeps the
+# ten-minute clock; a person's run looks once. On a public repository the
+# runner's minutes cost nothing. Still the one schedule, and nothing else.
 
 on:
   schedule:
@@ -69,7 +80,7 @@ jobs:
     # THE DOOR, as the reviewer's: without this line the App's key is readable
     # from any branch. review-gate.py refuses a build that loses it.
     environment: reviewer
-    timeout-minutes: 30
+    timeout-minutes: 340
     steps:
       - uses: actions/checkout@v4
         with:
@@ -81,6 +92,7 @@ jobs:
           APP_KEY: ${{ secrets.REVIEWER_APP_KEY }}
           GH_TOKEN: ${{ github.token }}
           DISPATCH: ${{ github.event_name == 'schedule' && 'true' || inputs.dispatch }}
+          LOOKS: ${{ github.event_name == 'schedule' && '32' || '1' }}
         run: |
           set -euo pipefail
           if [ -z "${APP_ID:-}" ] || [ -z "${APP_KEY:-}" ]; then
@@ -102,6 +114,23 @@ jobs:
           revoke() { [ -z "$tok" ] || curl -sS --max-time 20 -o /dev/null -X DELETE -H "Authorization: token $tok" \
             -H "Accept: application/vnd.github+json" "https://api.github.com/installation/token" || true; tok=""; }
           trap 'revoke; rm -f "$key" "$RUNNER_TEMP/mint.json"' EXIT
+          looks=${LOOKS:-1}
+          [[ "$looks" =~ ^[1-9][0-9]?$ ]] && [ "$looks" -le 32 ] || { echo "::error::looks is 1 to 32"; exit 1; }
+          look=0
+          # Each look is the whole of what follows, at this indentation so its lines
+          # stay the ones review-gate.py holds; a red look ends the run at once.
+          while [ "$look" -lt "$looks" ]; do
+          look=$((look + 1))
+          if [ "$look" -gt 1 ]; then
+            sleep 600
+            # A newer run waiting its turn takes over, so a person's run never waits
+            # behind this one. A list that does not come is no newer run: look again.
+            waiting=$(timeout 30 gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ask-product-reads.yml/runs?per_page=20" \
+              --jq "[.workflow_runs[] | select(.id != $GITHUB_RUN_ID and (.status == \"queued\" or .status == \"pending\" or .status == \"waiting\" or .status == \"requested\"))] | length") || waiting=0
+            [ "$waiting" = 0 ] || { echo "a newer run is waiting, and takes over"; break; }
+          fi
+          echo "look $look of $looks"
+          # The App's JWT lives nine minutes, so each look signs its own.
           printf '%s\n' "$APP_KEY" > "$key"
           b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
           now=$(date +%s)
@@ -153,3 +182,4 @@ jobs:
           # One product's trouble does not stop the others being looked at, and it
           # does not go unsaid: the job is red.
           [ "$failed" -eq 0 ]
+          done

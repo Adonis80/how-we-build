@@ -8,6 +8,7 @@
     ask.py record open LEDGER ROLE MODEL INTERFACE      prints the attempt's id
     ask.py record close LEDGER ATTEMPT EXIT ANSWER_FILE
     ask.py record summary LEDGER
+    ask.py record unsent LEDGER                         exit 0 when the job sent no request at all
 
 The interface is the chat-completions one that OpenRouter, a LiteLLM proxy and
 most direct providers all speak, so the provider is an entry in the registry and
@@ -71,11 +72,15 @@ what is reserved in flight, plus an estimate of this request's most, must not
 pass the weekly limit (the secret REVIEW_CASH_WEEKLY), nor the key's own
 remaining limit. Every request carries the registry's output-token cap, which
 the provider enforces; its price is the registry's, which no request enforces,
-so the most is an estimate until a price filter is proved. Unknown headroom
-means no request. A refusal, here
-or the provider's own limit, is `budget_refused`: the read parks, and nothing
-falls back. What the Chairman holds privately, the weekly limit, the key's
-limit, the headroom and the week's settled spend, reaches no log from here;
+so the most is an estimate until a price filter is proved. No request leaves
+past READ_MOST bytes, so a read in flight elsewhere is reserved at a read of
+that size, never at the model's whole context. Unknown headroom means no
+request. A refusal, here or the provider's own limit, is `budget_refused` and
+names which limit refused it, never its amount: the read parks, and nothing
+falls back. A job whose every request the check refused sent nothing and spent
+nothing (`record unsent`), so asking for its read again is free. What the
+Chairman holds privately, the weekly limit, the key's limit, the headroom and
+the week's settled spend, reaches no log from here;
 each request's own reported cost does, on the spend line, as it has since
 decision 0008.
 
@@ -385,6 +390,15 @@ PROBES = {
 RUN_ATTEMPTS = 2
 # Tokens a request's framing adds beyond its bytes: a token is at least a byte.
 FRAMING_TOKENS = 1000
+# THE MOST A READ MAY CARRY, in bytes as sent (the reserve cut, 9 October
+# 2026). A read in flight elsewhere was reserved at the model's whole context,
+# 1,048,576 tokens, twice: on GLM 5.3 3.82 USD each, beside reads that cost
+# 0.19 to 0.38. Since decision 0018 a read is a selection, 100 to 200 KB on
+# 9 October (#178, #179, Adonis80/Hemz-OS#143, Adonis80/myst#29), and a diff
+# past 600 KB is already refused as a slice that wants splitting. So no request
+# leaves past this, and every other read is reserved at a read of this size: a
+# token is at least a byte, so it is the most such a read can be sent.
+READ_MOST = 600000
 
 
 def limits(reg, model_id):
@@ -433,7 +447,7 @@ def admit(base_url, key, lim, body_bytes, ledger, attempt, weekly, inflight, fet
             raise ValueError
     except (TypeError, ValueError):
         return None, "the reads in flight elsewhere could not be counted, so the headroom is unknown", ""
-    reserved = others * RUN_ATTEMPTS * bound(lim, lim["context"])
+    reserved = others * RUN_ATTEMPTS * bound(lim, READ_MOST)
     finished = 0.0
     for a in attempts(ledger):
         if a["attempt"] == str(attempt) or a.get("billing") != "cash" or not a.get("sent", True):
@@ -467,7 +481,7 @@ def admit(base_url, key, lim, body_bytes, ledger, attempt, weekly, inflight, fet
             return None, "the provider did not say what was spent this week", ""
         caps.append(limit - data["usage_weekly"] - finished)
         basis.append("the week's spend the provider reported against the weekly limit")
-        names.append("the weekly limit, REVIEW_CASH_WEEKLY")
+        names.append("the weekly limit, REVIEW_CASH_WEEKLY,")
     if data.get("limit_remaining") is not None:
         if not isinstance(data["limit_remaining"], (int, float)) or isinstance(data["limit_remaining"], bool):
             return None, "the provider's remaining limit is not an amount", ""
@@ -477,9 +491,9 @@ def admit(base_url, key, lim, body_bytes, ledger, attempt, weekly, inflight, fet
     if not caps:
         return None, "no weekly limit is set and the key has no limit of its own, so the headroom is unknown", ""
     if reserved + this > min(caps):
-        # Which limit refused it, never the amount: the amount is his, held privately.
-        return None, ("this request at its most, with what is in flight, would pass the cash limit; the limit "
-                      "that refused it is %s" % names[caps.index(min(caps))]), ""
+        # Which limit refused it, first and by name, never the amount: the amount is his, held privately.
+        return None, ("%s admits no read now: this request at its most, with what is in flight, would pass it"
+                      % names[caps.index(min(caps))]), ""
     return this, None, " and ".join(basis)
 
 
@@ -493,7 +507,7 @@ def answer(resp, pinned):
         code = e.get("code", "") if isinstance(e, dict) else ""
         if limited(code, said):
             return {"is_error": True, "subtype": "provider_limit",
-                    "result": "budget refused: the provider's own limit refused the request"}, 1
+                    "result": "budget refused: the key's own limit at the provider refused the request"}, 1
         return {"is_error": True, "subtype": "provider_error",
                 "result": "the provider refused (%s): %s" % (code, said)}, 1
     served = str(resp.get("model", ""))
@@ -612,6 +626,7 @@ BILLING = {"openai-compatible": "cash", "claude-code": "plan"}
 # whether the request was sent, whether what it cost is settled).
 OUTCOMES = {
     "budget_refused": ("budget refused", False, True),
+    "too_big": ("not sent: past the most a read may carry", False, True),
     "provider_limit": ("budget refused by the provider's limit", True, True),
     "unreachable": ("unreachable, response lost", True, False),
     "no_credential": ("not sent: no credential", False, True),
@@ -712,6 +727,12 @@ def record_close(ledger, attempt, rc, answer_file):
     log_event(ledger, event)
 
 
+def unsent(ledger):
+    """True when the job opened attempts and sent none of them: whatever it was refused, it cost nothing."""
+    got = attempts(ledger)
+    return bool(got) and all(a.get("closed") and not a.get("sent", True) for a in got)
+
+
 def _usd(x):
     return ("%.6f" % x).rstrip("0").rstrip(".") if _number(x) else "unknown"
 
@@ -795,6 +816,8 @@ def main(argv):
         if argv[2] == "summary" and len(argv) == 4:
             print(summary(argv[3]))
             return 0
+        if argv[2] == "unsent" and len(argv) == 4:
+            return 0 if unsent(argv[3]) else 1
     if len(argv) != 6:
         print(__doc__.strip().split("\n\n")[1], file=sys.stderr)
         return 2
@@ -845,6 +868,13 @@ def main(argv):
         note("refused before sending: %s" % stop)
         return out({"is_error": True, "subtype": "request_refused", "result": "refused before sending: %s" % stop}, 1)
     data = json.dumps(body).encode("utf-8")
+    # NOTHING PAST THE MOST A READ MAY CARRY: what the spending check reserves
+    # for every other read holds only while no request is larger.
+    if len(data) > READ_MOST:
+        note("refused before sending: the request is past the most a read may carry")
+        return out({"is_error": True, "subtype": "too_big",
+                    "result": "refused before sending: the read is past the most one may carry, so the slice "
+                              "wants splitting"}, 1)
     # THE SPENDING CHECK, before the request and never after (decision 0014, D).
     most, why, basis = admit(got["base_url"], key, lim, len(data), ledger, attempt,
                       os.environ.get("REVIEW_CASH_WEEKLY", ""), os.environ.get("INFLIGHT", ""))
@@ -868,7 +898,7 @@ def main(argv):
         log_event(ledger, {"attempt": attempt, "event": "returned", "status": e.code})
         if e.code == 402 or limited("", said):
             return out({"is_error": True, "subtype": "provider_limit",
-                        "result": "budget refused: the provider's own limit refused the request"}, 1)
+                        "result": "budget refused: the key's own limit at the provider refused the request"}, 1)
         return out({"is_error": True, "subtype": "http_error",
                     "result": "HTTP %s from %s: %s" % (e.code, got["provider"], said)}, 1)
     except (urllib.error.URLError, OSError, ValueError) as e:

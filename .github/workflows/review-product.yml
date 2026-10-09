@@ -873,7 +873,10 @@ jobs:
             elif [ "$rc" -eq 127 ]; then
               echo "the reviewer's tool is not installed"
             elif [ "$sub" = budget_refused ] || [ "$sub" = provider_limit ]; then
-              echo "budget refused: the cash limit admits no read now, so the slice parks; $(jq -r '.result // empty' "$out" 2>/dev/null | sed 's/^budget refused: //' | tr -d '\r\n' | cut -c1-240)"
+              # Which limit refused it leads, from the caller; ", nothing spent" only
+              # when the job's ledger shows no request sent, which reads.py reads as
+              # a refusal that may be asked again without `again`.
+              echo "budget refused$(python3 "${reg:-.}/ask.py" record unsent "${ledger:-}" 2> /dev/null && echo ", nothing spent"): $(jq -r '.result // empty' "$out" 2>/dev/null | sed 's/^budget refused: //' | tr -d '\r\n' | cut -c1-240); the slice parks"
             elif grep -qiE 'prompt is too long|context.{0,20}(length|window)' <<< "$said"; then
               echo "the change and its pages were too long for one read"
             elif grep -qiE 'rate.?limit|overloaded|\b429\b|\b529\b' <<< "$said"; then
