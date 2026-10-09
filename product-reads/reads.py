@@ -36,7 +36,11 @@ check run is still opening or reading is being read. One whose run ended
 without a verdict, or was left in progress past the job's own hour, did not get
 a read, and whether it was paid for is not something a run can say. So nothing
 retries that by itself: a builder looks, and asks again with `again`. The asker
-never does.
+never does. One kind is not that: a run the spending check refused before any
+request was sent, signed "Did not read: budget refused, nothing spent". It cost
+nothing and read nothing, so it is no read at all, and asking again needs no
+`again` (9 October 2026: Adonis80/myst#29 was refused five times at 0 USD, and
+each re-ask needed the word).
 """
 import json
 import re
@@ -57,6 +61,10 @@ REVIEWER_CHECK = "juku-reviewer"
 # The reviewer's job is held to 55 minutes. A run still in progress an hour
 # after it started has lost its runner and will not sign.
 STALE = timedelta(minutes=60)
+# The title both reviewers sign a read with when the spending check refused every
+# request before it was sent: review.yml's and review-product.yml's why(), held
+# to this by review-gate.py.
+FREE = "Did not read: budget refused, nothing spent"
 
 SHA = re.compile(r"^[0-9a-f]{40}$")
 READY = re.compile(r"(?m)^Review-Ready: yes\r?$")
@@ -186,6 +194,9 @@ def read_state(answer, app_id, sha, now):
         if r.get("name") != REVIEWER_CHECK or app.get("id") != app_id or r.get("head_sha") != sha:
             continue
         if r.get("status") == "completed":
+            title = (r.get("output") or {}).get("title") if isinstance(r.get("output"), dict) else None
+            if r.get("conclusion") == "neutral" and isinstance(title, str) and title.startswith(FREE):
+                continue  # refused before anything was sent: no read, and nothing to look at
             states.add("read" if r.get("conclusion") in ("success", "failure") else "failed")
         else:
             began = _when(r.get("started_at"))
@@ -392,10 +403,18 @@ def _selftest():
     want("another commit", state(_run(sha="c" * 40)), "none")
     want("no App at all", state({"name": REVIEWER_CHECK, "head_sha": HEAD, "status": "completed", "conclusion": "success"}), "none")
     want("an App id as text", state(_run(app=str(APP))), "none")
+    free = dict(_run(conclusion="neutral"), output={"title": FREE + ": the weekly limit admits no read now"})
+    want("a budget park that sent nothing is no read", state(free), "none")
+    want("a free park beside a verdict", state(free, _run()), "read")
+    want("a budget park that spent", state(dict(free, output={"title": "Did not read: budget refused: the key's own limit"})), "failed")
+    want("the free words on a run that did not end neutral", state(dict(free, conclusion="cancelled")), "failed")
+    want("the free words in the summary, not the title", state(dict(free, output={"summary": FREE})), "failed")
+    want("the free words from another App", state(dict(free, app={"id": 1})), "none")
     for runs, again, expected in (
         ([], False, "ok"), ([_run()], False, "read"), ([_run()], True, "read"),
         ([_run(status="in_progress", conclusion=None)], True, "running"),
         ([_run(conclusion="neutral")], False, "did not finish"), ([_run(conclusion="neutral")], True, "ok"),
+        ([dict(_run(conclusion="neutral"), output={"title": FREE + ": x"})], False, "ok"),
     ):
         got = _asks(unread, {"check_runs": runs}, APP, HEAD, NOW, again)
         want("asking %s again=%s" % (len(runs), again), expected in got or got == expected, True)
