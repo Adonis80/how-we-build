@@ -38,7 +38,7 @@ name: Ask for product reads
 # and product-reads/ask.py runs its rules against a made-up product; the live
 # ticks are its runs on main (run 37911136877, 9 October 2026, the latest).
 #
-# OFF THE BUSY MINUTES (decision 0018). On "*/10" it ran four times on 8
+# OFF THE BUSY MINUTES (9 October 2026, in decision 0018's change). On "*/10" it ran four times on 8
 # October (UTC; runs 37720778799 to 37853290641), not every ten minutes: GitHub
 # delays and drops scheduled runs on round minutes, when everyone's schedules
 # fire. Minute 7 and every ten after is the same clock, still the one schedule
