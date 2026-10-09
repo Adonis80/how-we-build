@@ -97,4 +97,4 @@ or fetch `https://raw.githubusercontent.com/Adonis80/how-we-build/main/HOW-WE-BU
 
 ## Changing the rulebook
 
-By pull request only; `main` is protected; the CTO settles and merges without the Chairman. A repair or an upgrade is never refused for length, and the text it makes dead leaves in the same change ([decision 0017](juku-library/DECISION-0017-SIZE-SIGNALS-AND-RECONCILIATION.md)). Size and reconciliation: `library/changing-the-rulebook.md`; the queue, the gate and the merge: `library/changing-the-rulebook-merge.md`.
+By pull request only; `main` is protected; the CTO settles and merges without the Chairman. A repair or an upgrade is never refused for length, and the text it makes dead leaves in the same change ([decision 0017](juku-library/DECISION-0017-SIZE-SIGNALS-AND-RECONCILIATION.md)); stale wording is removed in dependency-coherent batches ([decision 0016](juku-library/DECISION-0016-LOCALISED-REVIEWS.md), H). Size and reconciliation: `library/changing-the-rulebook.md`; the queue, the gate and the merge: `library/changing-the-rulebook-merge.md`.
