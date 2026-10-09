@@ -704,7 +704,6 @@ jobs:
             left=$(( STARTED + limit * 60 - $(date +%s) ))
             if [ "$left" -ge 60 ]; then
               rc=0
-              reads=2
               ask "$FALLBACK" "$left" || rc=$?
               [ "$rc" -ne 0 ] || derive
             fi
@@ -946,15 +945,14 @@ jobs:
   # so a writer's comment naming it anywhere else starts no read, and until now
   # said nothing either: the writer waited on a read that was never coming. This
   # job replies once, under no door and with no key, and reads nothing; the
-  # trigger is still the comment alone.
+  # trigger is still the comment alone. Whether the ask is named is asked in the
+  # shell, never in this `if:`, so the anchored match stays the only one there.
   misplaced:
     if: >-
       github.event.issue.pull_request != null &&
       !startsWith(github.event.comment.body, '/claude review') &&
-      contains(github.event.comment.body, '/claude review') &&
       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
     runs-on: ubuntu-latest
-    timeout-minutes: 2
     permissions:
       pull-requests: write
     steps:
@@ -963,8 +961,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR: ${{ github.event.issue.number }}
           URL: ${{ github.event.comment.html_url }}
+          BODY: ${{ github.event.comment.body }}
         run: |
           set -euo pipefail
+          case "$BODY" in
+            *"/claude review"*) ;;
+            *) exit 0 ;;
+          esac
           printf '%s\n' "No read was started: [that comment]($URL) names the ask but does not open with it, and only a comment whose first words are the ask starts a read (#51, #56). To ask, post a comment that opens with it. This reply read nothing and spent nothing." > "$RUNNER_TEMP/reply.md"
           gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -F body=@"$RUNNER_TEMP/reply.md" --silent
 

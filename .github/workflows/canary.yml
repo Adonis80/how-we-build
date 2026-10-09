@@ -33,6 +33,15 @@ name: Canary
 # model's endpoints serves, the most it writes, and its list price beside the
 # registry's: public figures, never what was spent. A probe runs under its own
 # name, so its refusal is no canary and holds nothing.
+#
+# THE REPLAY (decision 0018's bake-off, his ask of 9 October 2026: "find the
+# most capable model for price and performance"). Dispatched by hand with the
+# probe `replay`, a head, the base it was read against and a model the registry
+# prices, it reads that head as review.yml would today: review.yml's own gather
+# block, prompt, brief, schema and `more()`, lifted from main's file and run on
+# the head, through the real caller, with the reviewer roles held by that model
+# at max for this job alone. It signs nothing and holds no key but the
+# provider's: its verdict is printed, never posted, and clears no commit.
 
 on:
   push:
@@ -42,8 +51,20 @@ on:
       probe:
         description: One limit to add to the read (PR 3's cap probe), or none for a plain canary.
         type: choice
-        options: [none, output-cap, price-cap]
+        options: [none, output-cap, price-cap, replay]
         default: none
+      head:
+        description: A replay's head commit.
+        type: string
+        default: ""
+      base:
+        description: The commit a replay's head is read against.
+        type: string
+        default: ""
+      model:
+        description: A replay's model, one the registry prices.
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -86,8 +107,9 @@ jobs:
     # THE DOOR, as review.yml's: the key is readable from main alone.
     environment: reviewer
     # Two reads of 300 s at most, one per distinct model and effort (#161's read,
-    # advisory 2), with the rest of the job on top.
-    timeout-minutes: 15
+    # advisory 2), with the rest of the job on top; a replay, two reads of a
+    # whole review at most.
+    timeout-minutes: ${{ inputs.probe == 'replay' && 55 || 15 }}
     permissions:
       contents: read
       # The spending check counts the reads in flight (decision 0014, D).
@@ -97,10 +119,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: One tiny real read
         id: read
+        if: inputs.probe != 'replay'
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           REVIEW_CASH_WEEKLY: ${{ secrets.REVIEW_CASH_WEEKLY }}
@@ -171,13 +195,118 @@ jobs:
               | tee -a "$GITHUB_STEP_SUMMARY" || echo "key limit: not read"
           fi
 
+      - name: A replay through review.yml
+        if: inputs.probe == 'replay'
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          REVIEW_CASH_WEEKLY: ${{ secrets.REVIEW_CASH_WEEKLY }}
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ inputs.head }}
+          BASE_SHA: ${{ inputs.base }}
+          MODEL: ${{ inputs.model }}
+        run: |
+          set -euo pipefail
+          t="$RUNNER_TEMP"
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{7,40}$ && "$BASE_SHA" =~ ^[0-9a-f]{7,40}$ ]] || { echo "a replay names a head and a base by commit"; exit 1; }
+          # The model must be one the registry prices; the roles are held by it
+          # in a copy, for this job alone.
+          mkdir -p "$t/reg"
+          cp model-registry/ask.py model-registry/resolve.py "$t/reg/"
+          python3 - "$MODEL" model-registry/registry.json "$t/reg/registry.json" <<'PY'
+          import json, sys
+          model, src, dst = sys.argv[1:4]
+          reg = json.load(open(src))
+          m = reg["models"].get(model) or {}
+          if m.get("provider") != "openrouter" or not m.get("price_usd_per_million"):
+              raise SystemExit("the registry prices no such model on the provider")
+          for role in ("reviewer-main", "reviewer-risky"):
+              reg["roles"][role]["model"], reg["roles"][role]["fallback"], reg["roles"][role]["effort"] = model, None, "max"
+          json.dump(reg, open(dst, "w"), indent=1)
+          PY
+          git worktree add -q --detach "$t/head" "$HEAD_SHA"
+          # review.yml's own blocks, lifted from main's file: nothing restated here.
+          python3 - .github/workflows/review.yml "$t/replay.sh" <<'PY'
+          import re, sys, textwrap
+          review, out = open(sys.argv[1]).read(), sys.argv[2]
+          def run(name):
+              m = re.search(r"^      - name: %s\n(.*?)(?=^      - name: |^  [a-z]|\Z)" % re.escape(name), review, re.S | re.M)
+              body = m.group(1)
+              return textwrap.dedent(body[body.index("run: |\n") + 7:])
+          def block(text, first, last):
+              lines = text.splitlines()
+              a = next(i for i, l in enumerate(lines) if l.strip() == first)
+              b = next(i for i, l in enumerate(lines) if i > a and l.strip() == last)
+              return "\n".join(lines[a:b + 1])
+          gather = run("Gather what the reviewer reads")
+          gather = gather.replace('"origin/${{ github.event.repository.default_branch }}...${{ steps.head.outputs.sha }}"', '"$BASE_SHA...$HEAD_SHA"')
+          gather = gather.replace('"origin/${{ github.event.repository.default_branch }}:', '"$MAIN_SHA:')
+          read = run("Read it")
+          lines = read.splitlines()
+          prompt = block(read, "{", "} > /tmp/prompt.txt")
+          system = "\n".join(lines[next(i for i, l in enumerate(lines) if l.strip() == "cat /tmp/brief.txt") - 1:
+                                   next(i for i, l in enumerate(lines) if l.strip() == "} > /tmp/system.txt") + 1])
+          schema = next(l.strip() for l in lines if l.strip().startswith("schema='"))
+          more = block(read, "more() {", "}")
+          if "${{" in gather + prompt + system + more:
+              raise SystemExit("review.yml's blocks carry an expression the replay cannot fill")
+          open(out, "w").write("\n".join([gather, "EFFORT=max", "SHA=$HEAD_SHA", 'CLASS="$(sed -n "s/^class=//p" "$GITHUB_OUTPUT")"',
+                                          prompt, system, schema, more]) + "\n")
+          PY
+          inflight() {
+            local ids w n=0
+            for w in review.yml review-product.yml; do
+              ids=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/workflows/$w/runs?status=in_progress&per_page=100" \
+                --jq '.workflow_runs[].id' 2>/dev/null) || { echo unknown; return; }
+              n=$(( n + $(printf '%s' "$ids" | grep -c . || true) ))
+            done
+            echo "$n"
+          }
+          export -f inflight
+          cd "$t/head"
+          MAIN_SHA="$GITHUB_SHA" RUNNER_TEMP="$t" GITHUB_OUTPUT="$t/gather.out" HEAD_SHA="$HEAD_SHA" BASE_SHA="$BASE_SHA" \
+            T="$t" bash -c '
+            set -euo pipefail
+            source "$T/replay.sh"
+            reg="$T/reg"; out="$T/resp.json"; err="$T/err.txt"; book="$T/attempts.jsonl"; : > "$book"
+            role=reviewer-main; [ "$CLASS" != risky ] || role=reviewer-risky
+            reads=0
+            once() {
+              local n rc=0
+              reads=$((reads + 1))
+              n=$(python3 "$reg/ask.py" record open "$book" "$role" "$(python3 "$reg/resolve.py" "$reg/registry.json" "$role" model)" openai-compatible)
+              ATTEMPTS="$book" ATTEMPT="$n" INFLIGHT="$(inflight)" timeout --kill-after=30s 1500s \
+                python3 "$reg/ask.py" "$reg/registry.json" "$role" /tmp/system.txt "$schema" 1500 < /tmp/prompt.txt > "$out" 2> "$err" || rc=$?
+              python3 "$reg/ask.py" record close "$book" "$n" "$rc" "$out" || true
+              [ "$rc" -ne 0 ] || python3 "$reg/ask.py" derive "$out" || printf "{\"is_error\":true,\"subtype\":\"not_derived\"}\n" > "$out"
+            }
+            sub() { jq -r ".subtype // empty" "$out" 2>/dev/null || true; }
+            verdict() { jq -r ".result // empty" "$out" 2>/dev/null | jq -r ".verdict // empty" 2>/dev/null || true; }
+            echo "replay: $HEAD_SHA against $BASE_SHA, class $CLASS, $(wc -c < /tmp/pages.txt) page bytes, read by $role"
+            once
+            case "$(sub)" in no_verdict|not_derived) echo "an empty answer; reading once more"; once ;; esac
+            if [ "$(verdict)" = needs-context ] && [ "$reads" -lt 2 ]; then
+              needed=$(python3 "$reg/ask.py" request "$out" || true)
+              asked=(); [ -z "$needed" ] || mapfile -t asked <<< "$needed"
+              if [ -n "$needed" ] && more "${asked[@]}"; then echo "short of context; reading once more with: ${asked[*]}"; once; fi
+              [ "$(verdict)" != needs-context ] || python3 "$reg/ask.py" incomplete "$out" || true
+            fi
+            {
+              echo "### replay of $HEAD_SHA"
+              echo "verdict: $(verdict) $(sub)"
+              jq -r ".result // empty" "$out" 2>/dev/null | jq -r "(.findings // [])[] | \"- \" + .severity + \": \" + (.text | .[0:400])" 2>/dev/null || true
+              echo "spend: reads $reads; $(python3 "$reg/ask.py" record summary "$book")"
+            } | tee -a "$GITHUB_STEP_SUMMARY"
+          '
+
       # THE PROBE'S OTHER HALF: what each endpoint of the model serves, from the
       # provider's public list. No key goes with it.
       - name: What the endpoints serve
         if: always() && inputs.probe != '' && inputs.probe != 'none'
+        env:
+          MODEL: ${{ inputs.model }}
         run: |
           set -euo pipefail
-          model=$(python3 model-registry/resolve.py model-registry/registry.json reviewer-main model)
+          model=${MODEL:-$(python3 model-registry/resolve.py model-registry/registry.json reviewer-main model)}
           curl -sS --max-time 30 "https://openrouter.ai/api/v1/models/$model/endpoints" > "$RUNNER_TEMP/endpoints.json"
           python3 - "$RUNNER_TEMP/endpoints.json" "$model" <<'PY'
           import json, sys

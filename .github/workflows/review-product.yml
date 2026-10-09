@@ -1066,7 +1066,6 @@ jobs:
             left=$(( STARTED + limit * 60 - $(date +%s) ))
             if [ "$left" -ge 60 ]; then
               rc=0
-              reads=2
               ask "$FALLBACK" "$left" || rc=$?
               [ "$rc" -ne 0 ] || derive
             fi

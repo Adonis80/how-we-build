@@ -930,7 +930,7 @@ def _check_wiring():
     lost = class_faults(review, REVIEW_WORKFLOW)
     if lost:
         print("  wiring: %s must read a change at the effort its class names, and give any "
-              "change but pages alone every file; it has lost %s"
+              "change the selection its class names, never every file; it has lost %s"
               % (REVIEW_WORKFLOW, "; ".join(lost)))
         bad += 1
 
@@ -2142,9 +2142,9 @@ def _check_class_loosenings():
               "code and %s for the risky classes and any kind of file the list does not know, "
               "worked out from the diff it reads, and each reads at %s alone, an ordinary read told "
               "it was not read as risky; the class was "
-              "run on %d change(s), review.yml gives any change "
-              "risky every file and the registry, and words and code the selection of decision 0014's "
-              "context pilot (its block run on %d), each verdict says what its read "
+              "run on %d change(s), review.yml gives every change the selection of decisions 0014 and "
+              "0018, with the registry on a code or risky read and never every file (its block run on %d), "
+              "each verdict says what its read "
               "cost, and each of %d loosenings was refused"
               % (ORDINARY_ROLE, RISKY_ROLE, REVIEW_EFFORT, len(CLASS_CASES), len(PAGES_CASES),
                  len(CLASS_LOOSENINGS)))
@@ -2286,6 +2286,15 @@ ROUTE_CASES = (
      ([ORDINARY_ROLE], None)),
     ("the spending check refuses the re-read", (0, "short"), (0, "clean"), FALLBACK_ROLE, 600,
      ([ORDINARY_ROLE, ORDINARY_ROLE], None), (1, "budget")),
+    # AN EMPTY ANSWER IS ASKED ONCE MORE (decision 0018: Adonis80/Hemz-OS#140 at
+    # deafb83, #171 at 82 KB), inside the round's two reads, and a second empty
+    # one is never signed as a verdict.
+    ("no fallback, the role answers empty, and its one more read is clean", (1, "empty"), (0, "clean"), "", 600,
+     ([ORDINARY_ROLE, ORDINARY_ROLE], "clean"), (0, "clean")),
+    ("no fallback, and the role answers empty twice", (1, "empty"), (0, "clean"), "", 600,
+     ([ORDINARY_ROLE, ORDINARY_ROLE], None), (1, "empty")),
+    ("no fallback, an empty answer, then a shortfall, which is not read a third time", (1, "empty"), (0, "clean"),
+     "", 600, ([ORDINARY_ROLE, ORDINARY_ROLE], "blocking"), (0, "short")),
 )
 REVIEW_READ = ("Addressed to the CTO. I read the diff against main's tip and the pages it touches, "
                "and checked each changed line against the brief and the pages beside it. Nothing "
@@ -2316,6 +2325,8 @@ def route_says(block, first, second, fallback, left, again=(0, "clean"), more_ok
               elif [ "$1" = "$ROLE" ]; then r=$P_RC; v=$P_V; w=$P_W; n=$P_NONE; else r=$F_RC; v=$F_V; w=$F_W; n=$F_NONE; fi
               if [ "$v" = budget ] || [ "$v" = limit ]; then
                 jq -cn --arg s "$v" '{{is_error: true, subtype: (if $s == "budget" then "budget_refused" else "provider_limit" end)}}' > "$out"
+              elif [ "$v" = empty ]; then
+                printf '{{"is_error":true,"subtype":"no_verdict"}}\\n' > "$out"
               elif [ -n "$v" ]; then
                 # What a model answers under the schema: findings, and a review. The
                 # word stands for the findings the stub gives, never for a verdict
@@ -2513,7 +2524,9 @@ ROUTE_LOOSENINGS = (
     # The budget and the recovery path (decision 0014, D and F(2)).
     ("a budget refusal handed to the fallback", None, lambda t: t.replace('[ -n "$FALLBACK" ] && ! refused && ', '[ -n "$FALLBACK" ] && ', 1)),
     ("a shortfall handed to the fallback", None, lambda t: t.replace("blocking|needs-context) return 0 ;;", "blocking) return 0 ;;", 1)),
-    ("a shortfall never re-read", None, lambda t: t.replace('&& more $needed; then', '&& false; then', 1)),
+    ("a shortfall never re-read", None, lambda t: t.replace('&& more "${asked[@]}"; then', '&& false; then', 1)),
+    ("an empty answer never asked again", None, lambda t: t.replace('[ -z "$FALLBACK" ] && [ "$reads" -lt 2 ] && empty; then', 'false; then', 1)),
+    ("a third read after an empty answer", None, lambda t: t.replace('[ -n "$needed" ] && [ "$reads" -lt 2 ] && [', '[ -n "$needed" ] && [', 1)),
     ("a request read again on the answer's own list", None, lambda t: t.replace(
         'needed=$(python3 "$reg/ask.py" request "$out" || true)',
         "needed=$(jq -r '.result // empty' \"$out\" | jq -r '(.needs // []) | join(\" \")' 2>/dev/null || true)", 1)),
@@ -7262,7 +7275,8 @@ LINK_FAILED_READ = ("printf '\\n===== the source the change imports could not be
 LINK_KINDS = 'case "$f" in *.js|*.mjs|*.cjs|*.jsx|*.ts|*.tsx|*.py|*.html) ;; *) continue ;; esac'
 LINK_FEED = 'g show "$SHA:$f" > "$t/sources/$n" 2>/dev/null || continue'
 # The touched files' own loop, which the linked files must follow (#129's first read, 4a).
-LINK_AFTER = 'add "$f" || true\n          done < "$t/touched.txt"\n'
+LINK_AFTER = ('if [ "$size" -gt 40000 ]; then part "$f" || true; else add "$f" || true; fi\n'
+              '          done < "$t/touched.txt"\n')
 LINK_HTML = ('<script src="hosting/queue.js?v=3"></script>\n<script src="/app.js"></script>\n'
              '<script src="https://cdn.example/x.js"></script><script src="//cdn.example/y.js"></script>\n'
              '<script type="module">import { l } from \'./hosting/lib.js\'</script>\n')
