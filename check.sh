@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The rulebook's own guard. CI runs it on every push and pull request.
+# The rulebook's own guard. CI runs it on every push and every pull request.
 # It refuses: a front-end guide that is not HyperSolid alone, a root or library
 # file that is not on its list or missing from it, a library page unscoped, a
 # link to a page that does not exist,
