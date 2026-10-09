@@ -3987,10 +3987,12 @@ MORE_RAISED = (
 # point at, absent from the product, is added from this repository's checkout and
 # labelled as the rulebook's; nothing else of the rulebook's is, and a product
 # page of the same name is the product's.
-MORE_RULEBOOK = {"library/reviewer.md": "a rulebook page\n", "check.sh": "echo rulebook\n", "a.md": "the rulebook's a\n"}
+MORE_RULEBOOK = {"library/reviewer.md": "# Reviewer\n\n## Part\n\na rulebook page\n", "check.sh": "echo rulebook\n", "a.md": "the rulebook's a\n"}
 MORE_PRODUCT_CASES = (
     ("a rulebook page the product points at", ["library/reviewer.md"], True, {"rulebook:library/reviewer.md"},
      ("a rulebook page",), ()),
+    ("one unit of a rulebook page the product points at", ["library/reviewer.md#Part"], True,
+     {"rulebook:library/reviewer.md#Part"}, ("a rulebook page",), ()),
     ("a rulebook file that is not a library page", ["check.sh"], False, set(), ("check.sh: not in this change",),
      ("echo rulebook",)),
     # (a real page's name, so the repository's own link check holds; the made-up rulebook lacks it)

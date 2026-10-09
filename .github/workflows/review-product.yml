@@ -989,8 +989,14 @@ jobs:
               elif case "$f" in library/*.md) true ;; *) false ;; esac && [ -f "$GITHUB_WORKSPACE/$f" ]; then src=rulebook size=$(wc -c < "$GITHUB_WORKSPACE/$f")
               else printf '\n===== %s: not in this change =====\n' "$f" >> "$t/prompt.txt"; short=yes; continue; fi
               if [ "$src" = unit ]; then
-                git -C "$t/product" show "$SHA:$f" 2>/dev/null | python3 "$GITHUB_WORKSPACE/model-registry/context.py" unit "$want" > "$t/unit" \
-                  || { printf '\n===== %s: not in this change =====\n' "$want" >> "$t/prompt.txt"; short=yes; continue; }
+                # The product's own file first; a library page it lacks, from this repository's.
+                if git -C "$t/product" cat-file -e "$SHA:$f" 2>/dev/null; then
+                  git -C "$t/product" show "$SHA:$f" | python3 "$GITHUB_WORKSPACE/model-registry/context.py" unit "$want" > "$t/unit" || : > "$t/unit"
+                elif case "$f" in library/*.md) true ;; *) false ;; esac && [ -f "$GITHUB_WORKSPACE/$f" ]; then
+                  src=rulebook-unit
+                  python3 "$GITHUB_WORKSPACE/model-registry/context.py" unit "$want" < "$GITHUB_WORKSPACE/$f" > "$t/unit" || : > "$t/unit"
+                else : > "$t/unit"; fi
+                [ -s "$t/unit" ] || { printf '\n===== %s: not in this change =====\n' "$want" >> "$t/prompt.txt"; short=yes; continue; }
                 size=$(wc -c < "$t/unit")
               fi
               if [ $((added + size)) -gt 200000 ]; then
@@ -1002,6 +1008,9 @@ jobs:
                 cat "$GITHUB_WORKSPACE/$f" >> "$t/prompt.txt"
               elif [ "$src" = unit ]; then
                 printf '\n===== %s =====\n' "$want" >> "$t/prompt.txt"
+                cat "$t/unit" >> "$t/prompt.txt"
+              elif [ "$src" = rulebook-unit ]; then
+                printf '\n===== rulebook:%s =====\n' "$want" >> "$t/prompt.txt"
                 cat "$t/unit" >> "$t/prompt.txt"
               else
                 printf '\n===== %s =====\n' "$f" >> "$t/prompt.txt"
