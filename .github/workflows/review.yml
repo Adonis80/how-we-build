@@ -217,15 +217,15 @@ jobs:
               *) class=code ;;
             esac
             case "${f,,}" in
-              agents.md|*/agents.md|check.sh|*/check.sh|review-gate.py|*/review-gate.py|board/build.py|model-registry/*|*/model-registry/*|product-reads/*|*/product-reads/*|.*|*/.*) risky=yes ;;
+              check.sh|*/check.sh|review-gate.py|*/review-gate.py|board/build.py|model-registry/*|*/model-registry/*|product-reads/*|*/product-reads/*|.github/*|*/.github/*) risky=yes ;;
               *.md) ;;
               *pric*|*payment*|*billing*|*invoice*|*checkout*|*quote*) risky=yes ;;
               *.sql|*migration*|*schema*|supabase/*|*/supabase/*|*backfill*|*purge*|*truncate*|*wipe*|*seed*) risky=yes ;;
-              *auth*|*login*|*logout*|*session*|*password*|*permission*) risky=yes ;;
+              *auth*|*login*|*logout*|*session*|*password*|*permission*|.claude/settings*|*/.claude/settings*) risky=yes ;;
               *customer*|*personal*|*pii*|*gdpr*|*privacy*|*export*|*delet*|*erase*|*anonymi*) risky=yes ;;
               *secret*|*credential*|*token*|*.pem|*.key|*.p12|*.pfx|*.env|*.env.*) risky=yes ;;
               api/*|*/api/*|*middleware*|*webhook*|sw.js|*/sw.js) risky=yes ;;
-              *.sh|*.toml|*deploy*|*vercel.json|*dockerfile*|*package.json|*lock.json|*.lock|*lock.yaml) risky=yes ;;
+              *.sh|*.toml|*deploy*|*vercel.json|.vercel/*|*/.vercel/*|*dockerfile*|*package.json|*lock.json|*.lock|*lock.yaml) risky=yes ;;
               *.js|*.mjs|*.cjs|*.jsx|*.ts|*.tsx|*.py|*.html|*.css|*.scss|*.json|*.txt|*.csv|*.svg|*.png|*.jpg|*.jpeg|*.gif|*.webp|*.ico|*.woff|*.woff2) ;;
               *) risky=yes ;;
             esac
@@ -522,8 +522,8 @@ jobs:
           }
 
           # The effort the role reads at, as the registry sets it and
-          # review-gate.py holds it: max, for every role (his ruling, 28
-          # September 2026). The claude-code interface runs on a
+          # review-gate.py holds it: max for reviewer-main (his ruling, 28
+          # September 2026), high for reviewer-risky (decision 0019). The claude-code interface runs on a
           # Claude subscription token from `claude setup-token`, which Anthropic
           # sanctions for the unmodified Claude Code binary reading this
           # variable — not for a hand-written call to the Messages API, whatever
@@ -534,7 +534,7 @@ jobs:
           # a hostile diff says can make a tool run. The openai-compatible
           # interface is one HTTP call, which has no tools to switch off.
           schema='{"type":"object","additionalProperties":false,"required":["findings","review"],"properties":{"findings":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["severity","text","files"],"properties":{"severity":{"type":"string","enum":["blocking","advisory","needs-context"]},"text":{"type":"string"},"files":{"type":"array","items":{"type":"string"}}}}},"review":{"type":"string"}}}'
-          case "$EFFORT" in max) ;; *) fail "the registry set no effort a reviewer may read at" ;; esac
+          case "$EFFORT" in max|high) ;; *) fail "the registry set no effort a reviewer may read at" ;; esac
           # Minute 50 of a 55-minute job: since his ruling of 30 September 2026 a
           # risky read has a fallback, and the half it leaves the fallback must
           # hold a whole read on it (#130's replica took 22 minutes). The job
@@ -578,7 +578,7 @@ jobs:
             # A conversation role is a seat in a chat app, never called (decision
             # 0015): refused here, before any record, request or spend.
             case "$(resolve "$role" kind)" in callable) ;; *) printf '{"is_error":true,"subtype":"conversation_role"}\n' > "$out"; : > "$err"; return 2 ;; esac
-            case "$effort" in max) ;; *) printf '{"is_error":true,"subtype":"no_effort"}\n' > "$out"; : > "$err"; return 2 ;; esac
+            case "$effort" in max|high) ;; *) printf '{"is_error":true,"subtype":"no_effort"}\n' > "$out"; : > "$err"; return 2 ;; esac
             echo "reading as $role: $model at effort $effort, for at most $2 s"
             local r=0 n=""
             case "$interface" in

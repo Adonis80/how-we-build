@@ -145,17 +145,18 @@ FALLBACK_ROLE = "reviewer-fallback"
 # _check_registry holds the two sets apart; _check_conversation proves that the
 # resolver, the caller and both reviewers' ask() refuse to call one.
 CONVERSATION_ROLES = ("lead", "consultant", "lead-step-up", "consultant-step-up", "breaker")
-# And every read is at one effort, whatever its class: his ruling of 28
-# September 2026 ("models now"), in his words, "every read at max". It
-# supersedes decision 0005's "max only for reviews of the risky classes"
-# (issue #75, 23 September 2026), and with it the CTO's reading that held
-# pages and ordinary code at high, a step above a lead then building at
-# medium. The class still names the role, and so the model (and, in
-# review.yml, what a read is given); it no longer moves the effort. The
-# registry sets each role's effort; this file refuses a registry that sets any
-# reviewer role otherwise, and each reviewer refuses to read at any other. The
-# class is worked out in each workflow and held below, at CLASS_FIRST.
-REVIEW_EFFORT = "max"
+# And each reviewer role reads at one effort: his ruling of 28 September 2026
+# ("models now"), "every read at max", for reviewer-main; and for
+# reviewer-risky his ruling of 9 October 2026, whole: "opus 5.5 at hight effort
+# only for rare risky cases" (decision 0019), which amends the 28 September one
+# for that role alone. The class names the role, and so the model and the
+# effort; the registry sets each, this file refuses a registry that sets either
+# reviewer role otherwise, and each reviewer refuses to read at an effort that
+# is neither. The class is worked out in each workflow and held below, at
+# CLASS_FIRST.
+REVIEW_EFFORTS = {ORDINARY_ROLE: "max", RISKY_ROLE: "high"}
+# The efforts a reviewer's guard lets through, as a shell `case` pattern.
+REVIEW_EFFORT = "max|high"
 
 # The badge. `juku-reviewer`, created on the Chairman's account 19 September 2026;
 # installation 162987297. The id is the
@@ -1506,7 +1507,7 @@ def _check_read_loosenings():
 # ran out of time twice at max, each preloading every file in this repository
 # (#70's slice 2), and decision 0005 kept max for the risky classes alone,
 # until his ruling of 28 September 2026 put every read at max: the class now
-# picks the role, and so the model, and never the effort. So
+# picks the role, and so the model and the effort the registry gives it. So
 # each reviewer works out a class from the diff it reads: `words` when every
 # file the change touches is a page, `code` otherwise, and `risky` when any
 # file it touches is in one of the six risky classes. The brief, AGENTS.md at
@@ -1531,8 +1532,9 @@ def _check_read_loosenings():
 # RISKY, BY NAME (#86). The six classes decision 0005 and the operating page's
 # step 5 name are read by reviewer-risky, and ordinary code by reviewer-main with
 # everything it was given before. A file is risky by its path, lower-cased, so
-# a name's case cannot hide it: the gate's own files and the brief whatever
-# their extension, then, for anything that is not a page, a name that says
+# a name's case cannot hide it: the gate's own files and anything under
+# .github, CI and its scripts, whatever their extension, then, for anything
+# that is not a page, a name that says
 # pricing, live data or schema, sign-in or permissions, a public trust boundary
 # (every endpoint under an `api/` is one: it is where the internet meets the
 # data), or deploy and release (every script, and what a build installs). A
@@ -1543,6 +1545,16 @@ def _check_read_loosenings():
 # puts the name in this list. Replayed before it merged, on the files each
 # merged pull request touched: of Hemz OS's last 72, 46 read risky and 26
 # ordinary; of this repository's last 57, 28 risky and 29 ordinary.
+# RARE (his ruling, 9 October 2026, decision 0019: "opus 5.5 at hight effort
+# only for rare risky cases"). The list holds the six classes and nothing
+# else, so a name that is none of them came off when the risky role moved to
+# Opus: the brief, AGENTS.md, which the reviewer reads from main whatever a
+# head says and which is a reader's words, not the gate; and every
+# dot-directory but .github, Claude's settings (permissions and hooks) and
+# .vercel's project link (release). A brief, a skill or an agent's
+# instructions are read as code by reviewer-main. Replayed on this
+# repository's last 20 merged pull requests, it moved none: 18 read risky,
+# each for a gate file it touched.
 CLASS_FIRST = "class=words"
 CLASS_RISK_FIRST = "risky=no"
 CLASS_CODE = ("AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|library/hypersolid.md|design/*|"
@@ -1550,20 +1562,21 @@ CLASS_CODE = ("AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|lib
 CLASS_ARMS = (CLASS_CODE, "*.md) ;;", "*) class=code ;;")
 RISK_CASE = 'case "${f,,}" in'
 # The six classes, as the arms that name them, in the order they are tried.
-RISK_GATE = ("agents.md|*/agents.md|check.sh|*/check.sh|review-gate.py|*/review-gate.py|board/build.py|"
-             "model-registry/*|*/model-registry/*|product-reads/*|*/product-reads/*|.*|*/.*) risky=yes ;;")
+RISK_GATE = ("check.sh|*/check.sh|review-gate.py|*/review-gate.py|board/build.py|"
+             "model-registry/*|*/model-registry/*|product-reads/*|*/product-reads/*|.github/*|*/.github/*) risky=yes ;;")
 RISK_PRICING = "*pric*|*payment*|*billing*|*invoice*|*checkout*|*quote*) risky=yes ;;"
 RISK_DATA = ("*.sql|*migration*|*schema*|supabase/*|*/supabase/*|*backfill*|*purge*|*truncate*|"
              "*wipe*|*seed*) risky=yes ;;")
-RISK_SIGN_IN = "*auth*|*login*|*logout*|*session*|*password*|*permission*) risky=yes ;;"
+RISK_SIGN_IN = ("*auth*|*login*|*logout*|*session*|*password*|*permission*|.claude/settings*|"
+                "*/.claude/settings*) risky=yes ;;")
 # Decision 0008's prerequisite: customer or personal data access, export and
 # deletion; secrets and credentials.
 RISK_PERSONAL = ("*customer*|*personal*|*pii*|*gdpr*|*privacy*|*export*|*delet*|*erase*|"
                  "*anonymi*) risky=yes ;;")
 RISK_SECRETS = "*secret*|*credential*|*token*|*.pem|*.key|*.p12|*.pfx|*.env|*.env.*) risky=yes ;;"
 RISK_BOUNDARY = "api/*|*/api/*|*middleware*|*webhook*|sw.js|*/sw.js) risky=yes ;;"
-RISK_RELEASE = ("*.sh|*.toml|*deploy*|*vercel.json|*dockerfile*|*package.json|*lock.json|*.lock|"
-                "*lock.yaml) risky=yes ;;")
+RISK_RELEASE = ("*.sh|*.toml|*deploy*|*vercel.json|.vercel/*|*/.vercel/*|*dockerfile*|*package.json|*lock.json|"
+                "*.lock|*lock.yaml) risky=yes ;;")
 # AND IT FAILS CLOSED (decision 0008, rule 3): a file is ordinary only when its
 # kind is one the list knows, and anything else — no extension, a certificate,
 # a config format nobody named — is read as risky. It started at "not risky"
@@ -1798,7 +1811,7 @@ CLASS_CASES = (
     (["design/SPEC.md"], "code"),
     (["docs/HOW-WE-BUILD.md", "docs/CHARTER.md"], "words"),
     (["a page with spaces.md"], "words"),
-    (["AGENTS.md"], "risky"),
+    (["AGENTS.md"], "code"),
     (["HOW-WE-BUILD.md"], "code"),
     (["README.md", "CHARTER.md"], "code"),
     (["README.md", "library/deploy.md"], "words"),
@@ -1807,15 +1820,20 @@ CLASS_CASES = (
     (["design/CONSTITUTION.md", "README.md"], "code"),
     (["PRODUCT.md"], "code"),
     (["NAMES.md", "docs/guide.md"], "words"),
-    (["docs/AGENTS.md"], "risky"),
+    (["docs/AGENTS.md"], "code"),
     (["README.md", "check.sh"], "risky"),
     (["review-gate.py"], "risky"),
     (["board/build.py"], "risky"),
     (["check.sh"], "risky"),
     ([".github/workflows/review.yml"], "risky"),
     ([".github/copilot-instructions.md"], "risky"),
-    ([".claude/skills/steward/SKILL.md"], "risky"),
-    (["docs/.hidden/page.md"], "risky"),
+    ([".claude/skills/steward/SKILL.md"], "code"),
+    (["docs/.hidden/page.md"], "code"),
+    ([".claude/settings.json"], "risky"),
+    (["app/.claude/settings.local.json"], "risky"),
+    ([".vercel/project.json"], "risky"),
+    ([".github/scripts/notes.md"], "risky"),
+    ([".gitignore"], "risky"),
     (["README.MD"], "code"),
     (["page.md.sh"], "risky"),
     (["page.md\nx.sh"], "risky"),
@@ -1867,7 +1885,8 @@ CLASS_CASES = (
     # A name's case hides nothing.
     (["Hosting/Login.JS"], "risky"),
     (["SRC/PRICING.TS"], "risky"),
-    (["Agents.md"], "risky"),
+    (["Review-Gate.PY"], "risky"),
+    ([".GitHub/notes.md"], "risky"),
     # Decision 0008: it fails closed. A kind of file the list does not know is
     # risky, whatever its name.
     (["LICENSE"], "risky"),
@@ -2096,12 +2115,12 @@ CLASS_LOOSENINGS = (
     ("names split on a line break", None, lambda t: t.replace("diff -z --name-only --no-renames", "diff --name-only --no-renames", 1)),
     ("the role never handed on", None, lambda t: t.replace("          " + CLASS_OUT + "\n", "", 1)),
     ("the role handed on twice", None, lambda t: _in_step(t, "Gather what the reviewer reads", CLASS_OUT, CLASS_OUT + '\n          echo "role=%s" >> "$GITHUB_OUTPUT"' % ORDINARY_ROLE)),
-    ("an effort handed on by the class", None, lambda t: _in_step(t, "Gather what the reviewer reads", CLASS_OUT, CLASS_OUT + '\n          echo "effort=%s" >> "$GITHUB_OUTPUT"' % REVIEW_EFFORT)),
+    ("an effort handed on by the class", None, lambda t: _in_step(t, "Gather what the reviewer reads", CLASS_OUT, CLASS_OUT + '\n          echo "effort=%s" >> "$GITHUB_OUTPUT"' % REVIEW_EFFORTS[RISKY_ROLE])),
     ("the role not the class's", None, lambda t: t.replace(ROLE_IN, "ROLE: " + ORDINARY_ROLE, 1)),
-    ("an effort handed to the read", None, lambda t: t.replace("          " + ROLE_IN + "\n", "          %s\n          EFFORT: %s\n" % (ROLE_IN, REVIEW_EFFORT), 1)),
+    ("an effort handed to the read", None, lambda t: t.replace("          " + ROLE_IN + "\n", "          %s\n          EFFORT: %s\n" % (ROLE_IN, REVIEW_EFFORTS[RISKY_ROLE]), 1)),
     ("an effort unchecked", None, lambda t: t.replace(EFFORT_GUARD, "true", 1)),
-    ("a read let in below max again", None, lambda t: t.replace(EFFORT_GUARD, EFFORT_GUARD.replace("in %s)" % REVIEW_EFFORT, "in high|%s)" % REVIEW_EFFORT, 1), 1)),
-    ("an effort written into the call", None, lambda t: t.replace(READ_EFFORT + " \\", "--effort " + REVIEW_EFFORT + " \\", 1)),
+    ("a read let in below high", None, lambda t: t.replace(EFFORT_GUARD, EFFORT_GUARD.replace("in %s)" % REVIEW_EFFORT, "in medium|%s)" % REVIEW_EFFORT, 1), 1)),
+    ("an effort written into the call", None, lambda t: t.replace(READ_EFFORT + " \\", "--effort " + REVIEW_EFFORTS[RISKY_ROLE] + " \\", 1)),
     ("a model written into the call", None, lambda t: t.replace(READ_MODEL + " \\", "--model a-model-named-here \\", 1)),
     ("the selector read from the head", REVIEW_WORKFLOW, lambda t: t.replace(REVIEW_SELECT[0], 'cp model-registry/context.py "$RUNNER_TEMP/context.py"', 1)),
     ("every change given the risky read's pages", REVIEW_WORKFLOW, lambda t: t.replace(REVIEW_SELECT[1], REVIEW_SELECT[1].replace('"$class"', "risky"), 1)),
@@ -2112,7 +2131,9 @@ CLASS_LOOSENINGS = (
     ("the class kept from the read", REVIEW_WORKFLOW, lambda t: t.replace("          " + REVIEW_TOLD[2] + "\n", "", 1)),
     # The six classes (#86): each arm taken out, reordered, or blinded to case.
     ("the gate read as ordinary", None, _without_arm(RISK_GATE)),
-    ("the brief read as ordinary", None, lambda t: t.replace(RISK_GATE, RISK_GATE.replace("agents.md|*/agents.md|", "", 1), 1)),
+    ("the CI folder read as ordinary", None, lambda t: t.replace(RISK_GATE, RISK_GATE.replace("|.github/*|*/.github/*", "", 1), 1)),
+    ("agent settings read as ordinary", None, lambda t: t.replace(RISK_SIGN_IN, RISK_SIGN_IN.replace("|.claude/settings*|*/.claude/settings*", "", 1), 1)),
+    ("the host's project link read as ordinary", None, lambda t: t.replace(RISK_RELEASE, RISK_RELEASE.replace("|.vercel/*|*/.vercel/*", "", 1), 1)),
     ("pricing read as ordinary", None, _without_arm(RISK_PRICING)),
     ("live data read as ordinary", None, _without_arm(RISK_DATA)),
     ("sign-in read as ordinary", None, _without_arm(RISK_SIGN_IN)),
@@ -2132,7 +2153,7 @@ CLASS_LOOSENINGS = (
     ("the risk never raised", None, lambda t: t.replace("          " + CLASS_RISKY + "\n", "", 1)),
     ("the risk found and dropped", None, lambda t: t.replace(CLASS_RISKY, '[ "$risky" = yes ] || class=risky', 1)),
     ("an ordinary read not told", None, lambda t: _in_step(t, "Read it", RISK_TOLD[1], 'echo "."')),
-    ("an ordinary read told only below an effort no read is at", None, lambda t: _in_step(t, "Read it", RISK_TOLD[0], 'if [ "$EFFORT" != %s ]; then' % REVIEW_EFFORT)),
+    ("an ordinary read told only below an effort no read is at", None, lambda t: _in_step(t, "Read it", RISK_TOLD[0], 'if [ "$EFFORT" != %s ]; then' % REVIEW_EFFORTS[RISKY_ROLE])),
     ("what the read cost never counted", None, lambda t: _in_step(t, "Read it", READ_TOOK[1], "true")),
     ("what the read cost counted after a failure is named", None, lambda t: _in_step(t, "Read it", "          %s\n" % READ_TOOK[0], "          %s\n          %s\n" % (READ_ANSWERED, READ_TOOK[0]))),
     ("what the read cost never passed on", None, lambda t: _in_step(t, "Sign the verdict", "SPENT: ${{ steps.read.outputs.spent }}", "SPENT: none")),
@@ -2166,7 +2187,7 @@ def _check_class_loosenings():
     if not bad:
         print("ok: each reviewer hands a change to its class's role, %s for pages and ordinary "
               "code and %s for the risky classes and any kind of file the list does not know, "
-              "worked out from the diff it reads, and each reads at %s alone, an ordinary read told "
+              "worked out from the diff it reads, and each reads at its role's effort (%s), an ordinary read told "
               "it was not read as risky; the class was "
               "run on %d change(s), review.yml gives every change the selection of decisions 0014 and "
               "0018, with the registry on a code or risky read and never every file (its block run on %d), "
@@ -2521,7 +2542,7 @@ ROUTE_LOOSENINGS = (
     ("the registry read from the head's branch", REVIEW_WORKFLOW, lambda t: t.replace(ROUTE_MAIN, "DEFAULT_BRANCH: ${{ github.head_ref }}", 1)),
     ("a role the registry cannot resolve read anyway", None, lambda t: t.replace(ROUTE_RESOLVE[0], 'EFFORT=$(resolve "$ROLE" effort) || EFFORT=high', 1)),
     ("an effort the ask never checks", None, lambda t: t.replace(ROUTE_ASK_GUARD, "true", 1)),
-    ("a fallback let in below max again", None, lambda t: t.replace(ROUTE_ASK_GUARD, ROUTE_ASK_GUARD.replace("in %s)" % REVIEW_EFFORT, "in high|%s)" % REVIEW_EFFORT, 1), 1)),
+    ("a read let in below high again", None, lambda t: t.replace(ROUTE_ASK_GUARD, ROUTE_ASK_GUARD.replace("in %s)" % REVIEW_EFFORT, "in medium|%s)" % REVIEW_EFFORT, 1), 1)),
     ("the fallback never asked", None, lambda t: t.replace('ask "$FALLBACK" "$left" || rc=$?', "true", 1)),
     ("the fallback asked after an answer", None, lambda t: t.replace('{ [ "$rc" -ne 0 ] || ! answered; }', "true", 1)),
     ("an answer with no verdict taken", None, lambda t: t.replace('{ [ "$rc" -ne 0 ] || ! answered; }', '[ "$rc" -ne 0 ]', 1)),
@@ -2625,9 +2646,10 @@ def _check_registry(path=REGISTRY, quiet=False):
         fault(f)
     for f in _role_slot_faults(resolve, reg):
         fault(f)
-    # NOTHING STANDS BEHIND A REVIEWER (his rulings, 5 and 6 October 2026): only
-    # open-weight models review, and when GLM does not answer the commit stays
-    # unread and he is told, so no reviewer role names a fallback.
+    # NOTHING STANDS BEHIND A REVIEWER (his rulings, 5 and 6 October 2026, which
+    # his of 9 October amends for reviewer-risky alone, decision 0019): when the
+    # reviewer does not answer the commit stays unread and he is told, so no
+    # reviewer role names a fallback.
     owed = ((ORDINARY_ROLE, False), (RISKY_ROLE, False))
     got = {}
     for role, falls in owed:
@@ -2636,9 +2658,9 @@ def _check_registry(path=REGISTRY, quiet=False):
         except resolve.Unresolved as e:
             fault(str(e))
             continue
-        if got[role]["effort"] != REVIEW_EFFORT or got[role]["effort_checked"] != "yes":
-            fault("%s reads at %r; every read is owed %s, on an effort its model is known to take"
-                  % (role, got[role]["effort"], REVIEW_EFFORT))
+        if got[role]["effort"] != REVIEW_EFFORTS[role] or got[role]["effort_checked"] != "yes":
+            fault("%s reads at %r; it is owed %s, on an effort its model is known to take"
+                  % (role, got[role]["effort"], REVIEW_EFFORTS[role]))
         if bool(got[role]["fallback"]) != falls:
             fault("%s falls back to %r; nothing may stand behind a reviewer (his rulings, 5 and 6 "
                   "October 2026)" % (role, got[role]["fallback"]))
@@ -2682,9 +2704,9 @@ def _check_registry(path=REGISTRY, quiet=False):
         except resolve.Unresolved:
             pass
     if not bad and not quiet:
-        print("ok: the registry resolves %s and %s, both at %s with nothing behind them; a "
+        print("ok: the registry resolves %s at %s and %s at %s, with nothing behind them; a "
               "switch is one edit to %s, and an unknown role or a blocked model fails closed"
-              % (ORDINARY_ROLE, RISKY_ROLE, REVIEW_EFFORT, REGISTRY))
+              % (ORDINARY_ROLE, REVIEW_EFFORTS[ORDINARY_ROLE], RISKY_ROLE, REVIEW_EFFORTS[RISKY_ROLE], REGISTRY))
     return bad
 
 
@@ -4661,8 +4683,18 @@ def canary_faults(text, review, caller):
     lost = [what for line, what in CANARY_MUST if line not in text]
     if re.search(r"^  (schedule|pull_request|issue_comment)", text, re.M):
         lost.append("no clock and no trigger a branch can start (library/reviewer-parking.md)")
-    if sorted(set(re.findall(r"secrets\.([A-Z_]+)", text))) != ["OPENROUTER_API_KEY", "REVIEW_CASH_WEEKLY"]:
-        lost.append("no secret but the provider's key and the weekly limit")
+    if sorted(set(re.findall(r"secrets\.([A-Z_]+)", text))) != ["CLAUDE_CODE_OAUTH_TOKEN", "OPENROUTER_API_KEY",
+                                                                  "REVIEW_CASH_WEEKLY"]:
+        lost.append("no secret but the two providers' credentials and the weekly limit")
+    # A role read through claude-code (decision 0019) is read by review.yml's
+    # own pinned tool, installed where no secret is, as review.yml installs it.
+    steps = re.split(r"\n\s*- name: ", text)
+    if (re.findall(TOOL_PIN, text) != re.findall(TOOL_PIN, review) or len(re.findall(TOOL_PIN, text)) != 1
+            or re.search(r"npm install[^\n]*@anthropic-ai/claude-code(?!@\d)", text)
+            or any("npm install" in s and "secrets." in s for s in steps)):
+        lost.append("review.yml's pinned reviewer tool, installed once in a step that holds no secret")
+    if '--tools "" --restricted' not in text or '--model "$model" --effort "$effort"' not in text:
+        lost.append("a claude-code read with every tool off, at the registry's model and effort")
     # The schema it asks for is review.yml's own line, and the one the gate holds.
     m = re.findall(r"^ *schema='(.*)'$", review, re.M)
     try:
@@ -4702,7 +4734,12 @@ CANARY_LOOSENINGS = (
     ("the reviewer's signing key held", lambda t: t.replace("          GH_TOKEN: ${{ github.token }}\n          PROBE:",
                                                              "          KEY: ${{ secrets.REVIEWER_APP_KEY }}\n          GH_TOKEN: ${{ github.token }}\n          PROBE:", 1)),
     ("a probe's failure told as an outage", lambda t: t.replace("if: failure() && (inputs.probe == '' || inputs.probe == 'none')", "if: failure()", 1)),
-    ("the read never recorded", lambda t: t.replace('python3 "$reg/ask.py" record open "$ledger"', 'echo 1 #', 1)),
+    ("the read never recorded", lambda t: t.replace('python3 "$reg/ask.py" record open "$ledger"', 'echo 1 #')),
+    ("the tool unpinned", lambda t: t.replace("claude-code@2.1.285", "claude-code", 1)),
+    ("the tool installed beside the token", lambda t: t.replace(
+        "        run: npm install -g @anthropic-ai/claude-code@",
+        "        env:\n          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}\n        run: npm install -g @anthropic-ai/claude-code@", 1)),
+    ("a claude-code read with its tools on", lambda t: t.replace('--tools "" --restricted', "--restricted", 1)),
 )
 
 
