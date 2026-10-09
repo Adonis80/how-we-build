@@ -240,8 +240,11 @@ jobs:
               b = next(i for i, l in enumerate(lines) if i > a and l.strip() == last)
               return "\n".join(lines[a:b + 1])
           gather = run("Gather what the reviewer reads")
-          gather = gather.replace('"origin/${{ github.event.repository.default_branch }}...${{ steps.head.outputs.sha }}"', '"$BASE_SHA...$HEAD_SHA"')
-          gather = gather.replace('"origin/${{ github.event.repository.default_branch }}:', '"$MAIN_SHA:')
+          # Spelled in two halves: GitHub reads an expression's opening anywhere in this file.
+          e = "$" + "{{"
+          main = '"origin/' + e + ' github.event.repository.default_branch }}'
+          gather = gather.replace(main + "..." + e + ' steps.head.outputs.sha }}"', '"$BASE_SHA...$HEAD_SHA"')
+          gather = gather.replace(main + ":", '"$MAIN_SHA:')
           read = run("Read it")
           lines = read.splitlines()
           prompt = block(read, "{", "} > /tmp/prompt.txt")
@@ -249,7 +252,7 @@ jobs:
                                    next(i for i, l in enumerate(lines) if l.strip() == "} > /tmp/system.txt") + 1])
           schema = next(l.strip() for l in lines if l.strip().startswith("schema='"))
           more = block(read, "more() {", "}")
-          if "${{" in gather + prompt + system + more:
+          if e in gather + prompt + system + more:
               raise SystemExit("review.yml's blocks carry an expression the replay cannot fill")
           open(out, "w").write("\n".join([gather, "EFFORT=max", "SHA=$HEAD_SHA", 'CLASS="$(sed -n "s/^class=//p" "$GITHUB_OUTPUT")"',
                                           prompt, system, schema, more]) + "\n")
