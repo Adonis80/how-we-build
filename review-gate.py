@@ -1336,14 +1336,19 @@ def _why(text):
     return _block(text, lambda l: l == "why() {", lambda l: l == "}")
 
 
-def why_says(block, limit, rc, err, out):
-    """Run `why()` as a read that ended so would. (exit status, what it said)."""
+def why_says(block, limit, rc, err, out, ledger=None):
+    """Run `why()` as a read that ended so would, with the job's ledger if given. (exit status, what it said)."""
     with tempfile.TemporaryDirectory() as d:
         paths = {"err": os.path.join(d, "err.txt"), "out": os.path.join(d, "resp.json")}
         for key, body in (("err", err), ("out", out)):
             with open(paths[key], "w", encoding="utf-8") as f:
                 f.write(body)
         e = dict(os.environ, rc=str(rc), limit=str(limit), **paths)
+        if ledger is not None:
+            paths["ledger"] = os.path.join(d, "attempts.jsonl")
+            with open(paths["ledger"], "w", encoding="utf-8") as f:
+                f.write("".join(json.dumps(ev) + "\n" for ev in ledger))
+            e.update(ledger=paths["ledger"], reg=os.path.abspath(os.path.dirname(CALLER)))
         try:
             p = subprocess.run(["bash", "-c", "set -euo pipefail\n%s\nwhy\n" % "\n".join(block)],
                                env=e, capture_output=True, text=True, timeout=30)
@@ -1426,6 +1431,23 @@ def read_faults(text):
             if status != 0 or want not in said or said.count("\n") != 1:
                 lost.append("`why()` saying %r, on one line, when the read exits %d (it said %r)"
                             % (want, rc, said))
+        # A PARK THAT SENT NOTHING SAYS SO, in the words product-reads/reads.py reads as
+        # no read at all, so it is asked again without `again` (9 October 2026); one
+        # whose job sent a request never does, and which limit refused it leads.
+        spec = importlib.util.spec_from_file_location("reads_for_why", READS)
+        reads = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(reads)
+        refusal = json.dumps({"is_error": True, "subtype": "budget_refused", "result": "budget refused: the weekly "
+                              "limit, REVIEW_CASH_WEEKLY, admits no read now: this request would pass it"})
+        for what, sent in (("a job that sent nothing", False), ("a job whose earlier request was sent", True)):
+            ledger = [{"attempt": "1", "event": "open", "billing": "cash"},
+                      {"attempt": "1", "event": "close", "outcome": "x", "sent": sent, "settled": True}]
+            status, said = why_says(block, limit[0], 1, "", refusal, ledger)
+            title = "Did not read: " + said.strip()
+            if status != 0 or title.startswith(reads.FREE) == sent \
+                    or "REVIEW_CASH_WEEKLY, admits no read now" not in said or not said.startswith("budget refused"):
+                lost.append("`why()` on a budget park for %s, saying %s and which limit refused it (it said %r)"
+                            % (what, "nothing spent" if not sent else "no such thing", said))
     return lost
 
 
@@ -1440,6 +1462,8 @@ READ_LOOSENINGS = (
     ("the reason never recorded", lambda t: _in_step(t, "Read it", READ_FAIL, "true")),
     ("the reason never passed on", lambda t: _in_step(t, "Sign the verdict", READ_WHY[0], "WHY: none")),
     ("the reason kept from the verdict", lambda t: _in_step(t, "Sign the verdict", READ_WHY[1], 'title="Did not read"')),
+    ("a park that spent called free", lambda t: _in_step(t, "Read it", 'record unsent "${ledger:-}" 2> /dev/null && echo', 'record unsent "${ledger:-}" 2> /dev/null; echo')),
+    ("a free park not called free", lambda t: _in_step(t, "Read it", '&& echo ", nothing spent"', '&& echo ""')),
     ("the deadline from the read's own start", lambda t: t.replace(READ_LEFT, "left=$(( limit * 60 ))", 1)),
     ("a read begun with no time left", lambda t: t.replace('[ "$left" -ge 60 ] || fail', '[ "$left" -ge -9999 ] || fail', 1)),
     ("a start that is not checked", lambda t: _in_step(t, "Read it", '[[ "${STARTED:-}" =~ ^[0-9]+$ ]] || fail', "true || fail")),
@@ -3077,6 +3101,23 @@ def _check_attempts(ask, quiet=False):
                                               {"is_error": True, "subtype": "budget_refused"}, None))
             if "budget refused, 0 USD" not in line or "cash, all attempts: 0 USD" not in line or "unresolved: 0" not in line:
                 fault("a request the spending check refused was not a record of budget refused that cost nothing (%s)" % line)
+            big, line = ledger("big.jsonl", ("reviewer-main", "m1", "openai-compatible", 1,
+                                             {"is_error": True, "subtype": "too_big"}, None))
+            if "not sent: past the most a read may carry, 0 USD" not in line or "cash, all attempts: 0 USD" not in line:
+                fault("a read refused as too big was not a record that sent nothing and cost nothing (%s)" % line)
+            # NOTHING SENT, NOTHING SPENT (9 October 2026): what `record unsent` says,
+            # which the reviewers sign as "budget refused, nothing spent".
+            spent, _ = ledger("spent.jsonl",
+                              ("reviewer-main", "m1", "openai-compatible", 0, {"result": "r", "total_cost_usd": 0.2}, 0.5),
+                              ("reviewer-main", "m1", "openai-compatible", 1, {"is_error": True, "subtype": "budget_refused"}, None))
+            lost, _ = ledger("lost.jsonl", ("reviewer-main", "m1", "openai-compatible", None, None, 0.5))
+            for what, led_, want in (("a job the check refused outright", os.path.join(d, "budget.jsonl"), True),
+                                     ("a job refused as too big", big, True),
+                                     ("a re-read refused after a read that spent", spent, False),
+                                     ("an attempt never closed", lost, False),
+                                     ("a ledger with no attempt", os.path.join(d, "none.jsonl"), False)):
+                if ask.unsent(led_) != want:
+                    fault("%s was read as %s" % (what, "sending nothing" if not want else "sending something"))
             _, line = ledger("both.jsonl",
                              ("reviewer-main", "m1", "openai-compatible", 0, {"result": "r", "total_cost_usd": 0.25}, 0.5),
                              ("reviewer-fallback", "m2", "claude-code", 0, {"result": "r", "total_cost_usd": 4}, None))
@@ -3189,6 +3230,17 @@ def _check_spending(ask, path, quiet=False):
                 fault("%s was %s (%s), checked on %r" % (what, "admitted" if most is not None else "refused", why, basis))
         if ask.admit("https://provider.test", "k", None, 10, "", "1", "1", "0", fetch=_fake_net({}, []))[0] is not None:
             fault("a request whose most is unknown, with no limits in the registry, was admitted")
+        # WHICH LIMIT REFUSED IT, by name and first, never its amount (9 October 2026).
+        for what, weekly, data, name in (
+                ("the weekly limit binding", "1", {"usage_weekly": 0.995, "limit_remaining": 10}, "REVIEW_CASH_WEEKLY"),
+                ("the key's own limit binding", "1", {"usage_weekly": 0, "limit_remaining": 0.005},
+                 "the key's own limit at the provider"),
+                ("the key's own limit alone", "", {"limit_remaining": 0.005}, "the key's own limit at the provider")):
+            why = ask.admit("https://provider.test/api/v1", "k", lim, 9000, "", "9", weekly, "0",
+                            fetch=_fake_net({"/key": {"data": data}}, []))[1] or ""
+            if not why.startswith(("the weekly limit, " + name if name == "REVIEW_CASH_WEEKLY" else name)) \
+                    or re.search(r"\d", why):
+                fault("%s: the refusal did not lead with %s, or carried a figure (%r)" % (what, name, why))
     # End to end: the caller's own main(), on the real registry, the network faked.
     reg = json.load(open(REGISTRY, encoding="utf-8"))
     model = resolve_role(reg, ORDINARY_ROLE)
@@ -3207,8 +3259,10 @@ def _check_spending(ask, path, quiet=False):
     with tempfile.TemporaryDirectory() as d:
         system = os.path.join(d, "system.txt")
         open(system, "w").write("s")
-        for what, key, chat, sub, sent in (
+        for what, key, chat, sub, sent, *prompt in (
                 ("an admitted read", {"limit_remaining": 100}, good, None, True),
+                ("a read past the most one may carry", {"limit_remaining": 100}, good, "too_big", False,
+                 "x" * ask.READ_MOST),
                 ("a read past the key's limit", {"limit_remaining": 0.0001}, good, "budget_refused", False),
                 ("a read whose headroom is unknown", OSError("down"), good, "budget_refused", False),
                 ("a read the provider's own limit refuses", {"limit_remaining": 100}, limit402, "provider_limit", True),
@@ -3220,7 +3274,7 @@ def _check_spending(ask, path, quiet=False):
             asked = []
             urllib.request.urlopen = _fake_net({"/key": key if isinstance(key, Exception) else {"data": key},
                                                 "/chat/completions": chat}, asked)
-            sys.stdin = io.StringIO("p")
+            sys.stdin = io.StringIO(prompt[0] if prompt else "p")
             heard = io.StringIO()
             try:
                 import contextlib
@@ -3233,6 +3287,8 @@ def _check_spending(ask, path, quiet=False):
             finally:
                 urllib.request.urlopen, sys.stdin = real_urlopen, real_stdin
             chats = [b for p, b in asked if p.endswith("/chat/completions")]
+            if sub == "too_big" and asked:
+                fault("%s asked the provider %d time(s) before refusing it" % (what, len(asked)))
             if got.get("subtype") != sub or bool(chats) != sent or (sub is None and rc != 0):
                 fault("%s answered %s (%s) and %s a request" % (what, rc, got.get("subtype"),
                                                                "sent" if chats else "sent no"))
@@ -3763,7 +3819,14 @@ CALLER_LOOSENINGS = (
     ("the weekly limit ignored", '        caps.append(limit - data["usage_weekly"] - finished)', '        pass'),
     ("the key's own limit ignored", '        caps.append(data["limit_remaining"] - finished)', '        pass'),
     ("unknown headroom let through", 'return None, "no weekly limit is set and the key has no limit of its own, so the headroom is unknown", ""', 'return this, None, "nothing"'),
-    ("the reads in flight not reserved", 'reserved = others * RUN_ATTEMPTS * bound(lim, lim["context"])', 'reserved = 0'),
+    ("the reads in flight not reserved", 'reserved = others * RUN_ATTEMPTS * bound(lim, READ_MOST)', 'reserved = 0'),
+    ("a request past the most a read may carry sent", "    if len(data) > READ_MOST:", "    if False:"),
+    ("a read refused as too big counted as sent", '"too_big": ("not sent: past the most a read may carry", False, True),',
+     '"too_big": ("not sent: past the most a read may carry", True, True),'),
+    ("a job that sent a request read as one that sent none", 'all(a.get("closed") and not a.get("sent", True) for a in got)', 'True'),
+    ("a job with no attempt read as one that sent none", '    return bool(got) and all(', '    return all('),
+    ("a refusal that does not say which limit refused it", "                      % names[caps.index(min(caps))]), \"\"",
+     "                      % \"the cash limit\"), \"\""),
     ("a read in flight reserved at one request, not its two", "RUN_ATTEMPTS = 2", "RUN_ATTEMPTS = 1"),
     ("a read in flight reserved at a fallback's request no route sends", "RUN_ATTEMPTS = 2", "RUN_ATTEMPTS = 3"),
     ("the reads in flight taken as none when uncounted", '        others = int(inflight)', '        others = int(inflight) if str(inflight).isdigit() else 0'),
@@ -4933,7 +4996,7 @@ def product_glm_faults(text):
     pinned = reg["roles"][ORDINARY_ROLE]["model"]
     lim = ask.limits(reg, pinned)
     # Room for this read and one other in flight, never two.
-    one = ask.RUN_ATTEMPTS * ask.bound(lim, lim["context"])
+    one = ask.RUN_ATTEMPTS * ask.bound(lim, ask.READ_MOST)
     weekly = round(ask.bound(lim, 4000) + 1.5 * one, 2)
     lost = []
     sent = product_glm_says(text, {"review.yml": [1], "review-product.yml": [99]}, weekly)
@@ -6292,6 +6355,14 @@ ASK_HOLDS = (
     ('[ "$failed" -eq 0 ]', "a job that is red when any product could not be looked at"),
     (ASK_DISPATCH_ENV, "the choice passed as a variable, a timed run always asking and a person's run asking only if told to"),
     ("GH_TOKEN: ${{ github.token }}", "this repository's own token, for the one dispatch"),
+    # THE CLOCK INSIDE THE TICK (9 October 2026): GitHub fired the one schedule 3 to 7
+    # hours apart, so a tick that lands looks every ten minutes for about five hours.
+    ("LOOKS: ${{ github.event_name == 'schedule' && '32' || '1' }}",
+     "a timed run looking 32 times and a person's run once"),
+    ('[[ "$looks" =~ ^[1-9][0-9]?$ ]] && [ "$looks" -le 32 ] || { echo "::error::looks is 1 to 32"; exit 1; }',
+     "the looks bounded, 1 to 32, inside the job's limit"),
+    ("            sleep 600\n", "ten minutes between looks, never less"),
+    ("    timeout-minutes: 340\n", "a job limit that holds 32 looks ten minutes apart"),
 )
 ASK_ON = 'on:\n  schedule:\n    - cron: "7-59/10 * * * *"\n  workflow_dispatch:\n    inputs:\n'
 ASK_PERMISSIONS = "permissions:\n  contents: read\n  actions: write\n"
@@ -6406,7 +6477,10 @@ ASK_LOOSENINGS = (
     ("a product's trouble forgotten", lambda t: t.replace('[ "$rc" -eq 0 ] || failed=1', "true", 1)),
     ("a red job switched off", lambda t: t.replace('[ "$failed" -eq 0 ]\n', 'true\n', 1)),
     ("more than read at the workflow", lambda t: t.replace("  contents: read\n  actions: write\n", "  contents: write\n  actions: write\n", 1)),
-    ("a second permissions block", lambda t: t.replace("    timeout-minutes: 30\n", "    timeout-minutes: 30\n    permissions: write-all\n", 1)),
+    ("a second permissions block", lambda t: t.replace("    timeout-minutes: 340\n", "    timeout-minutes: 340\n    permissions: write-all\n", 1)),
+    ("a person's run that keeps looking", lambda t: t.replace("&& '32' || '1' }}", "&& '32' || '32' }}", 1)),
+    ("looks a minute apart", lambda t: t.replace("            sleep 600\n", "            sleep 60\n", 1)),
+    ("looks without end", lambda t: t.replace(' && [ "$looks" -le 32 ] ||', " ||", 1)),
     ("another group", lambda t: t.replace("  group: ask-product-reads\n", "  group: ask\n", 1)),
     ("an asker cut off", lambda t: t.replace("  cancel-in-progress: false\n", "  cancel-in-progress: true\n", 1)),
     ("the JWT's lifetime altered", lambda t: t.replace("$((now + 540))", "$((now + 3600))", 1)),
@@ -6878,6 +6952,15 @@ case "$*" in
   *) exec "$REAL_PY" "$@" ;;
 esac
 """
+# A look after the first sleeps, then asks GitHub whether a newer run waits: the
+# stubs write the sleep down and answer from the scenario's `waiting`.
+STUB_ASK_SLEEP = """#!/usr/bin/env bash
+echo "SLEPT $*" >> "$ASK_LOG"
+"""
+STUB_ASK_GH = """#!/usr/bin/env bash
+[ "$(printf '%s' "$ASK_SCENARIO" | jq -r '.gh_fails // false')" = false ] || exit 1
+printf '%s' "$ASK_SCENARIO" | jq -r '.waiting // 0'
+"""
 ASK_README = ("# t\n\n## Products under this rulebook\n\n- **A** — `https://github.com/Adonis80/a` one.\n"
               "- **B** — `https://github.com/Adonis80/b` two.\n- **C** — `https://github.com/Adonis80/c` three.\n\n## Next\n")
 ASK_BROKEN_README = "# t\n\n## Products under this rulebook\n\nNone listed here.\n"
@@ -6889,7 +6972,8 @@ def _run_ask(script, scenario=None, fails="", readme=ASK_README, env=None):
         binned, work, temp = (os.path.join(d, n) for n in ("bin", "work", "tmp"))
         for path in (binned, work, temp, os.path.join(work, "product-reads")):
             os.makedirs(path)
-        for name, body in (("curl", STUB_ASK_CURL), ("openssl", STUB_ASK_OPENSSL), ("python3", STUB_ASK_PYTHON)):
+        for name, body in (("curl", STUB_ASK_CURL), ("openssl", STUB_ASK_OPENSSL), ("python3", STUB_ASK_PYTHON),
+                           ("sleep", STUB_ASK_SLEEP), ("gh", STUB_ASK_GH)):
             with open(os.path.join(binned, name), "w", encoding="utf-8") as f:
                 f.write(body)
             os.chmod(os.path.join(binned, name), 0o755)
@@ -6976,6 +7060,24 @@ def _check_ask_run(ask=None, quiet=False):
                     fault("%s: the program was handed the App's key or id, or the wrong token: %s" % (what, line))
                 if ("--dispatch" in line) != (env.get("DISPATCH") == "true"):
                     fault("%s: the program was told to ask %s" % (what, "when it should not" if "--dispatch" in line else "not to when it should"))
+    # The looks of a timed run: ten minutes apart, a newer run taking over, a red look
+    # ending the run, and no count of looks outside 1 to 32.
+    timed = {"GITHUB_RUN_ID": "5", "GITHUB_REPOSITORY": "Adonis80/how-we-build"}
+    for what, scenario, env, code_want, asked_want, slept_want in (
+            ("three looks, ten minutes apart", {}, {"LOOKS": "3"}, 0, repos * 3, 2),
+            ("a newer run waiting, which takes over at the second look", {"waiting": 1}, {"LOOKS": "3"}, 0, repos, 1),
+            ("a list of waiting runs that does not come, so it looks again", {"gh_fails": True}, {"LOOKS": "2"}, 0, repos * 2, 1),
+            ("a red first look, which ends the run", {"timeout": ["Adonis80/a"]}, {"LOOKS": "3"}, 1, repos[1:], 0),
+            ("thirty-three looks", {}, {"LOOKS": "33"}, 1, [], 0),
+            ("no looks", {}, {"LOOKS": "0"}, 1, [], 0),
+            ("a person's run, which looks once", {}, {}, 0, repos, 0)):
+        code, printed, kept = _run_ask(script, scenario, "", ASK_README, dict(timed, **env))
+        asked = [l.split()[1] for l in kept.splitlines() if l.startswith("ASKED ")]
+        slept = [l for l in kept.splitlines() if l.startswith("SLEPT ")]
+        if code is None or (code != 0) != bool(code_want) or asked != asked_want or len(slept) != slept_want \
+                or any(l != "SLEPT 600" for l in slept):
+            fault("%s: came out %s, asked %s and slept %s, where it must come out %s, ask %s and sleep 600 %d time(s)"
+                  % (what, code, asked, slept, "red" if code_want else "green", asked_want, slept_want))
     code, printed, kept = _run_ask(script, {}, "", ASK_BROKEN_README, {})
     if "could not be read" not in printed:
         fault("a README list that cannot be read goes unexplained in the log")
@@ -6983,7 +7085,8 @@ def _check_ask_run(ask=None, quiet=False):
         say("ok: the asker's shell was run against a GitHub failing one product at a time (a timeout, no token, "
             "a wider token, a second repository, the program failing, a README that cannot be read): the "
             "others are still looked at, the job is red, every token is revoked, the App's key never reaches "
-            "the program, and nothing is asked unless it was chosen")
+            "the program, and nothing is asked unless it was chosen; a timed run looks again every ten minutes "
+            "until a newer run waits, a red look ends it, and a person's run looks once")
     return bad
 
 
@@ -7002,6 +7105,9 @@ ASK_RUN_LOOSENINGS = (
     ("a token left live after the ask", lambda t: t.replace("            revoke\n            [ \"$rc\" -eq 0 ] || failed=1", "            [ \"$rc\" -eq 0 ] || failed=1", 1)),
     ("asking whatever was chosen", lambda t: t.replace('if [ "$DISPATCH" = "true" ]; then flag="--dispatch"; fi', 'flag="--dispatch"', 1)),
     ("a red job turned green", lambda t: t.replace('[ "$failed" -eq 0 ]\n', 'true\n', 1)),
+    ("a newer run never taking over", lambda t: t.replace('[ "$waiting" = 0 ] || {', 'true || {', 1)),
+    ("a failed list of waiting runs ending the run", lambda t: t.replace(" || waiting=0\n", "\n", 1)),
+    ("a red look that keeps looking", lambda t: t.replace('[ "$failed" -eq 0 ]\n          done\n', '[ "$failed" -eq 0 ] || true\n          done\n', 1)),
 )
 
 
