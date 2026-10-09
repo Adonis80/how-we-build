@@ -122,7 +122,7 @@ When a rule, requirement or design changes:
 
 Git history is the archive. Temporary reasoning belongs in the pull request and disappears when the work closes.
 
-Small always-read files may have hard size limits because their context cost is constant: a product's `AGENTS.md` and its design constitution. The rulebook pages `check.sh` measures carry size targets, never caps: a repair or an upgrade is never refused for length alone, and the text it makes dead leaves in the same change ([decision 0017](juku-library/DECISION-0017-SIZE-SIGNALS-AND-RECONCILIATION.md)). Large product documents should not receive arbitrary size caps; semantic duplication and stale text are the problem, not legitimate product complexity.
+Small always-read files may have hard size limits because their context cost is constant: a product's `AGENTS.md` and its design constitution. The rulebook pages measured against a size target carry targets, never caps: a repair or an upgrade is never refused for length alone, and the text it makes dead leaves in the same change ([decision 0017](juku-library/DECISION-0017-SIZE-SIGNALS-AND-RECONCILIATION.md)). Large product documents should not receive arbitrary size caps; semantic duplication and stale text are the problem, not legitimate product complexity.
 
 A new document is justified only when it owns durable information that cannot live clearly in an existing canonical owner.
 
