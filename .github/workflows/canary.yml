@@ -10,8 +10,8 @@ name: Canary
 # through the real caller: main's registry, role, effort, schema, routing and
 # privacy settings, and request, on the public fixture below. It expects the
 # pinned model and a complete answer a verdict can be derived from. It is an
-# attempt like any other, recorded and admitted by the spending check before it
-# is sent.
+# attempt like any other, recorded; a cash read is admitted by the spending
+# check before it is sent, and a claude-code read spends the plan, not cash.
 #
 # A RED CANARY STOPS THE NEXT ROLLOUT. review-gate.py holds every pull request
 # touching the machinery while the newest canary that ran on main is red, and

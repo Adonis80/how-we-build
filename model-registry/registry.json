@@ -194,7 +194,7 @@
       "model": "claude-opus-5-5",
       "effort": "high",
       "fallback": null,
-      "use": "Reads every change in a risky class (decision 0008, rule 1), as a selection like every read since decision 0018, on Claude Opus 5.5 at high through the Claude plan, so it spends no review cash: his ruling of 9 October 2026, whole, \"opus 5.5 at hight effort only for rare risky cases\" (decision 0019), given after the bake-off of #179 in which Opus caught 2 of 4 known defects and wrongly blocked 2 of 4 clean changes. Rare is part of the ruling: the risky list holds the six classes and nothing else (review-gate.py, RISK_ARMS). A blocking finding the CTO disputes goes to the Chairman, never into a third round. Nothing stands behind it: if it does not answer, the commit stays unread and the Chairman is told."
+      "use": "Reads every change in a risky class (decision 0008, rule 1), as a selection like every read since decision 0018, on Claude Opus 5.5 at high through the Claude plan, so it spends no review cash: his ruling of 9 October 2026, whole, \"opus 5.5 at hight effort only for rare risky cases\" (decision 0019), given after the bake-off of #179 in which Opus caught 2 of 4 known defects and wrongly blocked 2 of 4 clean changes. Rare is part of the ruling: the risky list holds the six classes and decision 0008's two prerequisites, and nothing else (review-gate.py, RISK_ARMS). A blocking finding the CTO disputes goes to the Chairman, never into a third round. Nothing stands behind it: if it does not answer, the commit stays unread and the Chairman is told."
     },
     "reviewer-frontend": {
       "model": "moonshotai/kimi-k3",

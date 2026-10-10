@@ -169,8 +169,8 @@ jobs:
           git show "origin/${{ github.event.repository.default_branch }}:AGENTS.md" > /tmp/brief.txt
           echo "brief bytes: $(wc -c < /tmp/brief.txt)"
           # THE CLASS, FROM THE DIFF THE REVIEWER READS, and the role that
-          # reads it; every read is at max, whatever its class (his ruling, 28
-          # September 2026). Pages are `.md` files, less the brief
+          # reads it, at the effort the registry gives that role: max for
+          # reviewer-main, high for reviewer-risky (decision 0019). Pages are `.md` files, less the brief
           # (AGENTS.md, at any depth: it instructs the reviewer or an agent),
           # the pages whose words are law here (HOW-WE-BUILD.md, CHARTER.md,
           # RICH-DATA.md's data rules, and a product's PRODUCT.md: a
@@ -190,7 +190,7 @@ jobs:
           # time twice at max, preloading every file (#70's slice 2).
           # RISKY, BY NAME (#86), AND FAILING CLOSED (decision 0008): a file is
           # in a risky class by its lower-cased path — the gate's own files, the
-          # registry and the brief whatever their extension, then any file but
+          # registry and anything under .github whatever their extension, then any file but
           # a page whose name says pricing, live data, schema, destructive
           # changes or backfills, sign-in or permissions, customer or personal
           # data, secrets or credentials, a public trust boundary, or deploy

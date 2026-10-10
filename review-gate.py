@@ -1546,8 +1546,9 @@ def _check_read_loosenings():
 # merged pull request touched: of Hemz OS's last 72, 46 read risky and 26
 # ordinary; of this repository's last 57, 28 risky and 29 ordinary.
 # RARE (his ruling, 9 October 2026, decision 0019: "opus 5.5 at hight effort
-# only for rare risky cases"). The list holds the six classes and nothing
-# else, so a name that is none of them came off when the risky role moved to
+# only for rare risky cases"). The list holds the six classes and decision
+# 0008's two prerequisites (personal data, secrets) and nothing else, so a
+# name that is none of them came off when the risky role moved to
 # Opus: the brief, AGENTS.md, which the reviewer reads from main whatever a
 # head says and which is a reader's words, not the gate; and every
 # dot-directory but .github, Claude's settings (permissions and hooks) and
@@ -1638,8 +1639,8 @@ READ_EFFORT = '--effort "$effort"'
 READ_MODEL = '--model "$model"'
 # An ordinary read is told so, in both reviewers, and asked to say if a file it
 # was shown is in a risky class after all: without it, a name the list missed
-# is read by reviewer-main, not reviewer-risky, in silence. It was keyed on the
-# effort while the two classes read at two; with one effort, on the class.
+# is read by reviewer-main, not reviewer-risky, in silence. It is keyed on the
+# class, never the effort, which the registry sets per role.
 RISK_TOLD = ('if [ "$CLASS" != risky ]; then',
              'echo "release machinery, or the review gate, that is a finding: say which file, so its '
              'name joins the rule."')
@@ -2622,7 +2623,7 @@ def _check_route_loosenings():
 
 # THE REGISTRY ITSELF (decision 0008). model-registry/resolve.py checks it whole;
 # this holds what the gate needs of it: the two reviewer roles, each at the
-# one effort every read is owed and with nothing behind it, every networked
+# effort its role is owed and with nothing behind it, every networked
 # provider asking for providers who promise not to store or train on what it
 # sends, and a switch that is one edit to the one file.
 def _check_registry(path=REGISTRY, quiet=False):
