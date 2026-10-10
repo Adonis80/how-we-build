@@ -4420,7 +4420,9 @@ def _check_context(path=None, quiet=False):
                                        (big, "big.md#Part 3", "## Part 3", "## Part 4"),
                                        ("# T\n\n## 6. Evidence\n\nkept\n\n## 7. Other\n\nnot\n", "PRODUCT.md#6",
                                         "kept", "not"),
-                                       (road, "roadmap.json#P2", '"two"', '"one"')):
+                                       (road, "roadmap.json#P2", '"two"', '"one"'),
+                                       ("# D\n\n- **G. One.** gone\n- **H. Two.** kept\n  - its own line\n"
+                                        "- **I. Three.** not\n\nAfter.\n", "D.md#H", "its own line", "not")):
             got = ctx.unit(text, *want.split("#", 1))
             if not got or has not in got or hasnt in got:
                 fault("%s was not given as that unit alone" % want)
