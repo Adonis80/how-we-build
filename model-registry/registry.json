@@ -134,7 +134,7 @@
       "context_tokens": 1048576,
       "price_usd_per_million": {"input": 0.225, "output": 0.75},
       "max_output_tokens": 100000,
-      "limits_note": "The reviewer roles' model since the bake-off of 9 October 2026. The price is the dearest of the provider's 33 endpoints as the canary's endpoint probe read them that day (run 37949541008): most bill 0.15 and 0.50 per million, the dearest 0.225 and 0.75, and the spending check reserves at the dearest, so a read is never reserved below its most. context_tokens and max_output_tokens are ceilings for the spending check, not measured figures, set at GLM 5.3's.",
+      "limits_note": "reviewer-main's model since the bake-off of 9 October 2026, and reviewer-risky's until decision 0019 the same day. The price is the dearest of the provider's 33 endpoints as the canary's endpoint probe read them that day (run 37949541008): most bill 0.15 and 0.50 per million, the dearest 0.225 and 0.75, and the spending check reserves at the dearest, so a read is never reserved below its most. context_tokens and max_output_tokens are ceilings for the spending check, not measured figures, set at GLM 5.3's.",
       "checked": "2026-10-09",
       "source": "https://openrouter.ai/z-ai/glm-5.3-flash; its endpoints and list prices from the provider's public list, read by the canary's endpoint probe on 9 October 2026; max effort served on all eight bake-off replays"
     },
