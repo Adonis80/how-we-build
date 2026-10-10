@@ -1,6 +1,6 @@
 {
-  "about": "The one place a model is named (decision 0008, issue #103, on the 18 September consensus in juku-library/). Every other file asks for a role. How to ask, inspect and switch: library/model-registry.md. A switch is one edit to this file, reviewed like any other change to the gate, unless the pinned reviewer tool does not know the new model: then the pin moves in both reviewers too, proved first on a full-size read (#130). The reviewer roles are decision 0008's own assignment, except that no reader is the lead's own model, and since the bake-off of 9 October 2026 (his ask that day) both reviewer roles are GLM 5.3 Flash at max, superseding his ruling of 30 September that GLM 5.3 at max reads the risky classes too. Since his rulings of 5 and 6 October 2026 only open-weight models review and nothing stands behind GLM: when it does not answer, the commit stays unread, the Chairman is told at once, and the work is to find why the connection to GLM was lost and fix it. The reviewer roles' effort is the Chairman's ruling of 28 September 2026, every read at max. The max-subagent role is what every product's max subagent file is set to, his ruling of the same day (library/max-subagent.md). The conversation roles (decision 0015) are held in a chat app, never called: kind conversation, an app and a picker label in place of a provider and a credential, and the assignment recorded apart from its proof (status assigned until that seat is read back; proved names the evidence). No caller sends one a request.",
-  "version": "2026-10-07.1",
+  "about": "The one place a model is named (decision 0008, issue #103, on the 18 September consensus in juku-library/). Every other file asks for a role. How to ask, inspect and switch: library/model-registry.md. A switch is one edit to this file, reviewed like any other change to the gate, unless the pinned reviewer tool does not know the new model: then the pin moves in both reviewers too, proved first on a full-size read (#130). The reviewer roles are decision 0008's own assignment, except that no reader is the lead's own model, and since the bake-off of 9 October 2026 (his ask that day) reviewer-main is GLM 5.3 Flash at max. reviewer-risky is Claude Opus 5.5 at high on the Claude plan, his ruling of 9 October 2026, whole: \"opus 5.5 at hight effort only for rare risky cases\" (decision 0019), which amends for that role alone his rulings of 5 and 6 October 2026 that only open-weight models review, of 28 September that every read is at max, and of 29 September that no reader is the lead's own model. Nothing stands behind either reviewer: when one does not answer, the commit stays unread, the Chairman is told at once, and the work is to find why the connection was lost and fix it. reviewer-main's effort is the Chairman's ruling of 28 September 2026, every read at max. The max-subagent role is what every product's max subagent file is set to, his ruling of the same day (library/max-subagent.md). The conversation roles (decision 0015) are held in a chat app, never called: kind conversation, an app and a picker label in place of a provider and a credential, and the assignment recorded apart from its proof (status assigned until that seat is read back; proved names the evidence). No caller sends one a request.",
+  "version": "2026-10-09.1",
   "reviewed": "2026-09-25",
   "decision": "https://github.com/Adonis80/how-we-build/issues/103",
   "providers": {
@@ -44,8 +44,8 @@
       "open_weight": false,
       "status": "active",
       "efforts": ["low", "medium", "high", "xhigh", "max"],
-      "checked": "2026-09-25",
-      "source": "Anthropic's model id as the build session's environment names it; efforts are the pinned Claude Code tool's own --help, run 24 September 2026"
+      "checked": "2026-10-09",
+      "source": "Anthropic's model id as the build session's environment names it, read again on 9 October 2026; efforts are the pinned Claude Code tool's own --help, run 24 September 2026. It read #110 as reviewer-risky at max on 26 September 2026 (cited on #103)"
     },
     "claude-app/opus-5.5": {
       "name": "Claude Opus 5.5",
@@ -134,7 +134,7 @@
       "context_tokens": 1048576,
       "price_usd_per_million": {"input": 0.225, "output": 0.75},
       "max_output_tokens": 100000,
-      "limits_note": "The reviewer roles' model since the bake-off of 9 October 2026. The price is the dearest of the provider's 33 endpoints as the canary's endpoint probe read them that day (run 37949541008): most bill 0.15 and 0.50 per million, the dearest 0.225 and 0.75, and the spending check reserves at the dearest, so a read is never reserved below its most. context_tokens and max_output_tokens are ceilings for the spending check, not measured figures, set at GLM 5.3's.",
+      "limits_note": "reviewer-main's model since the bake-off of 9 October 2026, and reviewer-risky's until decision 0019 the same day. The price is the dearest of the provider's 33 endpoints as the canary's endpoint probe read them that day (run 37949541008): most bill 0.15 and 0.50 per million, the dearest 0.225 and 0.75, and the spending check reserves at the dearest, so a read is never reserved below its most. context_tokens and max_output_tokens are ceilings for the spending check, not measured figures, set at GLM 5.3's.",
       "checked": "2026-10-09",
       "source": "https://openrouter.ai/z-ai/glm-5.3-flash; its endpoints and list prices from the provider's public list, read by the canary's endpoint probe on 9 October 2026; max effort served on all eight bake-off replays"
     },
@@ -191,10 +191,10 @@
       "use": "Reads every ordinary change: pages and ordinary code (decision 0008, rule 2), on GLM 5.3 Flash since the bake-off of 9 October 2026 (his ask that day: \"find the most capable model for price and performance\"; the cheapest arm that caught every defect GLM 5.3 caught, with no more false blockers; the scores are on the pull request that switched it). Nothing stands behind it: if it does not answer, the commit stays unread and the Chairman is told."
     },
     "reviewer-risky": {
-      "model": "z-ai/glm-5.3-flash",
-      "effort": "max",
+      "model": "claude-opus-5-5",
+      "effort": "high",
       "fallback": null,
-      "use": "Reads every change in a risky class (decision 0008, rule 1), as a selection like every read since decision 0018, on GLM 5.3 Flash at max since the bake-off of 9 October 2026, which his ask of that day ordered: the switch goes to the cheapest arm that catches every defect GLM 5.3 catches with no more false blockers, superseding his ruling of 30 September 2026 (\"GLM 5.3 at max should also be the lead reviewer for risky changes.\") for this role. Nothing stands behind it (his rulings of 5 and 6 October 2026: \"Sonnet should not be used for a fallback review from now on. Only open weight models should be used as reviews.\" and \"I don't want to have a backup if GLM is down because GLM is currently the only LLM that wins on a cost to price ratio therefore if GLM is down, I need you to inform me immediately and the protocol should be that we figure out why we lost connection to GLM and fix that.\"). If it does not answer, the commit stays unread and the Chairman is told."
+      "use": "Reads every change in a risky class (decision 0008, rule 1), as a selection like every read since decision 0018, on Claude Opus 5.5 at high through the Claude plan, so it spends no review cash: his ruling of 9 October 2026, whole, \"opus 5.5 at hight effort only for rare risky cases\" (decision 0019), given after the bake-off of #179 in which Opus caught 2 of 4 known defects and wrongly blocked 2 of 4 clean changes. Rare is part of the ruling: the risky list holds the six classes and decision 0008's two prerequisites, and nothing else (review-gate.py, RISK_ARMS). A blocking finding the CTO disputes goes to the Chairman, never into a third round. Nothing stands behind it: if it does not answer, the commit stays unread and the Chairman is told."
     },
     "reviewer-frontend": {
       "model": "moonshotai/kimi-k3",

@@ -10,8 +10,8 @@ name: Canary
 # through the real caller: main's registry, role, effort, schema, routing and
 # privacy settings, and request, on the public fixture below. It expects the
 # pinned model and a complete answer a verdict can be derived from. It is an
-# attempt like any other, recorded and admitted by the spending check before it
-# is sent.
+# attempt like any other, recorded; a cash read is admitted by the spending
+# check before it is sent, and a claude-code read spends the plan, not cash.
 #
 # A RED CANARY STOPS THE NEXT ROLLOUT. review-gate.py holds every pull request
 # touching the machinery while the newest canary that ran on main is red, and
@@ -122,10 +122,18 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      # The reviewer's own tool, for a role read through claude-code (decision
+      # 0019): review.yml's pinned version, installed in a step that holds no
+      # secret, as review-gate.py holds both.
+      - name: Install the reviewer's tool
+        if: inputs.probe != 'replay'
+        run: npm install -g @anthropic-ai/claude-code@2.1.285
+
       - name: One tiny real read
         id: read
         if: inputs.probe != 'replay'
         env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           REVIEW_CASH_WEEKLY: ${{ secrets.REVIEW_CASH_WEEKLY }}
           GH_TOKEN: ${{ github.token }}
@@ -170,13 +178,25 @@ jobs:
             interface=$(python3 "$reg/resolve.py" "$reg/registry.json" "$role" interface) || fail "the registry could not resolve $role"
             case " $done_ " in *" $model@$effort "*) continue ;; esac
             done_="$done_ $model@$effort"
-            [ "$interface" = openai-compatible ] || fail "$role is served through $interface, which the canary does not ask"
             echo "asking $role: $model at effort $effort${PROBE:+, probe $PROBE}"
             rc=0
-            n=$(python3 "$reg/ask.py" record open "$ledger" "$role" "$model" "$interface")
-            ATTEMPTS="$ledger" ATTEMPT="$n" INFLIGHT="$(inflight)" CANARY_PROBE="${PROBE:-}" \
-              timeout --kill-after=30s 300s python3 "$reg/ask.py" "$reg/registry.json" "$role" "$t/system.txt" "$schema" 300 \
-              < "$t/prompt.txt" > "$out" 2> "$err" || rc=$?
+            case "$interface" in
+              openai-compatible)
+                n=$(python3 "$reg/ask.py" record open "$ledger" "$role" "$model" "$interface")
+                ATTEMPTS="$ledger" ATTEMPT="$n" INFLIGHT="$(inflight)" CANARY_PROBE="${PROBE:-}" \
+                  timeout --kill-after=30s 300s python3 "$reg/ask.py" "$reg/registry.json" "$role" "$t/system.txt" "$schema" 300 \
+                  < "$t/prompt.txt" > "$out" 2> "$err" || rc=$? ;;
+              claude-code)
+                # The Claude plan, through the pinned tool with every tool off, as
+                # review.yml reads; a probe adds no limit to it.
+                [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] || fail "$role is served through claude-code and the reviewer environment holds no CLAUDE_CODE_OAUTH_TOKEN"
+                n=$(python3 "$reg/ask.py" record open "$ledger" "$role" "$model" "$interface")
+                timeout --kill-after=30s 300s claude -p --model "$model" --effort "$effort" --tools "" --restricted \
+                  --strict-mcp-config --disable-slash-commands --no-session-persistence --permission-prompts none \
+                  --output-format json --json-schema "$schema" --system-prompt "$(cat "$t/system.txt")" \
+                  < "$t/prompt.txt" > "$out" 2> "$err" || rc=$? ;;
+              *) fail "$role is served through $interface, which the canary does not ask" ;;
+            esac
             python3 "$reg/ask.py" record close "$ledger" "$n" "$rc" "$out" || true
             python3 "$reg/ask.py" derive "$out" || printf '{"is_error":true,"subtype":"not_derived"}\n' > "$out"
             echo "spend: $(python3 "$reg/ask.py" record summary "$ledger")" | tee -a "$GITHUB_STEP_SUMMARY"
