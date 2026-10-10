@@ -20,7 +20,7 @@ A repository not listed here is not under this rulebook. Papers for an idea that
 
 One line per product: where its plan is, and how it reaches the build board ([decision 0010](juku-library/DECISION-0010-REVIEW-SPEND-AND-PLAN-MAP.md), 29 September 2026). A product with no `roadmap.json` is not a product with no plan: its plan is where this line says.
 
-- **Juku OS** (this rulebook) — no `roadmap.json`. Its plan is its open pull requests, queued ready first, then by priority, then oldest (`library/changing-the-rulebook-merge.md`). On the board: the first row, from those pull requests, their `Priority:` and `Ready:` lines and their review check.
+- **Juku OS** (this rulebook) — no `roadmap.json`. Its plan is its open pull requests, queued ready first, then by priority, then oldest (`library/changing-the-rulebook.md`). On the board: the first row, from those pull requests, their `Priority:` and `Ready:` lines and their review check.
 - **Hemz OS** — [`roadmap.json`](https://github.com/Adonis80/Hemz-OS/blob/main/roadmap.json) on `main`. On the board: its row, from that file's items and money milestones.
 - **Myst** — [`roadmap.json`](https://github.com/Adonis80/myst/blob/main/roadmap.json) on `main`. On the board: its row, from that file's items.
 - **Phena** — [`roadmap.json`](https://github.com/Adonis80/phena/blob/main/roadmap.json) on `main`. On the board: its row, from that file's items and money milestones.
@@ -35,7 +35,7 @@ How a change reaches every product: it is made here once and then lands everywhe
 
 - Free checks and a self-review before any paid read, and on every change the line `Personal data or payments affected: yes/no — reason` ([decision 0010](juku-library/DECISION-0010-REVIEW-SPEND-AND-PLAN-MAP.md), 29 September 2026). Detail: `library/reviewer-asking.md`.
 - `AGENTS.md` ending with `## Review guidelines`, under 500 words; a check green only when the reviewer has read the current commit; the reviewer `review-gate.py` names. Detail: `library/carries-reviewer.md`.
-- Product reads asked from here through `review-product.yml`, of one commit only, the ready mark a builder adds after its own review (`library/product-joins.md`), and a model switched in one edit (met: `model-registry/`). Detail: `library/carries-review-route.md`.
+- Product reads asked from here through `review-product.yml`, of one commit only, the ready mark a builder adds after its own review (`library/product-joins.md`), and a model switched in one edit (met: `model-registry/`). Detail: `library/carries-reviewer.md`.
 - Open pull requests moved on before new work; a session that cannot move says so once and stops hard, with the clock tools denied; a consultant that cannot be reached never holds up a slice; a `roadmap.json` fit for a one-word *build*. Detail: `library/carries-sessions.md`.
 - `.claude/agents/max-subagent.md`, the max subagent, exactly as its page gives it (his ruling, 28 September 2026). Detail: `library/max-subagent.md`.
 - Money milestones in `roadmap.json`; evidence recorded with its origin; the handover's `evidence` field; `PRODUCT.md` and `NAMES.md`; a README route section; a Project set to its template; a `design/` folder for a product with a user interface. Detail: `library/carries-evidence.md`.
@@ -52,12 +52,10 @@ One page per topic, or a named few where a topic is large, opened when its trigg
 |---|---|
 | `library/session-changeover.md`: *Session changeover* | deciding whether to stay in a session or start a fresh one, and before leaving one |
 | `library/hypersolid.md`: *HyperSolid* | a screen is new or reworked, before code |
-| `library/two-stacks.md`, `library/stack-anthropic.md`, `library/stack-openai.md`: *The two stacks* | choosing the lead or its effort, handing work between stacks, a job that needs hands |
+| `library/two-stacks.md`: *The two stacks* | choosing the lead or its effort, starting, handing over or finishing work in either stack, or a job that needs hands |
 | `library/max-subagent.md`: *The max subagent* | a lead hands its max piece on, or a product sets up or checks its max subagent file |
 | `library/reviewer.md`: *The independent reviewer* | working out who reviews a change, what it is shown, or what a risky class of change is owed |
-| `library/reviewer-one-vendor.md`: *The independent reviewer: one vendor, and what it costs* | weighing a same-vendor read or a gate change, or asking which repositories the badge counts in |
-| `library/reviewer-verdict.md`: *The independent reviewer: what a read is* | judging whether a commit is cleared, or how a verdict is signed and why no comment counts |
-| `library/reviewer-machine.md`: *The independent reviewer: the machine, and installing the App* | changing the review machinery, or putting the reviewer App on a repository |
+| `library/reviewer-verdict.md`: *The independent reviewer: what a read is, and the machine* | judging whether a commit is cleared, how a verdict is signed and why no comment counts, changing the review machinery, or putting the reviewer App on a repository |
 | `library/reviewer-asking.md`: *The independent reviewer: asking, and what it spends* | asking for a read, deciding whether to ask again, or setting what a product's checks run |
 | `library/reviewer-parking.md`: *The independent reviewer: parking* | about to park a slice, or the reviewer seems out |
 | `library/reviewer-brief.md`: *The independent reviewer: the brief* | writing a repository's AGENTS.md or its Review guidelines, or a rule lands mid-session |
@@ -70,8 +68,7 @@ One page per topic, or a named few where a topic is large, opened when its trigg
 | `library/project-template-product.md`: *Project instructions template* | setting or checking a product Project's instructions |
 | `library/project-template-juku-os.md`: *The Juku OS Project's instructions* | setting or checking the Juku OS Project's instructions |
 | `library/project-instructions.md`: *What a Project holds, and who sets it* | a Project's instructions differ from their template, or text for the Chairman changes |
-| `library/carries-reviewer.md`: *What every product carries: the reviewer* | checking a product's gate, its reviewer or its review guidelines |
-| `library/carries-review-route.md`: *What every product carries: the product read, and the model switch* | asking for a product read from here, or switching the model behind a role |
+| `library/carries-reviewer.md`: *What every product carries: the reviewer, the product read and the model switch* | checking a product's gate, its reviewer or its review guidelines, asking for a product read from here, or switching the model behind a role |
 | `library/model-registry.md`: *The model registry* | asking which model holds a role, what a read resolved to, or switching the model behind a role |
 | `library/carries-sessions.md`: *What every product carries: open work, stopping, the consultant, the roadmap* | starting or stopping a product session, or leaving its roadmap |
 | `library/carries-evidence.md`: *What every product carries: milestones, evidence, the product's pages* | a slice touches money milestones, evidence, the product's own pages, its README route or its design folder, or a handover reports a read's cost or the efficiency duty is weighed |
@@ -79,8 +76,7 @@ One page per topic, or a named few where a topic is large, opened when its trigg
 | `library/deploy.md`: *The deploy, in shape* | building or changing a product's deploy |
 | `library/money.md`: *Money out waits for money in* | anything would cost money, or a product's hosting plan comes up |
 | `library/code-and-words.md`: *Code and words* | deciding whether a change needs a code session or can be made from Cowork |
-| `library/changing-the-rulebook.md`: *Changing the rulebook: size and reconciliation* | changing a rule, or a page reads over its size target |
-| `library/changing-the-rulebook-merge.md`: *Changing the rulebook: the queue, the gate and the merge* | proposing, prioritising or merging a change to this repository |
+| `library/changing-the-rulebook.md`: *Changing the rulebook* | changing a rule, proposing, prioritising or merging a change to this repository, or a page reads over its size target |
 | `library/system-map.md`: *How Juku OS fits together* | explaining how Juku OS fits together, or finding which part owns what |
 
 ## How a product joins
@@ -97,4 +93,4 @@ or fetch `https://raw.githubusercontent.com/Adonis80/how-we-build/main/HOW-WE-BU
 
 ## Changing the rulebook
 
-By pull request only; `main` is protected; the CTO settles and merges without the Chairman. **Tidying is frozen (his ruling, 25 September 2026):** no page moves, splits or rewording for tidiness unless something is broken, and one session's word changes to this repository go in one pull request, read once. His words of 5 October 2026, *"I prefer a PR that you and chatGPT should discuss and find the best solution. together. This review should be an audit across the whole JukuOS system, and it should make sure that its organised in the smartest way."*, lift that ban for decision 0015's audit changes only: the items [#163](https://github.com/Adonis80/how-we-build/issues/163) agreed, made in one pull request per repository. For everything else it stands. **The 10 October freeze is lifted completely (his ruling, 5 October 2026):** *"We have to lift that ruling completely and focus on delivering a system with all the wastage cut out."* He asked the same day for decision 0014 to be built *"in one shot"*, overriding its "not bundled" line; the rulings made under the freeze stay quoted whole on their own pull requests and pages. **The build board's preview address (his ruling, 1 October 2026):** *"all previews should be simpley just have the prefix (next.) … that way you can just overwrite old previews with the new ones"*, so until `next.roadmap.juku.pro` has its DNS, the newest smoked preview takes `juku-build-board-next.vercel.app`. **The one clock (his ruling, 4 October 2026):** *"I agree with your recommended option A. One timer in the rulebook only. Proceed to build."*: `ask-product-reads.yml` is the one scheduled workflow, every ten minutes, asking for ready commits through `review-product.yml` ([decision 0013](juku-library/DECISION-0013-AUTOMATIC-PRODUCT-REVIEWER.md)); it lifts his 10 September stop on clocks for that workflow only, and no product gets a timer, a token or a schedule (`library/carries-sessions.md`). "Automatic" is delivered only once that timer is on, which is from its merge to `main`. Size and reconciliation are in `library/changing-the-rulebook.md`; the queue, the gate and the merge in `library/changing-the-rulebook-merge.md`.
+By pull request only; `main` is protected; the CTO settles and merges without the Chairman. A repair or an upgrade is never refused for length alone, and the text it makes dead leaves in the same change ([decision 0017](juku-library/DECISION-0017-SIZE-SIGNALS-AND-RECONCILIATION.md)); stale wording is removed in dependency-coherent batches ([decision 0016](juku-library/DECISION-0016-LOCALISED-REVIEWS.md), H). The queue, the gate, the merge, size and reconciliation: `library/changing-the-rulebook.md`.
