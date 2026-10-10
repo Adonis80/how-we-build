@@ -1,7 +1,15 @@
-# What every product carries: the reviewer
+# What every product carries: the reviewer, the product read and the model switch
 
-Scope: every product repository. Open when: checking a product's gate, its reviewer or its review guidelines.
+Scope: every product repository. Open when: checking a product's gate, its reviewer or its review guidelines, asking for a product read from here, or switching the model behind a role.
 
 - `AGENTS.md` ending with `## Review guidelines`: the pointer to the brief (*The independent reviewer*), the least of it the tool needs in front of it, and the product's own hazards — under 500 words, machine-checked.
 - A check that goes green in a pull request only when the reviewer has read the current commit: the `juku-reviewer` check run on that commit, and nothing else. A product's gate is its own `review-gate.py`, from the starter kit (`library/product-joins.md`).
 - The reviewer: the role `model-registry/` names for the change's class ([decision 0008](https://github.com/Adonis80/how-we-build/issues/103)). `reviewer-risky` reads a change touching any of the six risky classes (`library/reviewer.md`), or any file whose kind the list does not know; `reviewer-main` reads pages and ordinary code. A file's class is read off its path, by names `review-gate.py` holds and gives its reasons for, and an ordinary read is told so and asked to name any risky file the names missed. Every read is at max (his ruling, 28 September 2026). Nothing stands behind either role (his rulings, 5 and 6 October 2026): when the role does not read, the commit stays unread, the slice parks and he is told on an issue. Who holds each role, and how to switch: `library/model-registry.md`. It reads every pull request cold, from the committed diff and the pages as the change leaves them, and is not shown the pull request's own account.
+
+**The route** is `review-product.yml` ([decision 0002](https://github.com/Adonis80/how-we-build/issues/58)): the reviewer runs from here, where the environment door is real because this repository is public, and signs onto the product's pull request through the App. A read is asked by dispatching it on `main` with the product, the pull request's number and its exact head commit; first run [35902409140](https://github.com/Adonis80/how-we-build/actions/runs/35902409140), 23 September 2026. In a product the ask is of its ready commit, with the product's own `verify` passed on it, and the rulebook's timer sends it: `library/product-joins.md`.
+
+**What a product read carries.** Of the product's own pages, the `roadmap.json` item whose id the pull request's title opens with and the `PRODUCT.md` sections that item names, naming every other item and section with its size ([#86](https://github.com/Adonis80/how-we-build/pull/86)); an item that names no section carries none. Beside the files a change touches, their relative JS, TS and Python imports and a page's scripts, one hop (decision 0010, 1a). That a product's own wake re-runs its gate when a verdict lands is not yet shown on a cited run; the first read that shows it is cited here.
+
+**Never a sentence permitting a merge while the check is red**: one check carries the file lists and the secret scan too, so any such permission waives those with it.
+
+**A model switched in one edit** (his requirement, 22 September 2026; met by decision 0008): both reviewers, this repository's and the product route, ask `model-registry/` for a role and name no model. How to ask, inspect and switch: `library/model-registry.md`.

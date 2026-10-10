@@ -120,7 +120,7 @@ lib_max=0
 # Library pages a cleanup merged or deleted (#174). A frozen record in
 # juku-library/ keeps its text, so it may still link one, as history; the page
 # stays gone, and any other link to it fails below like any broken link.
-retired_pages="library/reviewer-one-vendor"
+retired_pages="library/reviewer-one-vendor library/changing-the-rulebook-merge"
 for o in $retired_pages; do
   [ ! -e "$o.md" ] || { echo "FAIL: '$o.md' exists; it was retired and only frozen records may still name it."; lib_fail=1; }
 done

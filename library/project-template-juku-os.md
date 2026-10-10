@@ -47,6 +47,6 @@ library/project-template-juku-os.md as library/project-instructions.md says. A
 pull request from here goes through the Mac: the connected folder
 ~/Documents/Claude/Projects, key in .alma-secrets/github-token, read into a shell
 variable and never printed. Before proposing a rulebook change, read the README's
-"Changing the rulebook", the two pages it names, and CHARTER.md §13. AGENTS.md is
+"Changing the rulebook", the page it names, and CHARTER.md §13. AGENTS.md is
 the reviewer's brief; open it only to change it.
 ```
