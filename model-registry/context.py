@@ -179,6 +179,20 @@ def unit(text, path, name):
     for n, i, j in spans:
         if n is not None and (n == name or (number and re.match(r"§?\s?%s[.\s]" % re.escape(number.group(1)), n + " "))):
             return "".join(lines[i:j])
+    # A record's lettered or numbered item, `- **H. Title.** …`, by its mark
+    # (`DECISION-0016-….md#H`): that item and its own indented lines, up to the
+    # first line not indented past it. A reader of a decision asks by the mark
+    # the page cites it by, and a mark no heading carries left the re-read
+    # unmet and the read incomplete (#181, rounds 4 to 6).
+    if path.endswith(".md"):
+        mark = re.compile(r"([ \t]*)[-*]\s+\*\*%s[.):]" % re.escape(name))
+        for i, line in enumerate(lines):
+            m = mark.match(line)
+            if m:
+                depth = len(m.group(1))
+                j = next((k for k in range(i + 1, len(lines))
+                          if lines[k].strip() and len(lines[k]) - len(lines[k].lstrip()) <= depth), len(lines))
+                return "".join(lines[i:j]).rstrip("\n") + "\n"
     return None
 
 
