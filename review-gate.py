@@ -7811,16 +7811,45 @@ def _check_main():
          [("m2", [dict(canary("failure"), name="canary probe"), dict(canary("failure"), app={"id": 1}),
                   canary("success")])]),
     ]
+    # MAIN'S RED CHECK HOLDS A PARTIAL RUN (#187, item 3): a pull request whose
+    # self-test ran only parts trusts main's whole run, so it asks after main's
+    # newest `check` and is held while that is red; one that ran every part, or
+    # none, asks nothing of main's check.
+    whole = lambda c, at="2026-10-11T19:00:00Z", **k: dict(_run(c, app=ACTIONS_APP), name=MAIN_CHECK, completed_at=at, **k)
+    cases += [
+        ([{"filename": "README.md"}], [ok], 1, "main's own check is red at m2",
+         "an ordinary change, whose self-test ran only parts, is held while main's own check is red",
+         [("m2", [whole("failure")])]),
+        ([{"filename": "README.md"}], [ok], 0, "ok:", "and opens when main's check is green",
+         [("m2", [whole("success")])]),
+        ([{"filename": "README.md"}], [ok], 0, "ok:",
+         "a red check re-run green on main's tip holds nothing: the newest finished run decides",
+         [("m2", [whole("failure"), whole("success", "2026-10-11T20:00:00Z")])]),
+        ([{"filename": "README.md"}], [ok], 0, "ok:",
+         "main's check still running is not red, and none yet is not red",
+         [("m2", [whole(None, status="in_progress")])]),
+        ([{"filename": "README.md"}], [ok], 0, "ok:",
+         "a failure under another name, or from another app, is not main's check",
+         [("m2", [dict(whole("failure"), name="build"), dict(whole("failure"), app={"id": 1})])]),
+        ([{"filename": "review-gate.py"}], [ok], 0, "note:",
+         "a gate change ran every part itself: a red main does not hold it, and the repair of a red main is one",
+         [("m2", [whole("failure"), canary("success")])]),
+        ([{"filename": "board/robots.txt"}], [ok], 0, "ok:",
+         "a change the self-test never reads ran no part and trusts nothing of main's run: its check is not asked after",
+         [("m2", [whole("failure")])]),
+    ]
     bad = 0
     real = urllib.request.urlopen
     for files, runs, code, must, what, *rest in cases:
         main_commits = rest[0] if rest else []
         machine = machinery([f["filename"] for f in files])
-        # The changed files and the head's check runs, and on a machinery change
-        # main's commits and their canaries; never anything else.
+        partial = selftest_plan("pull_request", [f["filename"] for f in files], None)[1] not in ("all", "")
+        # The changed files and the head's check runs; on a machinery change
+        # main's commits and their canaries; on a run of only parts main's
+        # commits and the tip's check runs; never anything else.
         need = {"/repos/o/r/commits/%s/check-runs" % head, "/repos/o/r/pulls/7/files"}
         allowed = need | ({"/repos/o/r/commits"} | {"/repos/o/r/commits/%s/check-runs" % s for s, _ in main_commits}
-                          if machine else set())
+                          if machine or partial else set())
         asked = []
 
         def fake(req, *a, **k):
@@ -7878,15 +7907,16 @@ def _check_main():
         if stray:
             print("  main: %s — a line the runner would obey: %r" % (what, stray[0]))
             bad += 1
-        if not need <= set(asked) <= allowed or machine != ("/repos/o/r/commits" in asked):
-            print("  main: %s — asked GitHub for %s; it must ask for %s, and on a machinery change "
-                  "main's commits, within %s" % (what, sorted(set(asked)), sorted(need), sorted(allowed)))
+        if not need <= set(asked) <= allowed or (machine or partial) != ("/repos/o/r/commits" in asked):
+            print("  main: %s — asked GitHub for %s; it must ask for %s, and on a machinery change or a "
+                  "run of only parts main's commits, within %s" % (what, sorted(set(asked)), sorted(need), sorted(allowed)))
             bad += 1
     if not bad:
         print("ok: main() was run against a GitHub answering from a dictionary in %d case(s) — "
-              "it asked for the changed files and the check runs, and on a machinery change main's "
-              "newest canary, and nothing else; a change to the gate itself opens on the one "
-              "reviewer's clean read, and no machinery change opens while that canary is red" % len(cases))
+              "it asked for the changed files and the check runs, on a machinery change main's "
+              "newest canary, on a run of only parts main's own newest check, and nothing else; a change "
+              "to the gate itself opens on the one reviewer's clean read, no machinery change opens while "
+              "that canary is red, and no partial run opens while main's check is red" % len(cases))
     return bad
 
 
