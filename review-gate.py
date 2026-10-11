@@ -2954,19 +2954,22 @@ PLAN_CASES = (
     ("only files it never reads", "pull_request", ["board/robots.txt", "board/vercel.json"], None, "skip"),
     # The parts (#187): the core always, and each part measured to read a changed file.
     ("a library page", "pull_request", ["library/money.md"], None, "run core"),
-    ("the operating page and the charter", "pull_request", ["HOW-WE-BUILD.md", "CHARTER.md"], None, "run core"),
+    ("the operating page and the charter, which the reviewers' class cases select from", "pull_request",
+     ["HOW-WE-BUILD.md", "CHARTER.md"], None, "run core,reviewers"),
     ("papers, which the context pilot reads", "pull_request", ["juku-library/README.md"], None, "run core"),
-    ("the brief", "pull_request", ["AGENTS.md"], None, "run core"),
-    ("the README, which the product readers read for the map", "pull_request", ["README.md"], None,
-     "run core,product,preflight,board"),
+    ("the brief, which the kit and the reviewers' cases read", "pull_request", ["AGENTS.md"], None,
+     "run core,kit,reviewers"),
+    ("the README, which the product readers and the reviewers' cases read", "pull_request", ["README.md"], None,
+     "run core,product,preflight,asker,board,reviewers"),
     ("a change to the registry", "pull_request", ["model-registry/registry.json"], None,
      "run core,reviewers,caller,glm"),
     ("a change to the selector", "pull_request", ["model-registry/context.py"], None, "run core,reviewers"),
-    ("a change to the caller", "pull_request", ["model-registry/ask.py"], None, "run core,caller,glm"),
+    ("a change to the caller", "pull_request", ["model-registry/ask.py"], None,
+     "run core,product,reviewers,caller,glm"),
     ("a page the reviewers' cases name", "pull_request", ["library/reviewer.md"], None, "run core,reviewers"),
     ("the board's middleware", "pull_request", ["board/middleware.js"], None, "run core,board"),
     ("a change to the product read's rules", "pull_request", ["product-reads/reads.py"], None,
-     "run core,preflight,asker"),
+     "run core,product,preflight,asker,kit,reviewers"),
     ("a change to the asker", "pull_request", ["product-reads/ask.py"], None, "run core,asker"),
     ("a change to the starter kit", "pull_request", ["product-reads/kit/gate.yml"], None, "run core,kit"),
     ("a page beside a file it never reads", "pull_request", ["library/money.md", "board/robots.txt"], None, "run core"),
@@ -3093,25 +3096,49 @@ def _check_selftest_plan(quiet=False):
     for f in SELFTEST_NOT_READ:
         if f not in tree:
             fault("%s is listed as never read but is not in the tree; the list is measured, never guessed" % f)
-    # Every file a part names is in the tree (a pattern matches at least one),
-    # and every file this gate names that is not the gate itself is read by
-    # some part, so a change to it runs that part rather than the whole for
-    # want of a measurement.
+    # Every file a part names is in the tree (a pattern matches at least one).
     for name, _, files in SELFTEST_PARTS:
         for f in files:
             if not any(t == f or fnmatch.fnmatchcase(t, f) for t in tree):
                 fault("the part %s names %s, which no file in the tree matches" % (name, f))
-    unmeasured = sorted(f for f in named if selftest_input(f) and not selftest_parts_for(f)
-                        and f not in PLAN_GATE_FILES and not f.startswith(PLAN_GATE_DIRS))
-    if unmeasured:
-        fault("this gate names %s, which no part is measured to read, so a change to it runs the whole"
-              % ", ".join(unmeasured))
+    # MAIN'S RED CHECK HOLDS A PARTIAL RUN: the rule on the shapes GitHub gives,
+    # and the gate's main() consulting it only when the plan was not `all`.
+    head = "090e429a31cd5f0b2e4d7a1c9b8e6f4d2a1c3b5e"
+
+    def run(conclusion="success", status="completed", app=ACTIONS_APP, name=MAIN_CHECK, at="2026-10-11T19:00:00Z"):
+        return {"name": name, "status": status, "conclusion": conclusion, "completed_at": at,
+                "app": {"id": app} if app is not None else None}
+    for what, runs, want in (
+            ("main's check green", [run()], None),
+            ("main's check red", [run("failure")], head),
+            ("main's check timed out", [run("timed_out")], head),
+            ("main's check still running", [run(None, status="in_progress")], None),
+            ("no check run on main yet", [], None),
+            ("a red run under another app", [run("failure", app=REVIEWER_APP_ID)], None),
+            ("a red run under another name", [run("failure", name="build")], None),
+            ("a cancelled run", [run("cancelled")], None),
+            ("red, then green again", [run("failure", at="2026-10-11T18:00:00Z"), run()], None),
+            ("green, then red", [run(at="2026-10-11T18:00:00Z"), run("failure")], head)):
+        got = main_red_from(head, runs)
+        if got != want:
+            fault("%s: main_red_from says %r, not %r" % (what, got, want))
+    try:
+        gate = _read("review-gate.py")
+    except OSError as e:
+        fault(str(e))
+        return bad
+    for line in ('partial = selftest_plan("pull_request", files, None)[1] not in ("all", "")',
+                 "broken = main_red(api, token) if partial else None",
+                 "    if broken:\n        print(\"reason: main's own check is red at %s"):
+        if line not in gate:
+            fault("the gate has lost `%s`" % line.strip())
     if not bad and not quiet:
         print("ok: the self-test runs on any change to what it reads and is skipped only for files it never opens, "
               "or on a re-run whose earlier attempt passed it on the same commit; in a pull request it runs the core "
               "and the parts measured to read a changed file, and every part on a change to the gate, a workflow or a "
-              "file no part names; the rule run on %d case(s), the command on %d answers GitHub could give, the %d "
-              "parts held whole, and check.sh and check.yml held to calling it so"
+              "file no part names, and a pull request that ran only parts is held while main's own check is red; the "
+              "rule run on %d case(s), the command on %d answers GitHub could give, the %d parts held whole, and "
+              "check.sh and check.yml held to calling it so"
               % (len(PLAN_CASES), len(commands), len(SELFTEST_PARTS)))
     return bad
 
@@ -8143,6 +8170,38 @@ def canary_red(api, token):
     return None
 
 
+# MAIN'S OWN CHECK (#187, item 3): the whole self-test runs on every push to
+# main, and its newest `check` run there is what a pull request that ran only
+# parts trusts. Red is a run that finished and failed; one still running, or
+# none yet, is not red, and a cancelled or skipped one says nothing.
+MAIN_CHECK = "check"
+MAIN_RED = ("failure", "timed_out", "action_required")
+
+
+def main_red(api, token):
+    """main's tip when its newest finished `check` run failed, else None."""
+    req = urllib.request.Request("%s/commits?sha=main&per_page=1" % api,
+                                 headers={"Authorization": "Bearer " + token,
+                                          "Accept": "application/vnd.github+json"})
+    with urllib.request.urlopen(req) as r:
+        commits = json.load(r)
+    tip = (commits[0].get("sha") if isinstance(commits, list) and commits else None) or ""
+    if not tip:
+        return None
+    return main_red_from(tip, _pages("%s/commits/%s/check-runs" % (api, tip), token, key="check_runs",
+                                     params={"check_name": MAIN_CHECK, "filter": "latest"}))
+
+
+def main_red_from(tip, check_runs):
+    """The rule alone, on the check runs of main's tip: the tip when the newest finished `check` by Actions failed."""
+    mine = [r for r in check_runs if r.get("name") == MAIN_CHECK and (r.get("app") or {}).get("id") == ACTIONS_APP
+            and r.get("status") == "completed"]
+    if not mine:
+        return None
+    newest = max(mine, key=lambda r: r.get("completed_at") or "")
+    return tip if newest.get("conclusion") in MAIN_RED else None
+
+
 # THE SELF-TEST, RUN ONLY WHEN IT CAN SAY SOMETHING NEW (his ask, 7 October
 # 2026: the full `--selftest` ran on every pull request and again when the
 # verdict landed, about 22 minutes each), AND ONLY THE PARTS A CHANGE TOUCHES
@@ -8163,11 +8222,15 @@ def canary_red(api, token):
 #   - run core,…: the core, and every part measured to read a file the pull
 #     request changes. The core is every part that takes seconds; the parts
 #     named apart are the loosening suites and runs that take minutes, each
-#     with the files it was seen to open or hand to a subprocess, measured on
-#     11 October 2026 by logging every open and subprocess argument of a full
-#     self-test in this checkout. A part that later starts reading a file its
-#     line does not name is caught by the whole suite, which runs on every push
-#     to main: a red main is the next session's first job.
+#     with every file of this repository any process of it opened, measured on
+#     11 October 2026 by running each part alone under `strace -f` in this
+#     checkout, children included (a log of the parent's opens alone had
+#     missed README.md, which the asker's child opens by itself; found on
+#     #190's first read). Every part loads review-gate.py, which is the gate
+#     and runs the whole anyway, so the lines below leave it out. A part that
+#     later starts reading a file its line does not name is caught by the
+#     whole suite, which runs on every push to main, and main_red holds every
+#     partial run until that red is repaired.
 SELFTEST_STEP = "selftest"
 SELFTEST_JOB = "check"
 # check.sh's lines that ask the plan and act on it, held by _check_selftest_plan.
@@ -8197,21 +8260,27 @@ SELFTEST_PARTS = (
      ("*.md", "library/*.md", "juku-library/*.md", "model-registry/*", "product-reads/*", "board/build.py",
       "check.sh", "review-gate.py", ".github/workflows/*")),
     ("product", ("_check_product_loosenings",),
-     (".github/workflows/review-product.yml", ".github/workflows/review.yml", "README.md")),
+     (".github/workflows/review-product.yml", ".github/workflows/review.yml", "README.md",
+      "model-registry/ask.py", "model-registry/resolve.py", "product-reads/reads.py")),
     ("preflight", ("_check_preflight_loosenings",),
-     (".github/workflows/review-product.yml", "README.md", "product-reads/reads.py", "review-gate.py")),
+     (".github/workflows/review-product.yml", "README.md", "product-reads/reads.py")),
     ("asker", ("_check_ask_run", "_check_ask_run_loosenings"),
-     (".github/workflows/ask-product-reads.yml", "product-reads/ask.py", "product-reads/reads.py", "review-gate.py")),
-    ("kit", ("_check_kit_loosenings",), (".github/workflows/wake.yml", "product-reads/kit/*")),
+     (".github/workflows/ask-product-reads.yml", "README.md", "product-reads/ask.py", "product-reads/reads.py")),
+    ("kit", ("_check_kit_loosenings",),
+     (".github/workflows/wake.yml", "AGENTS.md", "board/build.py", "product-reads/kit/*",
+      "product-reads/reads.py")),
     ("board", ("_check_board_loosenings",),
      (".github/workflows/*", "README.md", "board/build.py", "board/middleware.js")),
     ("reviewers", ("_check_read_loosenings", "_check_class_loosenings", "_check_route_loosenings",
                    "_check_attempt_loosenings", "_check_more_loosenings"),
-     (".github/workflows/review.yml", ".github/workflows/review-product.yml", "model-registry/context.py",
-      "model-registry/registry.json", "check.sh", "library/reviewer.md", "library/deploy.md")),
+     (".github/workflows/review-product.yml", ".github/workflows/review.yml", "AGENTS.md", "CHARTER.md",
+      "HOW-WE-BUILD.md", "README.md", "check.sh", "library/deploy.md", "library/reviewer.md",
+      "library/rulebook-files.md", "model-registry/ask.py", "model-registry/context.py",
+      "model-registry/registry.json", "model-registry/resolve.py", "product-reads/reads.py")),
     ("caller", ("_check_caller_loosenings",),
      ("model-registry/ask.py", "model-registry/registry.json", "model-registry/resolve.py")),
-    ("monitor", ("_check_monitor",), (".github/workflows/monitor.yml", ".github/workflows/review.yml")),
+    ("monitor", ("_check_monitor",),
+     (".github/workflows/monitor.yml", ".github/workflows/review.yml")),
     ("glm", ("_check_product_glm",),
      (".github/workflows/review-product.yml", "model-registry/ask.py", "model-registry/registry.json",
       "model-registry/resolve.py")),
@@ -8332,6 +8401,16 @@ def main(argv):
         gate_files = touches_the_gate(files)
         answer, who = verdict(runs, head)
         held = canary_red(api, token) if machinery(files) else None
+        # A PULL REQUEST THAT RAN ONLY PARTS OF THE SELF-TEST TRUSTS MAIN'S WHOLE
+        # RUN (#187, item 3): while main's own newest `check` is red, no such pull
+        # request goes green, so a part that quietly started reading a file its
+        # line does not name holds the line until the whole suite is repaired on
+        # main, the next session's first job, held here and not by a sentence.
+        # One that ran every part (a gate change, a file no part names) clears as
+        # before: its own whole run is the evidence, and the repair of a red main
+        # is one such change.
+        partial = selftest_plan("pull_request", files, None)[1] not in ("all", "")
+        broken = main_red(api, token) if partial else None
     except urllib.error.HTTPError as e:
         if e.code in (401, 403):
             why = ("the workflow's token may not read this (it needs pull-requests: read and "
@@ -8359,6 +8438,11 @@ def main(argv):
         print("reason: the canary failed on main at %s, so no change to the review machinery goes green "
               "until one passes: revert that change, or repair it, by the emergency route in "
               "library/reviewer-parking.md" % held[:12])
+        return 1
+    if broken:
+        print("reason: main's own check is red at %s, and this pull request's self-test ran only the parts "
+              "its files touch, which trust main's whole run; repair main first (library/changing-the-rulebook.md), "
+              "or touch the gate so every part runs here" % broken[:12])
         return 1
     if answer == CLEAN:
         print("ok: %s has read %s and left nothing on it" % (REVIEWERS[who]["name"], head))

@@ -237,7 +237,9 @@ fi
 # one it reads. In a pull request it runs the core and the parts measured to
 # read a changed file (#187); a change to the gate itself, a file no part is
 # measured to read, a push to main, a run by hand, or a plan that cannot be
-# read runs every part (see SELFTEST_PARTS).
+# read runs every part (see SELFTEST_PARTS). A pull request that ran only
+# parts trusts main's whole run, so the gate below holds it while main's own
+# newest check is red (see main_red): a red main is repaired first.
 plan=$(python3 review-gate.py --selftest-plan 2>/dev/null | tail -n 1) || plan="run all: the plan could not be made"
 parts=""
 case "$plan" in
