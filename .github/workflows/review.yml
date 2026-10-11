@@ -622,7 +622,7 @@ jobs:
           # `DECISION-0016…#H`); a name given without its folder is the one file
           # of that name in the head (#181's `build-board.yml`), or nothing.
           more() {
-            local want f unit size found n p added=0 files=0 any=no given=""
+            local want f unit size found n p added=0 files=0 any=no given="" unfetchable=0
             {
               echo
               echo "You said this read needed more. The files you named, as this change would leave"
@@ -633,7 +633,9 @@ jobs:
             } >> /tmp/prompt.txt
             for want in "$@"; do
               f=${want%%#*}
-              case "$f" in /*|*..*|*[!A-Za-z0-9._/-]*) continue ;; esac
+              # A name a read may not fetch (`ask.py request` hands it on as `?`) is
+              # never tried and never echoed: it is counted, and the count marked below.
+              case "$f" in /*|*..*|*[!A-Za-z0-9._/-]*) unfetchable=$((unfetchable + 1)); continue ;; esac
               unit=""; case "$want" in *#*) unit="#${want#*#}" ;; esac
               if ! git cat-file -e "HEAD:$f" 2>/dev/null; then
                 found="" n=0
@@ -666,6 +668,7 @@ jobs:
               if [ -n "$unit" ]; then cat "$RUNNER_TEMP/unit" >> /tmp/prompt.txt; else git show "HEAD:$f" >> /tmp/prompt.txt; fi
               added=$((added + size)) files=$((files + 1)) any=yes given="$given $want"
             done
+            [ "$unfetchable" -eq 0 ] || printf '\n===== %s name(s) that are not paths a read may fetch: not given =====\n' "$unfetchable" >> /tmp/prompt.txt
             echo "</more>" >> /tmp/prompt.txt
             # Something added, or no re-read: a reader given nothing it named would
             # answer as it did. What was not given is marked above, with why, and

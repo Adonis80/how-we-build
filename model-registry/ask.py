@@ -4,7 +4,7 @@
     ask.py REGISTRY ROLE SYSTEM_FILE SCHEMA_JSON SECONDS < prompt > answer.json
     ask.py derive ANSWER_FILE
     ask.py incomplete ANSWER_FILE
-    ask.py request ANSWER_FILE                          prints the files or units a re-read must supply, one a line
+    ask.py request ANSWER_FILE                          prints the names a re-read tries, one a line; `?` for one a read may not fetch
     ask.py record open LEDGER ROLE MODEL INTERFACE      prints the attempt's id
     ask.py record close LEDGER ATTEMPT EXIT ANSWER_FILE
     ask.py record summary LEDGER
@@ -251,17 +251,23 @@ def needed(findings):
 
 
 def request(needs):
-    """(the paths a re-read tries to add, None), or (None, why) when there is none it may fetch.
+    """(every name a re-read tries, in order, None), or (None, why) when none of them may be fetched.
 
-    Every name a read may fetch is handed on, in order; the reviewer's `more()`
-    gives what it can find of them, the first NEEDED that fit, and marks the
-    rest, so the re-read sees what it still lacks (#187). Only a request with
-    no fetchable name at all is refused here.
+    A name a read may not fetch is handed on as UNFETCHABLE, never as itself, so
+    the reviewer's `more()` can count it in the prompt without echoing it; the
+    rest `more()` gives what it can find of, the first NEEDED that fit, and
+    marks the others, so the re-read sees what it still lacks (#187). Only a
+    request with no fetchable name at all is refused here.
     """
-    paths = [p for p in needs if isinstance(p, str) and PATH.fullmatch(p)]
-    if not paths:
+    fetchable = [isinstance(p, str) and bool(PATH.fullmatch(p)) for p in needs]
+    if not any(fetchable):
         return None, "it named no path a read may fetch (%d named)" % len(needs)
-    return paths, None
+    return [p if ok else UNFETCHABLE for p, ok in zip(needs, fetchable)], None
+
+
+# What `request` prints for a name a read may not fetch: a character PATH never
+# admits, so `more()` refuses it as it refuses any such name, and counts it.
+UNFETCHABLE = "?"
 
 
 def kept_refusal(found, prose, cut, content):

@@ -3578,7 +3578,8 @@ def _check_caller(path=None, quiet=False):
             ("three paths a read may fetch", ["a.md", "x/y.py", "z.sh"], ["a.md", "x/y.py", "z.sh"]),
             ("four paths a read may fetch, every one handed on for more() to hold to three",
              ["a.md", "b.md", "c.md", "d.md"], ["a.md", "b.md", "c.md", "d.md"]),
-            ("a fetchable path beside one out of the repository", ["a.md", "../up"], ["a.md"]),
+            ("a fetchable path beside one out of the repository, handed on as the stand-in", ["a.md", "../up"],
+             ["a.md", "?"]),
             ("a path with a space", ["b c"], None),
             ("one unit of a file, by a name with a space", ["a.md#Part one"], ["a.md#Part one"]),
             ("a unit of a path out of the repository", ["../a.md#x"], None),
@@ -3697,7 +3698,8 @@ def _check_caller(path=None, quiet=False):
                     ("a request a re-read can meet", ["a.md", "x/y.py"], (0, "a.md\nx/y.py")),
                     ("a request for a unit by its name", ["a.md#Part one", "x/y.py#f"], (0, "a.md#Part one\nx/y.py#f")),
                     ("four files, every one handed on", ["a.md", "b.md", "c.md", "d.md"], (0, "a.md\nb.md\nc.md\nd.md")),
-                    ("a request naming a path out of the repository beside one it may fetch", ["a.md", "../x"], (0, "a.md")),
+                    ("a request naming a path out of the repository beside one it may fetch", ["a.md", "../x"],
+                     (0, "a.md\n?")),
                     ("a request naming only a path out of the repository", ["../x"], (1, ""))):
                 run({"is_error": False, "result": answer([finding("needs-context", "n", files)])})
                 said = io.StringIO()
@@ -3821,8 +3823,9 @@ CALLER_LOOSENINGS = (
     ("a shortfall naming no file taken", '            or any(severity(f) == "needs-context" and not _files(f) for f in findings)):', '            ):'),
     ("a shortfall's files filtered", "            if p not in out:", "            if PATH.fullmatch(p) and p not in out:"),
     ("a shortfall's files trimmed", "    return out\n\n\ndef request(", "    return out[:NEEDED]\n\n\ndef request("),
-    ("a path a read may not fetch handed on", "    paths = [p for p in needs if isinstance(p, str) and PATH.fullmatch(p)]", "    paths = [p for p in needs if isinstance(p, str)]"),
-    ("a request with nothing fetchable met", "    if not paths:\n        return None", "    if False:\n        return None"),
+    ("a path a read may not fetch handed on as itself", "    return [p if ok else UNFETCHABLE for p, ok in zip(needs, fetchable)], None", "    return list(needs), None"),
+    ("a path a read may not fetch dropped", "    return [p if ok else UNFETCHABLE for p, ok in zip(needs, fetchable)], None", "    return [p for p, ok in zip(needs, fetchable) if ok], None"),
+    ("a request with nothing fetchable met", "    if not any(fetchable):\n        return None", "    if False:\n        return None"),
     ("a refused request printed for a re-read", "    if paths is None:", "    if False:"),
     ("a second shortfall left unsigned", '    if not isinstance(got, dict) or got.get("verdict") != "needs-context":\n        return', '    return'),
     # One record per attempt (decision 0014, A).
@@ -4044,9 +4047,14 @@ MORE_CASES = (
     ("a page that exists", ["a.md"], True, {"a.md"}, (), ()),
     ("nothing asked for", [], False, set(), (), ()),
     ("every file asked for, each whole", ["a.md", "b.md", "c.md"], True, {"a.md", "b.md", "c.md"}, (), ()),
-    ("paths out of the repository or of odd characters", ["../a.md", "/etc/passwd", "a b.md"], False, set(), (),
-     ("../a.md", "/etc/passwd", "a b.md")),
-    ("a good file beside a path a read may not fetch", ["a.md", "../a.md"], True, {"a.md"}, (), ("../a.md",)),
+    # A name a read may not fetch is counted, never echoed, so the re-read knows
+    # part of its request was dropped without the prompt carrying the name.
+    ("paths out of the repository or of odd characters", ["../a.md", "/etc/passwd", "a b.md"], False, set(),
+     ("3 name(s) that are not paths a read may fetch: not given",), ("../a.md", "/etc/passwd", "a b.md")),
+    ("a good file beside a path a read may not fetch", ["a.md", "../a.md"], True, {"a.md"},
+     ("1 name(s) that are not paths a read may fetch: not given",), ("../a.md",)),
+    ("a good file beside the caller's stand-in for one", ["a.md", "?"], True, {"a.md"},
+     ("1 name(s) that are not paths a read may fetch: not given",), ()),
     ("a file the change does not have", ["missing.md"], False, set(), ("missing.md: not in this change",), ()),
     ("more than the re-read holds", ["big.md", "b.md"], True, {"big.md"},
      ("b.md: 100001 bytes, left out: past the re-read limit",), ()),
@@ -4173,7 +4181,7 @@ def more_faults(text, path):
 
 
 MORE_LOOSENINGS = (
-    ("any path tried", lambda t: t.replace("              case \"$f\" in /*|*..*|*[!A-Za-z0-9._/-]*) continue ;; esac\n", "", 1)),
+    ("any path tried", lambda t: t.replace("              case \"$f\" in /*|*..*|*[!A-Za-z0-9._/-]*) unfetchable=$((unfetchable + 1)); continue ;; esac\n", "", 1)),
     ("the re-read unbounded", lambda t: t.replace("-gt 200000 ]; then", "-gt 2000000 ]; then", 1)),
     ("a re-read of any number of files", lambda t: t.replace('if [ "$files" -ge 3 ]; then', 'if false; then', 1)),
     ("a re-read with nothing added", lambda t: t.replace('            [ "$any" = yes ]\n', "            true\n", 1)),
@@ -4184,6 +4192,7 @@ MORE_LOOSENINGS = (
     ("a name without its folder taken as any file of that name", lambda t: t.replace('[ "$n" -eq 1 ] ||', '[ "$n" -ge 1 ] ||', 1)),
     ("a name without its folder matched inside a name", lambda t: t.replace('case "$p" in *"/$f")', 'case "$p" in *"$f")', 1)),
     ("a file given twice", lambda t: t.replace('case " $given " in *" $want "*)', 'case "" in x)', 1)),
+    ("a name a read may not fetch dropped without a word", lambda t: t.replace('[ "$unfetchable" -eq 0 ] ||', "true ||", 1)),
 )
 MORE_PRODUCT_LOOSENINGS = (
     ("any rulebook file added", lambda t: t.replace('case "$f" in library/*.md) true ;; *) false ;; esac', 'true', 1)),
