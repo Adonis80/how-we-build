@@ -9,10 +9,8 @@
 # the workflows that fetch them, a build board that no longer renders as
 # decision 0007 says, a product read's rules that no longer refuse what decision
 # 0013 says they must, and, in a pull request, a commit no reviewer
-# has read clean — unread, or read and left a blocking finding on — a change to the review
-# machinery while the newest canary on main is red, or a change whose self-test ran only
-# the parts its files touch while main's own newest finished check is red, or none has
-# finished (#187, item 3). Nothing else. A read by anybody the
+# has read clean — unread, or read and left a blocking finding on — or a change to the review
+# machinery while the newest canary on main is red. Nothing else. A read by anybody the
 # gate does not count is unread, not a shape of its own.
 # A third shape, "read clean by a reviewer the rulebook does not allow to
 # clear this change", was real while two vendors were on the register and is
@@ -239,9 +237,11 @@ fi
 # one it reads. In a pull request it runs the core and the parts measured to
 # read a changed file (#187); a change to the gate itself, a file no part is
 # measured to read, a push to main, a run by hand, or a plan that cannot be
-# read runs every part (see SELFTEST_PARTS). A pull request that ran only
-# parts trusts main's whole run, so the gate below holds it while main's own
-# newest check is red (see main_red): a red main is repaired first.
+# read runs every part (see SELFTEST_PARTS), and so does any pull request
+# while main's own newest finished check is red, or none has finished, or it
+# could not be read (see main_red): a run of parts trusts main's whole run,
+# so while that cannot be trusted nothing runs less than the whole, and a red
+# main is repaired by an ordinary pull request that runs whole.
 plan=$(python3 review-gate.py --selftest-plan 2>/dev/null | tail -n 1) || plan="run all: the plan could not be made"
 parts=""
 case "$plan" in
