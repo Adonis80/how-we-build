@@ -3108,18 +3108,33 @@ def _check_selftest_plan(quiet=False):
     def run(conclusion="success", status="completed", app=ACTIONS_APP, name=MAIN_CHECK, at="2026-10-11T19:00:00Z"):
         return {"name": name, "status": status, "conclusion": conclusion, "completed_at": at,
                 "app": {"id": app} if app is not None else None}
-    for what, runs, want in (
-            ("main's check green", [run()], None),
-            ("main's check red", [run("failure")], head),
-            ("main's check timed out", [run("timed_out")], head),
-            ("main's check still running", [run(None, status="in_progress")], None),
-            ("no check run on main yet", [], None),
-            ("a red run under another app", [run("failure", app=REVIEWER_APP_ID)], None),
-            ("a red run under another name", [run("failure", name="build")], None),
-            ("a cancelled run", [run("cancelled")], None),
-            ("red, then green again", [run("failure", at="2026-10-11T18:00:00Z"), run()], None),
-            ("green, then red", [run(at="2026-10-11T18:00:00Z"), run("failure")], head)):
-        got = main_red_from(head, runs)
+    red, none = "is red at %s" % head[:12], "has not finished on any of main's newest %d commit(s)"
+    for what, commits, want in (
+            ("main's check green", [(head, [run()])], None),
+            ("main's check red", [(head, [run("failure")])], red),
+            ("main's check timed out", [(head, [run("timed_out")])], red),
+            ("main's check neutral or stale: any finish but success", [(head, [run("neutral")])], red),
+            ("main's check still running on the tip; the one before it, green, decides",
+             [("m2", [run(None, status="in_progress")]), (head, [run()])], None),
+            ("main's check still running on the tip; the one before it, red, holds",
+             [("m2", [run(None, status="in_progress")]), (head, [run("failure")])], red),
+            ("no check on the tip yet; the one before it decides", [("m2", []), (head, [run("failure")])], red),
+            ("a cancelled run on the tip says nothing; the one before it decides",
+             [("m2", [run("cancelled")]), (head, [run("failure")])], red),
+            ("a skipped run on the tip says nothing; the one before it decides",
+             [("m2", [run("skipped")]), (head, [run()])], None),
+            ("still running on the tip and nothing finished before it: no run to trust",
+             [(head, [run(None, status="in_progress")])], none % 1),
+            ("no commit at all: no run to trust", [], none % 0),
+            ("a red run under another app is not the check; the one before it decides",
+             [("m2", [run("failure", app=REVIEWER_APP_ID)]), (head, [run()])], None),
+            ("a red run under another name is not the check; the one before it decides",
+             [("m2", [run("failure", name="build")]), (head, [run()])], None),
+            ("red, then green again on the tip", [(head, [run("failure", at="2026-10-11T18:00:00Z"), run()])], None),
+            ("green, then red on the tip", [(head, [run(at="2026-10-11T18:00:00Z"), run("failure")])], red),
+            ("red on the tip, green before it: the newest finished decides",
+             [(head, [run("failure")]), ("m1", [run()])], red)):
+        got = main_red_from(commits)
         if got != want:
             fault("%s: main_red_from says %r, not %r" % (what, got, want))
     try:
@@ -3129,7 +3144,7 @@ def _check_selftest_plan(quiet=False):
         return bad
     for line in ('partial = selftest_plan("pull_request", files, None)[1] not in ("all", "")',
                  "broken = main_red(api, token) if partial else None",
-                 "    if broken:\n        print(\"reason: main's own check is red at %s"):
+                 "    if broken:\n        print(\"reason: main's own check %s"):
         if line not in gate:
             fault("the gate has lost `%s`" % line.strip())
     if not bad and not quiet:
@@ -7751,21 +7766,25 @@ def _check_main():
     """
     head = "090e429a31cd5f0b2e4d7a1c9b8e6f4d2a1c3b5e"
     ok, findings = _run("success", sha=head), _run("failure", sha=head)
-    # files, check runs, exit code, must appear in the output, what it is
+    # main's own `check`, which a run of only parts asks after (#187, item 3):
+    # the ordinary cases below give it one that passed, so what they test is theirs.
+    whole = lambda c, at="2026-10-11T19:00:00Z", **k: dict(_run(c, app=ACTIONS_APP), name=MAIN_CHECK, completed_at=at, **k)
+    trusted = [("m2", [whole("success")])]
+    # files, check runs, exit code, must appear in the output, what it is, main's commits
     cases = [
         ([{"filename": "review-gate.py"}], [ok], 0, "note:",
          "a change to the gate itself, read clean, opens — the deadlock his ruling created"),
         ([{"filename": ".github/workflows/check.yml"}], [ok], 0, "note:",
          "and so does a change to a workflow"),
-        ([{"filename": "README.md"}], [ok], 0, "ok:", "an ordinary change opens"),
+        ([{"filename": "README.md"}], [ok], 0, "ok:", "an ordinary change opens", trusted),
         ([{"filename": "review-gate.py"}], [findings], 1, "note:",
          "findings on a gate change are red, and it is still announced as one"),
-        ([{"filename": "README.md"}], [], 1, "no reviewer has read", "an unread commit is red"),
+        ([{"filename": "README.md"}], [], 1, "no reviewer has read", "an unread commit is red", trusted),
         ([{"filename": "README.md"}], [_run("success", app=ACTIONS_APP, sha=head)], 1,
          "no reviewer has read",
-         "and so is a clean run from the App every workflow token here holds"),
+         "and so is a clean run from the App every workflow token here holds", trusted),
         ([{"filename": "README.md"}], [_run(status="in_progress", sha=head)], 1,
-         "no reviewer has read", "a run that has not finished is not a read, and is red"),
+         "no reviewer has read", "a run that has not finished is not a read, and is red", trusted),
         ([{"filename": "review-gate.py"}], [], 1, "note:",
          "an unread change to the gate is red, and still announced as one"),
         ([{"filename": ".github/workflows/a\n::stop-commands::x.yml"}], [ok], 0, "note:",
@@ -7783,7 +7802,8 @@ def _check_main():
         ([{"filename": "review-gate.py"}], [ok], 1, "the canary failed on main at m2",
          "a machinery change read clean is held while the newest canary on main is red", red),
         ([{"filename": "README.md"}], [ok], 0, "ok:",
-         "an ordinary change is not held by a red canary, nor asks after one", red),
+         "an ordinary change is not held by a red canary: main's check, green beside it, is what it asks after",
+         [("m2", [canary("failure"), whole("success")])]),
         ([{"filename": "review-gate.py"}], [ok], 0, "note:", "a green canary holds nothing", green),
         ([{"filename": "model-registry/registry.json"}], [ok], 1, "the canary failed on main at m1",
          "a canary skipped on the newest commit says nothing; the one before it, red, holds",
@@ -7815,7 +7835,6 @@ def _check_main():
     # self-test ran only parts trusts main's whole run, so it asks after main's
     # newest `check` and is held while that is red; one that ran every part, or
     # none, asks nothing of main's check.
-    whole = lambda c, at="2026-10-11T19:00:00Z", **k: dict(_run(c, app=ACTIONS_APP), name=MAIN_CHECK, completed_at=at, **k)
     cases += [
         ([{"filename": "README.md"}], [ok], 1, "main's own check is red at m2",
          "an ordinary change, whose self-test ran only parts, is held while main's own check is red",
@@ -7826,11 +7845,18 @@ def _check_main():
          "a red check re-run green on main's tip holds nothing: the newest finished run decides",
          [("m2", [whole("failure"), whole("success", "2026-10-11T20:00:00Z")])]),
         ([{"filename": "README.md"}], [ok], 0, "ok:",
-         "main's check still running is not red, and none yet is not red",
+         "main's check still running on the tip is passed over: the green before it decides",
+         [("m2", [whole(None, status="in_progress")]), ("m1", [whole("success")])]),
+        ([{"filename": "README.md"}], [ok], 1, "main's own check is red at m1",
+         "and so is the red before it: main moving while red lets nothing through",
+         [("m2", [whole(None, status="in_progress")]), ("m1", [whole("failure")])]),
+        ([{"filename": "README.md"}], [ok], 1, "has not finished on any of main's newest 1 commit(s)",
+         "main's check running on the tip with nothing finished before it is no run to trust, and holds",
          [("m2", [whole(None, status="in_progress")])]),
         ([{"filename": "README.md"}], [ok], 0, "ok:",
-         "a failure under another name, or from another app, is not main's check",
-         [("m2", [dict(whole("failure"), name="build"), dict(whole("failure"), app={"id": 1})])]),
+         "a failure under another name, or from another app, is not main's check: the green before it decides",
+         [("m2", [dict(whole("failure"), name="build"), dict(whole("failure"), app={"id": 1})]),
+          ("m1", [whole("success")])]),
         ([{"filename": "review-gate.py"}], [ok], 0, "note:",
          "a gate change ran every part itself: a red main does not hold it, and the repair of a red main is one",
          [("m2", [whole("failure"), canary("success")])]),
@@ -8202,34 +8228,39 @@ def canary_red(api, token):
 
 # MAIN'S OWN CHECK (#187, item 3): the whole self-test runs on every push to
 # main, and its newest `check` run there is what a pull request that ran only
-# parts trusts. Red is a run that finished and failed; one still running, or
-# none yet, is not red, and a cancelled or skipped one says nothing.
+# parts trusts. The newest of main's last commits whose `check` has finished
+# decides, as the canary's does: a run still going, or not yet appeared, on
+# the tip is passed over to the commit before it (#190's second read: looking
+# at the tip alone let every partial run through while main moved red), and a
+# cancelled or skipped one says nothing. Red is any finish but success. When
+# none of them has finished there is no run to trust, and the hold stands.
 MAIN_CHECK = "check"
-MAIN_RED = ("failure", "timed_out", "action_required")
+MAIN_LOOKBACK = CANARY_LOOKBACK
 
 
 def main_red(api, token):
-    """main's tip when its newest finished `check` run failed, else None."""
-    req = urllib.request.Request("%s/commits?sha=main&per_page=1" % api,
+    """Why main's check is not to be trusted, or None: its newest finished run failed, or none has finished."""
+    req = urllib.request.Request("%s/commits?sha=main&per_page=%d" % (api, MAIN_LOOKBACK),
                                  headers={"Authorization": "Bearer " + token,
                                           "Accept": "application/vnd.github+json"})
     with urllib.request.urlopen(req) as r:
         commits = json.load(r)
-    tip = (commits[0].get("sha") if isinstance(commits, list) and commits else None) or ""
-    if not tip:
-        return None
-    return main_red_from(tip, _pages("%s/commits/%s/check-runs" % (api, tip), token, key="check_runs",
-                                     params={"check_name": MAIN_CHECK, "filter": "latest"}))
+    shas = [c.get("sha") for c in (commits if isinstance(commits, list) else []) if c.get("sha")]
+    return main_red_from([(sha, list(_pages("%s/commits/%s/check-runs" % (api, sha), token, key="check_runs",
+                                             params={"check_name": MAIN_CHECK, "filter": "all"})))
+                          for sha in shas])
 
 
-def main_red_from(tip, check_runs):
-    """The rule alone, on the check runs of main's tip: the tip when the newest finished `check` by Actions failed."""
-    mine = [r for r in check_runs if r.get("name") == MAIN_CHECK and (r.get("app") or {}).get("id") == ACTIONS_APP
-            and r.get("status") == "completed"]
-    if not mine:
-        return None
-    newest = max(mine, key=lambda r: r.get("completed_at") or "")
-    return tip if newest.get("conclusion") in MAIN_RED else None
+def main_red_from(commits):
+    """The rule alone, on main's commits newest first, each with its check runs: None when the newest
+    finished `check` by Actions passed, else why not."""
+    for sha, check_runs in commits:
+        ran = [r for r in check_runs if r.get("name") == MAIN_CHECK and (r.get("app") or {}).get("id") == ACTIONS_APP
+               and r.get("status") == "completed" and r.get("conclusion") not in ("skipped", "cancelled")]
+        if ran:
+            newest = max(ran, key=lambda r: r.get("completed_at") or "")
+            return None if newest.get("conclusion") == "success" else "is red at %s" % sha[:12]
+    return "has not finished on any of main's newest %d commit(s)" % len(commits)
 
 
 # THE SELF-TEST, RUN ONLY WHEN IT CAN SAY SOMETHING NEW (his ask, 7 October
@@ -8470,9 +8501,9 @@ def main(argv):
               "library/reviewer-parking.md" % held[:12])
         return 1
     if broken:
-        print("reason: main's own check is red at %s, and this pull request's self-test ran only the parts "
+        print("reason: main's own check %s, and this pull request's self-test ran only the parts "
               "its files touch, which trust main's whole run; repair main first (library/changing-the-rulebook.md), "
-              "or touch the gate so every part runs here" % broken[:12])
+              "or touch the gate so every part runs here" % broken)
         return 1
     if answer == CLEAN:
         print("ok: %s has read %s and left nothing on it" % (REVIEWERS[who]["name"], head))
