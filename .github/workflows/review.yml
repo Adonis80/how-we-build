@@ -622,7 +622,7 @@ jobs:
           # `DECISION-0016…#H`); a name given without its folder is the one file
           # of that name in the head (#181's `build-board.yml`), or nothing.
           more() {
-            local want f unit size found n p added=0 files=0 any=no
+            local want f unit size found n p added=0 files=0 any=no given=""
             {
               echo
               echo "You said this read needed more. The files you named, as this change would leave"
@@ -650,6 +650,10 @@ jobs:
                   unit="" want=$f
                 fi
               fi
+              # Once each: two names that resolve to one file (a unit the file
+              # lacks and the file; a name without its folder and its path)
+              # take one of the three slots, not two.
+              case " $given " in *" $want "*) printf '\n===== %s: given above =====\n' "$want" >> /tmp/prompt.txt; continue ;; esac
               if [ "$files" -ge 3 ]; then
                 printf '\n===== %s: left out: past the three files a re-read holds =====\n' "$want" >> /tmp/prompt.txt
                 continue
@@ -660,13 +664,18 @@ jobs:
               fi
               printf '\n===== %s =====\n' "$want" >> /tmp/prompt.txt
               if [ -n "$unit" ]; then cat "$RUNNER_TEMP/unit" >> /tmp/prompt.txt; else git show "HEAD:$f" >> /tmp/prompt.txt; fi
-              added=$((added + size)) files=$((files + 1)) any=yes
+              added=$((added + size)) files=$((files + 1)) any=yes given="$given $want"
             done
             echo "</more>" >> /tmp/prompt.txt
             # Something added, or no re-read: a reader given nothing it named would
-            # answer as it did. What was not given is marked above, so a reader
-            # that still needs it says so, and that second shortfall is signed
-            # blocking below; nothing is cleared on what the reader never saw.
+            # answer as it did. What was not given is marked above, with why, and
+            # the verdict is the reader's: one that still needs what is marked
+            # says so and is signed blocking below; one that can judge without it
+            # clears or refuses on what it has. That is the trade #187 made over
+            # #170's "every file whole or no re-read" (the break test of 8 October
+            # 2026): a re-read is a cold read with more in front of it than the
+            # first, and it is told what it lacks, so a clean answer over a marked
+            # gap is the reader's judgement rather than a gap it never saw.
             [ "$any" = yes ]
           }
           # A verdict that opens the gate counts only with a review behind it:

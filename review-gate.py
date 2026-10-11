@@ -4074,6 +4074,11 @@ MORE_CASES = (
      ("one of two", "two of two")),
     ("a unit of a name without its folder", ["deep/only.md#x"], True, {"docs/deep/only.md"},
      ("docs/deep/only.md#x: no such unit; docs/deep/only.md whole",), ()),
+    # Two names for one file take one slot: the file is given once and the second name says so.
+    ("a unit the file lacks, and the file", ["small.py#missing", "small.py", "a.md", "c.md"], True,
+     {"small.py", "a.md", "c.md"}, ("small.py: given above",), ("past the three files",)),
+    ("a name without its folder, and its path", ["only.md", "docs/deep/only.md"], True, {"docs/deep/only.md"},
+     ("docs/deep/only.md: given above",), ()),
 )
 # With the re-read's limit raised past the large file, the same request is met whole.
 MORE_RAISED = (
@@ -4178,6 +4183,7 @@ MORE_LOOSENINGS = (
     ("a missing unit not named", lambda t: t.replace("no such unit; %s whole", "%s", 1)),
     ("a name without its folder taken as any file of that name", lambda t: t.replace('[ "$n" -eq 1 ] ||', '[ "$n" -ge 1 ] ||', 1)),
     ("a name without its folder matched inside a name", lambda t: t.replace('case "$p" in *"/$f")', 'case "$p" in *"$f")', 1)),
+    ("a file given twice", lambda t: t.replace('case " $given " in *" $want "*)', 'case "" in x)', 1)),
 )
 MORE_PRODUCT_LOOSENINGS = (
     ("any rulebook file added", lambda t: t.replace('case "$f" in library/*.md) true ;; *) false ;; esac', 'true', 1)),

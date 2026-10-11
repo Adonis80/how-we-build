@@ -970,7 +970,7 @@ jobs:
           # review.yml's `more()`, the product's files read out of its objects
           # at the head, never printed (decision 0014, F(2)).
           more() {
-            local want f unit size src found n p added=0 files=0 any=no
+            local want f unit size src found n p added=0 files=0 any=no given=""
             {
               echo
               echo "You said this read needed more. The files you named, as this change would leave"
@@ -1006,6 +1006,7 @@ jobs:
                 if [ -s "$t/unit" ]; then size=$(wc -c < "$t/unit")
                 else printf '\n===== %s: no such unit; %s whole =====\n' "$want" "$f" >> "$t/prompt.txt"; unit="" want=$f; fi
               fi
+              case " $given " in *" $want "*) printf '\n===== %s: given above =====\n' "$want" >> "$t/prompt.txt"; continue ;; esac
               if [ "$files" -ge 3 ]; then
                 printf '\n===== %s: left out: past the three files a re-read holds =====\n' "$want" >> "$t/prompt.txt"
                 continue
@@ -1019,11 +1020,12 @@ jobs:
               if [ -n "$unit" ]; then cat "$t/unit" >> "$t/prompt.txt"
               elif [ "$src" = rulebook ]; then cat "$GITHUB_WORKSPACE/$f" >> "$t/prompt.txt"
               else git -C "$t/product" show "$SHA:$f" >> "$t/prompt.txt"; fi
-              added=$((added + size)) files=$((files + 1)) any=yes
+              added=$((added + size)) files=$((files + 1)) any=yes given="$given $want"
             done
             echo "</more>" >> "$t/prompt.txt"
-            # Something added, or no re-read: review.yml's rule. What was not given
-            # is marked above, and a second shortfall is signed blocking below.
+            # Something added, or no re-read: review.yml's rule, and its trade. What
+            # was not given is marked above, and the verdict is the reader's: a
+            # second shortfall is signed blocking below.
             [ "$any" = yes ]
           }
           # A verdict that opens the gate counts only with a review behind it:
