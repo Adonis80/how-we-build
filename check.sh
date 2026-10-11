@@ -234,12 +234,18 @@ fi
 # board's build — which must still agree with the register and with each other.
 # It runs unless review-gate.py's plan says it can say nothing new: an earlier
 # attempt of this same run passed it, or no file the pull request changes is
-# one it reads. Anything else, an error included, runs it (see SELFTEST_NOT_READ).
-plan=$(python3 review-gate.py --selftest-plan 2>/dev/null | tail -n 1) || plan="run: the plan could not be made"
+# one it reads. In a pull request it runs the core and the parts measured to
+# read a changed file (#187); a change to the gate itself, a file no part is
+# measured to read, a push to main, a run by hand, or a plan that cannot be
+# read runs every part (see SELFTEST_PARTS).
+plan=$(python3 review-gate.py --selftest-plan 2>/dev/null | tail -n 1) || plan="run all: the plan could not be made"
+parts=""
 case "$plan" in
   "skip: "*) echo "selftest: not run, ${plan#skip: }" ;;
-  *) echo "selftest: run, ${plan#run: }"; python3 review-gate.py --selftest || fail_gate=1 ;;
+  "run "*": "*) parts=${plan%%:*}; parts=${parts#run }; echo "selftest: run $parts, ${plan#*: }" ;;
+  *) parts=all; echo "selftest: run all, the plan could not be read: $plan" ;;
 esac
+[ -z "$parts" ] || python3 review-gate.py --selftest "$parts" || fail_gate=1
 [ "${fail_gate:-0}" -eq 0 ] || { echo "FAIL: the review gate no longer matches the reviewer's answers, or has drifted from the workflows — see the cases above."; fail=1; }
 # The build board's build (decision 0007): what the page may say, run on
 # made-up roadmaps, since the real ones are private and never reach this log.
