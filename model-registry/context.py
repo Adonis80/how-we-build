@@ -17,7 +17,8 @@ touched file; every page that names a touched file by its path; and, on a
 `code` or `risky` read, the registry. Everything else is named with its size
 and left out, so a reader that needed it says so (`needs-context`), naming a
 file or one unit of one (`path#heading`, `path#function`, `path#step name`),
-and is read once more with every unit it asked for whole (#170), or not at all.
+and is read once more with what can be found of what it asked for, the rest
+marked (#187), or not at all when nothing can be; a second shortfall is signed.
 
 It prints numbers alone: what it read is the change's, and this log is public.
 Standard library only.

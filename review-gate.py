@@ -2315,11 +2315,10 @@ ROUTE_CASES = (
      FALLBACK_ROLE, 600, ([ORDINARY_ROLE], "blocking"), (0, "clean"), False),
     ("the role is short, naming no path a read may fetch", (0, "shortbadpath"), (0, "clean"),
      FALLBACK_ROLE, 600, ([ORDINARY_ROLE], "blocking"), (0, "clean")),
-    # The break test's third (8 October 2026): four files asked for, three kept,
-    # and a clean re-read on the three signed. A request past the re-read's is
-    # refused whole, so the clean re-read it would have had never happens.
-    ("the role is short of four files, and a re-read would be clean", (0, "shortfour"), (0, "clean"),
-     FALLBACK_ROLE, 600, ([ORDINARY_ROLE], "blocking"), (0, "clean")),
+    # Four files asked for: every one is handed to `more()`, which gives three
+    # and marks the fourth (#187), so the re-read happens and its answer stands.
+    ("the role is short of four files, and its re-read is clean", (0, "shortfour"), (0, "clean"),
+     FALLBACK_ROLE, 600, ([ORDINARY_ROLE, ORDINARY_ROLE], "clean"), (0, "clean")),
     ("the role is short, and its re-read fails", (0, "short"), (0, "clean"),
      FALLBACK_ROLE, 600, ([ORDINARY_ROLE, ORDINARY_ROLE], "blocking"), (1, "")),
     ("the role is short, and no time is left to read again", (0, "short"), (0, "clean"),
@@ -3566,9 +3565,10 @@ def _check_caller(path=None, quiet=False):
             {"severity": "blocking", "text": "b"}, {"severity": "advisory", "text": "a"}]:
         fault("the findings were not carried on as typed, or the model's own verdict not named as ignored (%s)" % obj)
     # Every file a shortfall asks for is kept, each once: none trimmed, none
-    # filtered, so a request that cannot be met whole is refused whole (the
-    # break test of 8 October 2026: four paths asked, three kept, and the re-read
-    # on those three signed clean).
+    # filtered, so a refusal names the whole request; what a re-read tries to
+    # add is every name a read may fetch, and `more()` gives what it can of
+    # them and marks the rest (#187; before, one name a read may not fetch
+    # refused the whole request, and #181 parked three rounds on one).
     obj, _ = ask.derive(answer([finding("needs-context", "n", ["a.md", "../up", "/etc/x", "b c", "a.md", "x/y.py",
                                                                  "z.sh", "four.md"])]))
     if obj is None or obj.get("needs") != ["a.md", "../up", "/etc/x", "b c", "x/y.py", "z.sh", "four.md"]:
@@ -3576,8 +3576,10 @@ def _check_caller(path=None, quiet=False):
     request = getattr(ask, "request", None)
     for what, needs, want in (
             ("three paths a read may fetch", ["a.md", "x/y.py", "z.sh"], ["a.md", "x/y.py", "z.sh"]),
-            ("the break test's third: four paths a read may fetch", ["a.md", "b.md", "c.md", "d.md"], None),
-            ("a fetchable path beside one out of the repository", ["a.md", "../up"], None),
+            ("four paths a read may fetch, every one handed on for more() to hold to three",
+             ["a.md", "b.md", "c.md", "d.md"], ["a.md", "b.md", "c.md", "d.md"]),
+            ("a fetchable path beside one out of the repository, handed on as the stand-in", ["a.md", "../up"],
+             ["a.md", "?"]),
             ("a path with a space", ["b c"], None),
             ("one unit of a file, by a name with a space", ["a.md#Part one"], ["a.md#Part one"]),
             ("a unit of a path out of the repository", ["../a.md#x"], None),
@@ -3690,13 +3692,15 @@ def _check_caller(path=None, quiet=False):
                                                                      for x in body.get("findings", []))):
                     fault("%s was signed %s, not %s%s (%s)" % (what, body.get("verdict"), want,
                                                               " saying %r" % says if says else "", body))
-            # What a re-read must add, asked of the first answer: printed and 0
-            # only when every file can be asked for; else 1 and nothing printed.
+            # What a re-read tries to add, asked of the first answer: every name a
+            # read may fetch, printed, and 0; with none, 1 and nothing printed.
             for what, files, want in (
                     ("a request a re-read can meet", ["a.md", "x/y.py"], (0, "a.md\nx/y.py")),
                     ("a request for a unit by its name", ["a.md#Part one", "x/y.py#f"], (0, "a.md#Part one\nx/y.py#f")),
-                    ("the break test's third: four files", ["a.md", "b.md", "c.md", "d.md"], (1, "")),
-                    ("a request naming a path out of the repository", ["a.md", "../x"], (1, ""))):
+                    ("four files, every one handed on", ["a.md", "b.md", "c.md", "d.md"], (0, "a.md\nb.md\nc.md\nd.md")),
+                    ("a request naming a path out of the repository beside one it may fetch", ["a.md", "../x"],
+                     (0, "a.md\n?")),
+                    ("a request naming only a path out of the repository", ["../x"], (1, ""))):
                 run({"is_error": False, "result": answer([finding("needs-context", "n", files)])})
                 said = io.StringIO()
                 with contextlib.redirect_stdout(said), contextlib.redirect_stderr(io.StringIO()):
@@ -3819,9 +3823,9 @@ CALLER_LOOSENINGS = (
     ("a shortfall naming no file taken", '            or any(severity(f) == "needs-context" and not _files(f) for f in findings)):', '            ):'),
     ("a shortfall's files filtered", "            if p not in out:", "            if PATH.fullmatch(p) and p not in out:"),
     ("a shortfall's files trimmed", "    return out\n\n\ndef request(", "    return out[:NEEDED]\n\n\ndef request("),
-    ("a request past the re-read's files met", "    if len(needs) > NEEDED:", "    if False:"),
-    ("a request naming a path a read may not fetch met", "    if bad:\n        return None", "    if False:\n        return None"),
-    ("a request of nothing met", '    if not needs:\n        return None, "it named no file"', '    if False:\n        return None, "it named no file"'),
+    ("a path a read may not fetch handed on as itself", "    return [p if ok else UNFETCHABLE for p, ok in zip(needs, fetchable)], None", "    return list(needs), None"),
+    ("a path a read may not fetch dropped", "    return [p if ok else UNFETCHABLE for p, ok in zip(needs, fetchable)], None", "    return [p for p, ok in zip(needs, fetchable) if ok], None"),
+    ("a request with nothing fetchable met", "    if not any(fetchable):\n        return None", "    if False:\n        return None"),
     ("a refused request printed for a re-read", "    if paths is None:", "    if False:"),
     ("a second shortfall left unsigned", '    if not isinstance(got, dict) or got.get("verdict") != "needs-context":\n        return', '    return'),
     # One record per attempt (decision 0014, A).
@@ -4022,49 +4026,73 @@ def _check_attempt_loosenings():
 # THE FILES A SHORT READ ASKED FOR (decision 0014, F(2)), each reviewer's real
 # `more()` run on a made-up head: a plain path that exists is added, a path out
 # of the repository or of odd characters is never tried, a missing one is named,
-# the re-read stops at 200 KB, and with nothing added there is no re-read.
+# the re-read stops at three files and 200 KB, naming what it left out, and
+# with nothing added there is no re-read. What can be given is given and the
+# rest marked, so the re-read sees what it still lacks (#187; before, one name
+# that could not be met cancelled the re-read, and #181 parked three rounds on
+# `build-board.yml` without its folder and a unit the selector could not find).
 # (what is asked, whether a re-read follows, files added, markers it must write, paths never named).
 # huge.py is the size review-gate.py was when the break test of 8 October 2026
 # asked for it beside a small file.
 MORE_TREE = {"a.md": "page a\n", "big.md": "x" * 150000 + "\n", "b.md": "y" * 100000 + "\n",
              "huge.py": "z" * 479081 + "\n", "c.md": "page c\n", "d.md": "page d\n",
              "gate.py": "def wanted():\n    return 'the unit asked for'\n\n\ndef other():\n    return 'not asked'\n"
-                        + "x = %r\n" % ("w" * 300000)}
-# A re-read happens only on every file asked for, whole (the break test: a
-# re-read on part of the request signed what it never saw). Each case: what,
-# the files asked for, whether it is read again, the files it adds, words the
-# prompt must hold, words it must not.
+                        + "x = %r\n" % ("w" * 300000),
+             "small.py": "def one():\n    return 'the small file whole'\n",
+             "docs/deep/only.md": "the one page of that name\n", "notonly.md": "a name that merely ends the same\n",
+             "x/same.md": "one of two\n", "y/same.md": "two of two\n"}
+# Each case: what, the files asked for, whether it is read again, the files it
+# adds, words the prompt must hold, words it must not.
 MORE_CASES = (
     ("a page that exists", ["a.md"], True, {"a.md"}, (), ()),
     ("nothing asked for", [], False, set(), (), ()),
     ("every file asked for, each whole", ["a.md", "b.md", "c.md"], True, {"a.md", "b.md", "c.md"}, (), ()),
-    ("paths out of the repository or of odd characters", ["../a.md", "/etc/passwd", "a b.md"], False, set(), (),
-     ("../a.md", "/etc/passwd", "a b.md")),
-    ("a good file beside a path a read may not fetch", ["a.md", "../a.md"], False, {"a.md"}, (), ()),
+    # A name a read may not fetch is counted, never echoed, so the re-read knows
+    # part of its request was dropped without the prompt carrying the name.
+    ("paths out of the repository or of odd characters", ["../a.md", "/etc/passwd", "a b.md"], False, set(),
+     ("3 name(s) that are not paths a read may fetch: not given",), ("../a.md", "/etc/passwd", "a b.md")),
+    ("a good file beside a path a read may not fetch", ["a.md", "../a.md"], True, {"a.md"},
+     ("1 name(s) that are not paths a read may fetch: not given",), ("../a.md",)),
+    ("a good file beside the caller's stand-in for one", ["a.md", "?"], True, {"a.md"},
+     ("1 name(s) that are not paths a read may fetch: not given",), ()),
     ("a file the change does not have", ["missing.md"], False, set(), ("missing.md: not in this change",), ()),
-    ("more than the re-read holds", ["big.md", "b.md"], False, {"big.md"},
+    ("more than the re-read holds", ["big.md", "b.md"], True, {"big.md"},
      ("b.md: 100001 bytes, left out: past the re-read limit",), ()),
-    ("the break test's first: a small file and a missing one", ["a.md", "missing.md"], False, {"a.md"},
-     ("missing.md: not in this change",), ()),
-    ("the break test's second: a small file and a 479,082-byte one", ["a.md", "huge.py"], False, {"a.md"},
-     ("huge.py: 479082 bytes, left out: past the re-read limit",), ()),
+    ("a fourth file, past the three a re-read holds", ["a.md", "c.md", "d.md", "b.md"], True, {"a.md", "c.md", "d.md"},
+     ("b.md: left out: past the three files a re-read holds",), ("yyyy",)),
+    ("a small file and a missing one: the small one given, the missing one named", ["a.md", "missing.md"], True,
+     {"a.md"}, ("missing.md: not in this change",), ()),
+    ("a small file and a 479,082-byte one: the small one given, the large one named", ["a.md", "huge.py"], True,
+     {"a.md"}, ("huge.py: 479082 bytes, left out: past the re-read limit",), ("zzzz",)),
     # One unit of a large file, alone (decision 0018): what a reader asks for
     # instead of the file, met whole, and nothing of the file beside it.
     ("one function of a large file", ["gate.py#wanted"], True, {"gate.py#wanted"}, ("the unit asked for",),
      ("not asked", "wwww")),
-    ("a unit the file does not have", ["a.md", "gate.py#missing"], False, {"a.md"},
-     ("gate.py#missing: not in this change",), ()),
+    ("a unit a small file does not have: the file whole", ["small.py#missing"], True, {"small.py"},
+     ("small.py#missing: no such unit; small.py whole", "the small file whole"), ()),
+    ("a unit a large file does not have: the file named, not given", ["a.md", "gate.py#missing"], True, {"a.md"},
+     ("gate.py#missing: no such unit; gate.py whole",
+      "gate.py: %d bytes, left out: past the re-read limit" % len(MORE_TREE["gate.py"])), ("wwww",)),
     ("a unit of a path out of the repository", ["../gate.py#wanted"], False, set(), (), ("the unit asked for",)),
+    # A name without its folder (#181's `build-board.yml`): the one file of that
+    # name, or nothing when two share it.
+    ("a name without its folder, which one file has", ["only.md"], True, {"docs/deep/only.md"},
+     ("the one page of that name",), ("merely ends the same",)),
+    ("a name without its folder, which two files share", ["same.md"], False, set(), ("same.md: not in this change",),
+     ("one of two", "two of two")),
+    ("a unit of a name without its folder", ["deep/only.md#x"], True, {"docs/deep/only.md"},
+     ("docs/deep/only.md#x: no such unit; docs/deep/only.md whole",), ()),
+    # Two names for one file take one slot: the file is given once and the second name says so.
+    ("a unit the file lacks, and the file", ["small.py#missing", "small.py", "a.md", "c.md"], True,
+     {"small.py", "a.md", "c.md"}, ("small.py: given above",), ("past the three files",)),
+    ("a name without its folder, and its path", ["only.md", "docs/deep/only.md"], True, {"docs/deep/only.md"},
+     ("docs/deep/only.md: given above",), ()),
 )
-# The same refusals with the re-read's limit raised, so they rest on the request
-# being met and not on where the limit sits; and with it raised past the large
-# file, the same request met whole is read again.
+# With the re-read's limit raised past the large file, the same request is met whole.
 MORE_RAISED = (
-    ("-gt 400000 ]", ("the break test's first, the limit raised", ["a.md", "missing.md"], False, {"a.md"},
-                      ("missing.md: not in this change",), ())),
-    ("-gt 400000 ]", ("the break test's second, the limit raised short of the file", ["a.md", "huge.py"], False,
+    ("-gt 400000 ]", ("a 479,082-byte file, the limit raised short of it", ["a.md", "huge.py"], True,
                       {"a.md"}, ("huge.py: 479082 bytes, left out: past the re-read limit",), ())),
-    ("-gt 600000 ]", ("the break test's second, the limit raised past the file, so met whole", ["a.md", "huge.py"],
+    ("-gt 600000 ]", ("a 479,082-byte file, the limit raised past it, so met whole", ["a.md", "huge.py"],
                       True, {"a.md", "huge.py"}, (), ())),
 )
 
@@ -4097,6 +4125,7 @@ def more_says(text, path, asked):
         tree = os.path.join(d, "product")
         os.makedirs(tree)
         for f, body in MORE_TREE.items():
+            os.makedirs(os.path.dirname(os.path.join(tree, f)), exist_ok=True)
             open(os.path.join(tree, f), "w").write(body)
         rulebook = os.path.join(d, "rulebook")
         for f, body in MORE_RULEBOOK.items():
@@ -4152,22 +4181,25 @@ def more_faults(text, path):
 
 
 MORE_LOOSENINGS = (
-    ("any path tried", lambda t: t.replace("              case \"$f\" in /*|*..*|*[!A-Za-z0-9._/-]*) short=yes; continue ;; esac\n", "", 1)),
+    ("any path tried", lambda t: t.replace("              case \"$f\" in /*|*..*|*[!A-Za-z0-9._/-]*) unfetchable=$((unfetchable + 1)); continue ;; esac\n", "", 1)),
     ("the re-read unbounded", lambda t: t.replace("-gt 200000 ]; then", "-gt 2000000 ]; then", 1)),
+    ("a re-read of any number of files", lambda t: t.replace('if [ "$files" -ge 3 ]; then', 'if false; then', 1)),
     ("a re-read with nothing added", lambda t: t.replace('            [ "$any" = yes ]\n', "            true\n", 1)),
-    ("a re-read on part of the request", lambda t: t.replace('            [ "$short" = no ] || return 1\n', "", 1)),
-    ("a refused path not counted short", lambda t: t.replace("*[!A-Za-z0-9._/-]*) short=yes; continue ;; esac",
-                                                              "*[!A-Za-z0-9._/-]*) continue ;; esac", 1)),
-    ("a missing file not counted short", lambda t: t.replace("; short=yes; continue", "; continue", 1)),
-    ("a file past the limit not counted short", lambda t: t.replace("                short=yes; continue\n",
-                                                                     "                continue\n", 1)),
+    ("a missing file not named", lambda t: t.replace("not in this change =====\\n' \"$want\" >> ", "x =====\\n' \"\" >> ", 1)),
+    ("a file past the limit not named", lambda t: t.replace("bytes, left out: past the re-read limit", "bytes", 1)),
+    ("a fourth file not named", lambda t: t.replace("left out: past the three files a re-read holds", "left out", 1)),
+    ("a missing unit not named", lambda t: t.replace("no such unit; %s whole", "%s", 1)),
+    ("a name without its folder taken as any file of that name", lambda t: t.replace('[ "$n" -eq 1 ] ||', '[ "$n" -ge 1 ] ||', 1)),
+    ("a name without its folder matched inside a name", lambda t: t.replace('case "$p" in *"/$f")', 'case "$p" in *"$f")', 1)),
+    ("a file given twice", lambda t: t.replace('case " $given " in *" $want "*)', 'case "" in x)', 1)),
+    ("a name a read may not fetch dropped without a word", lambda t: t.replace('[ "$unfetchable" -eq 0 ] ||', "true ||", 1)),
 )
 MORE_PRODUCT_LOOSENINGS = (
     ("any rulebook file added", lambda t: t.replace('case "$f" in library/*.md) true ;; *) false ;; esac', 'true', 1)),
     ("a rulebook page unlabelled", lambda t: t.replace("===== rulebook:%s =====", "===== %s =====", 1)),
     ("the rulebook's page over the product's own", lambda t: t.replace(
-        'if size=$(git -C "$t/product" cat-file -s "$SHA:$f" 2>/dev/null); then :\n              elif',
-        'if false; then :\n              elif', 1)),
+        'if git -C "$t/product" cat-file -e "$SHA:$f" 2>/dev/null; then size=$(git -C "$t/product" cat-file -s "$SHA:$f")',
+        'if [ -f "$GITHUB_WORKSPACE/$f" ]; then src=rulebook size=$(wc -c < "$GITHUB_WORKSPACE/$f")', 1)),
     ("no rulebook page at all", lambda t: t.replace('[ -f "$GITHUB_WORKSPACE/$f" ]', 'false', 1)),
 )
 
@@ -4314,9 +4346,11 @@ def _check_more_loosenings():
                 print("  wiring: %s with %s passes the re-read hold — the guard for it is gone" % (path, what))
                 bad += 1
     if not bad:
-        print("ok: each reviewer's own more() adds a named file that exists, never tries a path out of the "
-              "repository, names a missing one, stops at the re-read's 200 KB, and asks no re-read with nothing "
-              "added, and the product's adds only a rulebook library page it lacks, labelled as the rulebook's; run in "
+        print("ok: each reviewer's own more() adds what it can give of what a short read named, a name without "
+              "its folder as the one file of that name and a unit it cannot find as its file whole, never tries a "
+              "path out of the repository, names what it left out and why, stops at three files and 200 KB, and asks "
+              "no re-read with nothing added, and the product's adds only a rulebook library page it lacks, "
+              "labelled as the rulebook's; run in "
               "%d case(s) a file, and each of %d loosenings refused" % (len(MORE_CASES) + len(MORE_PRODUCT_CASES),
                                                                       len(MORE_LOOSENINGS) + len(MORE_PRODUCT_LOOSENINGS)))
     return bad

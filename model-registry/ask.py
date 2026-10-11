@@ -4,7 +4,7 @@
     ask.py REGISTRY ROLE SYSTEM_FILE SCHEMA_JSON SECONDS < prompt > answer.json
     ask.py derive ANSWER_FILE
     ask.py incomplete ANSWER_FILE
-    ask.py request ANSWER_FILE                          prints the files or units a re-read must supply, one a line
+    ask.py request ANSWER_FILE                          prints the names a re-read tries, one a line; `?` for one a read may not fetch
     ask.py record open LEDGER ROLE MODEL INTERFACE      prints the attempt's id
     ask.py record close LEDGER ATTEMPT EXIT ANSWER_FILE
     ask.py record summary LEDGER
@@ -51,12 +51,14 @@ with nothing beside it but fences. The job's summary gets the answer's shape.
 A READ THAT NEEDS MORE SAYS SO (decision 0014, F(2)). A finding of severity
 `needs-context` names the files the read was not given. With no blocking
 finding beside it, the verdict is `needs-context`, and its `needs` keep every
-file asked for, nothing dropped. `ask.py request FILE` answers whether that
-request can be met whole: at most NEEDED paths, each one a read may fetch. The
-workflow then reads once more only if every one of them is added whole;
-otherwise, or on a second shortfall, `ask.py incomplete FILE` turns it into a
-refusal, "incomplete read: needed X", so a clean second answer can never stand
-on a request that was not met. A real blocking finding always speaks first.
+file asked for, nothing dropped. `ask.py request FILE` prints the ones a read
+may fetch; the workflow's `more()` gives what it can find of them, NEEDED at
+most, marks the rest in the prompt, and reads once more if it gave anything
+(#187: before, one name it could not meet cancelled the whole re-read, and #181
+parked three rounds on one). On a second shortfall, or a request with nothing
+fetchable, `ask.py incomplete FILE` turns the answer into a refusal,
+"incomplete read: needed X", so a clean answer never stands on a request the
+reader says was not met. A real blocking finding always speaks first.
 
 ONE RECORD PER ATTEMPT (decision 0014, A). `record open` writes an attempt to
 the job's ledger before its request is sent; the caller writes what the
@@ -124,7 +126,8 @@ def served_is_pinned(served, pinned):
 
 
 SEVERITIES = ("blocking", "advisory", "needs-context")
-# A read that needs more names at most this many files, and is given them once.
+# A read that needs more is given at most this many files, once; the workflow's
+# `more()` holds the count, and names the rest as left out.
 NEEDED = 3
 # What the workflow publishes is cut here, on every path: one comment holds the
 # review, the findings beneath it and a spend line, and GitHub refuses a comment
@@ -235,9 +238,8 @@ def _files(f):
 def needed(findings):
     """Every file the needs-context findings name, each once, in order: none dropped.
 
-    A request past NEEDED, or naming what a read may not fetch, stays the request
-    it was, so it is refused as a whole rather than read again on part of it (the
-    break test of 8 October 2026: three paths kept of four, and the re-read signed).
+    The list stays the request as made, so a refusal names everything the reader
+    asked for, whatever `more()` could give of it.
     """
     out = []
     for f in findings:
@@ -249,15 +251,23 @@ def needed(findings):
 
 
 def request(needs):
-    """(the paths a re-read must add, None), or (None, why) when the request cannot be met whole."""
-    if not needs:
-        return None, "it named no file"
-    if len(needs) > NEEDED:
-        return None, "it named %d files, past the re-read's %d" % (len(needs), NEEDED)
-    bad = [p for p in needs if not isinstance(p, str) or not PATH.fullmatch(p)]
-    if bad:
-        return None, "it named %d path(s) a read may not fetch" % len(bad)
-    return list(needs), None
+    """(every name a re-read tries, in order, None), or (None, why) when none of them may be fetched.
+
+    A name a read may not fetch is handed on as UNFETCHABLE, never as itself, so
+    the reviewer's `more()` can count it in the prompt without echoing it; the
+    rest `more()` gives what it can find of, the first NEEDED that fit, and
+    marks the others, so the re-read sees what it still lacks (#187). Only a
+    request with no fetchable name at all is refused here.
+    """
+    fetchable = [isinstance(p, str) and bool(PATH.fullmatch(p)) for p in needs]
+    if not any(fetchable):
+        return None, "it named no path a read may fetch (%d named)" % len(needs)
+    return [p if ok else UNFETCHABLE for p, ok in zip(needs, fetchable)], None
+
+
+# What `request` prints for a name a read may not fetch: a character PATH never
+# admits, so `more()` refuses it as it refuses any such name, and counts it.
+UNFETCHABLE = "?"
 
 
 def kept_refusal(found, prose, cut, content):
@@ -777,7 +787,7 @@ def note(text):
 
 
 def request_file(path):
-    """Print what a needs-context answer's re-read must add, one a line: exit 0; 1 when it cannot be met whole."""
+    """Print the names a needs-context answer's re-read tries to add, one a line: exit 0; 1 when none may be fetched."""
     try:
         with open(path, encoding="utf-8") as f:
             got = json.loads(json.load(f).get("result") or "")
@@ -787,7 +797,7 @@ def request_file(path):
     paths, why = request(needs if isinstance(needs, list) else [])
     if paths is None:
         # Counted, never named: a product's file names are its own, and this summary is public.
-        note("no re-read: the request cannot be met whole, %s" % why)
+        note("no re-read: %s" % why)
         return 1
     print("\n".join(paths))
     return 0
