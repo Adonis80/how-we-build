@@ -8,7 +8,8 @@
 Every read, risky or not, is given a selection, never the repository whole
 (his ruling, 9 October 2026, decision 0018: "Yes, I want the full read
 narrowing switched on now."). A risky change is still a class: it picks
-reviewer-risky at max and carries the registry. Each read is given
+reviewer-risky, at the effort the registry holds for it (decision 0019), and
+carries the registry. Each read is given
 HOW-WE-BUILD.md; the README's *Where each topic lives* table; each file the
 change touches, whole, or past WHOLE bytes the sections its hunks fall in; the
 partners PARTNERS names, both ways, a large one as the sections that name a
