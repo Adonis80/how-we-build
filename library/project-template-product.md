@@ -18,7 +18,9 @@ are building; roadmap.json is what comes next.
 
 Read both live, every session; never from a copy kept in this Project. Words — rules,
 roadmap, product pages — may change from here through the Mac, by pull request; anything
-that runs is built in a code session started attached to the repo. <A session reaches
+that runs is built in a code session started attached to the repo. Each slice is built on
+a branch of its own: a session may create and push a new branch for every slice it takes,
+so a parked pull request never holds the session on one branch. <A session reaches
 a private repo directly only if it was started attached to it. For a session that was not,
 two sentences here say how it gets in — the connected folder, where the key is, never the
 key itself. The repo's README holds the rest.>
