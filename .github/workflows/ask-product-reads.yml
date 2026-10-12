@@ -118,7 +118,14 @@ jobs:
           [[ "$looks" =~ ^[1-9][0-9]?$ ]] && [ "$looks" -le 32 ] || { echo "::error::looks is 1 to 32"; exit 1; }
           look=0
           # Each look is the whole of what follows, at this indentation so its lines
-          # stay the ones review-gate.py holds; a red look ends the run at once.
+          # stay the ones review-gate.py holds. A RED LOOK IS REMEMBERED, NEVER THE END
+          # (12 October 2026, run 38229766003): the tick died at its 20th look because one
+          # product's token did not mint once, Hemz-OS#150's verify passed fifteen minutes
+          # later, and no tick fired again for an hour, so nobody asked. One product's
+          # trouble, or one answer GitHub did not give, stops no other product being
+          # asked: the look goes on, the run looks again, and it ends red after its last
+          # look, naming every look that was red.
+          red=0
           while [ "$look" -lt "$looks" ]; do
           look=$((look + 1))
           if [ "$look" -gt 1 ]; then
@@ -154,7 +161,7 @@ jobs:
             curl -sS --max-time 20 -X POST -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
               "https://api.github.com/app/installations/$inst/access_tokens" -d "$body" > "$RUNNER_TEMP/mint.json" || : > "$RUNNER_TEMP/mint.json"
             tok=$(jq -r '.token // empty' "$RUNNER_TEMP/mint.json") || tok=""
-            [ -n "$tok" ] || { echo "::error::the App would not mint a token scoped to $REPO"; failed=1; continue; }
+            [ -n "$tok" ] || { echo "::error::the App would not mint a token scoped to $REPO: $(jq -r '.message // "no message"' "$RUNNER_TEMP/mint.json")"; failed=1; continue; }
             echo "::add-mask::$tok"
             want='{"checks":"read","contents":"read","pull_requests":"read"}'
             granted=$(jq -cS '(.permissions // {}) | del(.metadata)' "$RUNNER_TEMP/mint.json") || granted=""
@@ -179,7 +186,8 @@ jobs:
             revoke
             [ "$rc" -eq 0 ] || failed=1
           done
-          # One product's trouble does not stop the others being looked at, and it
-          # does not go unsaid: the job is red.
-          [ "$failed" -eq 0 ]
+          # One product's trouble does not stop the others being looked at, nor the
+          # next look; and it does not go unsaid: the job is red at the end.
+          [ "$failed" -eq 0 ] || { red=1; echo "::error::look $look was red; looking on"; }
           done
+          [ "$red" -eq 0 ]

@@ -6582,7 +6582,8 @@ ASK_HOLDS = (
     ('env -u APP_KEY -u APP_ID PRODUCT_TOKEN="$tok" REVIEWER_APP_ID="$APP_ID" python3 -I product-reads/ask.py "$REPO" $flag || rc=$?',
      "the App's key and id kept out of the program that asks"),
     ('[ "$rc" -eq 0 ] || failed=1', "one product's trouble remembered"),
-    ('[ "$failed" -eq 0 ]', "a job that is red when any product could not be looked at"),
+    ('[ "$failed" -eq 0 ] || { red=1;', "a red look remembered, and the next look taken"),
+    ('\n          done\n          [ "$red" -eq 0 ]\n', "a job that is red at the end when any look could not look at a product"),
     (ASK_DISPATCH_ENV, "the choice passed as a variable, a timed run always asking and a person's run asking only if told to"),
     ("GH_TOKEN: ${{ github.token }}", "this repository's own token, for the one dispatch"),
     # THE CLOCK INSIDE THE TICK (9 October 2026): GitHub fired the one schedule 3 to 7
@@ -6705,7 +6706,7 @@ ASK_LOOSENINGS = (
     ("every ask, whatever was chosen", lambda t: t.replace('if [ "$DISPATCH" = "true" ]; then flag="--dispatch"; fi', 'flag="--dispatch"', 1)),
     ("a choice that is not true or false", lambda t: t.replace('[[ "$DISPATCH" =~ ^(true|false)$ ]] || { echo "::error::dispatch is true or false"; exit 1; }', "true", 1)),
     ("a product's trouble forgotten", lambda t: t.replace('[ "$rc" -eq 0 ] || failed=1', "true", 1)),
-    ("a red job switched off", lambda t: t.replace('[ "$failed" -eq 0 ]\n', 'true\n', 1)),
+    ("a red job switched off", lambda t: t.replace('[ "$red" -eq 0 ]\n', 'true\n', 1)),
     ("more than read at the workflow", lambda t: t.replace("  contents: read\n  actions: write\n", "  contents: write\n  actions: write\n", 1)),
     ("a second permissions block", lambda t: t.replace("    timeout-minutes: 340\n", "    timeout-minutes: 340\n    permissions: write-all\n", 1)),
     ("a person's run that keeps looking", lambda t: t.replace("&& '32' || '1' }}", "&& '32' || '32' }}", 1)),
@@ -7291,13 +7292,13 @@ def _check_ask_run(ask=None, quiet=False):
                 if ("--dispatch" in line) != (env.get("DISPATCH") == "true"):
                     fault("%s: the program was told to ask %s" % (what, "when it should not" if "--dispatch" in line else "not to when it should"))
     # The looks of a timed run: ten minutes apart, a newer run taking over, a red look
-    # ending the run, and no count of looks outside 1 to 32.
+    # looked past and the run red at its end, and no count of looks outside 1 to 32.
     timed = {"GITHUB_RUN_ID": "5", "GITHUB_REPOSITORY": "Adonis80/how-we-build"}
     for what, scenario, env, code_want, asked_want, slept_want in (
             ("three looks, ten minutes apart", {}, {"LOOKS": "3"}, 0, repos * 3, 2),
             ("a newer run waiting, which takes over at the second look", {"waiting": 1}, {"LOOKS": "3"}, 0, repos, 1),
             ("a list of waiting runs that does not come, so it looks again", {"gh_fails": True}, {"LOOKS": "2"}, 0, repos * 2, 1),
-            ("a red first look, which ends the run", {"timeout": ["Adonis80/a"]}, {"LOOKS": "3"}, 1, repos[1:], 0),
+            ("a red first look, which the run looks past and ends red on", {"timeout": ["Adonis80/a"]}, {"LOOKS": "3"}, 1, repos[1:] * 3, 2),
             ("thirty-three looks", {}, {"LOOKS": "33"}, 1, [], 0),
             ("no looks", {}, {"LOOKS": "0"}, 1, [], 0),
             ("a person's run, which looks once", {}, {}, 0, repos, 0)):
@@ -7316,7 +7317,7 @@ def _check_ask_run(ask=None, quiet=False):
             "a wider token, a second repository, the program failing, a README that cannot be read): the "
             "others are still looked at, the job is red, every token is revoked, the App's key never reaches "
             "the program, and nothing is asked unless it was chosen; a timed run looks again every ten minutes "
-            "until a newer run waits, a red look ends it, and a person's run looks once")
+            "until a newer run waits, looks past a red look and ends red for it, and a person's run looks once")
     return bad
 
 
@@ -7334,10 +7335,11 @@ ASK_RUN_LOOSENINGS = (
     ("a failed ask forgotten", lambda t: t.replace('[ "$rc" -eq 0 ] || failed=1', "true", 1)),
     ("a token left live after the ask", lambda t: t.replace("            revoke\n            [ \"$rc\" -eq 0 ] || failed=1", "            [ \"$rc\" -eq 0 ] || failed=1", 1)),
     ("asking whatever was chosen", lambda t: t.replace('if [ "$DISPATCH" = "true" ]; then flag="--dispatch"; fi', 'flag="--dispatch"', 1)),
-    ("a red job turned green", lambda t: t.replace('[ "$failed" -eq 0 ]\n', 'true\n', 1)),
+    ("a red job turned green", lambda t: t.replace('[ "$red" -eq 0 ]\n', 'true\n', 1)),
     ("a newer run never taking over", lambda t: t.replace('[ "$waiting" = 0 ] || {', 'true || {', 1)),
     ("a failed list of waiting runs ending the run", lambda t: t.replace(" || waiting=0\n", "\n", 1)),
-    ("a red look that keeps looking", lambda t: t.replace('[ "$failed" -eq 0 ]\n          done\n', '[ "$failed" -eq 0 ] || true\n          done\n', 1)),
+    ("a red look forgotten", lambda t: t.replace('|| { red=1; echo', '|| { red=0; echo', 1)),
+    ("a red look ending the run", lambda t: t.replace('|| { red=1; echo', '|| { exit 1; echo', 1)),
 )
 
 
