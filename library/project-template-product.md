@@ -18,8 +18,11 @@ are building; roadmap.json is what comes next.
 
 Read both live, every session; never from a copy kept in this Project. Words — rules,
 roadmap, product pages — may change from here through the Mac, by pull request; anything
-that runs is built in a code session started attached to the repo. Each slice is built on
-a branch of its own: a session may create and push a new branch for every slice it takes,
+that runs is built in a code session started with two repositories attached: this repo
+and Adonis80/how-we-build. From the rulebook it may dispatch the asker
+(ask-product-reads.yml) and the recovery route (review-product.yml), nothing else;
+rulebook files change only from an advisory session, by pull request. Each slice is
+built on a branch of its own: a session may create and push a new branch for every slice it takes,
 so a parked pull request never holds the session on one branch. <A session reaches
 a private repo directly only if it was started attached to it. For a session that was not,
 two sentences here say how it gets in — the connected folder, where the key is, never the
@@ -34,5 +37,6 @@ Chairman in plain English: summaries and actions, no technical commentary — an
 every reply with "ready to start fresh session" or "continue to build here". "Continue
 to build here" means this session carries on. "Ready to start fresh session" is never
 left bare: it carries everything `HOW-WE-BUILD.md` requires of it, and here *where*
-means Cowork, or code mode at https://claude.ai/code with this repository chosen.
+means Cowork, or code mode at https://claude.ai/code with this repository and
+Adonis80/how-we-build both chosen.
 ```

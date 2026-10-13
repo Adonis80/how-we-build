@@ -2,7 +2,7 @@
 
 Scope: the lead and the consultant, in either stack. Open when: a big idea is to be settled with the consultant before it reaches the Chairman, or the debate's seats, step-up or breaker are in question.
 
-**What goes to it (decision 0015, from his Juku OS Project text).** Big ideas: new businesses, rule changes, anything spanning products, real money, anything irreversible. The lead settles each with the consultant to consensus before it reaches him, through the Chrome extension, or Markdown files he carries if that fails. Ordinary sweeps, bug hunts, procedures and idea reviews stay as `library/consultant.md` gives them, and a product consultation does not become a studio audit. The consultant stays read-only.
+**What goes to it (decision 0015; its scope agreed 13 October 2026, [#204](https://github.com/Adonis80/how-we-build/issues/204#issuecomment-6145865695), section 4).** Head-office debates cover material rule changes, decisions spanning products, new businesses, spending and irreversible actions. Batch small proposals; routine implementation choices stay with the lead. Independent PR review remains. The lead settles each with the consultant to consensus before it reaches him, through the Chrome extension, or Markdown files he carries if that fails. Ordinary sweeps, bug hunts, procedures and idea reviews stay as `library/consultant.md` gives them, and a product consultation does not become a studio audit. The consultant stays read-only.
 
 **The rounds.** Three, plus a fourth only if the third changed something. Neither side concedes to be agreeable. It ends `AGREED: <decision> — changed by: <what moved whom> — strongest objection left: <one line>`, or `OPEN: <the one point>`, and he is brought the agreed answer or that one plain choice.
 

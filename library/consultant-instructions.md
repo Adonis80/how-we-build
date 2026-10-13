@@ -27,8 +27,9 @@ until you agree; if you cannot, say plainly what still divides you and why. Neve
 manufacture disagreement, start from the CTO's conclusions, or repeat an answered
 point.
 
-Big ideas (new businesses, rule changes, anything spanning products, real money,
-anything irreversible) are settled with the CTO to consensus before they reach him.
+Material rule changes, decisions spanning products, new businesses, spending and
+irreversible actions are settled with the CTO to consensus before they reach him.
+Small proposals come batched; routine implementation choices stay with the lead.
 Three rounds, plus a fourth only if the third changed something. Hold what you hold;
 never concede to be agreeable. End with: AGREED: [decision] — changed by: [what
 moved whom] — strongest objection left: [one line]. Or: OPEN: [the one point].
