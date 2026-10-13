@@ -12,9 +12,19 @@ run-name: Build the board (${{ github.event_name }})
 # WHAT WAKES IT. A dispatch, for a product's merge that touched its roadmap
 # (a product cannot see this repository's events) or for a session's refresh;
 # a pull request here opened, edited, pushed to, reopened, readied, drafted or
-# closed; and the reviewer's check run created, re-requested or completed. The
+# closed; and the reviewer's check run completed, its verdict. The
 # `check_run` route is decision 0007's first unproved line: it is cited on the
 # pull request that proves it, not claimed here.
+#
+# A DEPLOY ONLY WHEN THE BOARD CHANGED (13 October 2026). The host's free plan
+# allows 100 deployments a day for every project on the account, and the board
+# spent 93 of 112 in one day — a preview and a production copy on every wake —
+# so Hemz OS's main could not go live. A read started (check run created or
+# re-requested) no longer wakes it; the verdict does. And a run whose board is
+# the one the domain already serves deploys nothing: the content's hash (the
+# reads without their time, and board/'s files) rides on each deployment's
+# meta, and is compared with the serving one's before anything is made. A
+# skipped run leaves the last snapshot and its time standing (§5).
 #
 # WHY pull_request_target AND NOT pull_request. A `pull_request` run takes the
 # pull request's ref, and the `reviewer` environment admits `main` alone, so
@@ -60,7 +70,7 @@ on:
   pull_request_target:
     types: [opened, edited, synchronize, reopened, ready_for_review, converted_to_draft, closed]
   check_run:
-    types: [created, rerequested, completed]
+    types: [completed]
 
 # Read, and nothing else: review-gate.py refuses a `write` (#117's second read, 5).
 permissions:
@@ -281,6 +291,11 @@ jobs:
           site="$RUNNER_TEMP/site"
           mkdir -p "$site"
           python3 board/build.py "$RUNNER_TEMP/reads.json" "$site/index.html"
+          # What this board is, apart from when it was read: unchanged reads
+          # and files give the same hash, and the deploy step compares it.
+          { jq -cS 'del(.checked_at)' "$RUNNER_TEMP/reads.json"
+            cat board/build.py board/middleware.js board/robots.txt board/vercel.json; } \
+            | sha256sum | cut -c1-64 > "$RUNNER_TEMP/board.sha256"
           cp board/middleware.js board/robots.txt board/vercel.json "$site/"
           rm -rf "$RUNNER_TEMP/reads" "$RUNNER_TEMP/reads.json" "$RUNNER_TEMP/open.json" "$RUNNER_TEMP/open+review.json" "$RUNNER_TEMP/spend.json"
 
@@ -353,6 +368,18 @@ jobs:
           before=$(serving)
           [ -n "$before" ] || { echo "::error::what $DOMAIN serves could not be recorded, so there would be nothing to roll back to. Nothing is deployed."; exit 1; }
           echo "serving before: $before"
+          # THE SAME BOARD IS NOT DEPLOYED AGAIN: a production run whose hash
+          # is the one the domain's deployment carries stops here. No hash, or
+          # one that cannot be read, deploys as before; a preview always does.
+          hash=$(cat "$RUNNER_TEMP/board.sha256" 2>/dev/null || true)
+          [[ "$hash" =~ ^[0-9a-f]{64}$ ]] || hash=""
+          if [ "$TARGET" = production ] && [ -n "$hash" ]; then
+            live=$(v "https://api.vercel.com/v13/deployments/$DOMAIN?$q" 2>/dev/null | jq -r '.meta.boardHash // empty' 2>/dev/null || true)
+            if [ "$live" = "$hash" ]; then
+              echo "unchanged: $DOMAIN already serves this board ($before); nothing is deployed"
+              exit 0
+            fi
+          fi
           # EVERY RED PUTS THINGS BACK, by how far the deploy got: a preview
           # still building is cancelled; a ready one that did not pass its smoke
           # is deleted; once promoted, what the domain served before is
@@ -421,10 +448,10 @@ jobs:
           # The files are sent through the API: no Git metadata, so the host
           # cannot read this as an integration deploy (library/deploy.md). No
           # target: a preview, which the host never gives the domain.
-          jq -n --arg p "$PROJECT" \
+          jq -n --arg p "$PROJECT" --arg h "$hash" \
             --rawfile index "$site/index.html" --rawfile mw "$site/middleware.js" \
             --rawfile robots "$site/robots.txt" --rawfile vj "$site/vercel.json" \
-            '{name: "juku-build-board", project: $p, projectSettings: {framework: null},
+            '{name: "juku-build-board", project: $p, projectSettings: {framework: null}, meta: {boardHash: $h},
               files: [{file: "index.html", data: $index}, {file: "middleware.js", data: $mw},
                       {file: "robots.txt", data: $robots}, {file: "vercel.json", data: $vj}]}' > "$RUNNER_TEMP/deploy.json"
           rm -rf "$site"
@@ -481,7 +508,7 @@ jobs:
           # Armed before the call: a copy asked for may still land.
           phase=promoted
           made=$(v -X POST "https://api.vercel.com/v13/deployments?$q" \
-            -d "{\"deploymentId\":\"$id\",\"name\":\"juku-build-board\",\"target\":\"production\",\"meta\":{\"action\":\"promote\"}}" || true)
+            -d "{\"deploymentId\":\"$id\",\"name\":\"juku-build-board\",\"target\":\"production\",\"meta\":{\"action\":\"promote\",\"boardHash\":\"$hash\"}}" || true)
           copy=$(printf '%s' "$made" | jq -r '.id // empty' 2>/dev/null || true)
           [[ "$copy" =~ ^dpl_[A-Za-z0-9]+$ ]] || { echo "::error::PROMOTE REFUSED: no production copy of $id: $(printf '%s' "$made" | jq -r '.error.code // "no code"' 2>/dev/null || echo "no answer"); one asked for may still land"; exit 1; }
           echo "production copy: $copy"

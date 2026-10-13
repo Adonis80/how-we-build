@@ -5827,16 +5827,23 @@ case "$method $path" in
         [ "${FAKE_DOMAIN:-pin}" = never ] || { serving=dpl_copy; echo dpl_copy > "$S/serving"; }
       fi
     fi
-    reply 200 "{\"id\":\"$serving\"}" ;;
+    # The board it serves already: the hash this run made, on the serving one's meta.
+    case "${FAKE_HASH:-none}" in
+      same) reply 200 "{\"id\":\"$serving\",\"meta\":{\"boardHash\":\"$(cat "$RUNNER_TEMP/board.sha256")\"}}" ;;
+      other) reply 200 "{\"id\":\"$serving\",\"meta\":{\"boardHash\":\"$(printf '0%.0s' $(seq 64))\"}}" ;;
+      *) reply 200 "{\"id\":\"$serving\"}" ;;
+    esac ;;
   "POST https://api.vercel.com/v13/deployments")
     case "$data" in
       @*) grep -q '"target"' "${data#@}" && refuse "a deployment given a target, which the host would put on the domain by itself"
+          grep -Eq "\"boardHash\": ?\"$(cat "$RUNNER_TEMP/board.sha256")\"" "${data#@}" || refuse "a deployment that does not carry its board's hash"
           echo "$FAKE_NEW" > "$S/new"
           reply 200 '{"id":"dpl_new","readyState":"QUEUED"}' ;;
       # The host's CLI promotes a preview so: a production copy, which takes the domain once ready.
       *'"deploymentId":"dpl_new"'*'"target":"production"'*)
           echo "promote: a production copy of dpl_new" >> "$S/calls"
           [ "$TARGET" = production ] || refuse "a production copy made on a preview run"
+          case "$data" in *"\"boardHash\":\"$(cat "$RUNNER_TEMP/board.sha256")\""*) ;; *) refuse "a production copy that does not carry its board's hash" ;; esac
           [ "$(cat "$S/new")" = READY ] || refuse "a copy of a deployment that is not READY"
           [ "${FAKE_PROMOTE:-ok}" = ok ] || { reply 400 '{"error":{"code":"bad_request"}}'; exit 0; }
           if [ "${FAKE_COPY:-READY}" = slow ]; then echo READY > "$S/copy"; echo $(( STARTED + 9 * 60 + 20 )) > "$S/land"
@@ -5917,6 +5924,14 @@ if [ "$*" = "+%s" ]; then cat "$FAKE/clock"; else exec /bin/date "$@"; fi
 # satisfy every other line. The paths #117's second read named come first.
 BOARD_DEPLOY_CASES = (
     ("a production deploy that passes", {}, 0, "dpl_copy", "READY", "live: dpl_copy, the copy of dpl_new", None),
+    # 13 October 2026: the board the domain serves already is not deployed again,
+    # one it does not is, and a preview for his look always is.
+    ("an unchanged board deploys nothing", {"FAKE_HASH": "same"}, 0, "dpl_before", "none",
+     "unchanged: roadmap.juku.pro already serves this board", "deployment:"),
+    ("a changed board deploys", {"FAKE_HASH": "other"}, 0, "dpl_copy", "READY", "live: dpl_copy, the copy of dpl_new",
+     "unchanged"),
+    ("an unchanged board, asked for as a preview, still deploys", {"TARGET": "preview", "LIVE": "no", "FAKE_HASH": "same"},
+     0, "dpl_before", "READY", "preview ready at the fixed address", "unchanged"),
     ("the domain shows a stranger the board", {"FAKE_DOMAIN": "board"}, 1, "dpl_before", "READY",
      "rolled back: roadmap.juku.pro serves dpl_before", None),
     ("the domain never serves it", {"FAKE_DOMAIN": "never"}, 1, "dpl_before", "READY",
@@ -6031,6 +6046,8 @@ def _board_deploy_case(script, job, case):
         for name in ("index.html", "middleware.js", "robots.txt", "vercel.json"):
             with open(os.path.join(run, "site", name), "w", encoding="utf-8") as f:
                 f.write("x")
+        with open(os.path.join(run, "board.sha256"), "w", encoding="utf-8") as f:
+            f.write("ab" * 32 + "\n")
         e = {k: v for k, v in os.environ.items() if not k.startswith("FAKE_")}
         e.update({"PATH": binned + os.pathsep + os.environ.get("PATH", ""), "FAKE": fake,
                   # The job's clock started before this one, at the checkout.
@@ -6174,6 +6191,9 @@ def _check_board_wiring(board=None, product=None, readme=None, quiet=False):
 
 # Each loosening of build-board.yml that the check above must refuse.
 BOARD_LOOSENINGS = (
+    # 13 October 2026: the skip of an unchanged board, held to production and to its own hash.
+    ("a preview skipped as unchanged", lambda t: t.replace('if [ "$TARGET" = production ] && [ -n "$hash" ]; then', 'if [ -n "$hash" ]; then', 1)),
+    ("a deployment made without its board's hash", lambda t: t.replace("meta: {boardHash: $h},", "", 1)),
     ("a pull_request trigger", lambda t: t.replace("  pull_request_target:\n", "  pull_request:\n    types: [opened]\n  pull_request_target:\n", 1)),
     ("a clock", lambda t: t.replace("  check_run:\n", "  schedule:\n    - cron: '0 * * * *'\n  check_run:\n", 1)),
     ("the door removed", lambda t: t.replace("    environment: reviewer\n", "", 1)),
