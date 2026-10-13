@@ -4627,6 +4627,12 @@ def _check_context(path=None, quiet=False):
         if len(part) != 1 or not 0 < part[0] < len(big) // 2:
             fault("a touched file past %d bytes was not given as the sections its hunks fall in (%s)"
                   % (ctx.WHOLE, part))
+        # A generated file of records, one a line, is given the records touched.
+        rows = "[" + ",\n".join('{"from":"%d","text":"%s"}' % (i, "words " * 400) for i in range(60)) + "]\n"
+        got = ctx.widened(rows, "knows.json", ctx.hunks(
+            "diff --git a/knows.json b/knows.json\n@@ -30,1 +30,1 @@\n-a\n+b\n", "knows.json")) or ""
+        if '"from":"29"' not in got or '"from":"28"' in got or '"from":"31"' in got:
+            fault("a one-record change to a file of records, one a line, was not given that record alone")
         # MORE COMES WHEN THE READER ASKS: one unit of a file, alone.
         road = json.dumps({"items": [{"id": "P1", "plain": "one"}, {"id": "P2", "plain": "two"}]}, indent=2)
         for text, want, has, hasnt in ((gate, "review-gate.py#runs_the_check", "check.sh runs this", "other_1"),
