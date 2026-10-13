@@ -5829,7 +5829,8 @@ case "$method $path" in
     fi
     # The board it serves already: the hash this run made, on the serving one's meta.
     case "${FAKE_HASH:-none}" in
-      same) reply 200 "{\"id\":\"$serving\",\"meta\":{\"boardHash\":\"$(cat "$RUNNER_TEMP/board.sha256")\"}}" ;;
+      same) reply 200 "{\"id\":\"$serving\",\"createdAt\":$(( (now - 3600) * 1000 )),\"meta\":{\"boardHash\":\"$(cat "$RUNNER_TEMP/board.sha256")\"}}" ;;
+      stale) reply 200 "{\"id\":\"$serving\",\"createdAt\":$(( (now - 7 * 3600) * 1000 )),\"meta\":{\"boardHash\":\"$(cat "$RUNNER_TEMP/board.sha256")\"}}" ;;
       other) reply 200 "{\"id\":\"$serving\",\"meta\":{\"boardHash\":\"$(printf '0%.0s' $(seq 64))\"}}" ;;
       *) reply 200 "{\"id\":\"$serving\"}" ;;
     esac ;;
@@ -5930,6 +5931,8 @@ BOARD_DEPLOY_CASES = (
      "unchanged: roadmap.juku.pro already serves this board", "deployment:"),
     ("a changed board deploys", {"FAKE_HASH": "other"}, 0, "dpl_copy", "READY", "live: dpl_copy, the copy of dpl_new",
      "unchanged"),
+    ("an unchanged board seven hours old deploys", {"FAKE_HASH": "stale"}, 0, "dpl_copy", "READY",
+     "live: dpl_copy, the copy of dpl_new", "unchanged"),
     ("an unchanged board, asked for as a preview, still deploys", {"TARGET": "preview", "LIVE": "no", "FAKE_HASH": "same"},
      0, "dpl_before", "READY", "preview ready at the fixed address", "unchanged"),
     ("the domain shows a stranger the board", {"FAKE_DOMAIN": "board"}, 1, "dpl_before", "READY",
@@ -6194,6 +6197,7 @@ BOARD_LOOSENINGS = (
     # 13 October 2026: the skip of an unchanged board, held to production and to its own hash.
     ("a preview skipped as unchanged", lambda t: t.replace('if [ "$TARGET" = production ] && [ -n "$hash" ]; then', 'if [ -n "$hash" ]; then', 1)),
     ("a deployment made without its board's hash", lambda t: t.replace("meta: {boardHash: $h},", "", 1)),
+    ("an unchanged board never deployed again", lambda t: t.replace(' && [ $(( $(date +%s) - born )) -lt 21600 ]; then', '; then', 1)),
     ("a pull_request trigger", lambda t: t.replace("  pull_request_target:\n", "  pull_request:\n    types: [opened]\n  pull_request_target:\n", 1)),
     ("a clock", lambda t: t.replace("  check_run:\n", "  schedule:\n    - cron: '0 * * * *'\n  check_run:\n", 1)),
     ("the door removed", lambda t: t.replace("    environment: reviewer\n", "", 1)),

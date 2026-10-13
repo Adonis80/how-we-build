@@ -24,7 +24,8 @@ run-name: Build the board (${{ github.event_name }})
 # the one the domain already serves deploys nothing: the content's hash (the
 # reads without their time, and board/'s files) rides on each deployment's
 # meta, and is compared with the serving one's before anything is made. A
-# skipped run leaves the last snapshot and its time standing (§5).
+# skipped run leaves the last snapshot and its time standing (§5), never past
+# six hours: an older one is deployed again however alike.
 #
 # WHY pull_request_target AND NOT pull_request. A `pull_request` run takes the
 # pull request's ref, and the `reviewer` environment admits `main` alone, so
@@ -373,9 +374,14 @@ jobs:
           # one that cannot be read, deploys as before; a preview always does.
           hash=$(cat "$RUNNER_TEMP/board.sha256" 2>/dev/null || true)
           [[ "$hash" =~ ^[0-9a-f]{64}$ ]] || hash=""
+          # Six hours on, the same board is deployed again all the same, so its
+          # time never claims a check older than that.
           if [ "$TARGET" = production ] && [ -n "$hash" ]; then
-            live=$(v "https://api.vercel.com/v13/deployments/$DOMAIN?$q" 2>/dev/null | jq -r '.meta.boardHash // empty' 2>/dev/null || true)
-            if [ "$live" = "$hash" ]; then
+            j=$(v "https://api.vercel.com/v13/deployments/$DOMAIN?$q" 2>/dev/null || true)
+            live=$(printf '%s' "$j" | jq -r '.meta.boardHash // empty' 2>/dev/null || true)
+            born=$(printf '%s' "$j" | jq -r '(.createdAt // 0) / 1000 | floor' 2>/dev/null || true)
+            [[ "$born" =~ ^[0-9]+$ ]] || born=0
+            if [ "$live" = "$hash" ] && [ $(( $(date +%s) - born )) -lt 21600 ]; then
               echo "unchanged: $DOMAIN already serves this board ($before); nothing is deployed"
               exit 0
             fi
