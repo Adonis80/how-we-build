@@ -6566,6 +6566,23 @@ ASK_GRANT = "want='{\"checks\":\"read\",\"contents\":\"read\",\"pull_requests\":
 ASK_REVOKE = ("revoke() { [ -z \"$tok\" ] || curl -sS --max-time 20 -o /dev/null -X DELETE -H \"Authorization: token $tok\" \\\n"
               "            -H \"Accept: application/vnd.github+json\" \"https://api.github.com/installation/token\" || true; tok=\"\"; }")
 ASK_DISPATCH_ENV = "DISPATCH: ${{ github.event_name == 'schedule' && 'true' || inputs.dispatch }}"
+# THE RELAY (#202, agreed with the consultant 13 October 2026): an asking run starts its
+# own successor at its last look, unless an asking run already waits; a dry run never
+# yields or relays; only the relay's own starts count, 12 a UTC day at most.
+ASK_RELAY_CAP = 12
+ASK_LOOKS_ENV = "LOOKS: ${{ (github.event_name == 'schedule' || (inputs.dispatch && inputs.relay)) && '32' || '1' }}"
+ASK_RUN_NAME = ('run-name: "${{ github.event_name == \'schedule\' && \'Ask for product reads: timed\' || !inputs.dispatch && '
+                '\'Ask for product reads: dry run\' || inputs.relay && \'Ask for product reads: relay\' || '
+                '\'Ask for product reads: asking\' }}"\n')
+ASK_WAITING = ('--jq "[.workflow_runs[] | select(.id != $GITHUB_RUN_ID and .head_branch == \\"main\\" and '
+               '(.display_title | test(\\"^Ask for product reads: (timed|asking|relay)\\$\\")) and (.status == \\"queued\\" or '
+               '.status == \\"pending\\" or .status == \\"waiting\\" or .status == \\"requested\\"))] | length"; }')
+ASK_COUNT = ('started=$(timeout 60 gh api --paginate "repos/$GITHUB_REPOSITORY/actions/workflows/ask-product-reads.yml/runs?'
+             'event=workflow_dispatch&created=%3E%3D$day&per_page=100" \\\n'
+             '                --jq "[.workflow_runs[] | select(.display_title == \\"Ask for product reads: relay\\" and '
+             '.created_at >= \\"$day\\")] | length" | awk \'{ n += $1 } END { print n + 0 }\') || started=""')
+ASK_RELAY_START = ('elif timeout 30 gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/ask-product-reads.yml/dispatches" \\\n'
+                   '                  -f ref=main -f \'inputs[dispatch]=true\' -f \'inputs[relay]=true\' > /dev/null; then')
 ASK_HOLDS = (
     (ASK_SCOPE, "a token scoped to one product with contents, pull requests and checks read alone"),
     (ASK_GRANT, "the grant checked against read alone"),
@@ -6589,21 +6606,33 @@ ASK_HOLDS = (
      "the App's key and id kept out of the program that asks"),
     ('[ "$rc" -eq 0 ] || failed=1', "one product's trouble remembered"),
     ('[ "$failed" -eq 0 ] || { red=1;', "a red look remembered, and the next look taken"),
-    ('\n          done\n          [ "$red" -eq 0 ]\n', "a job that is red at the end when any look could not look at a product"),
+    ('\n          done\n          # THE RELAY (#202)', "the relay taken after the last look"),
     (ASK_DISPATCH_ENV, "the choice passed as a variable, a timed run always asking and a person's run asking only if told to"),
     ("GH_TOKEN: ${{ github.token }}", "this repository's own token, for the one dispatch"),
     # THE CLOCK INSIDE THE TICK (9 October 2026): GitHub fired the one schedule 3 to 7
     # hours apart, so a tick that lands looks every ten minutes for about five hours.
-    ("LOOKS: ${{ github.event_name == 'schedule' && '32' || '1' }}",
-     "a timed run looking 32 times and a person's run once"),
+    (ASK_LOOKS_ENV, "a timed run and a relay looking 32 times and a person's run once"),
     ('[[ "$looks" =~ ^[1-9][0-9]?$ ]] && [ "$looks" -le 32 ] || { echo "::error::looks is 1 to 32"; exit 1; }',
      "the looks bounded, 1 to 32, inside the job's limit"),
     ("            sleep 600\n", "ten minutes between looks, never less"),
     ("    timeout-minutes: 340\n", "a job limit that holds 32 looks ten minutes apart"),
+    # THE RELAY (#202): the names the runs wear are the names the shell counts by.
+    (ASK_RUN_NAME, "each run named for its mode, timed, dry run, relay or asking"),
+    (ASK_WAITING, "only an asking run on main, waiting its turn, counted as one that carries the clock"),
+    ('            if [ "$DISPATCH" = "true" ]; then\n              pending=$(waiting) || pending=0\n',
+     "a dry run that never yields"),
+    ('          if [ "$DISPATCH" = "true" ] && [ "$yielded" -eq 0 ]; then\n', "only an asking run relaying, and not one that yielded"),
+    (ASK_COUNT, "the relay's own starts counted from every page of GitHub's list since midnight UTC"),
+    ('              if ! [[ "$started" =~ ^[0-9]+$ ]]; then\n                red=1;', "a count that cannot be read refusing the relay, red"),
+    ('              elif [ "$started" -ge %d ]; then\n                red=1;' % ASK_RELAY_CAP, "the cap of %d a day refusing the relay, red" % ASK_RELAY_CAP),
+    (ASK_RELAY_START, "the one successor started on main, asking, marked a relay"),
+    ("                red=1; echo \"::error::relay refused: GitHub would not start", "a start GitHub refused, red"),
+    ('\n          fi\n          [ "$red" -eq 0 ]\n', "a job that is red at the end when any look could not look at a product, or the relay was refused"),
 )
 ASK_ON = 'on:\n  schedule:\n    - cron: "7-59/10 * * * *"\n  workflow_dispatch:\n    inputs:\n'
 ASK_PERMISSIONS = "permissions:\n  contents: read\n  actions: write\n"
-ASK_CONCURRENCY = "concurrency:\n  group: ask-product-reads\n  cancel-in-progress: false\n"
+ASK_CONCURRENCY = ("concurrency:\n  group: ${{ (github.event_name == 'schedule' || inputs.dispatch) && 'ask-product-reads' "
+                   "|| 'ask-product-reads-dry' }}\n  cancel-in-progress: false\n")
 # The grant and reach are checked before the program that reads a product runs.
 ASK_ORDER = (ASK_SCOPE, 'if [ "$granted" != "$want" ]; then', 'if [ "$reach" != "$REPO" ]; then',
              'python3 -I product-reads/ask.py "$REPO" $flag')
@@ -6677,13 +6706,22 @@ def _check_ask_wiring(ask=None, product=None, quiet=False):
     choice = re.search(r"^      dispatch:\n((?:        .*\n)+)", ask, re.M)
     if not choice or "        type: boolean\n" not in choice.group(1) or "        default: false\n" not in choice.group(1):
         fault("must offer `dispatch` as a boolean that is false unless set: by default it only says what it would ask")
+    relay = re.search(r"^      relay:\n((?:        .*\n)+)", ask, re.M)
+    if not relay or "        type: boolean\n" not in relay.group(1) or "        default: false\n" not in relay.group(1):
+        fault("must offer `relay` as a boolean that is false unless set: it marks the asker's own successor, "
+              "and only those are counted against the cap (#202)")
+    starts = [l for l in ask.splitlines() if not l.strip().startswith("#") and "/dispatches" in l]
+    if len(starts) != 1 or "/actions/workflows/ask-product-reads.yml/dispatches" not in starts[0]:
+        fault("must start nothing but its own one successor, once (`%s`)" % ASK_RELAY_START.split("\n")[0])
     if [l for l in ask.splitlines() if not l.strip().startswith("#") and re.search(r"\bagain\b", l)]:
         fault("passes `again`; the asker never retries a read that did not finish, only a builder does")
     if not bad:
         say("ok: the asker runs on its one ten-minute timer and when a person starts it, behind the `%s` door, "
             "looking at each product the README lists with a token scoped to it, read alone, its grant and "
             "reach checked, the key kept from the program that asks; a timed run asks, a person's run asks "
-            "only if told to, and nothing retries a read that did not finish" % KEY_ENVIRONMENT)
+            "only if told to, and nothing retries a read that did not finish; each run is named for its mode, a "
+            "dry run waits in a group of its own, and the one start it makes is its own successor on main, "
+            "marked a relay, under the cap of %d a day" % (KEY_ENVIRONMENT, ASK_RELAY_CAP))
     return bad
 
 
@@ -6718,7 +6756,19 @@ ASK_LOOSENINGS = (
     ("a person's run that keeps looking", lambda t: t.replace("&& '32' || '1' }}", "&& '32' || '32' }}", 1)),
     ("looks a minute apart", lambda t: t.replace("            sleep 600\n", "            sleep 60\n", 1)),
     ("looks without end", lambda t: t.replace(' && [ "$looks" -le 32 ] ||', " ||", 1)),
-    ("another group", lambda t: t.replace("  group: ask-product-reads\n", "  group: ask\n", 1)),
+    ("another group", lambda t: t.replace("&& 'ask-product-reads' ||", "&& 'ask' ||", 1)),
+    ("a dry run in the asking group", lambda t: t.replace("|| 'ask-product-reads-dry' }}", "|| 'ask-product-reads' }}", 1)),
+    ("a relay looking once", lambda t: t.replace(" || (inputs.dispatch && inputs.relay)) && '32'", ") && '32'", 1)),
+    ("a dry run marked a relay looking 32 times", lambda t: t.replace("(inputs.dispatch && inputs.relay)", "inputs.relay", 1)),
+    ("a relay run named otherwise", lambda t: t.replace("inputs.relay && 'Ask for product reads: relay'", "inputs.relay && 'Ask for product reads: again'", 1)),
+    ("a relay by default", lambda t: t.replace("Counted against the day's cap; a person leaves it off.\n        required: false\n        type: boolean\n        default: false\n",
+                                                "Counted against the day's cap; a person leaves it off.\n        required: false\n        type: boolean\n        default: true\n", 1)),
+    ("a relay on a branch", lambda t: t.replace("-f ref=main -f 'inputs[dispatch]=true'", "-f ref=\"$GITHUB_REF_NAME\" -f 'inputs[dispatch]=true'", 1)),
+    ("a relay that only says", lambda t: t.replace("-f 'inputs[dispatch]=true' -f 'inputs[relay]=true'", "-f 'inputs[dispatch]=false' -f 'inputs[relay]=true'", 1)),
+    ("a relay not marked", lambda t: t.replace(" -f 'inputs[relay]=true' > /dev/null", " > /dev/null", 1)),
+    ("a higher cap", lambda t: t.replace('[ "$started" -ge 12 ]', '[ "$started" -ge 24 ]', 1)),
+    ("a second start", lambda t: t.replace('                echo "relayed: a successor is started',
+                                           '                gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/review.yml/dispatches" -f ref=main\n                echo "relayed: a successor is started', 1)),
     ("an asker cut off", lambda t: t.replace("  cancel-in-progress: false\n", "  cancel-in-progress: true\n", 1)),
     ("the JWT's lifetime altered", lambda t: t.replace("$((now + 540))", "$((now + 3600))", 1)),
     ("the token never revoked", lambda t: t.replace("            revoke\n            [ \"$rc\" -eq 0 ] || failed=1", "            [ \"$rc\" -eq 0 ] || failed=1", 1)),
@@ -6851,6 +6901,46 @@ KIT_WAKE_IF = "if: github.event.check_run.app.id == %d && github.event.check_run
 KIT_WAKE_ENV = ("GH_TOKEN: ${{ github.token }}", "SHA: ${{ github.event.check_run.head_sha }}",
                 "REPO: ${{ github.repository }}")
 KIT_GATE_RUN = 'python3 review-gate.py "$REPO" "$HEAD_SHA" "$GH_TOKEN"'
+# A READY MARK ON A DRAFT IS SAID OUT LOUD (#202): the product's own verify fails on it,
+# saying why, and runs again when the pull request leaves draft, on the same commit.
+KIT_VERIFY_TYPES = "    types: [opened, synchronize, reopened, ready_for_review]\n"
+KIT_DRAFT_STEP = "A ready mark is not left on a draft"
+KIT_DRAFT_ENV = ("DRAFT: ${{ github.event.pull_request.draft }}", "HEAD_SHA: ${{ github.event.pull_request.head.sha }}",
+                 "REPO: ${{ github.repository }}", "GH_TOKEN: ${{ github.token }}")
+STUB_DRAFT_GH = """#!/usr/bin/env bash
+echo "GH $*" >> "$DRAFT_LOG"
+[ "$*" = "api repos/Adonis80/p/commits/$(printf 'c%.0s' $(seq 40)) --jq .commit.message" ] || exit 97
+[ -z "${DRAFT_GH_FAILS:-}" ] || exit 1
+printf '%s\\n' "$DRAFT_MESSAGE"
+"""
+KIT_MARK = "Ready for review\n\nReview-Ready: yes\nReview-Parent: %s\n" % ("b" * 40)
+KIT_DRAFT_CASES = (
+    ("a ready mark on a draft", {"DRAFT": "true", "DRAFT_MESSAGE": KIT_MARK}, 1, True),
+    ("a ready mark written with Windows line ends on a draft", {"DRAFT": "true", "DRAFT_MESSAGE": KIT_MARK.replace("\n", "\r\n")}, 1, True),
+    ("a draft whose head is no mark", {"DRAFT": "true", "DRAFT_MESSAGE": "just a fix\n"}, 0, True),
+    ("a draft whose mark is not alone on its line", {"DRAFT": "true", "DRAFT_MESSAGE": "Review-Ready: yes, nearly\n"}, 0, True),
+    ("a ready mark out of draft", {"DRAFT": "false", "DRAFT_MESSAGE": KIT_MARK}, 0, False),
+    ("a draft whose commit GitHub would not give", {"DRAFT": "true", "DRAFT_MESSAGE": KIT_MARK, "DRAFT_GH_FAILS": "1"}, 1, True),
+)
+
+
+def _run_draft_step(script, env):
+    """(exit status, what it printed, whether it asked GitHub) for verify.yml's draft step."""
+    with tempfile.TemporaryDirectory() as d:
+        binned, log = os.path.join(d, "bin"), os.path.join(d, "log")
+        os.mkdir(binned)
+        with open(os.path.join(binned, "gh"), "w", encoding="utf-8") as f:
+            f.write(STUB_DRAFT_GH)
+        os.chmod(os.path.join(binned, "gh"), 0o755)
+        e = dict(os.environ, PATH=binned + os.pathsep + os.environ.get("PATH", ""), DRAFT_LOG=log,
+                 REPO="Adonis80/p", HEAD_SHA="c" * 40, GH_TOKEN="product-token")
+        e.pop("DRAFT_GH_FAILS", None)
+        e.update(env)
+        try:
+            p = subprocess.run(["bash", "-c", script], cwd=d, env=e, capture_output=True, text=True, timeout=60)
+        except (OSError, subprocess.SubprocessError) as exc:
+            return None, str(exc), False
+        return p.returncode, p.stdout + p.stderr, os.path.exists(log)
 
 
 def _kit_files():
@@ -7018,6 +7108,25 @@ def _check_kit(kit=None, wake=None, quiet=False, deep=True):
         fault("verify.yml must run on a pull request, which is where the ready commit is pushed")
     if "run: python3 review-gate.py --selftest" not in verify:
         fault("verify.yml must run the kit gate's own selftest")
+    if KIT_VERIFY_TYPES not in verify:
+        fault("verify.yml must run on a pull request opened, pushed to, reopened or taken out of draft (`%s`): "
+              "leaving draft is what gives a ready mark a fresh `verify` on the same commit (#202)" % KIT_VERIFY_TYPES.strip())
+    if re.findall(r"^permissions:\n((?:  .*\n)+)", verify, re.M) != ["  contents: read\n"] or verify.count("permissions:") != 1:
+        fault("verify.yml may read contents and nothing else")
+    for line in KIT_DRAFT_ENV:
+        if [l.strip() for l in verify.splitlines()].count(line) != 1:
+            fault("verify.yml must hand its draft step `%s`" % line)
+    draft = _step_script(verify, KIT_DRAFT_STEP)
+    if draft is None:
+        fault("verify.yml has no `%s` step this build can run" % KIT_DRAFT_STEP)
+    elif deep:
+        for what, env, want, asks in KIT_DRAFT_CASES:
+            code, printed, asked = _run_draft_step(draft, env)
+            if code != want or asked != asks:
+                fault("verify.yml's draft step, on %s, came out %s and %s GitHub, and must come out %s and %s it"
+                      % (what, code, "asked" if asked else "did not ask", want, "ask" if asks else "not ask"))
+            elif want and "draft" not in printed and not env.get("DRAFT_GH_FAILS"):
+                fault("verify.yml's draft step, on %s, fails without saying the pull request is a draft" % what)
     script = _agents_step(verify)
     starter = kit["AGENTS.starter.md"]
     if script is None:
@@ -7047,7 +7156,8 @@ def _check_kit(kit=None, wake=None, quiet=False, deep=True):
         say("ok: the starter kit's gate gives the rulebook's verdict on %d cases and says how to mark a "
             "commit ready; its wake is the rulebook's wake with two changes and fails loudly in each of "
             "%d places it is made to; its workflows have the shape the wake, the ready check and the "
-            "setup script assume; its AGENTS.md passes its own check, and its roadmap is one the board reads"
+            "setup script assume, and its verify fails out loud on a ready mark left on a draft and runs again "
+            "when the draft is made ready; its AGENTS.md passes its own check, and its roadmap is one the board reads"
             % (len(_kit_runs(head)), len([c for c in SWALLOW_CASES if "SWALLOW_HEAD" not in c[1]])))
     return bad
 
@@ -7086,6 +7196,13 @@ KIT_LOOSENINGS = (
     ("the review guidelines not required", "verify.yml", lambda t: t.replace('if not re.search(r"(?m)^## Review guidelines\\s*$", text):', "if False:", 1)),
     ("the word cap not held", "verify.yml", lambda t: t.replace("if len(text.split()) >= 500:", "if False:", 1)),
     ("a verify that runs on a push", "verify.yml", lambda t: t.replace("on:\n  pull_request:", "on:\n  push:\n  pull_request:", 1)),
+    ("a verify not run when a draft is made ready", "verify.yml", lambda t: t.replace(", ready_for_review]", "]", 1)),
+    ("a ready mark on a draft let through", "verify.yml", lambda t: t.replace("grep -qx 'Review-Ready: yes'", "grep -qx 'Review-Ready: no'", 1)),
+    ("the draft step skipped", "verify.yml", lambda t: t.replace('[ "$DRAFT" = "true" ] || exit 0', "exit 0", 1)),
+    ("a commit GitHub would not give read as no mark", "verify.yml", lambda t: t.replace("--jq .commit.message)", "--jq .commit.message) || message=\"\"", 1)),
+    ("the merge commit read for the mark", "verify.yml", lambda t: t.replace("HEAD_SHA: ${{ github.event.pull_request.head.sha }}", "HEAD_SHA: ${{ github.sha }}", 1)),
+    ("the draft state taken from nowhere", "verify.yml", lambda t: t.replace("DRAFT: ${{ github.event.pull_request.draft }}", "DRAFT: false", 1)),
+    ("a verify token that writes", "verify.yml", lambda t: t.replace("permissions:\n  contents: read\n", "permissions:\n  contents: write\n", 1)),
     ("a starter that breaks its own check", "AGENTS.starter.md", lambda t: t.replace("Rulebook:", "See:", 1)),
     ("a starter with no review guidelines", "AGENTS.starter.md", lambda t: t.replace("## Review guidelines", "## Notes", 1)),
     ("a starter roadmap the board cannot read", "roadmap.starter.json", lambda t: t.replace('"items": []', '"items": "none"', 1)),
@@ -7189,15 +7306,72 @@ case "$*" in
   *) exec "$REAL_PY" "$@" ;;
 esac
 """
-# A look after the first sleeps, then asks GitHub whether a newer run waits: the
-# stubs write the sleep down and answer from the scenario's `waiting`.
+# A look after the first sleeps, then asks GitHub whether a newer run waits; after the
+# last, an asking run counts today's relays and starts its successor (#202). The stubs
+# write the sleep down, and `gh` answers from the scenario's `runs` as GitHub would:
+# newest first, filtered by `event` and `created`, a page at a time, each page put
+# through the shell's own --jq by the real jq, so the shell's filters are what is run.
 STUB_ASK_SLEEP = """#!/usr/bin/env bash
 echo "SLEPT $*" >> "$ASK_LOG"
 """
-STUB_ASK_GH = """#!/usr/bin/env bash
-[ "$(printf '%s' "$ASK_SCENARIO" | jq -r '.gh_fails // false')" = false ] || exit 1
-printf '%s' "$ASK_SCENARIO" | jq -r '.waiting // 0'
+STUB_ASK_GH = r"""#!/usr/bin/env python3
+import json, os, subprocess, sys, urllib.parse
+scenario = json.loads(os.environ["ASK_SCENARIO"])
+log = open(os.environ["ASK_LOG"], "a")
+args = sys.argv[1:]
+if args[:1] != ["api"]:
+    sys.exit(97)
+method, fields, jq, paginate, path, i = "GET", [], None, False, None, 1
+while i < len(args):
+    a = args[i]
+    if a in ("-X", "-f", "--jq"):
+        method, fields, jq = (args[i + 1], fields, jq) if a == "-X" else (method, fields + [args[i + 1]], jq) if a == "-f" else (method, fields, args[i + 1])
+        i += 2
+    elif a == "--paginate":
+        paginate, i = True, i + 1
+    elif path is None and not a.startswith("-"):
+        path, i = a, i + 1
+    else:
+        sys.exit(97)
+base, _, query = path.partition("?")
+q = dict(urllib.parse.parse_qsl(query))
+log.write("GH %s %s\n" % (method, path))
+if not base.startswith("repos/Adonis80/how-we-build/actions/workflows/ask-product-reads.yml/"):
+    sys.exit(97)
+if method == "POST" and base.endswith("/dispatches"):
+    log.write("RELAYED %s\n" % " ".join(sorted(fields)))
+    sys.exit(1 if scenario.get("relay_fails") else 0)
+if method != "GET" or not base.endswith("/runs"):
+    sys.exit(97)
+counting = "event" in q
+if scenario.get("count_fails" if counting else "gh_fails"):
+    sys.exit(1)
+runs = sorted(scenario.get("runs", []), key=lambda r: r["created_at"], reverse=True)
+if "event" in q:
+    runs = [r for r in runs if r["event"] == q["event"]]
+if q.get("created", "").startswith(">="):
+    runs = [r for r in runs if r["created_at"] >= q["created"][2:]]
+size, page = int(q.get("per_page", 30)), int(q.get("page", 1))
+while True:
+    if counting and page == scenario.get("count_fails_on_page"):
+        sys.exit(1)
+    body = {"total_count": len(runs), "workflow_runs": runs[(page - 1) * size:page * size]}
+    out = subprocess.run(["jq", "-r", jq], input=json.dumps(body), capture_output=True, text=True) if jq else None
+    if out is not None and out.returncode != 0:
+        sys.stderr.write(out.stderr)
+        sys.exit(1)
+    sys.stdout.write(out.stdout if out is not None else json.dumps(body) + "\n")
+    if not paginate or page * size >= len(runs):
+        break
+    page += 1
 """
+# The day the relay counts from is the scenario's, far from any real one, so a shell that
+# asks for the day in another way is given another day and counts the wrong runs.
+STUB_ASK_DATE = """#!/usr/bin/env bash
+if [ "$*" = "-u +%Y-%m-%dT00:00:00Z" ]; then echo "2030-01-15T00:00:00Z"; exit 0; fi
+exec "$REAL_DATE" "$@"
+"""
+ASK_DAY = "2030-01-15"
 ASK_README = ("# t\n\n## Products under this rulebook\n\n- **A** — `https://github.com/Adonis80/a` one.\n"
               "- **B** — `https://github.com/Adonis80/b` two.\n- **C** — `https://github.com/Adonis80/c` three.\n\n## Next\n")
 ASK_BROKEN_README = "# t\n\n## Products under this rulebook\n\nNone listed here.\n"
@@ -7210,7 +7384,7 @@ def _run_ask(script, scenario=None, fails="", readme=ASK_README, env=None):
         for path in (binned, work, temp, os.path.join(work, "product-reads")):
             os.makedirs(path)
         for name, body in (("curl", STUB_ASK_CURL), ("openssl", STUB_ASK_OPENSSL), ("python3", STUB_ASK_PYTHON),
-                           ("sleep", STUB_ASK_SLEEP), ("gh", STUB_ASK_GH)):
+                           ("sleep", STUB_ASK_SLEEP), ("gh", STUB_ASK_GH), ("date", STUB_ASK_DATE)):
             with open(os.path.join(binned, name), "w", encoding="utf-8") as f:
                 f.write(body)
             os.chmod(os.path.join(binned, name), 0o755)
@@ -7222,9 +7396,11 @@ def _run_ask(script, scenario=None, fails="", readme=ASK_README, env=None):
         log = os.path.join(d, "log")
         e = dict(os.environ)
         e.update({"PATH": binned + os.pathsep + os.environ.get("PATH", ""), "REAL_PY": sys.executable,
+                  "REAL_DATE": shutil.which("date") or "/bin/date",
                   "RUNNER_TEMP": temp, "ASK_LOG": log, "ASK_SCENARIO": json.dumps(scenario or {}),
                   "ASK_FAILS": fails, "APP_ID": str(REVIEWER_APP_ID), "APP_KEY": "KEY-MATERIAL",
-                  "GH_TOKEN": "this-repository", "DISPATCH": "false"})
+                  "GH_TOKEN": "this-repository", "DISPATCH": "false",
+                  "GITHUB_RUN_ID": "5", "GITHUB_REPOSITORY": "Adonis80/how-we-build"})
         e.update(env or {})
         try:
             p = subprocess.run(["bash", "-c", script], cwd=work, env=e, capture_output=True, text=True, timeout=120)
@@ -7297,24 +7473,71 @@ def _check_ask_run(ask=None, quiet=False):
                     fault("%s: the program was handed the App's key or id, or the wrong token: %s" % (what, line))
                 if ("--dispatch" in line) != (env.get("DISPATCH") == "true"):
                     fault("%s: the program was told to ask %s" % (what, "when it should not" if "--dispatch" in line else "not to when it should"))
-    # The looks of a timed run: ten minutes apart, a newer run taking over, a red look
-    # looked past and the run red at its end, and no count of looks outside 1 to 32.
-    timed = {"GITHUB_RUN_ID": "5", "GITHUB_REPOSITORY": "Adonis80/how-we-build"}
-    for what, scenario, env, code_want, asked_want, slept_want in (
-            ("three looks, ten minutes apart", {}, {"LOOKS": "3"}, 0, repos * 3, 2),
-            ("a newer run waiting, which takes over at the second look", {"waiting": 1}, {"LOOKS": "3"}, 0, repos, 1),
-            ("a list of waiting runs that does not come, so it looks again", {"gh_fails": True}, {"LOOKS": "2"}, 0, repos * 2, 1),
-            ("a red first look, which the run looks past and ends red on", {"timeout": ["Adonis80/a"]}, {"LOOKS": "3"}, 1, repos[1:] * 3, 2),
-            ("thirty-three looks", {}, {"LOOKS": "33"}, 1, [], 0),
-            ("no looks", {}, {"LOOKS": "0"}, 1, [], 0),
-            ("a person's run, which looks once", {}, {}, 0, repos, 0)):
-        code, printed, kept = _run_ask(script, scenario, "", ASK_README, dict(timed, **env))
+    # The looks of a timed run: ten minutes apart, a newer asking run taking over, a red look
+    # looked past and the run red at its end, and no count of looks outside 1 to 32. Then
+    # THE RELAY (#202), each case the agreement names: ordinary use, a waiting run that
+    # replaces another, a dry run during a relay, the cap reached, and the count unreadable.
+    made = [100]
+
+    def mk(mode, status="completed", event="workflow_dispatch", branch="main", day=ASK_DAY, at="12:00:00"):
+        made[0] += 1
+        return {"id": made[0], "display_title": "Ask for product reads: " + mode, "status": status,
+                "event": event, "head_branch": branch, "created_at": "%sT%sZ" % (day, at)}
+
+    yesterday = "2030-01-14"
+    crowd = [mk("dry run", at="18:%02d:00" % (i % 60)) for i in range(150)]   # newer than any relay below
+    ordinary = (crowd + [mk("timed", event="schedule", at="%02d:07:00" % (i % 24)) for i in range(40)]
+                + [mk("asking", at="15:%02d:00" % i) for i in range(8)]
+                + [mk("relay", at="06:%02d:00" % i) for i in range(4)] + [mk("relay", status="cancelled", at="07:00:00")]
+                + [mk("relay", day=yesterday, at="%02d:00:00" % (i % 24)) for i in range(30)])
+    capped = ([mk("relay", at="0%d:00:00" % i) for i in range(9)]
+              + [mk("relay", status="cancelled", at="1%d:00:00" % i) for i in range(3)])
+    start = "RELAYED inputs[dispatch]=true inputs[relay]=true ref=main"
+    for what, scenario, env, code_want, asked_want, slept_want, relayed_want, said in (
+            ("three looks, ten minutes apart, then the relay", {}, {"LOOKS": "3", "DISPATCH": "true"}, 0, repos * 3, 2, 1, "1 of 12"),
+            ("a newer asking run waiting, which takes over at the second look, and no relay",
+             {"runs": [mk("timed", status="queued", event="schedule")]}, {"LOOKS": "3", "DISPATCH": "true"}, 0, repos, 1, 0, "takes over"),
+            ("a list of waiting runs that does not come, so it looks again and relays", {"gh_fails": True},
+             {"LOOKS": "2", "DISPATCH": "true"}, 0, repos * 2, 1, 1, None),
+            ("a red first look, which the run looks past, relays after, and ends red on", {"timeout": ["Adonis80/a"]},
+             {"LOOKS": "3", "DISPATCH": "true"}, 1, repos[1:] * 3, 2, 1, "look 1 was red"),
+            ("thirty-three looks", {}, {"LOOKS": "33", "DISPATCH": "true"}, 1, [], 0, 0, None),
+            ("no looks", {}, {"LOOKS": "0", "DISPATCH": "true"}, 1, [], 0, 0, None),
+            ("a person's dry run, which looks once and never relays", {}, {}, 0, repos, 0, 0, None),
+            ("a person's run told to ask, which looks once and relays", {}, {"DISPATCH": "true"}, 0, repos, 0, 1, "1 of 12"),
+            ("ordinary use: 150 dry runs, 40 ticks, 8 asking runs and yesterday's 30 relays today, 5 relays of its own",
+             {"runs": ordinary}, {"DISPATCH": "true"}, 0, repos, 0, 1, "6 of 12"),
+            ("pending replacement: a relay waiting at the last look carries the chain, so none is started",
+             {"runs": [mk("relay", status="queued", at="23:00:00")]}, {"DISPATCH": "true"}, 0, repos, 0, 0, "waiting its turn"),
+            ("pending replacement: a person's asking run waiting likewise",
+             {"runs": [mk("asking", status="pending", at="23:00:00")]}, {"DISPATCH": "true"}, 0, repos, 0, 0, "waiting its turn"),
+            ("an asking run waiting on another branch, which carries nothing, so it relays",
+             {"runs": [mk("asking", status="queued", branch="elsewhere", at="23:00:00")]}, {"LOOKS": "2", "DISPATCH": "true"}, 0, repos * 2, 1, 1, None),
+            ("a dry run during a relay, which neither makes it yield nor stops its relay",
+             {"runs": [mk("dry run", status="queued", at="23:00:00")]}, {"LOOKS": "3", "DISPATCH": "true"}, 0, repos * 3, 2, 1, None),
+            ("a dry run with an asking run waiting, which neither yields nor relays",
+             {"runs": [mk("asking", status="queued", at="23:00:00")]}, {"LOOKS": "3", "DISPATCH": "false"}, 0, repos * 3, 2, 0, None),
+            ("the cap reached, three of the twelve cancelled", {"runs": capped}, {"DISPATCH": "true"}, 1, repos, 0, 0, "the cap is 12"),
+            ("the cap reached on the second page", {"runs": crowd + capped}, {"DISPATCH": "true"}, 1, repos, 0, 0, "the cap is 12"),
+            ("eleven today and twelve before midnight UTC", {"runs": capped[1:] + [mk("relay", day=yesterday, at="23:59:%02d" % i) for i in range(12)]},
+             {"DISPATCH": "true"}, 0, repos, 0, 1, "12 of 12"),
+            ("the count unreadable", {"count_fails": True}, {"DISPATCH": "true"}, 1, repos, 0, 0, "did not give the count"),
+            ("the count's second page unreadable", {"runs": crowd + capped[:5], "count_fails_on_page": 2},
+             {"DISPATCH": "true"}, 1, repos, 0, 0, "did not give the count"),
+            ("the start refused", {"relay_fails": True}, {"DISPATCH": "true"}, 1, repos, 0, 1, "would not start")):
+        code, printed, kept = _run_ask(script, scenario, "", ASK_README, env)
         asked = [l.split()[1] for l in kept.splitlines() if l.startswith("ASKED ")]
         slept = [l for l in kept.splitlines() if l.startswith("SLEPT ")]
+        relayed = [l for l in kept.splitlines() if l.startswith("RELAYED ")]
         if code is None or (code != 0) != bool(code_want) or asked != asked_want or len(slept) != slept_want \
-                or any(l != "SLEPT 600" for l in slept):
-            fault("%s: came out %s, asked %s and slept %s, where it must come out %s, ask %s and sleep 600 %d time(s)"
-                  % (what, code, asked, slept, "red" if code_want else "green", asked_want, slept_want))
+                or any(l != "SLEPT 600" for l in slept) or len(relayed) != relayed_want or any(l != start for l in relayed):
+            fault("%s: came out %s, asked %s, slept %s and relayed %s, where it must come out %s, ask %s, sleep 600 %d "
+                  "time(s) and relay %d time(s) as `%s`" % (what, code, asked, slept, relayed, "red" if code_want else "green",
+                                                           asked_want, slept_want, relayed_want, start))
+        elif said and said not in printed:
+            fault("%s: the log does not say `%s`" % (what, said))
+        if env.get("DISPATCH") != "true" and "GH " in kept:
+            fault("%s: a dry run asked GitHub about runs or starts, and it never yields or relays" % what)
     code, printed, kept = _run_ask(script, {}, "", ASK_BROKEN_README, {})
     if "could not be read" not in printed:
         fault("a README list that cannot be read goes unexplained in the log")
@@ -7323,7 +7546,10 @@ def _check_ask_run(ask=None, quiet=False):
             "a wider token, a second repository, the program failing, a README that cannot be read): the "
             "others are still looked at, the job is red, every token is revoked, the App's key never reaches "
             "the program, and nothing is asked unless it was chosen; a timed run looks again every ten minutes "
-            "until a newer run waits, looks past a red look and ends red for it, and a person's run looks once")
+            "until a newer asking run waits, looks past a red look and ends red for it, and a person's run looks once; "
+            "an asking run relays at its last look unless an asking run waits, a dry run never yields or relays, and "
+            "only today's relays count against the cap of 12, every page of them, a count unread or a cap reached "
+            "refusing the relay red")
     return bad
 
 
@@ -7342,8 +7568,29 @@ ASK_RUN_LOOSENINGS = (
     ("a token left live after the ask", lambda t: t.replace("            revoke\n            [ \"$rc\" -eq 0 ] || failed=1", "            [ \"$rc\" -eq 0 ] || failed=1", 1)),
     ("asking whatever was chosen", lambda t: t.replace('if [ "$DISPATCH" = "true" ]; then flag="--dispatch"; fi', 'flag="--dispatch"', 1)),
     ("a red job turned green", lambda t: t.replace('[ "$red" -eq 0 ]\n', 'true\n', 1)),
-    ("a newer run never taking over", lambda t: t.replace('[ "$waiting" = 0 ] || {', 'true || {', 1)),
-    ("a failed list of waiting runs ending the run", lambda t: t.replace(" || waiting=0\n", "\n", 1)),
+    ("a newer run never taking over", lambda t: t.replace('takes over"; yielded=1; break; fi', 'takes over"; fi', 1)),
+    ("a failed list of waiting runs ending the run", lambda t: t.replace("              pending=$(waiting) || pending=0\n", "              pending=$(waiting)\n", 1)),
+    # THE RELAY (#202).
+    ("the relay never started", lambda t: t.replace("elif timeout 30 gh api -X POST", "elif false && timeout 30 gh api -X POST", 1)),
+    ("no cap", lambda t: t.replace('elif [ "$started" -ge 12 ]; then', "elif false; then", 1)),
+    ("every arrival counted, not the relay's own starts",
+     lambda t: t.replace('select(.display_title == \\"Ask for product reads: relay\\" and .created_at', "select(.created_at", 1)),
+    ("one page counted", lambda t: t.replace("gh api --paginate ", "gh api ", 1)),
+    ("a day that is not UTC's", lambda t: t.replace("day=$(date -u +%Y-%m-%dT00:00:00Z)", "day=$(date +%Y-%m-%dT00:00:00Z)", 1)),
+    ("midnight ignored", lambda t: t.replace("&created=%3E%3D$day", "", 1).replace(' and .created_at >= \\"$day\\"', "", 1)),
+    ("an unreadable count read as none", lambda t: t.replace('| awk \'{ n += $1 } END { print n + 0 }\') || started=""',
+                                                             '| awk \'{ n += $1 } END { print n + 0 }\') || started=0', 1)),
+    ("a dry run that relays", lambda t: t.replace('if [ "$DISPATCH" = "true" ] && [ "$yielded" -eq 0 ]; then', 'if [ "$yielded" -eq 0 ]; then', 1)),
+    ("a dry run that yields", lambda t: t.replace('            if [ "$DISPATCH" = "true" ]; then\n              pending=$(waiting)',
+                                                  '            if true; then\n              pending=$(waiting)', 1)),
+    ("a dry run that makes an asking run yield",
+     lambda t: t.replace('(.display_title | test(\\"^Ask for product reads: (timed|asking|relay)\\$\\")) and ', "", 1)),
+    ("a run on another branch carrying the clock", lambda t: t.replace('.head_branch == \\"main\\" and ', "", 1)),
+    ("a relay started though an asking run waits", lambda t: t.replace('            if [[ "$pending" =~ ^[1-9][0-9]*$ ]]; then\n              echo "an asking run',
+                                                                      '            if false; then\n              echo "an asking run', 1)),
+    ("an unreadable count left green", lambda t: t.replace('red=1; echo "::error::relay refused: GitHub did not give', 'echo "::error::relay refused: GitHub did not give', 1)),
+    ("a cap reached left green", lambda t: t.replace('red=1; echo "::error::relay refused: $started', 'echo "::error::relay refused: $started', 1)),
+    ("a refused start left green", lambda t: t.replace('red=1; echo "::error::relay refused: GitHub would not start', 'echo "::error::relay refused: GitHub would not start', 1)),
     ("a red look forgotten", lambda t: t.replace('|| { red=1; echo', '|| { red=0; echo', 1)),
     ("a red look ending the run", lambda t: t.replace('|| { red=1; echo', '|| { exit 1; echo', 1)),
 )
