@@ -5744,9 +5744,11 @@ BOARD_HOLDS = (
     # The fingerprint the deploy compares (13 October 2026), taken in the render,
     # which the fake host does not run: over every read but the read's own time,
     # and over the code that builds and gates the page, so a change to either deploys.
-    ("""{ jq -cS 'del(.checked_at)' "$RUNNER_TEMP/reads.json\"""", "the fingerprint taken over every read but the read's own time"),
-    ("cat board/build.py board/middleware.js board/robots.txt board/vercel.json; } | sha256sum",
-     "the fingerprint taken over the code that builds and gates the page"),
+    ("""jq --arg d "${AT:0:10}T00:00:00Z" '.checked_at = $d' "$RUNNER_TEMP/reads.json\"""",
+     "the fingerprint taken over the page with the read's time at the start of its day"),
+    ('python3 board/build.py "$RUNNER_TEMP/fp.json" "$RUNNER_TEMP/fp.html"', "the fingerprint's page rendered by the board's own build"),
+    ('h=$(cat "$RUNNER_TEMP/fp.html" board/middleware.js board/robots.txt board/vercel.json | sha256sum',
+     "the fingerprint taken over that page and the gate's three files"),
     ("BOARD_HASH: ${{ steps.render.outputs.board_hash }}", "the deploy given the render's fingerprint"),
     ('echo "::add-mask::$h"', "the fingerprint masked before the deploy step's environment shows it in the log"),
 )
@@ -5841,7 +5843,7 @@ case "$method $path" in
   "POST https://api.vercel.com/v13/deployments")
     case "$data" in
       @*) grep -q '"target"' "${data#@}" && refuse "a deployment given a target, which the host would put on the domain by itself"
-          grep -q "\"boardHash\": *\"$BOARD_HASH\"" "${data#@}" || refuse "a deployment that does not carry the board's fingerprint"
+          { grep -q '"file": "board.sha"' "${data#@}" && grep -q "\"data\": \"$BOARD_HASH\"" "${data#@}"; } || refuse "a deployment that does not carry the board's fingerprint as board.sha"
           echo "$FAKE_NEW" > "$S/new"
           reply 200 '{"id":"dpl_new","readyState":"QUEUED"}' ;;
       # The host's CLI promotes a preview so: a production copy, which takes the domain once ready.
@@ -5849,7 +5851,6 @@ case "$method $path" in
           echo "promote: a production copy of dpl_new" >> "$S/calls"
           [ "$TARGET" = production ] || refuse "a production copy made on a preview run"
           [ "$(cat "$S/new")" = READY ] || refuse "a copy of a deployment that is not READY"
-          case "$data" in *"\"boardHash\":\"$BOARD_HASH\""*) ;; *) refuse "a production copy that does not carry the board's fingerprint" ;; esac
           [ "${FAKE_PROMOTE:-ok}" = ok ] || { reply 400 '{"error":{"code":"bad_request"}}'; exit 0; }
           if [ "${FAKE_COPY:-READY}" = slow ]; then echo READY > "$S/copy"; echo $(( STARTED + 9 * 60 + 20 )) > "$S/land"
           else echo "${FAKE_COPY:-READY}" > "$S/copy"; fi
@@ -5868,14 +5869,24 @@ case "$method $path" in
     [ "${FAKE_CANCEL:-ok}" = ok ] || { reply 400 '{}'; exit 0; }
     echo CANCELED > "$S/copy"; reply 200 '{"readyState":"CANCELED"}' ;;
   "GET https://api.vercel.com/v13/deployments/dpl_before")
-    # What the domain serves, made from this board an hour or six hours and a minute ago, or another.
+    # What the domain serves, made an hour, or six hours and a minute, ago.
     case "${FAKE_LIVE:-none}" in
-      same) reply 200 "{\"id\":\"dpl_before\",\"readyState\":\"READY\",\"createdAt\":$(( (now - 3600) * 1000 )),\"meta\":{\"boardHash\":\"$BOARD_HASH\"}}" ;;
-      stale) reply 200 "{\"id\":\"dpl_before\",\"readyState\":\"READY\",\"createdAt\":$(( (now - 21660) * 1000 )),\"meta\":{\"boardHash\":\"$BOARD_HASH\"}}" ;;
-      other) reply 200 "{\"id\":\"dpl_before\",\"readyState\":\"READY\",\"createdAt\":$(( (now - 60) * 1000 )),\"meta\":{\"boardHash\":\"$(printf '%064d' 0)\"}}" ;;
-      unread) reply 500 '{}' ;;
-      *) reply 200 '{"id":"dpl_before","readyState":"READY"}' ;;
+      stale) reply 200 "{\"id\":\"dpl_before\",\"readyState\":\"READY\",\"createdAt\":$(( (now - 21660) * 1000 ))}" ;;
+      *) reply 200 "{\"id\":\"dpl_before\",\"readyState\":\"READY\",\"createdAt\":$(( (now - 3600) * 1000 ))}" ;;
     esac ;;
+  "GET https://api.vercel.com/v6/deployments/dpl_before/files")
+    # Its file tree, as the host lists it: each file's uid the SHA-1 of its bytes,
+    # board.sha this board's fingerprint, another's, or none.
+    sha() { printf '%s' "$1" | sha1sum | cut -d' ' -f1; }
+    case "${FAKE_LIVE:-none}" in
+      same|stale) fp=$(sha "$BOARD_HASH") ;;
+      other) fp=$(sha "$(printf '%064d' 0)") ;;
+      unread) reply 500 '{}'; exit 0 ;;
+      *) fp="" ;;
+    esac
+    tree="{\"name\":\"index.html\",\"type\":\"file\",\"uid\":\"$(sha x)\"}"
+    [ -z "$fp" ] || tree="$tree,{\"name\":\"board.sha\",\"type\":\"file\",\"uid\":\"$fp\"}"
+    reply 200 "[{\"name\":\"src\",\"type\":\"directory\",\"children\":[$tree]}]" ;;
   "PATCH https://api.vercel.com/v12/deployments/dpl_new/cancel")
     [ "${FAKE_CANCEL:-ok}" = ok ] || { reply 400 '{}'; exit 0; }
     echo CANCELED > "$S/new"; reply 200 '{"readyState":"CANCELED"}' ;;
@@ -6293,15 +6304,15 @@ BOARD_LOOSENINGS = (
     # 13 October 2026: only a changed board, or one live six hours, deployed to production.
     ("the six hours stretched to a day", lambda t: t.replace("-lt 21600 ]", "-lt 86400 ]", 1)),
     ("the live board's age not asked", lambda t: t.replace(' && [ $(( $(date +%s) - made_at )) -lt 21600 ]', "", 1)),
-    ("the fingerprint not compared", lambda t: t.replace('if [ "$was" = "$BOARD_HASH" ] &&', "if true &&", 1)),
+    ("the fingerprint not compared", lambda t: t.replace('if [ "$was" = "$want" ] &&', "if true &&", 1)),
     ("a dispatch passed over too", lambda t: t.replace('if [ "$GITHUB_EVENT_NAME" != workflow_dispatch ]; then\n            live=', "if true; then\n            live=", 1)),
     ("a live board kept unsmoked", lambda t: t.replace(' -lt 21600 ] && gated "$DOMAIN" pin; then', " -lt 21600 ]; then", 1)),
     ("the fingerprint printed", lambda t: t.replace('          echo "::add-mask::$h"\n', "", 1)),
     ("a run with no fingerprint deployed", lambda t: t.replace('[[ "${BOARD_HASH:-}" =~ ^[0-9a-f]{64}$ ]] ||', "true ||", 1)),
-    ("the fingerprint left off the preview", lambda t: t.replace(" meta: {boardHash: $h},", "", 1)),
-    ("the fingerprint left off the production copy", lambda t: t.replace(',\\"boardHash\\":\\"$BOARD_HASH\\"', "", 1)),
-    ("the read's time in the fingerprint", lambda t: t.replace("jq -cS 'del(.checked_at)'", "jq -cS '.'", 1)),
-    ("the build left out of the fingerprint", lambda t: t.replace("cat board/build.py board/middleware.js", "cat board/middleware.js", 1)),
+    ("the fingerprint left off the preview", lambda t: t.replace(',\n                      {file: "board.sha", data: $h}]}', "]}", 1)),
+    ("the fingerprint compared unhashed", lambda t: t.replace("want=$(printf '%s' \"$BOARD_HASH\" | sha1sum | cut -d' ' -f1)", 'want="$BOARD_HASH"', 1)),
+    ("the read's time in the fingerprint", lambda t: t.replace("'.checked_at = $d'", "'.'", 1)),
+    ("the page left out of the fingerprint", lambda t: t.replace('h=$(cat "$RUNNER_TEMP/fp.html" board/middleware.js', "h=$(cat board/middleware.js", 1)),
 )
 
 
