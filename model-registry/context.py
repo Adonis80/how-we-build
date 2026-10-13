@@ -117,6 +117,12 @@ def starts(lines, path):
         return [i for i, l in enumerate(lines) if re.match(r"\s*- name:", l)]
     if path.endswith(".py"):
         return [i for i, l in enumerate(lines) if re.match(r"(def|class)\s|[A-Za-z_][A-Za-z0-9_]*\s*=", l)]
+    # JSON has no blank lines, so it was one unit and a one-line change to a
+    # generated file of records, one a line, carried all of it (Hemz-OS#153's
+    # read of 7db24d1: 131 KB of hosting/hemzy-knows.json for two lines). A line
+    # opening at the margin starts a unit; an indented document keeps one.
+    if path.endswith(".json"):
+        return [i for i, l in enumerate(lines) if l[:1] not in ("", " ", "\t", "\r", "\n", "]", "}")]
     return [i for i, l in enumerate(lines) if not l.strip()]
 
 
