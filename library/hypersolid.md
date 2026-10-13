@@ -75,4 +75,4 @@ Each product adds a constitution of its own holding only what is true there — 
 
 ## What stays
 
-Every screen obeys the Screen law above and the product's constitution. A routine change keeping the agreed layout and behaviour goes straight in. A screenshot never proves the product works.
+Every screen obeys the Screen law above and the product's constitution. A routine change keeping the agreed layout and behaviour goes straight in. A screenshot never proves the product works. The five steps above run only for a new or reworked screen: work on an assistant or its actions that changes no screen follows Voice Native alone, with no visualizer brief, no rounds and no screen save; if it does change a screen, that screen takes the five steps.
