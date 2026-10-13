@@ -5739,6 +5739,14 @@ BOARD_HOLDS = (
      "a dispatch's own target, never production by default"),
     # #117's second read, 6: the render takes the time the clock stamped.
     ('jq -n --arg at "$AT"', "the snapshot's time taken from before the first read"),
+    # The fingerprint the deploy compares (13 October 2026), taken in the render,
+    # which the fake host does not run: over every read but the read's own time,
+    # and over the code that builds and gates the page, so a change to either deploys.
+    ("""{ jq -cS 'del(.checked_at)' "$RUNNER_TEMP/reads.json\"""", "the fingerprint taken over every read but the read's own time"),
+    ("cat board/build.py board/middleware.js board/robots.txt board/vercel.json; } | sha256sum",
+     "the fingerprint taken over the code that builds and gates the page"),
+    ("BOARD_HASH: ${{ steps.render.outputs.board_hash }}", "the deploy given the render's fingerprint"),
+    ('echo "::add-mask::$h"', "the fingerprint masked before the deploy step's environment shows it in the log"),
 )
 # The snapshot's stamp, before the first product is read (#117's second read, 6).
 BOARD_STAMP = 'echo "checked_at='
@@ -5831,6 +5839,7 @@ case "$method $path" in
   "POST https://api.vercel.com/v13/deployments")
     case "$data" in
       @*) grep -q '"target"' "${data#@}" && refuse "a deployment given a target, which the host would put on the domain by itself"
+          grep -q "\"boardHash\": *\"$BOARD_HASH\"" "${data#@}" || refuse "a deployment that does not carry the board's fingerprint"
           echo "$FAKE_NEW" > "$S/new"
           reply 200 '{"id":"dpl_new","readyState":"QUEUED"}' ;;
       # The host's CLI promotes a preview so: a production copy, which takes the domain once ready.
@@ -5838,6 +5847,7 @@ case "$method $path" in
           echo "promote: a production copy of dpl_new" >> "$S/calls"
           [ "$TARGET" = production ] || refuse "a production copy made on a preview run"
           [ "$(cat "$S/new")" = READY ] || refuse "a copy of a deployment that is not READY"
+          case "$data" in *"\"boardHash\":\"$BOARD_HASH\""*) ;; *) refuse "a production copy that does not carry the board's fingerprint" ;; esac
           [ "${FAKE_PROMOTE:-ok}" = ok ] || { reply 400 '{"error":{"code":"bad_request"}}'; exit 0; }
           if [ "${FAKE_COPY:-READY}" = slow ]; then echo READY > "$S/copy"; echo $(( STARTED + 9 * 60 + 20 )) > "$S/land"
           else echo "${FAKE_COPY:-READY}" > "$S/copy"; fi
@@ -5856,7 +5866,14 @@ case "$method $path" in
     [ "${FAKE_CANCEL:-ok}" = ok ] || { reply 400 '{}'; exit 0; }
     echo CANCELED > "$S/copy"; reply 200 '{"readyState":"CANCELED"}' ;;
   "GET https://api.vercel.com/v13/deployments/dpl_before")
-    reply 200 '{"id":"dpl_before","readyState":"READY"}' ;;
+    # What the domain serves, made from this board an hour or six hours and a minute ago, or another.
+    case "${FAKE_LIVE:-none}" in
+      same) reply 200 "{\"id\":\"dpl_before\",\"readyState\":\"READY\",\"createdAt\":$(( (now - 3600) * 1000 )),\"meta\":{\"boardHash\":\"$BOARD_HASH\"}}" ;;
+      stale) reply 200 "{\"id\":\"dpl_before\",\"readyState\":\"READY\",\"createdAt\":$(( (now - 21660) * 1000 )),\"meta\":{\"boardHash\":\"$BOARD_HASH\"}}" ;;
+      other) reply 200 "{\"id\":\"dpl_before\",\"readyState\":\"READY\",\"createdAt\":$(( (now - 60) * 1000 )),\"meta\":{\"boardHash\":\"$(printf '%064d' 0)\"}}" ;;
+      unread) reply 500 '{}' ;;
+      *) reply 200 '{"id":"dpl_before","readyState":"READY"}' ;;
+    esac ;;
   "PATCH https://api.vercel.com/v12/deployments/dpl_new/cancel")
     [ "${FAKE_CANCEL:-ok}" = ok ] || { reply 400 '{}'; exit 0; }
     echo CANCELED > "$S/new"; reply 200 '{"readyState":"CANCELED"}' ;;
@@ -5882,7 +5899,8 @@ case "$method $path" in
     case "${FAKE_NEXT:-wall}" in board) reply 200 "$board" ;; *) reply 302 '' "$sso" ;; esac ;;
   "GET https://$DOMAIN/"|"GET https://$DOMAIN/index.html")
     [ "$auth" = no ] || refuse "a stranger's request carrying a key"
-    [ "$serving" = dpl_copy ] || { reply 200 "$pin"; exit 0; }
+    # What it served before: the PIN screen, unless a case says it shows a stranger the board.
+    if [ "$serving" != dpl_copy ]; then case "${FAKE_BEFORE:-pin}" in board) reply 200 "$board" ;; *) reply 200 "$pin" ;; esac; exit 0; fi
     case "${FAKE_DOMAIN:-pin}" in
       board) reply 200 "$board" ;;
       blank) reply 502 'bad gateway' ;;
@@ -5984,6 +6002,28 @@ BOARD_DEPLOY_CASES = (
      "could not be recorded", "deployment:"),
     ("too little of the job is left", {"LATE": "yes"}, 1, "dpl_before", "none", "too little of the job",
      "deployment:"),
+    # 13 October 2026: the host's 100 deployments a day, 82 of them the board's
+    # on events that changed nothing on it. Only a changed board, or one live
+    # six hours, is deployed to production; a preview is always made.
+    ("the same board, live for an hour", {"FAKE_LIVE": "same", "GITHUB_EVENT_NAME": "check_run"}, 0, "dpl_before",
+     "none", "unchanged: roadmap.juku.pro serves dpl_before", "deployment:"),
+    ("the same board, live for over six hours", {"FAKE_LIVE": "stale", "GITHUB_EVENT_NAME": "check_run"}, 0,
+     "dpl_copy", "READY", "live: dpl_copy, the copy of dpl_new", "unchanged"),
+    ("a changed board", {"FAKE_LIVE": "other", "GITHUB_EVENT_NAME": "check_run"}, 0, "dpl_copy", "READY",
+     "live: dpl_copy, the copy of dpl_new", "unchanged"),
+    ("what is live cannot be read: deployed as before", {"FAKE_LIVE": "unread", "GITHUB_EVENT_NAME": "check_run"}, 0,
+     "dpl_copy", "READY", "live: dpl_copy, the copy of dpl_new", "unchanged"),
+    # #210's first read: the fingerprint is stamped on a copy before its smoke,
+    # so one that landed after a red run is kept only if it passes the smoke now.
+    ("the same board, live for an hour, showing a stranger the board",
+     {"FAKE_LIVE": "same", "FAKE_BEFORE": "board", "GITHUB_EVENT_NAME": "check_run"}, 0, "dpl_copy", "READY",
+     "live: dpl_copy, the copy of dpl_new", "unchanged"),
+    ("the same board, dispatched", {"FAKE_LIVE": "same"}, 0, "dpl_copy", "READY",
+     "live: dpl_copy, the copy of dpl_new", "unchanged"),
+    ("the same board asked for as a preview", {"TARGET": "preview", "LIVE": "no", "FAKE_LIVE": "same"}, 0,
+     "dpl_before", "READY", "preview ready at the fixed address", "unchanged"),
+    ("no fingerprint taken", {"BOARD_HASH": ""}, 1, "dpl_before", "none", "fingerprint was not taken",
+     "deployment:"),
 )
 _board_runs = {}
 
@@ -6037,7 +6077,8 @@ def _board_deploy_case(script, job, case):
                   "JOB_END": str(start + job - 30), "RUNNER_TEMP": run, "STARTED": str(start),
                   "GITHUB_EVENT_NAME": "workflow_dispatch", "LIVE": "yes", "TARGET": "production",
                   "VERCEL_TOKEN": "not-a-token", "TEAM": "team_x", "PROJECT": "prj_x",
-                  "DOMAIN": "roadmap.juku.pro", "NEXT": "juku-build-board-next.vercel.app", "FAKE_NEW": env.get("FAKE_READY", "READY")})
+                  "DOMAIN": "roadmap.juku.pro", "NEXT": "juku-build-board-next.vercel.app", "FAKE_NEW": env.get("FAKE_READY", "READY"),
+                  "BOARD_HASH": "%064x" % 0xb0a2d})
         e.update({k: v for k, v in env.items() if k != "LATE"})
         try:
             p = subprocess.run(["bash", "-c", script], env=e, capture_output=True, text=True, timeout=60)
@@ -6166,7 +6207,7 @@ def _check_board_wiring(board=None, product=None, readme=None, quiet=False):
             "on the README's map with a token each, contents read alone, its grant and reach "
             "checked before anything is read; it checks out nothing of a pull request, uploads "
             "nothing, and its deploy, run against a fake host on %d paths, gives production only a "
-            "copy of a preview it has smoked, cancels or deletes one that fails, and on a red after "
+            "copy of a preview it has smoked, on an event only of a board changed, live six hours or failing its smoke, cancels or deletes one that fails, and on a red after "
             "the copy cancels one still building and puts back what the domain served, inside the job's time"
             % (KEY_ENVIRONMENT, len(listed), len(BOARD_DEPLOY_CASES)))
     return bad
@@ -6246,6 +6287,18 @@ BOARD_LOOSENINGS = (
     ("a roadmap read before the grant is checked", lambda t: t.replace(BOARD_SCOPE, 'curl -sS "https://api.github.com/repos/$REPO/contents/roadmap.json" > /dev/null\n            ' + BOARD_SCOPE, 1)),
     ("a pull request fetched", lambda t: t.replace("      - name: Render\n", "      - run: git fetch origin pull/1/head\n      - name: Render\n", 1)),
     ("a row the workflow does not read", lambda t: t.replace("          Adonis80/phena=Phena\n", "          Adonis80/phena=Phena Two\n", 1)),
+    # 13 October 2026: only a changed board, or one live six hours, deployed to production.
+    ("the six hours stretched to a day", lambda t: t.replace("-lt 21600 ]", "-lt 86400 ]", 1)),
+    ("the live board's age not asked", lambda t: t.replace(' && [ $(( $(date +%s) - made_at )) -lt 21600 ]', "", 1)),
+    ("the fingerprint not compared", lambda t: t.replace('if [ "$was" = "$BOARD_HASH" ] &&', "if true &&", 1)),
+    ("a dispatch passed over too", lambda t: t.replace('if [ "$GITHUB_EVENT_NAME" != workflow_dispatch ]; then\n            live=', "if true; then\n            live=", 1)),
+    ("a live board kept unsmoked", lambda t: t.replace(' -lt 21600 ] && gated "$DOMAIN" pin; then', " -lt 21600 ]; then", 1)),
+    ("the fingerprint printed", lambda t: t.replace('          echo "::add-mask::$h"\n', "", 1)),
+    ("a run with no fingerprint deployed", lambda t: t.replace('[[ "${BOARD_HASH:-}" =~ ^[0-9a-f]{64}$ ]] ||', "true ||", 1)),
+    ("the fingerprint left off the preview", lambda t: t.replace(" meta: {boardHash: $h},", "", 1)),
+    ("the fingerprint left off the production copy", lambda t: t.replace(',\\"boardHash\\":\\"$BOARD_HASH\\"', "", 1)),
+    ("the read's time in the fingerprint", lambda t: t.replace("jq -cS 'del(.checked_at)'", "jq -cS '.'", 1)),
+    ("the build left out of the fingerprint", lambda t: t.replace("cat board/build.py board/middleware.js", "cat board/middleware.js", 1)),
 )
 
 
