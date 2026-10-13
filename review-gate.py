@@ -5746,6 +5746,7 @@ BOARD_HOLDS = (
     ("cat board/build.py board/middleware.js board/robots.txt board/vercel.json; } | sha256sum",
      "the fingerprint taken over the code that builds and gates the page"),
     ("BOARD_HASH: ${{ steps.render.outputs.board_hash }}", "the deploy given the render's fingerprint"),
+    ('echo "::add-mask::$h"', "the fingerprint masked before the deploy step's environment shows it in the log"),
 )
 # The snapshot's stamp, before the first product is read (#117's second read, 6).
 BOARD_STAMP = 'echo "checked_at='
@@ -5898,7 +5899,8 @@ case "$method $path" in
     case "${FAKE_NEXT:-wall}" in board) reply 200 "$board" ;; *) reply 302 '' "$sso" ;; esac ;;
   "GET https://$DOMAIN/"|"GET https://$DOMAIN/index.html")
     [ "$auth" = no ] || refuse "a stranger's request carrying a key"
-    [ "$serving" = dpl_copy ] || { reply 200 "$pin"; exit 0; }
+    # What it served before: the PIN screen, unless a case says it shows a stranger the board.
+    if [ "$serving" != dpl_copy ]; then case "${FAKE_BEFORE:-pin}" in board) reply 200 "$board" ;; *) reply 200 "$pin" ;; esac; exit 0; fi
     case "${FAKE_DOMAIN:-pin}" in
       board) reply 200 "$board" ;;
       blank) reply 502 'bad gateway' ;;
@@ -6009,7 +6011,14 @@ BOARD_DEPLOY_CASES = (
      "dpl_copy", "READY", "live: dpl_copy, the copy of dpl_new", "unchanged"),
     ("a changed board", {"FAKE_LIVE": "other", "GITHUB_EVENT_NAME": "check_run"}, 0, "dpl_copy", "READY",
      "live: dpl_copy, the copy of dpl_new", "unchanged"),
-    ("what is live cannot be read: deployed as before", {"FAKE_LIVE": "unread"}, 0, "dpl_copy", "READY",
+    ("what is live cannot be read: deployed as before", {"FAKE_LIVE": "unread", "GITHUB_EVENT_NAME": "check_run"}, 0,
+     "dpl_copy", "READY", "live: dpl_copy, the copy of dpl_new", "unchanged"),
+    # #210's first read: the fingerprint is stamped on a copy before its smoke,
+    # so one that landed after a red run is kept only if it passes the smoke now.
+    ("the same board, live for an hour, showing a stranger the board",
+     {"FAKE_LIVE": "same", "FAKE_BEFORE": "board", "GITHUB_EVENT_NAME": "check_run"}, 0, "dpl_copy", "READY",
+     "live: dpl_copy, the copy of dpl_new", "unchanged"),
+    ("the same board, dispatched", {"FAKE_LIVE": "same"}, 0, "dpl_copy", "READY",
      "live: dpl_copy, the copy of dpl_new", "unchanged"),
     ("the same board asked for as a preview", {"TARGET": "preview", "LIVE": "no", "FAKE_LIVE": "same"}, 0,
      "dpl_before", "READY", "preview ready at the fixed address", "unchanged"),
@@ -6198,7 +6207,7 @@ def _check_board_wiring(board=None, product=None, readme=None, quiet=False):
             "on the README's map with a token each, contents read alone, its grant and reach "
             "checked before anything is read; it checks out nothing of a pull request, uploads "
             "nothing, and its deploy, run against a fake host on %d paths, gives production only a "
-            "copy of a preview it has smoked, and only of a board changed or live six hours, cancels or deletes one that fails, and on a red after "
+            "copy of a preview it has smoked, on an event only of a board changed, live six hours or failing its smoke, cancels or deletes one that fails, and on a red after "
             "the copy cancels one still building and puts back what the domain served, inside the job's time"
             % (KEY_ENVIRONMENT, len(listed), len(BOARD_DEPLOY_CASES)))
     return bad
@@ -6282,7 +6291,9 @@ BOARD_LOOSENINGS = (
     ("the six hours stretched to a day", lambda t: t.replace("-lt 21600 ]", "-lt 86400 ]", 1)),
     ("the live board's age not asked", lambda t: t.replace(' && [ $(( $(date +%s) - made_at )) -lt 21600 ]', "", 1)),
     ("the fingerprint not compared", lambda t: t.replace('if [ "$was" = "$BOARD_HASH" ] &&', "if true &&", 1)),
-    ("a preview passed over too", lambda t: t.replace('if [ "$TARGET" = production ]; then\n            live=', "if true; then\n            live=", 1)),
+    ("a dispatch passed over too", lambda t: t.replace('if [ "$GITHUB_EVENT_NAME" != workflow_dispatch ]; then\n            live=', "if true; then\n            live=", 1)),
+    ("a live board kept unsmoked", lambda t: t.replace(' -lt 21600 ] && gated "$DOMAIN" pin; then', " -lt 21600 ]; then", 1)),
+    ("the fingerprint printed", lambda t: t.replace('          echo "::add-mask::$h"\n', "", 1)),
     ("a run with no fingerprint deployed", lambda t: t.replace('[[ "${BOARD_HASH:-}" =~ ^[0-9a-f]{64}$ ]] ||', "true ||", 1)),
     ("the fingerprint left off the preview", lambda t: t.replace(" meta: {boardHash: $h},", "", 1)),
     ("the fingerprint left off the production copy", lambda t: t.replace(',\\"boardHash\\":\\"$BOARD_HASH\\"', "", 1)),
