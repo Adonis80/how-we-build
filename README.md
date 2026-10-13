@@ -20,7 +20,7 @@ A repository not listed here is not under this rulebook. Papers for an idea that
 
 One line per product: where its plan is, and how it reaches the build board ([decision 0010](juku-library/DECISION-0010-REVIEW-SPEND-AND-PLAN-MAP.md), 29 September 2026). A product with no `roadmap.json` is not a product with no plan: its plan is where this line says.
 
-- **Juku OS** (this rulebook) — no `roadmap.json`. Its plan is its open pull requests, queued ready first, then by priority, then oldest (`library/changing-the-rulebook.md`). On the board: the first row, from those pull requests, their `Priority:` and `Ready:` lines and their review check.
+- **Juku OS** (this rulebook) — no `roadmap.json`. Its plan is its open pull requests, queued ready first, then by priority, then oldest, and after them its agreed `proposal` issues (`library/changing-the-rulebook.md`). On the board: the first row, from those pull requests, their `Priority:` and `Ready:` lines and their review check.
 - **Hemz OS** — [`roadmap.json`](https://github.com/Adonis80/Hemz-OS/blob/main/roadmap.json) on `main`. On the board: its row, from that file's items and money milestones.
 - **Myst** — [`roadmap.json`](https://github.com/Adonis80/myst/blob/main/roadmap.json) on `main`. On the board: its row, from that file's items.
 - **Phena** — [`roadmap.json`](https://github.com/Adonis80/phena/blob/main/roadmap.json) on `main`. On the board: its row, from that file's items and money milestones.
@@ -40,7 +40,7 @@ How a change reaches every product: it is made here once and then lands everywhe
 - `.claude/agents/max-subagent.md`, the max subagent, exactly as its page gives it (his ruling, 28 September 2026). Detail: `library/max-subagent.md`.
 - Money milestones in `roadmap.json`; evidence recorded with its origin; the handover's `evidence` field; `PRODUCT.md` and `NAMES.md`; a README route section; a Project set to its template; a `design/` folder for a product with a user interface. Detail: `library/carries-evidence.md`.
 - A `<product>-library/` folder in its own repo, named for the product, holding the papers and frozen consensus records that product has agreed; created with its first one. `NAMES.md` lists each library's name, so each product adds its own line when it creates its library. Detail: `library/rulebook-files.md`.
-- Improvement ideas kept as `proposed` items in `roadmap.json`, numbered `I<PR number><letter>`, with a `retired` list for those set aside, exactly as `library/ideas-for-later.md` gives (decision 0011, 2 October 2026; shared ideas, decision 0012, 3 October 2026); no product edit before its next roadmap edit. Detail: `library/ideas-for-later.md`.
+- Improvement ideas kept as `proposed` items in `roadmap.json`, numbered `I<PR number><letter>`, with a `retired` list for those set aside; a shared one raised as a `proposal` issue here; none built before its review agrees; every closing handover asking *Any material system improvement found?*; exactly as `library/ideas-for-later.md` gives (decision 0011, 2 October 2026; shared ideas, decision 0012, 3 October 2026; one proposals queue, decision 0020, 13 October 2026); no product edit before its next roadmap edit. Detail: `library/ideas-for-later.md`.
 - Efficiency (decision 0014, 4 October 2026): the closing or parking handover records any material waste or saving found, with its evidence or uncertainty and the smallest next action, and after a read one sourced cost line; an unbuilt improvement is an idea titled `efficiency:`; a brief names passages and the commit, never whole files, entry documents excepted. No quota, timer, ledger or extra read. Detail: `library/carries-sessions.md`, `library/carries-evidence.md`, `library/two-stacks.md`.
 - `RICH-DATA.md` read whole by any slice that changes what the product learns from, shows about a person, or claims about its own accuracy, and not otherwise.
 
@@ -62,7 +62,7 @@ One page per topic, or a named few where a topic is large, opened when its trigg
 | `library/consultant.md`: *The consultant* | asking the consultant for a sweep, a bug hunt, a better procedure or a review of ideas, or answering its findings |
 | `library/consultant-debate.md`: *The consultant: the head-office debate* | a big idea is to be settled with the consultant before it reaches the Chairman, or the debate's seats, step-up or breaker are in question |
 | `library/consultant-instructions.md`: *The consultant: its standing instructions* | the consultant cannot be reached, or its standing instructions are set or changed |
-| `library/ideas-for-later.md`: *Ideas for later* | a session spots an improvement it will not build now, or a roadmap read shows ideas due for review |
+| `library/ideas-for-later.md`: *Ideas for later* | a session spots an improvement it will not build now, a roadmap read shows ideas due for review, a session closes, or a `proposal` issue is raised, ranked or debated |
 | `library/rulebook-files.md`: *What each file here is for* | asking what a root file or a decision issue is for, or why this repository is public |
 | `library/product-joins.md`: *How a product joins* | adding a product to the map, or setting up its repository |
 | `library/project-template-product.md`: *Project instructions template* | setting or checking a product Project's instructions |
