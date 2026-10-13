@@ -266,6 +266,7 @@ jobs:
           rm -f "$RUNNER_TEMP/activity.json"
 
       - name: Render
+        id: render
         env:
           AT: ${{ steps.clock.outputs.checked_at }}
         run: |
@@ -282,6 +283,13 @@ jobs:
           mkdir -p "$site"
           python3 board/build.py "$RUNNER_TEMP/reads.json" "$site/index.html"
           cp board/middleware.js board/robots.txt board/vercel.json "$site/"
+          # THE BOARD'S FINGERPRINT (13 October 2026: the board spent 82 of the
+          # host's 100 deployments a day, on events that changed nothing on it).
+          # What it was built from, less the read's own time, and the code that
+          # builds and gates it; never printed, since it is taken over the reads.
+          h=$({ jq -cS 'del(.checked_at)' "$RUNNER_TEMP/reads.json"
+                cat board/build.py board/middleware.js board/robots.txt board/vercel.json; } | sha256sum | cut -d' ' -f1)
+          echo "board_hash=$h" >> "$GITHUB_OUTPUT"
           rm -rf "$RUNNER_TEMP/reads" "$RUNNER_TEMP/reads.json" "$RUNNER_TEMP/open.json" "$RUNNER_TEMP/open+review.json" "$RUNNER_TEMP/spend.json"
 
       - name: Deploy, smoke, and roll back on red
@@ -291,6 +299,7 @@ jobs:
           # anything but the two (#117's third read, 7); never production by default.
           TARGET: ${{ github.event_name != 'workflow_dispatch' && 'production' || inputs.target }}
           STARTED: ${{ steps.clock.outputs.started }}
+          BOARD_HASH: ${{ steps.render.outputs.board_hash }}
         run: |
           set -euo pipefail
           # HIS LOOK FIRST (step 6). Until LIVE is flipped by a one-line pull
@@ -353,6 +362,22 @@ jobs:
           before=$(serving)
           [ -n "$before" ] || { echo "::error::what $DOMAIN serves could not be recorded, so there would be nothing to roll back to. Nothing is deployed."; exit 1; }
           echo "serving before: $before"
+          # ONLY A CHANGED BOARD IS DEPLOYED TO PRODUCTION (13 October 2026): when
+          # what the domain serves was made from the same fingerprint under six
+          # hours ago, nothing moves. Past six hours it deploys anyway, so the
+          # page's own time stays within six hours of any activity; nothing wakes
+          # for it. A live deployment that cannot be read deploys, as before.
+          [[ "${BOARD_HASH:-}" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::the board's fingerprint was not taken. Nothing is deployed."; exit 1; }
+          if [ "$TARGET" = production ]; then
+            live=$(v "https://api.vercel.com/v13/deployments/$before?$q" 2>/dev/null || true)
+            was=$(printf '%s' "$live" | jq -r '.meta.boardHash // empty' 2>/dev/null || true)
+            made_at=$(printf '%s' "$live" | jq -r '(.createdAt // 0) / 1000 | floor' 2>/dev/null || true)
+            [[ "$made_at" =~ ^[0-9]+$ ]] || made_at=0
+            if [ "$was" = "$BOARD_HASH" ] && [ $(( $(date +%s) - made_at )) -lt 21600 ]; then
+              echo "unchanged: $DOMAIN serves $before, made from this same board under six hours ago. Nothing is deployed."
+              exit 0
+            fi
+          fi
           # EVERY RED PUTS THINGS BACK, by how far the deploy got: a preview
           # still building is cancelled; a ready one that did not pass its smoke
           # is deleted; once promoted, what the domain served before is
@@ -421,10 +446,10 @@ jobs:
           # The files are sent through the API: no Git metadata, so the host
           # cannot read this as an integration deploy (library/deploy.md). No
           # target: a preview, which the host never gives the domain.
-          jq -n --arg p "$PROJECT" \
+          jq -n --arg p "$PROJECT" --arg h "$BOARD_HASH" \
             --rawfile index "$site/index.html" --rawfile mw "$site/middleware.js" \
             --rawfile robots "$site/robots.txt" --rawfile vj "$site/vercel.json" \
-            '{name: "juku-build-board", project: $p, projectSettings: {framework: null},
+            '{name: "juku-build-board", project: $p, projectSettings: {framework: null}, meta: {boardHash: $h},
               files: [{file: "index.html", data: $index}, {file: "middleware.js", data: $mw},
                       {file: "robots.txt", data: $robots}, {file: "vercel.json", data: $vj}]}' > "$RUNNER_TEMP/deploy.json"
           rm -rf "$site"
@@ -481,7 +506,7 @@ jobs:
           # Armed before the call: a copy asked for may still land.
           phase=promoted
           made=$(v -X POST "https://api.vercel.com/v13/deployments?$q" \
-            -d "{\"deploymentId\":\"$id\",\"name\":\"juku-build-board\",\"target\":\"production\",\"meta\":{\"action\":\"promote\"}}" || true)
+            -d "{\"deploymentId\":\"$id\",\"name\":\"juku-build-board\",\"target\":\"production\",\"meta\":{\"action\":\"promote\",\"boardHash\":\"$BOARD_HASH\"}}" || true)
           copy=$(printf '%s' "$made" | jq -r '.id // empty' 2>/dev/null || true)
           [[ "$copy" =~ ^dpl_[A-Za-z0-9]+$ ]] || { echo "::error::PROMOTE REFUSED: no production copy of $id: $(printf '%s' "$made" | jq -r '.error.code // "no code"' 2>/dev/null || echo "no answer"); one asked for may still land"; exit 1; }
           echo "production copy: $copy"
