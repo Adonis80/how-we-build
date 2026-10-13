@@ -12,7 +12,8 @@ run-name: Build the board (${{ github.event_name }})
 # WHAT WAKES IT. A dispatch, for a product's merge that touched its roadmap
 # (a product cannot see this repository's events) or for a session's refresh;
 # a pull request here opened, edited, pushed to, reopened, readied, drafted or
-# closed; and the reviewer's check run created, re-requested or completed. The
+# closed; and the reviewer's check run completed, its verdict (a read started,
+# created or re-requested, wakes nothing: 13 October 2026, the host's cap). The
 # `check_run` route is decision 0007's first unproved line: it is cited on the
 # pull request that proves it, not claimed here.
 #
@@ -60,7 +61,7 @@ on:
   pull_request_target:
     types: [opened, edited, synchronize, reopened, ready_for_review, converted_to_draft, closed]
   check_run:
-    types: [created, rerequested, completed]
+    types: [completed]
 
 # Read, and nothing else: review-gate.py refuses a `write` (#117's second read, 5).
 permissions:

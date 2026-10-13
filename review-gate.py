@@ -5719,6 +5719,8 @@ BOARD_HOLDS = (
     ("select(.merged_at != null and .head.repo.full_name == $r)", "a fork's merge left off the board"),
     ("github.event.check_run.app.id == %d" % REVIEWER_APP_ID, "only the reviewer's own check run waking it"),
     ("github.event.check_run.name == '%s'" % REVIEWER_CHECK, "only the reviewer's check run by name"),
+    # 13 October 2026: the verdict wakes it, never a read started (#211's ask).
+    ("  check_run:\n    types: [completed]\n", "only the reviewer's verdict waking it, not a read started"),
     ("cancel-in-progress: false", "no deploy cut off between going live and its smoke test"),
     # What the fake host below cannot tell apart, because it answers both alike.
     ("for p in / /index.html; do", "a stranger asked at the root and at the page's own name"),
@@ -6226,6 +6228,7 @@ BOARD_LOOSENINGS = (
     ("a fork's pull request waking it", lambda t: t.replace("github.event.pull_request.head.repo.full_name == github.repository", "true", 1)),
     ("a fork's pull request read", lambda t: t.replace("'[.[] | select(.head.repo.full_name == $r)", "'[.[] | select(true)", 1)),
     ("any check run waking it", lambda t: t.replace("github.event.check_run.app.id == 5000405 &&", "", 1)),
+    ("a read started waking it", lambda t: t.replace("    types: [completed]\n", "    types: [created, rerequested, completed]\n", 1)),
     ("an artifact uploaded", lambda t: t.replace("      - name: Render\n", "      - uses: actions/upload-artifact@v4\n        with:\n          path: ${{ runner.temp }}\n      - name: Render\n", 1)),
     ("a traced shell", lambda t: t.replace("set -euo pipefail", "set -euxo pipefail", 1)),
     ("the pull request's head checked out", lambda t: t.replace("          persist-credentials: false\n", "          persist-credentials: false\n          ref: ${{ github.event.pull_request.head.sha }}\n", 1)),
