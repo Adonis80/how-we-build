@@ -8055,6 +8055,17 @@ def _check_link_loosenings():
     return bad
 
 
+# canary_red loosened: each must fail one of _check_main's cases.
+CANARY_RED_LOOSENINGS = (
+    ("a merged-in commit walked to", lambda t: t.replace('if want is not None and c.get("sha") != want:',
+                                                         "if False:", 1)),
+    ("a merge's second parent followed", lambda t: t.replace('(c.get("parents") or [None])[0]',
+                                                             '(c.get("parents") or [None])[-1]', 1)),
+    ("a push head with no canary passed over", lambda t: t.replace("                return c.get(\"sha\")\n            continue",
+                                                                   "                continue\n            continue", 1)),
+)
+
+
 def _run(conclusion=None, status="completed", app=REVIEWER_APP_ID, name=REVIEWER_CHECK, sha=None):
     return {"app": None if app is None else {"id": app}, "name": name,
             "head_sha": sha, "status": status, "conclusion": conclusion}
@@ -8136,17 +8147,34 @@ def _check_main():
          "a failure under another name, or from another app, is no canary",
          [("m2", [dict(canary("failure"), name="canary probe"), dict(canary("failure"), app={"id": 1}),
                   canary("success")])]),
+        # A MERGED-IN COMMIT WAS NEVER PUSHED (13 October 2026): a merge's second
+        # parent gets no canary, and held every machinery pull request (#201's
+        # 453b128 bringing in 5bb0410). Listed by date, it sits among the first parents.
+        ([{"filename": "review-gate.py"}], [ok], 0, "note:",
+         "a merge head whose canary skipped says nothing, and its second parent, never pushed, has none to say; "
+         "the first parent's green decides",
+         [("m3", [canary("skipped")], ["m1", "m2side"]), ("m2side", []), ("m1", [canary("success")])]),
+        ([{"filename": "review-gate.py"}], [ok], 1, "the canary failed on main at m3",
+         "a merge head with no canary at all, past the grace, still holds; a green merged in under it vouches for nothing",
+         [("m3", [], ["m1", "m2side"]), ("m2side", [canary("success")]), ("m1", [canary("success")])]),
+        ([{"filename": "review-gate.py"}], [ok], 1, "the canary failed on main at m1",
+         "and the first parent's red under a merge head whose canary skipped still holds",
+         [("m3", [canary("skipped")], ["m1", "m2side"]), ("m2side", [canary("success")]), ("m1", [canary("failure")])]),
     ]
-    bad = 0
     real = urllib.request.urlopen
-    for files, runs, code, must, what, *rest in cases:
+
+    def run(files, runs, code, must, what, *rest, say=print):
+        bad = 0
         main_commits = rest[0] if rest else []
         machine = machinery([f["filename"] for f in files])
         # The changed files and the head's check runs, and on a machinery change
         # main's commits and their canaries; never anything else.
         need = {"/repos/o/r/commits/%s/check-runs" % head, "/repos/o/r/pulls/7/files"}
-        allowed = need | ({"/repos/o/r/commits"} | {"/repos/o/r/commits/%s/check-runs" % s for s, _ in main_commits}
+        allowed = need | ({"/repos/o/r/commits"} | {"/repos/o/r/commits/%s/check-runs" % m[0] for m in main_commits}
                           if machine else set())
+        # Each commit's first parent is the next listed, unless the case names its parents.
+        parents = {m[0]: m[2] if len(m) > 2 else [n[0] for n in main_commits[i + 1:i + 2]]
+                   for i, m in enumerate(main_commits)}
         asked = []
 
         def fake(req, *a, **k):
@@ -8157,10 +8185,10 @@ def _check_main():
             if parts.path.endswith("/files"):
                 body = files if first else []
             elif parts.path == "/repos/o/r/commits":
-                body = [{"sha": s, "commit": {"committer": {"date": young if s.endswith("young") else old}}}
-                        for s, _ in main_commits]
+                body = [{"sha": m[0], "commit": {"committer": {"date": young if m[0].endswith("young") else old}},
+                         "parents": [{"sha": p} for p in parents[m[0]]]} for m in main_commits]
             elif parts.path.endswith("/check-runs") and head not in parts.path:
-                body = {"check_runs": dict(main_commits)[parts.path.split("/")[-2]] if first else []}
+                body = {"check_runs": {m[0]: m[1] for m in main_commits}[parts.path.split("/")[-2]] if first else []}
             elif parts.path.endswith("/check-runs"):
                 body = {"check_runs": runs if first else []}
             else:
@@ -8176,17 +8204,16 @@ def _check_main():
             got = main(["review-gate.py", "o/r", "7", head, "token"])
         except AssertionError as e:
             urllib.request.urlopen, sys.stdout = real, stdout
-            print("  main: %s — %s" % (what, e))
-            bad += 1
-            continue
+            say("  main: %s — %s" % (what, e))
+            return 1
         finally:
             urllib.request.urlopen, sys.stdout = real, stdout
         said = out.getvalue()
         if got != code:
-            print("  main: %s — expected exit %d, got %d (%s)" % (what, code, got, said.strip()))
+            say("  main: %s — expected exit %d, got %d (%s)" % (what, code, got, said.strip()))
             bad += 1
         if must not in said:
-            print("  main: %s — expected %r in the output, got %r" % (what, must, said.strip()))
+            say("  main: %s — expected %r in the output, got %r" % (what, must, said.strip()))
             bad += 1
         # A gate change is announced on the check as well as in its log, and
         # nothing else is: an annotation on every change would teach the same
@@ -8194,25 +8221,51 @@ def _check_main():
         noticed = any(l.startswith("::notice ") for l in said.splitlines())
         gate = bool(touches_the_gate([f["filename"] for f in files]))
         if noticed != gate or gate != ("note:" in said):
-            print("  main: %s — %s" % (what, "announced in the log but not on the check"
-                                       if gate else "annotated, and it is not a gate change"))
+            say("  main: %s — %s" % (what, "announced in the log but not on the check"
+                                     if gate else "annotated, and it is not a gate change"))
             bad += 1
         # And nothing else it prints is a runner command: the file names are the
         # pull request's writing, and one could otherwise start its own.
         stray = [l for l in said.splitlines()
                  if l.startswith("::") and not l.startswith("::notice title=")]
         if stray:
-            print("  main: %s — a line the runner would obey: %r" % (what, stray[0]))
+            say("  main: %s — a line the runner would obey: %r" % (what, stray[0]))
             bad += 1
         if not need <= set(asked) <= allowed or machine != ("/repos/o/r/commits" in asked):
-            print("  main: %s — asked GitHub for %s; it must ask for %s, and on a machinery change "
-                  "main's commits, within %s" % (what, sorted(set(asked)), sorted(need), sorted(allowed)))
+            say("  main: %s — asked GitHub for %s; it must ask for %s, and on a machinery change "
+                "main's commits, within %s" % (what, sorted(set(asked)), sorted(need), sorted(allowed)))
+            bad += 1
+        return bad
+
+    bad = sum(run(*c) for c in cases)
+    # Each loosening of canary_red is run, on a copy, against the cases above,
+    # and one of them must fail, or the case that guards it proves nothing.
+    gate = _read("review-gate.py")
+    start = gate.index("\ndef canary_red(") + 1
+    source, kept = gate[start:gate.index("\n\n\n", start)], canary_red
+    for what, loosen in CANARY_RED_LOOSENINGS:
+        changed = loosen(source)
+        if changed == source:
+            print("  main: the loosening '%s' no longer applies to canary_red — rewrite it against the "
+                  "function as it stands, or it proves nothing" % what)
+            bad += 1
+            continue
+        loose = dict(globals())
+        exec(compile(changed, "canary_red", "exec"), loose)
+        globals()["canary_red"] = loose["canary_red"]
+        try:
+            caught = sum(run(*c, say=lambda *_: None) for c in cases)
+        finally:
+            globals()["canary_red"] = kept
+        if not caught:
+            print("  main: canary_red with %s passes every case — the case for it is gone" % what)
             bad += 1
     if not bad:
         print("ok: main() was run against a GitHub answering from a dictionary in %d case(s) — "
               "it asked for the changed files and the check runs, and on a machinery change main's "
               "newest canary, and nothing else; a change to the gate itself opens on the one "
-              "reviewer's clean read, and no machinery change opens while that canary is red" % len(cases))
+              "reviewer's clean read, and no machinery change opens while that canary is red; each of %d "
+              "loosenings of canary_red was refused" % (len(cases), len(CANARY_RED_LOOSENINGS)))
     return bad
 
 
@@ -8459,6 +8512,13 @@ def _pages(url, token, key=None, params=None):
 # safer, lands by the emergency route (`library/reviewer-parking.md`), and the
 # canary that runs after it lifts the hold. A canary skipped or cancelled says
 # nothing, so the newest that ran is looked for, back CANARY_LOOKBACK commits.
+#
+# MAIN'S FIRST PARENTS ONLY (13 October 2026): a commit that reaches main as a
+# merge commit's second parent was never a push head, so no canary starts for
+# it; walked to, its silence held every machinery pull request red (#201's
+# merge 453b128 brought in 5bb0410, cleared by a canary dispatched by hand).
+# So the walk follows each commit's first parent, every one of which a merge to
+# main pushed; one GitHub lists without parents is followed by the next listed.
 
 
 def canary_red(api, token):
@@ -8468,7 +8528,11 @@ def canary_red(api, token):
                                           "Accept": "application/vnd.github+json"})
     with urllib.request.urlopen(req) as r:
         commits = json.load(r)
+    want = None
     for c in commits if isinstance(commits, list) else []:
+        if want is not None and c.get("sha") != want:
+            continue
+        want = ((c.get("parents") or [None])[0] or {}).get("sha")
         # A SKIPPED CANARY KEEPS ITS NAME UNEVALUATED (9 October 2026): canary.yml
         # names the job by an expression, and GitHub does not evaluate it for a
         # job it skips, so a words-only merge left a run named by the expression
