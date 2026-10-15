@@ -700,10 +700,20 @@ SPEND_URL = "https://openrouter.ai/api/v1/activity"
 RULEBOOK_REPO = "Adonis80/how-we-build"
 REVIEWER_APP_ID = 5000405                              # the juku-reviewer App, as review-gate.py names it
 REVIEWER_CHECK = "juku-reviewer"
-READ_SECONDS = 8                                       # each request's limit, inside the host's ten
+READ_SECONDS = 5                                       # each request's limit; the function has 30 (vercel.json)
 KEEP_SECONDS = 60                                      # the page kept between opens: the short cache
 BRANCH = re.compile(r"^[A-Za-z0-9._/-]+$")
 SHA = re.compile(r"^[0-9a-f]{40}$")
+
+
+class _Stay(urllib.request.HTTPRedirectHandler):
+    """A redirect is refused, never followed: the key would go with it, wherever it pointed (#223's read)."""
+
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+_OPEN = urllib.request.build_opener(_Stay)
 
 
 def _get(url, key, raw=False):
@@ -711,7 +721,7 @@ def _get(url, key, raw=False):
     head = {"Authorization": "Bearer " + key, "User-Agent": "juku-build-board"}
     if url.startswith(GITHUB + "/"):
         head["Accept"] = "application/vnd.github.raw+json" if raw else "application/vnd.github+json"
-    with urllib.request.urlopen(urllib.request.Request(url, headers=head), timeout=READ_SECONDS) as r:
+    with _OPEN.open(urllib.request.Request(url, headers=head), timeout=READ_SECONDS) as r:
         body = r.read()
     return body if raw else json.loads(body)
 
@@ -1155,6 +1165,8 @@ def _selftest():
     get, calls = fake()
     hold(read_product(lambda u, k, raw=False: json.dumps(bent).encode() if raw else get(u, k), "k", "Adonis80/myst", "Myst")
          == {"name": "Myst", "unread": True}, "a roadmap not in shape reads as unread, never as a broken board")
+    hold(_Stay().redirect_request(None, None, 302, "Found", {}, "https://elsewhere.example/") is None and
+         any(isinstance(h, _Stay) for h in _OPEN.handlers), "the live read follows no redirect, so no key leaves its host")
     tick = [1000.0]
     get, calls = fake()
     _kept.update(at=None, page=None)

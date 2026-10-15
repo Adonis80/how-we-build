@@ -5823,8 +5823,10 @@ BOARD_CHECKOUT_REF = re.compile(r"^\s*ref:", re.M)
 BUILD_HOLDS = (
     ('GITHUB = "https://api.github.com"', "GitHub's API the one GitHub host it asks"),
     ('SPEND_URL = "https://openrouter.ai/api/v1/activity"', "the spend card's key used for its one read, OpenRouter's daily activity"),
-    ("urllib.request.urlopen(urllib.request.Request(url, headers=head), timeout=READ_SECONDS)",
+    ("_OPEN.open(urllib.request.Request(url, headers=head), timeout=READ_SECONDS)",
      "every request a GET with a time limit, and nothing sent but its headers"),
+    ("_OPEN = urllib.request.build_opener(_Stay)", "no redirect followed, so no key is carried to another host"),
+    ("    def redirect_request(self, *args, **kwargs):\n        return None\n", "a redirect refused"),
     ("REVIEWER_APP_ID = %d " % REVIEWER_APP_ID, "the reviewer's own App"),
     ('REVIEWER_CHECK = "%s"' % REVIEWER_CHECK, "the reviewer's check run by name"),
     ('r.get("name") == REVIEWER_CHECK and r.get("head_sha") == sha', "each check run held to the reviewer's name and head"),
@@ -6318,9 +6320,10 @@ def _check_board_wiring(board=None, build=None, readme=None, quiet=False):
     for word in BUILD_NEVER:
         if word in build:
             fault("sends more than a GET's headers, or asks for OpenRouter's keys (`%s`)" % word, "board/build.py")
-    if build.count("openrouter.ai") != 1 or build.count("urlopen(") != 1:
+    opens = build.count("urlopen(") + build.count(".open(")
+    if build.count("openrouter.ai") != 1 or opens != 1:
         fault("asks OpenRouter %d times and opens %d requests; the spend card's key makes one read, its daily "
-              "activity, through the one GET" % (build.count("openrouter.ai"), build.count("urlopen(")), "board/build.py")
+              "activity, through the one GET" % (build.count("openrouter.ai"), opens), "board/build.py")
     try:
         spec = importlib.util.spec_from_file_location("board_build", "board/build.py")
         mod = importlib.util.module_from_spec(spec)
@@ -6453,6 +6456,8 @@ BUILD_LOOSENINGS = (
     ("a fork's pull request read", lambda t: t.replace('.get("full_name") == RULEBOOK_REPO', '.get("full_name") is not None', 1)),
     ("OpenRouter's keys asked", lambda t: t.replace('SPEND_URL = "https://openrouter.ai/api/v1/activity"', 'SPEND_URL = "https://openrouter.ai/api/v1/keys"', 1)),
     ("a second OpenRouter read", lambda t: t.replace("GITHUB = ", 'CREDITS = "https://openrouter.ai/api/v1/credits"\nGITHUB = ', 1)),
+    ("a redirect followed", lambda t: t.replace("_OPEN = urllib.request.build_opener(_Stay)", "_OPEN = urllib.request.build_opener()", 1)),
+    ("a redirect let through", lambda t: t.replace("    def redirect_request(self, *args, **kwargs):\n        return None\n", "    def redirect_request(self, *args, **kwargs):\n        return super().redirect_request(*args, **kwargs)\n", 1)),
     ("a request that sends more than a GET", lambda t: t.replace("urllib.request.Request(url, headers=head)", 'urllib.request.Request(url, headers=head, method="POST")', 1)),
     ("a request with a body", lambda t: t.replace("urllib.request.Request(url, headers=head)", "urllib.request.Request(url, headers=head, data=b'')", 1)),
     ("a second way out", lambda t: t.replace("MISSED = (", 'urllib.request.urlopen("https://example.com/", timeout=1) if False else None\nMISSED = (', 1)),
