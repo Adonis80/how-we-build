@@ -8441,6 +8441,8 @@ def _check_main():
         ([{"filename": ".github/workflows/build-board.yml"}], [findings], 1, "note:",
          "and an unlogged workflow change with findings is red, announced as a gate change"),
         ([{"filename": "board/robots.txt"}], [ok], 1, nolog, "a change to the board needs its line too"),
+        ([{"filename": "model-registry/registry.json"}], [ok], 1, nolog, "and so does a change to the model registry"),
+        ([{"filename": "product-reads/reads.py"}], [ok], 1, nolog, "and to the product reads"),
         ([{"filename": "board/build.py"}, log], [ok], 0, "note:", "with its line, a change to what runs opens"),
         ([{"filename": "library/money.md"}], [ok], 0, "ok:", "a page alone needs no line"),
         ([{"filename": ".github/workflows/a\n::stop-commands::x.yml"}], [ok], 1, nolog,
