@@ -49,6 +49,10 @@ run-name: Build the board (${{ github.event_name }})
 # 38480903245, attempt 4 deployed dpl_4o7THPZzCvkUti6aiACi4hS7C2DS, attempt 5
 # a minute later logged `unchanged:` and made no deployment.
 #
+# NOTHING IS DEPLOYED ONCE THE ACCOUNT HAS MADE 60 IN 24 HOURS (his ask, 15
+# October 2026), so the board can never starve a product of the host's 100. It
+# is cited on the pull request a run shows it on, not claimed here.
+#
 # THIS LOG IS PUBLIC AND THE ROADMAPS ARE NOT. Nothing a product holds is
 # printed: byte counts and conclusions only. No artifact is uploaded and no
 # run summary written, because a public repository's are public too.
@@ -297,8 +301,9 @@ jobs:
           # its day, and the gate's three files: what is shown, never what was
           # read to show it, so a pull request's unshown lines or OpenRouter's
           # day still counting move nothing (run 38440487527's re-runs, 21:10
-          # and 21:28, deployed the same board twice). Masked, since it is taken
-          # over the reads and the deploy step's environment is in this log.
+          # and 21:28, deployed the same board twice). Masked, since the page it
+          # is taken over carries product text and the deploy step's environment
+          # is in this log.
           jq --arg d "${AT:0:10}T00:00:00Z" '.checked_at = $d' "$RUNNER_TEMP/reads.json" > "$RUNNER_TEMP/fp.json"
           python3 board/build.py "$RUNNER_TEMP/fp.json" "$RUNNER_TEMP/fp.html" > /dev/null
           h=$(cat "$RUNNER_TEMP/fp.html" board/middleware.js board/robots.txt board/vercel.json | sha256sum | cut -d' ' -f1)
@@ -402,6 +407,23 @@ jobs:
               exit 0
             fi
           fi
+          # A HARD CEILING ON THE HOST'S DAY (his ask, 15 October 2026): the
+          # board never takes the products' share of the host's 100 deployments
+          # a day. Before anything is made, the account's deployments in the
+          # last 24 hours are counted, every project's, and at 60 or more
+          # nothing is deployed, a dispatch included. One page of 100 is enough:
+          # past 60 the exact number changes nothing. Each is held to the window
+          # by its own time, not on the query's word. A day that cannot be
+          # counted deploys nothing, red, since the ceiling could not be held.
+          since=$(( ($(date +%s) - 86400) * 1000 ))
+          used=$(v "https://api.vercel.com/v6/deployments?$q&since=$since&limit=100" 2>/dev/null \
+            | jq --argjson s "$since" '[.deployments[] | select(.created >= $s)] | length' 2>/dev/null || true)
+          [[ "$used" =~ ^[0-9]+$ ]] || { echo "::error::the account's deployments in the last 24 hours could not be counted, so the ceiling could not be held. Nothing is deployed."; exit 1; }
+          if [ "$used" -ge 60 ]; then
+            echo "::warning::ceiling: the account made $used deployments in the last 24 hours, 60 or more, so the rest of the day is left to the products. Nothing is deployed; the last snapshot stands."
+            exit 0
+          fi
+          echo "the account's deployments in the last 24 hours: $used, under the ceiling of 60"
           # EVERY RED PUTS THINGS BACK, by how far the deploy got: a preview
           # still building is cancelled; a ready one that did not pass its smoke
           # is deleted; once promoted, what the domain served before is
