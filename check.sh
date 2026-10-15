@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # The rulebook's own guard. CI runs it on every push and pull request.
-# It refuses: an operating page over its word cap, a screen law over its own, a
-# root, design or library file that is not on its list or missing from it, a
-# library page over its size or unscoped, a link to a page that does not exist,
+# It refuses: a front-end guide that is not HyperSolid alone, a root or library
+# file that is not on its list or missing from it, a library page unscoped, a
+# link to a page that does not exist,
 # an index row that opens its first page on words that page does not say,
 # anything that looks like a secret (naming the place, never the value), a
 # model named anywhere but the registry, a review gate that no longer matches the reviewer's answers or has drifted from
@@ -17,30 +17,33 @@
 # gone with the second: see review-gate.py on CROSS_VENDOR. A header describing
 # a state the file can no longer reach is the drift this guard exists to catch,
 # so it is corrected here rather than left for the next reader to discover.
+# Sizes it reports and never refuses: the operating page, the screen law and
+# each library page are measured against a target and the number printed (his
+# ruling, 8 October 2026, decision 0017). A change is never failed for length
+# alone; it reconciles the rules it touches, which the cold review holds.
 set -euo pipefail
 cd "$(dirname "$0")"
 fail=0
+# TWO STEPS, ONE CHECK (his ask, 7 October 2026: the full self-test ran on
+# every pull request and again when the verdict landed, about 22 minutes each).
+# check.yml runs this file twice in the one `check` job: CHECK_PART=selftest for
+# everything but the gate, then CHECK_PART=gate for the gate alone, so a re-run
+# can see which half an earlier attempt passed. Unset, by hand, it runs whole.
+part="${CHECK_PART:-whole}"
+case "$part" in whole|selftest|gate) ;; *) echo "FAIL: CHECK_PART is '$part'; it is selftest, gate or unset."; exit 1 ;; esac
+if [ "$part" != gate ]; then
 
-# 1. The operating page stays short.
-# Counted with python, not `wc -w`: wc answers differently by locale — it
-# splits on the em dash in C.UTF-8 and not in C — so the same bytes passed on
-# a session's machine and failed in CI. On 7 September 2026 that cost a build
-# in the Alma repo, whose identical guard was fixed the same way. A cap must
-# mean one thing wherever it is measured.
-# The cap was 500 from 28 August to 12 September 2026, when the two-lead rules
-# could not fit under it without spending a rule the page requires. It moved to
-# 600 in the pull request that needed it, for that stated reason, and 600 is the
-# ceiling: from here a rule in means a rule out. See *Changing the rulebook*.
-words=$(python3 -c 'import sys; print(len(open(sys.argv[1],encoding="utf-8").read().split()))' HOW-WE-BUILD.md)
-if [ "$words" -gt 600 ]; then
-  echo "FAIL: HOW-WE-BUILD.md is $words words; the cap is 600."
-  fail=1
-else
-  echo "ok: HOW-WE-BUILD.md is $words words (cap 600)"
-fi
+# 1. Sizes, reported. Counted with python, not `wc -w`, which answers
+# differently by locale, so a number means one thing wherever it is measured.
+words_of() { python3 -c 'import sys; print(len(open(sys.argv[1],encoding="utf-8").read().split()))' "$1"; }
+size_line() { # name, measured, target, unit
+  if [ "$2" -gt "$3" ]; then echo "size: $1 is $2 $4, $(( $2 - $3 )) over its $3 target — a reading, never a failure"
+  else echo "size: $1 is $2 $4 (target $3)"; fi
+}
+size_line HOW-WE-BUILD.md "$(words_of HOW-WE-BUILD.md)" 600 words
 
 # 2. Only these files exist at the root (plus .git and .github).
-allowed=" AGENTS.md CHARTER.md HOW-WE-BUILD.md README.md RICH-DATA.md board check.sh design juku-library library model-registry product-reads review-gate.py "
+allowed=" AGENTS.md CHARTER.md HOW-WE-BUILD.md README.md RICH-DATA.md board check.sh juku-library library model-registry product-reads review-gate.py "
 while IFS= read -r f; do
   case "$f" in .git|.github) continue ;; esac
   case "$allowed" in
@@ -48,13 +51,12 @@ while IFS= read -r f; do
     *) echo "FAIL: '$f' is not on the file list ($allowed)."; fail=1 ;;
   esac
 done < <(ls -A)
-# Both ways, as the design list already is: an unexpected file fails, and so
+# Both ways: an unexpected file fails, and so
 # does a missing one — otherwise deleting CHARTER.md or README.md passes.
 # A directory of the same name is not the file: `-e` would pass a tracked
 # `CHARTER.md/` that holds nothing this repository reads.
 for f in $allowed; do
   case "$f" in
-    design) [ -d "$f" ] || { echo "FAIL: '$f' is missing, or is not a directory; the root list is a fixed set."; fail=1; } ;;
     # The build board (decision 0007): its gate's three files and the build that renders it, and nothing else. No roadmap data lives here.
     board) { [ -d "$f" ] && [ "$(ls -A board | tr '\n' ' ')" = "build.py middleware.js robots.txt vercel.json " ]; } || { echo "FAIL: 'board/' holds only build.py, middleware.js, robots.txt and vercel.json."; fail=1; } ;;
     # Git keeps no empty directory, so an absent library is the empty one, and
@@ -78,39 +80,50 @@ for f in $allowed; do
 done
 [ "$fail" -eq 0 ] && echo "ok: file list unchanged"
 
-# 2b. The design pages: a fixed list, and a law that stays law-sized.
-# The screen law is carried here once so every product reads the same one; a
-# product's own constitution holds only what is true there and points at this.
-lawwords=$(python3 -c 'import sys; print(len(open(sys.argv[1],encoding="utf-8").read().split()))' design/SCREEN-LAW.md)
-if [ "$lawwords" -gt 450 ]; then
-  echo "FAIL: design/SCREEN-LAW.md is $lawwords words; the cap is 450 - a rule in means a rule out."
-  fail=1
-else
-  echo "ok: design/SCREEN-LAW.md is $lawwords words (cap 450)"
-fi
-design_allowed=" ARCHITECT.md BRIEF_TEMPLATE.md REVIEW_RUBRIC.md SCREEN-LAW.md SCREEN_SPEC_TEMPLATE.md "
-while IFS= read -r f; do
-  case "$design_allowed" in
-    *" $f "*) ;;
-    *) echo "FAIL: 'design/$f' is not on the design file list ($design_allowed)."; fail=1 ;;
-  esac
-done < <(ls -A design)
-# The list is both ways: an unexpected page fails, and a missing one fails too,
-# or a later change could quietly delete a role, a form or the rubric and stay green.
-for f in $design_allowed; do
-  [ -f "design/$f" ] || { echo "FAIL: 'design/$f' is missing; the design pages are a fixed set."; fail=1; }
+# 2b. One front-end guide (his ruling, 8 October 2026: "we should be left with
+# only library/hypersolid.md"). It holds the screen law, carried once so every
+# product reads the same one; a product's own constitution holds only what is
+# true there and points at it. The law's size is reported, like every size. The guide's old pages
+# stay gone: none exists outside juku-library/, whose records are history, and
+# nothing else names one. The names are spelled without ".md" so this file is
+# not a hit of its own.
+guide=library/hypersolid.md
+old_pages="library/screen-design design/ARCHITECT design/BRIEF_TEMPLATE design/SCREEN_SPEC_TEMPLATE design/REVIEW_RUBRIC design/SCREEN-LAW"
+for o in $old_pages; do
+  [ ! -e "$o.md" ] || { echo "FAIL: '$o.md' exists; $guide is the only front-end guide."; fail=1; }
+  if grep -R -n -F --exclude-dir=.git --exclude-dir=juku-library "$o.md" . | cut -d: -f1,2 | sed 's/^/  /' | grep . ; then
+    echo "FAIL: the place(s) above name '$o.md'; point at $guide instead."; fail=1
+  fi
 done
+if [ ! -f "$guide" ]; then
+  echo "FAIL: '$guide' is missing; it is the only front-end guide."; fail=1
+else
+  for h in "Distillation rule" "Spatial layer" "Screen law"; do
+    grep -q -E "^## $h( |$)" "$guide" || { echo "FAIL: '$guide' has no '## $h' heading."; fail=1; }
+  done
+  lawwords=$(python3 -c 'import re,sys; m=re.search(r"^## Screen law\n(.*?)(?=^## |\Z)", open(sys.argv[1],encoding="utf-8").read(), re.S|re.M); print(len(m.group(1).split()) if m else 0)' "$guide")
+  echo "ok: $guide is the only front-end guide"
+  size_line "the screen law in $guide" "$lawwords" 450 words
+fi
 
 # 2c. The library: one page per topic, opened only when a task touches it (his
 # ruling of 23 September 2026, decision 0005, issue #75). The README is its
 # index, both ways: a page the README does not name is never opened, and a
-# name with no page sends a session nowhere. Each page is one topic in at most
-# 4000 bytes, the machine's proxy for the decision's 1,000 tokens, and says
-# whom it binds and when to open it. A link to a page from anywhere in this
-# repository must resolve too, not only the README's: a list of the files to
-# search would be one more list to drift. With no page named there is no
+# name with no page sends a session nowhere. Each page is one topic, says whom
+# it binds and when to open it, and has its size reported against 4000 bytes,
+# the machine's proxy for the decision's 1,000 tokens. A link to a page from
+# anywhere in this repository must resolve too, not only the README's: a list
+# of the files to search would be one more list to drift. With no page named there is no
 # library, and that passes: the check exists before the pages it holds.
 lib_fail=0
+lib_max=0
+# Library pages a cleanup merged or deleted (#174). A frozen record in
+# juku-library/ keeps its text, so it may still link one, as history; the page
+# stays gone, and any other link to it fails below like any broken link.
+retired_pages="library/reviewer-one-vendor library/changing-the-rulebook-merge"
+for o in $retired_pages; do
+  [ ! -e "$o.md" ] || { echo "FAIL: '$o.md' exists; it was retired and only frozen records may still name it."; lib_fail=1; }
+done
 # A page name starts at a name boundary: a folder that merely ends in
 # "library" (juku-library/, <product>-library/) holds papers, not library
 # pages, and its files are not links to library/.
@@ -126,7 +139,10 @@ for f in "${pages[@]}"; do
   grep -qxF "$f" <<< "$named" || { echo "FAIL: '$f' is not named in the README, so no session is sent to it."; lib_fail=1; }
   [ -f "$f" ] || { echo "FAIL: '$f' is not a file."; lib_fail=1; continue; }
   b=$(wc -c < "$f" | tr -d ' ')
-  [ "$b" -le 4000 ] || { echo "FAIL: '$f' is $b bytes; a library page's cap is 4000 - split the topic or cut history."; lib_fail=1; }
+  [ "$b" -le "$lib_max" ] || lib_max=$b
+  # HyperSolid is one page by his ruling of 8 October 2026, so its target is its own.
+  target=4000; [ "$f" != "$guide" ] || target=6500
+  [ "$b" -le "$target" ] || size_line "$f" "$b" "$target" bytes
   grep -q -E '^Scope: .+ Open when: .+' "$f" || { echo "FAIL: '$f' has no 'Scope: … Open when: …' line."; lib_fail=1; }
 done
 for f in $named; do
@@ -134,6 +150,9 @@ for f in $named; do
 done
 while IFS= read -r hit; do
   f=${hit##*:}
+  # A frozen record in juku-library/ may still link a retired guide page (2b)
+  # or a retired library page (above): it is history, and both stay gone.
+  case "${hit%:*} $old_pages $retired_pages " in juku-library/*" ${f%.md} "*) continue ;; esac
   # The page is held to the name pattern; the file linking it is any path in
   # the repository, so it is printed escaped, as a page name the pattern
   # refuses is above: a control character in a path reaches a public log.
@@ -164,7 +183,8 @@ if [ "$lib_fail" -ne 0 ]; then
 elif [ "${#pages[@]}" -eq 0 ]; then
   echo "ok: no library pages yet, and nothing names or links one"
 else
-  echo "ok: ${#pages[@]} library pages, each named by the README, each at most 4000 bytes and scoped, every link to one resolves, and each index row opens the first page it names on that page's own words"
+  echo "size: the largest library page is $lib_max bytes (target 4000; $guide 6500)"
+  echo "ok: ${#pages[@]} library pages, each named by the README and scoped, every link to one resolves, and each index row opens the first page it names on that page's own words"
 fi
 
 # 3. Nothing that looks like a secret, anywhere.
@@ -203,17 +223,33 @@ fi
 # until the push that
 # answers it makes a commit the reviewer reads afresh. The CTO's answer to a
 # finding is not clearance — the proposer does not clear its own change.
-# A change to the review machinery used to need the other vendor's read alone,
-# and since his ruling of 22 September 2026 retiring Codex there is no other
-# vendor: it clears on the one reviewer's read, like everything else. The gate
-# says so on the run rather than letting a green imply otherwise.
+# A change to the review machinery clears on the one reviewer's read, like
+# everything else (his ruling, 22 September 2026). The gate says so on the run
+# rather than letting a green imply otherwise.
 # The gate's own rule is machine-checked before anything asks GitHub: one
 # implementation, held against the reviewer's real answers, the states a read
 # can arrive in, the fakes that once passed a looser test, the routes the gate
 # has stopped reading, and the workflow files — the check, the reviewer, the wake
 # it calls, the door's standing proof, the product reviewer, the asker and the
 # board's build — which must still agree with the register and with each other.
-python3 review-gate.py --selftest || fail_gate=1
+# It runs unless review-gate.py's plan says it can say nothing new: an earlier
+# attempt of this same run passed it, or no file the pull request changes is
+# one it reads. In a pull request it runs the core and the parts measured to
+# read a changed file (#187); a change to the gate itself, a file no part is
+# measured to read, a push to main, a run by hand, or a plan that cannot be
+# read runs every part (see SELFTEST_PARTS), and so does any pull request
+# while main's own newest finished check is red, or none has finished, or it
+# could not be read (see main_red): a run of parts trusts main's whole run,
+# so while that cannot be trusted nothing runs less than the whole, and a red
+# main is repaired by an ordinary pull request that runs whole.
+plan=$(python3 review-gate.py --selftest-plan 2>/dev/null | tail -n 1) || plan="run all: the plan could not be made"
+parts=""
+case "$plan" in
+  "skip: "*) echo "selftest: not run, ${plan#skip: }" ;;
+  "run "*": "*) parts=${plan%%:*}; parts=${parts#run }; echo "selftest: run $parts, ${plan#*: }" ;;
+  *) parts=all; echo "selftest: run all, the plan could not be read: $plan" ;;
+esac
+[ -z "$parts" ] || python3 review-gate.py --selftest "$parts" || fail_gate=1
 [ "${fail_gate:-0}" -eq 0 ] || { echo "FAIL: the review gate no longer matches the reviewer's answers, or has drifted from the workflows — see the cases above."; fail=1; }
 # The build board's build (decision 0007): what the page may say, run on
 # made-up roadmaps, since the real ones are private and never reach this log.
@@ -227,6 +263,7 @@ python3 -I product-reads/reads.py --selftest || { echo "FAIL: product-reads/read
 python3 -I product-reads/ask.py --selftest || { echo "FAIL: product-reads/ask.py asks for what it should not, or leaves what it should ask for — see the case above."; fail=1; }
 python3 -I product-reads/setup.py --selftest || { echo "FAIL: product-reads/setup.py no longer sets a product up as decision 0013 says — see the case above."; fail=1; }
 python3 -I product-reads/kit/review-gate.py --selftest || { echo "FAIL: the starter kit's gate no longer counts what it must — see the case above."; fail=1; }
+fi
 # WHICH EVENTS THE GATE RUNS ON, WRITTEN AS WHAT IT SKIPS RATHER THAN WHAT IT
 # CATCHES. This read `pull_request|pull_request_review`, and this change removed
 # the second of those triggers from check.yml, leaving that arm unreachable.
@@ -237,7 +274,7 @@ python3 -I product-reads/kit/review-gate.py --selftest || { echo "FAIL: the star
 # the gate and fails loudly for want of a pull request number instead. `push` is
 # main's own, which carries no pull request to judge; an empty name is a run by
 # hand on somebody's machine.
-case "${GITHUB_EVENT_NAME:-}" in push|"") : ;; *)
+[ "$part" = selftest ] || case "${GITHUB_EVENT_NAME:-}" in push|"") : ;; *)
   if [ -z "${GH_TOKEN:-}" ] || [ -z "${PR_NUMBER:-}" ] || [ -z "${HEAD_SHA:-}" ]; then
     echo "FAIL: the check cannot ask GitHub which commit the reviewer read — the workflow must set PR_NUMBER, HEAD_SHA and GH_TOKEN."; fail=1
   elif python3 review-gate.py "${GITHUB_REPOSITORY:-Adonis80/how-we-build}" "$PR_NUMBER" "$HEAD_SHA" "$GH_TOKEN"; then
@@ -248,6 +285,6 @@ case "${GITHUB_EVENT_NAME:-}" in push|"") : ;; *)
 ;; esac
 
 if [ "$fail" -eq 0 ]; then
-  echo "check.sh: all clear"
+  case "$part" in whole) echo "check.sh: all clear" ;; *) echo "check.sh: all clear ($part)" ;; esac
 fi
 exit "$fail"

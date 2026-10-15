@@ -145,17 +145,18 @@ FALLBACK_ROLE = "reviewer-fallback"
 # _check_registry holds the two sets apart; _check_conversation proves that the
 # resolver, the caller and both reviewers' ask() refuse to call one.
 CONVERSATION_ROLES = ("lead", "consultant", "lead-step-up", "consultant-step-up", "breaker")
-# And every read is at one effort, whatever its class: his ruling of 28
-# September 2026 ("models now"), in his words, "every read at max". It
-# supersedes decision 0005's "max only for reviews of the risky classes"
-# (issue #75, 23 September 2026), and with it the CTO's reading that held
-# pages and ordinary code at high, a step above a lead then building at
-# medium. The class still names the role, and so the model (and, in
-# review.yml, what a read is given); it no longer moves the effort. The
-# registry sets each role's effort; this file refuses a registry that sets any
-# reviewer role otherwise, and each reviewer refuses to read at any other. The
-# class is worked out in each workflow and held below, at CLASS_FIRST.
-REVIEW_EFFORT = "max"
+# And each reviewer role reads at one effort: his ruling of 28 September 2026
+# ("models now"), "every read at max", for reviewer-main; and for
+# reviewer-risky his ruling of 9 October 2026, whole: "opus 5.5 at hight effort
+# only for rare risky cases" (decision 0019), which amends the 28 September one
+# for that role alone. The class names the role, and so the model and the
+# effort; the registry sets each, this file refuses a registry that sets either
+# reviewer role otherwise, and each reviewer refuses to read at an effort that
+# is neither. The class is worked out in each workflow and held below, at
+# CLASS_FIRST.
+REVIEW_EFFORTS = {ORDINARY_ROLE: "max", RISKY_ROLE: "high"}
+# The efforts a reviewer's guard lets through, as a shell `case` pattern.
+REVIEW_EFFORT = "max|high"
 
 # The badge. `juku-reviewer`, created on the Chairman's account 19 September 2026;
 # installation 162987297. The id is the
@@ -930,7 +931,7 @@ def _check_wiring():
     lost = class_faults(review, REVIEW_WORKFLOW)
     if lost:
         print("  wiring: %s must read a change at the effort its class names, and give any "
-              "change but pages alone every file; it has lost %s"
+              "change the selection its class names, never every file; it has lost %s"
               % (REVIEW_WORKFLOW, "; ".join(lost)))
         bad += 1
 
@@ -1336,14 +1337,19 @@ def _why(text):
     return _block(text, lambda l: l == "why() {", lambda l: l == "}")
 
 
-def why_says(block, limit, rc, err, out):
-    """Run `why()` as a read that ended so would. (exit status, what it said)."""
+def why_says(block, limit, rc, err, out, ledger=None):
+    """Run `why()` as a read that ended so would, with the job's ledger if given. (exit status, what it said)."""
     with tempfile.TemporaryDirectory() as d:
         paths = {"err": os.path.join(d, "err.txt"), "out": os.path.join(d, "resp.json")}
         for key, body in (("err", err), ("out", out)):
             with open(paths[key], "w", encoding="utf-8") as f:
                 f.write(body)
         e = dict(os.environ, rc=str(rc), limit=str(limit), **paths)
+        if ledger is not None:
+            paths["ledger"] = os.path.join(d, "attempts.jsonl")
+            with open(paths["ledger"], "w", encoding="utf-8") as f:
+                f.write("".join(json.dumps(ev) + "\n" for ev in ledger))
+            e.update(ledger=paths["ledger"], reg=os.path.abspath(os.path.dirname(CALLER)))
         try:
             p = subprocess.run(["bash", "-c", "set -euo pipefail\n%s\nwhy\n" % "\n".join(block)],
                                env=e, capture_output=True, text=True, timeout=30)
@@ -1426,6 +1432,23 @@ def read_faults(text):
             if status != 0 or want not in said or said.count("\n") != 1:
                 lost.append("`why()` saying %r, on one line, when the read exits %d (it said %r)"
                             % (want, rc, said))
+        # A PARK THAT SENT NOTHING SAYS SO, in the words product-reads/reads.py reads as
+        # no read at all, so it is asked again without `again` (9 October 2026); one
+        # whose job sent a request never does, and which limit refused it leads.
+        spec = importlib.util.spec_from_file_location("reads_for_why", READS)
+        reads = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(reads)
+        refusal = json.dumps({"is_error": True, "subtype": "budget_refused", "result": "budget refused: the weekly "
+                              "limit, REVIEW_CASH_WEEKLY, admits no read now: this request would pass it"})
+        for what, sent in (("a job that sent nothing", False), ("a job whose earlier request was sent", True)):
+            ledger = [{"attempt": "1", "event": "open", "billing": "cash"},
+                      {"attempt": "1", "event": "close", "outcome": "x", "sent": sent, "settled": True}]
+            status, said = why_says(block, limit[0], 1, "", refusal, ledger)
+            title = "Did not read: " + said.strip()
+            if status != 0 or title.startswith(reads.FREE) == sent \
+                    or "REVIEW_CASH_WEEKLY, admits no read now" not in said or not said.startswith("budget refused"):
+                lost.append("`why()` on a budget park for %s, saying %s and which limit refused it (it said %r)"
+                            % (what, "nothing spent" if not sent else "no such thing", said))
     return lost
 
 
@@ -1440,6 +1463,8 @@ READ_LOOSENINGS = (
     ("the reason never recorded", lambda t: _in_step(t, "Read it", READ_FAIL, "true")),
     ("the reason never passed on", lambda t: _in_step(t, "Sign the verdict", READ_WHY[0], "WHY: none")),
     ("the reason kept from the verdict", lambda t: _in_step(t, "Sign the verdict", READ_WHY[1], 'title="Did not read"')),
+    ("a park that spent called free", lambda t: _in_step(t, "Read it", 'record unsent "${ledger:-}" 2> /dev/null && echo', 'record unsent "${ledger:-}" 2> /dev/null; echo')),
+    ("a free park not called free", lambda t: _in_step(t, "Read it", '&& echo ", nothing spent"', '&& echo ""')),
     ("the deadline from the read's own start", lambda t: t.replace(READ_LEFT, "left=$(( limit * 60 ))", 1)),
     ("a read begun with no time left", lambda t: t.replace('[ "$left" -ge 60 ] || fail', '[ "$left" -ge -9999 ] || fail', 1)),
     ("a start that is not checked", lambda t: _in_step(t, "Read it", '[[ "${STARTED:-}" =~ ^[0-9]+$ ]] || fail', "true || fail")),
@@ -1482,7 +1507,7 @@ def _check_read_loosenings():
 # ran out of time twice at max, each preloading every file in this repository
 # (#70's slice 2), and decision 0005 kept max for the risky classes alone,
 # until his ruling of 28 September 2026 put every read at max: the class now
-# picks the role, and so the model, and never the effort. So
+# picks the role, and so the model and the effort the registry gives it. So
 # each reviewer works out a class from the diff it reads: `words` when every
 # file the change touches is a page, `code` otherwise, and `risky` when any
 # file it touches is in one of the six risky classes. The brief, AGENTS.md at
@@ -1490,8 +1515,8 @@ def _check_read_loosenings():
 # to it changes a reader. Nor are the pages whose words are law here:
 # HOW-WE-BUILD.md and CHARTER.md at the root (twice on 9 September a trim
 # weakened what the operating page required, and a reader caught it where no
-# machine could: #79's first read), RICH-DATA.md's data rules and the capped
-# design/SCREEN-LAW.md (#79's third read), and a product's PRODUCT.md and
+# machine could: #79's first read), RICH-DATA.md's data rules, the capped
+# screen law in library/hypersolid.md (#79's third read), and a product's PRODUCT.md and
 # design/CONSTITUTION.md (#79's fourth and sixth reads). Nor is anything in a
 # dot-directory, where .github and .claude keep settings and agents'
 # instructions whatever their extension.
@@ -1507,8 +1532,9 @@ def _check_read_loosenings():
 # RISKY, BY NAME (#86). The six classes decision 0005 and the operating page's
 # step 5 name are read by reviewer-risky, and ordinary code by reviewer-main with
 # everything it was given before. A file is risky by its path, lower-cased, so
-# a name's case cannot hide it: the gate's own files and the brief whatever
-# their extension, then, for anything that is not a page, a name that says
+# a name's case cannot hide it: the gate's own files and anything under
+# .github, CI and its scripts, whatever their extension, then, for anything
+# that is not a page, a name that says
 # pricing, live data or schema, sign-in or permissions, a public trust boundary
 # (every endpoint under an `api/` is one: it is where the internet meets the
 # data), or deploy and release (every script, and what a build installs). A
@@ -1519,27 +1545,39 @@ def _check_read_loosenings():
 # puts the name in this list. Replayed before it merged, on the files each
 # merged pull request touched: of Hemz OS's last 72, 46 read risky and 26
 # ordinary; of this repository's last 57, 28 risky and 29 ordinary.
+# RARE (his ruling, 9 October 2026, decision 0019: "opus 5.5 at hight effort
+# only for rare risky cases"). The list holds the six classes and decision
+# 0008's two prerequisites (personal data, secrets) and nothing else, so a
+# name that is none of them came off when the risky role moved to
+# Opus: the brief, AGENTS.md, which the reviewer reads from main whatever a
+# head says and which is a reader's words, not the gate; and every
+# dot-directory but .github, Claude's settings (permissions and hooks) and
+# .vercel's project link (release). A brief, a skill or an agent's
+# instructions are read as code by reviewer-main. Replayed on this
+# repository's last 20 merged pull requests, it moved none: 18 read risky,
+# each for a gate file it touched.
 CLASS_FIRST = "class=words"
 CLASS_RISK_FIRST = "risky=no"
-CLASS_CODE = ("AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|design/*|"
+CLASS_CODE = ("AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|library/hypersolid.md|design/*|"
               "PRODUCT.md|.*|*/.*) class=code ;;")
 CLASS_ARMS = (CLASS_CODE, "*.md) ;;", "*) class=code ;;")
 RISK_CASE = 'case "${f,,}" in'
 # The six classes, as the arms that name them, in the order they are tried.
-RISK_GATE = ("agents.md|*/agents.md|check.sh|*/check.sh|review-gate.py|*/review-gate.py|board/build.py|"
-             "model-registry/*|*/model-registry/*|product-reads/*|*/product-reads/*|.*|*/.*) risky=yes ;;")
+RISK_GATE = ("check.sh|*/check.sh|review-gate.py|*/review-gate.py|board/build.py|"
+             "model-registry/*|*/model-registry/*|product-reads/*|*/product-reads/*|.github/*|*/.github/*) risky=yes ;;")
 RISK_PRICING = "*pric*|*payment*|*billing*|*invoice*|*checkout*|*quote*) risky=yes ;;"
 RISK_DATA = ("*.sql|*migration*|*schema*|supabase/*|*/supabase/*|*backfill*|*purge*|*truncate*|"
              "*wipe*|*seed*) risky=yes ;;")
-RISK_SIGN_IN = "*auth*|*login*|*logout*|*session*|*password*|*permission*) risky=yes ;;"
+RISK_SIGN_IN = ("*auth*|*login*|*logout*|*session*|*password*|*permission*|.claude/settings*|"
+                "*/.claude/settings*) risky=yes ;;")
 # Decision 0008's prerequisite: customer or personal data access, export and
 # deletion; secrets and credentials.
 RISK_PERSONAL = ("*customer*|*personal*|*pii*|*gdpr*|*privacy*|*export*|*delet*|*erase*|"
                  "*anonymi*) risky=yes ;;")
 RISK_SECRETS = "*secret*|*credential*|*token*|*.pem|*.key|*.p12|*.pfx|*.env|*.env.*) risky=yes ;;"
 RISK_BOUNDARY = "api/*|*/api/*|*middleware*|*webhook*|sw.js|*/sw.js) risky=yes ;;"
-RISK_RELEASE = ("*.sh|*.toml|*deploy*|*vercel.json|*dockerfile*|*package.json|*lock.json|*.lock|"
-                "*lock.yaml) risky=yes ;;")
+RISK_RELEASE = ("*.sh|*.toml|*deploy*|*vercel.json|.vercel/*|*/.vercel/*|*dockerfile*|*package.json|*lock.json|"
+                "*.lock|*lock.yaml) risky=yes ;;")
 # AND IT FAILS CLOSED (decision 0008, rule 3): a file is ordinary only when its
 # kind is one the list knows, and anything else — no extension, a certificate,
 # a config format nobody named — is read as risky. It started at "not risky"
@@ -1564,6 +1602,8 @@ def risky(path):
 # The canary's check run, as `.github/workflows/canary.yml` names a plain one,
 # and how far back main's commits are asked for the newest that ran.
 CANARY_CHECK = "canary"
+# How a skipped canary job is named: canary.yml's name expression, unevaluated.
+CANARY_UNEVALUATED = "&& 'canary' ||"
 CANARY_LOOKBACK = 30
 # How long a push to main may go without its canary's check run before that
 # silence is read as a canary that could not run.
@@ -1599,17 +1639,15 @@ READ_EFFORT = '--effort "$effort"'
 READ_MODEL = '--model "$model"'
 # An ordinary read is told so, in both reviewers, and asked to say if a file it
 # was shown is in a risky class after all: without it, a name the list missed
-# is read by reviewer-main, not reviewer-risky, in silence. It was keyed on the
-# effort while the two classes read at two; with one effort, on the class.
+# is read by reviewer-main, not reviewer-risky, in silence. It is keyed on the
+# class, never the effort, which the registry sets per role.
 RISK_TOLD = ('if [ "$CLASS" != risky ]; then',
              'echo "release machinery, or the review gate, that is a finding: say which file, so its '
              'name joins the rule."')
-# review.yml's pages (decision 0014, F(1) and the context pilot): a risky
-# change is given every page whole and the registry with them, as every
-# non-page read was before; a words or code change is given model-registry/
-# context.py's selection — HOW-WE-BUILD.md, the README's index, each touched
-# file, its partners both ways, every page naming one, and on a code read the
-# registry. What is left out is named with its size, and the reviewer is told
+# review.yml's pages (decisions 0014 and 0018): every change, risky or not, is
+# given model-registry/context.py's selection — HOW-WE-BUILD.md, the README's
+# index, each touched file, its partners both ways, every page naming one, and
+# on a code or risky read the registry; no read is given every file. What is left out is named with its size, and the reviewer is told
 # so and how to ask for it: without those, a read short of a file is silent
 # about it. The selector is main's, and the block is run, not read, on a
 # made-up tree below, with the real selector.
@@ -1644,8 +1682,12 @@ PAGES_CASES = (
     ("code", ["CHARTER.md"], {"HOW-WE-BUILD.md", "README.md", "CHARTER.md", "model-registry/registry.json"}),
     ("code", ["HOW-WE-BUILD.md"], {"HOW-WE-BUILD.md", "README.md", "check.sh", "library/deploy.md",
                                    "model-registry/registry.json"}),
-    ("risky", ["check.sh"], set(PAGES_TREE)),
-    ("risky", ["library/reviewer.md", "x.sql"], set(PAGES_TREE)),
+    # A risky change is a class, never every file (decision 0018): its selection,
+    # with the registry, and the gate the check runs as its partner.
+    ("risky", ["check.sh"], {"HOW-WE-BUILD.md", "README.md", "check.sh", "library/rulebook-files.md",
+                             "review-gate.py", "model-registry/registry.json"}),
+    ("risky", ["library/reviewer.md", "x.sql"], {"HOW-WE-BUILD.md", "README.md", "library/reviewer.md",
+                                                 "model-registry/registry.json"}),
 )
 # And the verdict says how thoroughly it was read (#79's eighth read): a clean
 # read at high with pages alone must not look like one at max with everything.
@@ -1762,32 +1804,37 @@ CLASS_CASES = (
     ([], "words"),
     (["README.md"], "words"),
     (["library/topics/reviewer.md"], "words"),
-    (["design/ARCHITECT.md", "library/topics/reviewer.md"], "code"),
+    (["design/NOTES.md", "library/topics/reviewer.md"], "code"),
     (["docs/README.md"], "words"),
     (["docs/reviewer.md"], "words"),
-    (["design/ARCHITECT.md"], "code"),
-    (["design/REVIEW_RUBRIC.md", "docs/reviewer.md"], "code"),
-    (["design/SCREEN_SPEC_TEMPLATE.md"], "code"),
+    (["design/NOTES.md"], "code"),
+    (["design/RUBRIC.md", "docs/reviewer.md"], "code"),
+    (["design/SPEC.md"], "code"),
     (["docs/HOW-WE-BUILD.md", "docs/CHARTER.md"], "words"),
     (["a page with spaces.md"], "words"),
-    (["AGENTS.md"], "risky"),
+    (["AGENTS.md"], "code"),
     (["HOW-WE-BUILD.md"], "code"),
     (["README.md", "CHARTER.md"], "code"),
     (["README.md", "library/deploy.md"], "words"),
     (["RICH-DATA.md"], "code"),
-    (["design/SCREEN-LAW.md"], "code"),
+    (["library/hypersolid.md"], "code"),
     (["design/CONSTITUTION.md", "README.md"], "code"),
     (["PRODUCT.md"], "code"),
     (["NAMES.md", "docs/guide.md"], "words"),
-    (["docs/AGENTS.md"], "risky"),
+    (["docs/AGENTS.md"], "code"),
     (["README.md", "check.sh"], "risky"),
     (["review-gate.py"], "risky"),
     (["board/build.py"], "risky"),
     (["check.sh"], "risky"),
     ([".github/workflows/review.yml"], "risky"),
     ([".github/copilot-instructions.md"], "risky"),
-    ([".claude/skills/steward/SKILL.md"], "risky"),
-    (["docs/.hidden/page.md"], "risky"),
+    ([".claude/skills/steward/SKILL.md"], "code"),
+    (["docs/.hidden/page.md"], "code"),
+    ([".claude/settings.json"], "risky"),
+    (["app/.claude/settings.local.json"], "risky"),
+    ([".vercel/project.json"], "risky"),
+    ([".github/scripts/notes.md"], "risky"),
+    ([".gitignore"], "risky"),
     (["README.MD"], "code"),
     (["page.md.sh"], "risky"),
     (["page.md\nx.sh"], "risky"),
@@ -1839,7 +1886,8 @@ CLASS_CASES = (
     # A name's case hides nothing.
     (["Hosting/Login.JS"], "risky"),
     (["SRC/PRICING.TS"], "risky"),
-    (["Agents.md"], "risky"),
+    (["Review-Gate.PY"], "risky"),
+    ([".GitHub/notes.md"], "risky"),
     # Decision 0008: it fails closed. A kind of file the list does not know is
     # risky, whatever its name.
     (["LICENSE"], "risky"),
@@ -2047,6 +2095,7 @@ CLASS_LOOSENINGS = (
     ("the charter read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("CHARTER.md|", "", 1), 1)),
     ("the data rules read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("RICH-DATA.md|", "", 1), 1)),
     ("the design pages read as pages", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("design/*|", "", 1), 1)),
+    ("the front-end guide read as a page", None, lambda t: t.replace(CLASS_CODE, CLASS_CODE.replace("library/hypersolid.md|", "", 1), 1)),
     ("an arm for an unlisted extension", None, lambda t: t.replace("              *.md) ;;\n", "              *.sql) ;;\n              *.md) ;;\n", 1)),
     ("the left-out count dropped", REVIEW_WORKFLOW, lambda t: t.replace("          " + REVIEW_COUNT_IN + "\n", "", 1)),
     ("blocking signed as a pass", None, lambda t: _in_step(t, "Sign the verdict", "          else\n            conclusion=failure", "          else\n            conclusion=success")),
@@ -2067,23 +2116,25 @@ CLASS_LOOSENINGS = (
     ("names split on a line break", None, lambda t: t.replace("diff -z --name-only --no-renames", "diff --name-only --no-renames", 1)),
     ("the role never handed on", None, lambda t: t.replace("          " + CLASS_OUT + "\n", "", 1)),
     ("the role handed on twice", None, lambda t: _in_step(t, "Gather what the reviewer reads", CLASS_OUT, CLASS_OUT + '\n          echo "role=%s" >> "$GITHUB_OUTPUT"' % ORDINARY_ROLE)),
-    ("an effort handed on by the class", None, lambda t: _in_step(t, "Gather what the reviewer reads", CLASS_OUT, CLASS_OUT + '\n          echo "effort=%s" >> "$GITHUB_OUTPUT"' % REVIEW_EFFORT)),
+    ("an effort handed on by the class", None, lambda t: _in_step(t, "Gather what the reviewer reads", CLASS_OUT, CLASS_OUT + '\n          echo "effort=%s" >> "$GITHUB_OUTPUT"' % REVIEW_EFFORTS[RISKY_ROLE])),
     ("the role not the class's", None, lambda t: t.replace(ROLE_IN, "ROLE: " + ORDINARY_ROLE, 1)),
-    ("an effort handed to the read", None, lambda t: t.replace("          " + ROLE_IN + "\n", "          %s\n          EFFORT: %s\n" % (ROLE_IN, REVIEW_EFFORT), 1)),
+    ("an effort handed to the read", None, lambda t: t.replace("          " + ROLE_IN + "\n", "          %s\n          EFFORT: %s\n" % (ROLE_IN, REVIEW_EFFORTS[RISKY_ROLE]), 1)),
     ("an effort unchecked", None, lambda t: t.replace(EFFORT_GUARD, "true", 1)),
-    ("a read let in below max again", None, lambda t: t.replace(EFFORT_GUARD, EFFORT_GUARD.replace("in %s)" % REVIEW_EFFORT, "in high|%s)" % REVIEW_EFFORT, 1), 1)),
-    ("an effort written into the call", None, lambda t: t.replace(READ_EFFORT + " \\", "--effort " + REVIEW_EFFORT + " \\", 1)),
+    ("a read let in below high", None, lambda t: t.replace(EFFORT_GUARD, EFFORT_GUARD.replace("in %s)" % REVIEW_EFFORT, "in medium|%s)" % REVIEW_EFFORT, 1), 1)),
+    ("an effort written into the call", None, lambda t: t.replace(READ_EFFORT + " \\", "--effort " + REVIEW_EFFORTS[RISKY_ROLE] + " \\", 1)),
     ("a model written into the call", None, lambda t: t.replace(READ_MODEL + " \\", "--model a-model-named-here \\", 1)),
     ("the selector read from the head", REVIEW_WORKFLOW, lambda t: t.replace(REVIEW_SELECT[0], 'cp model-registry/context.py "$RUNNER_TEMP/context.py"', 1)),
     ("every change given the risky read's pages", REVIEW_WORKFLOW, lambda t: t.replace(REVIEW_SELECT[1], REVIEW_SELECT[1].replace('"$class"', "risky"), 1)),
-    ("every change given the selection", REVIEW_WORKFLOW, lambda t: t.replace(REVIEW_SELECT[1], REVIEW_SELECT[1].replace('"$class"', "code"), 1)),
+    ("every change read as words", REVIEW_WORKFLOW, lambda t: t.replace(REVIEW_SELECT[1], REVIEW_SELECT[1].replace('"$class"', "words"), 1)),
     ("a file left out unnamed", REVIEW_WORKFLOW, lambda t: t.replace(REVIEW_SELECT[1], REVIEW_SELECT[1] + "\n          sed -i '/left out/d' /tmp/pages.txt", 1)),
     ("the reviewer not told", REVIEW_WORKFLOW, lambda t: t.replace(REVIEW_TOLD[1], 'echo "."', 1)),
     ("a thin read let pass clean", REVIEW_WORKFLOW, lambda t: t.replace("you will be read once more with it.", "say so.", 1)),
     ("the class kept from the read", REVIEW_WORKFLOW, lambda t: t.replace("          " + REVIEW_TOLD[2] + "\n", "", 1)),
     # The six classes (#86): each arm taken out, reordered, or blinded to case.
     ("the gate read as ordinary", None, _without_arm(RISK_GATE)),
-    ("the brief read as ordinary", None, lambda t: t.replace(RISK_GATE, RISK_GATE.replace("agents.md|*/agents.md|", "", 1), 1)),
+    ("the CI folder read as ordinary", None, lambda t: t.replace(RISK_GATE, RISK_GATE.replace("|.github/*|*/.github/*", "", 1), 1)),
+    ("agent settings read as ordinary", None, lambda t: t.replace(RISK_SIGN_IN, RISK_SIGN_IN.replace("|.claude/settings*|*/.claude/settings*", "", 1), 1)),
+    ("the host's project link read as ordinary", None, lambda t: t.replace(RISK_RELEASE, RISK_RELEASE.replace("|.vercel/*|*/.vercel/*", "", 1), 1)),
     ("pricing read as ordinary", None, _without_arm(RISK_PRICING)),
     ("live data read as ordinary", None, _without_arm(RISK_DATA)),
     ("sign-in read as ordinary", None, _without_arm(RISK_SIGN_IN)),
@@ -2103,7 +2154,7 @@ CLASS_LOOSENINGS = (
     ("the risk never raised", None, lambda t: t.replace("          " + CLASS_RISKY + "\n", "", 1)),
     ("the risk found and dropped", None, lambda t: t.replace(CLASS_RISKY, '[ "$risky" = yes ] || class=risky', 1)),
     ("an ordinary read not told", None, lambda t: _in_step(t, "Read it", RISK_TOLD[1], 'echo "."')),
-    ("an ordinary read told only below an effort no read is at", None, lambda t: _in_step(t, "Read it", RISK_TOLD[0], 'if [ "$EFFORT" != %s ]; then' % REVIEW_EFFORT)),
+    ("an ordinary read told only below an effort no read is at", None, lambda t: _in_step(t, "Read it", RISK_TOLD[0], 'if [ "$EFFORT" != %s ]; then' % REVIEW_EFFORTS[RISKY_ROLE])),
     ("what the read cost never counted", None, lambda t: _in_step(t, "Read it", READ_TOOK[1], "true")),
     ("what the read cost counted after a failure is named", None, lambda t: _in_step(t, "Read it", "          %s\n" % READ_TOOK[0], "          %s\n          %s\n" % (READ_ANSWERED, READ_TOOK[0]))),
     ("what the read cost never passed on", None, lambda t: _in_step(t, "Sign the verdict", "SPENT: ${{ steps.read.outputs.spent }}", "SPENT: none")),
@@ -2137,11 +2188,11 @@ def _check_class_loosenings():
     if not bad:
         print("ok: each reviewer hands a change to its class's role, %s for pages and ordinary "
               "code and %s for the risky classes and any kind of file the list does not know, "
-              "worked out from the diff it reads, and each reads at %s alone, an ordinary read told "
+              "worked out from the diff it reads, and each reads at its role's effort (%s), an ordinary read told "
               "it was not read as risky; the class was "
-              "run on %d change(s), review.yml gives any change "
-              "risky every file and the registry, and words and code the selection of decision 0014's "
-              "context pilot (its block run on %d), each verdict says what its read "
+              "run on %d change(s), review.yml gives every change the selection of decisions 0014 and "
+              "0018, with the registry on a code or risky read and never every file (its block run on %d), "
+              "each verdict says what its read "
               "cost, and each of %d loosenings was refused"
               % (ORDINARY_ROLE, RISKY_ROLE, REVIEW_EFFORT, len(CLASS_CASES), len(PAGES_CASES),
                  len(CLASS_LOOSENINGS)))
@@ -2264,6 +2315,10 @@ ROUTE_CASES = (
      FALLBACK_ROLE, 600, ([ORDINARY_ROLE], "blocking"), (0, "clean"), False),
     ("the role is short, naming no path a read may fetch", (0, "shortbadpath"), (0, "clean"),
      FALLBACK_ROLE, 600, ([ORDINARY_ROLE], "blocking"), (0, "clean")),
+    # Four files asked for: every one is handed to `more()`, which gives three
+    # and marks the fourth (#187), so the re-read happens and its answer stands.
+    ("the role is short of four files, and its re-read is clean", (0, "shortfour"), (0, "clean"),
+     FALLBACK_ROLE, 600, ([ORDINARY_ROLE, ORDINARY_ROLE], "clean"), (0, "clean")),
     ("the role is short, and its re-read fails", (0, "short"), (0, "clean"),
      FALLBACK_ROLE, 600, ([ORDINARY_ROLE, ORDINARY_ROLE], "blocking"), (1, "")),
     ("the role is short, and no time is left to read again", (0, "short"), (0, "clean"),
@@ -2278,6 +2333,15 @@ ROUTE_CASES = (
      ([ORDINARY_ROLE], None)),
     ("the spending check refuses the re-read", (0, "short"), (0, "clean"), FALLBACK_ROLE, 600,
      ([ORDINARY_ROLE, ORDINARY_ROLE], None), (1, "budget")),
+    # AN EMPTY ANSWER IS ASKED ONCE MORE (decision 0018: Adonis80/Hemz-OS#140 at
+    # deafb83, #171 at 82 KB), inside the round's two reads, and a second empty
+    # one is never signed as a verdict.
+    ("no fallback, the role answers empty, and its one more read is clean", (1, "empty"), (0, "clean"), "", 600,
+     ([ORDINARY_ROLE, ORDINARY_ROLE], "clean"), (0, "clean")),
+    ("no fallback, and the role answers empty twice", (1, "empty"), (0, "clean"), "", 600,
+     ([ORDINARY_ROLE, ORDINARY_ROLE], None), (1, "empty")),
+    ("no fallback, an empty answer, then a shortfall, which is not read a third time", (1, "empty"), (0, "clean"),
+     "", 600, ([ORDINARY_ROLE, ORDINARY_ROLE], "blocking"), (0, "short")),
 )
 REVIEW_READ = ("Addressed to the CTO. I read the diff against main's tip and the pages it touches, "
                "and checked each changed line against the brief and the pages beside it. Nothing "
@@ -2308,6 +2372,8 @@ def route_says(block, first, second, fallback, left, again=(0, "clean"), more_ok
               elif [ "$1" = "$ROLE" ]; then r=$P_RC; v=$P_V; w=$P_W; n=$P_NONE; else r=$F_RC; v=$F_V; w=$F_W; n=$F_NONE; fi
               if [ "$v" = budget ] || [ "$v" = limit ]; then
                 jq -cn --arg s "$v" '{{is_error: true, subtype: (if $s == "budget" then "budget_refused" else "provider_limit" end)}}' > "$out"
+              elif [ "$v" = empty ]; then
+                printf '{{"is_error":true,"subtype":"no_verdict"}}\\n' > "$out"
               elif [ -n "$v" ]; then
                 # What a model answers under the schema: findings, and a review. The
                 # word stands for the findings the stub gives, never for a verdict
@@ -2321,6 +2387,7 @@ def route_says(block, first, second, fallback, left, again=(0, "clean"), more_ok
                     short: [{{severity: "needs-context", text: "a finding", files: ["check.sh"]}}],
                     shortmix: [{{severity: "needs-context", text: "a finding", files: ["check.sh"]}}, {{severity: "blocking", text: "another", files: []}}],
                     shortbadpath: [{{severity: "needs-context", text: "a finding", files: ["../outside"]}}],
+                    shortfour: [{{severity: "needs-context", text: "a finding", files: ["a.md", "b.md", "c.md", "d.md"]}}],
                     clean: []}}[$v] // [{{severity: "critical", text: "a finding"}}]) as $f
                   | {{result: ((if $n == "1" then {{findings: $f}} else {{findings: $f, review: $w}} end
                                | if $v == "stray" then . + {{verdict: "clean"}} else . end
@@ -2475,7 +2542,7 @@ ROUTE_LOOSENINGS = (
     ("the registry read from the head's branch", REVIEW_WORKFLOW, lambda t: t.replace(ROUTE_MAIN, "DEFAULT_BRANCH: ${{ github.head_ref }}", 1)),
     ("a role the registry cannot resolve read anyway", None, lambda t: t.replace(ROUTE_RESOLVE[0], 'EFFORT=$(resolve "$ROLE" effort) || EFFORT=high', 1)),
     ("an effort the ask never checks", None, lambda t: t.replace(ROUTE_ASK_GUARD, "true", 1)),
-    ("a fallback let in below max again", None, lambda t: t.replace(ROUTE_ASK_GUARD, ROUTE_ASK_GUARD.replace("in %s)" % REVIEW_EFFORT, "in high|%s)" % REVIEW_EFFORT, 1), 1)),
+    ("a read let in below high again", None, lambda t: t.replace(ROUTE_ASK_GUARD, ROUTE_ASK_GUARD.replace("in %s)" % REVIEW_EFFORT, "in medium|%s)" % REVIEW_EFFORT, 1), 1)),
     ("the fallback never asked", None, lambda t: t.replace('ask "$FALLBACK" "$left" || rc=$?', "true", 1)),
     ("the fallback asked after an answer", None, lambda t: t.replace('{ [ "$rc" -ne 0 ] || ! answered; }', "true", 1)),
     ("an answer with no verdict taken", None, lambda t: t.replace('{ [ "$rc" -ne 0 ] || ! answered; }', '[ "$rc" -ne 0 ]', 1)),
@@ -2504,7 +2571,12 @@ ROUTE_LOOSENINGS = (
     # The budget and the recovery path (decision 0014, D and F(2)).
     ("a budget refusal handed to the fallback", None, lambda t: t.replace('[ -n "$FALLBACK" ] && ! refused && ', '[ -n "$FALLBACK" ] && ', 1)),
     ("a shortfall handed to the fallback", None, lambda t: t.replace("blocking|needs-context) return 0 ;;", "blocking) return 0 ;;", 1)),
-    ("a shortfall never re-read", None, lambda t: t.replace('&& more $needed; then', '&& false; then', 1)),
+    ("a shortfall never re-read", None, lambda t: t.replace('&& more "${asked[@]}"; then', '&& false; then', 1)),
+    ("an empty answer never asked again", None, lambda t: t.replace('[ -z "$FALLBACK" ] && [ "$reads" -lt 2 ] && empty; then', 'false; then', 1)),
+    ("a third read after an empty answer", None, lambda t: t.replace('[ -n "$needed" ] && [ "$reads" -lt 2 ] && [', '[ -n "$needed" ] && [', 1)),
+    ("a request read again on the answer's own list", None, lambda t: t.replace(
+        'needed=$(python3 "$reg/ask.py" request "$out" || true)',
+        "needed=$(jq -r '.result // empty' \"$out\" | jq -r '(.needs // []) | join(\" \")' 2>/dev/null || true)", 1)),
     ("a shortfall left unsigned", None, lambda t: t.replace('            [ "$rc" -ne 0 ] || python3 "$reg/ask.py" incomplete "$out" || printf \'{"is_error":true,"subtype":"not_derived"}\\n\' > "$out"\n', "", 1)),
     ("a failed re-read taken as unread", None, lambda t: t.replace('then cp "$out.first" "$out"; rc=0; fi', "then :; fi", 1)),
     ("a re-read the budget refused signed blocking", None, lambda t: t.replace("if refused; then :; elif", "if false; then :; elif", 1)),
@@ -2550,7 +2622,7 @@ def _check_route_loosenings():
 
 # THE REGISTRY ITSELF (decision 0008). model-registry/resolve.py checks it whole;
 # this holds what the gate needs of it: the two reviewer roles, each at the
-# one effort every read is owed and with nothing behind it, every networked
+# effort its role is owed and with nothing behind it, every networked
 # provider asking for providers who promise not to store or train on what it
 # sends, and a switch that is one edit to the one file.
 def _check_registry(path=REGISTRY, quiet=False):
@@ -2574,9 +2646,10 @@ def _check_registry(path=REGISTRY, quiet=False):
         fault(f)
     for f in _role_slot_faults(resolve, reg):
         fault(f)
-    # NOTHING STANDS BEHIND A REVIEWER (his rulings, 5 and 6 October 2026): only
-    # open-weight models review, and when GLM does not answer the commit stays
-    # unread and he is told, so no reviewer role names a fallback.
+    # NOTHING STANDS BEHIND A REVIEWER (his rulings, 5 and 6 October 2026, which
+    # his of 9 October amends for reviewer-risky alone, decision 0019): when the
+    # reviewer does not answer the commit stays unread and he is told, so no
+    # reviewer role names a fallback.
     owed = ((ORDINARY_ROLE, False), (RISKY_ROLE, False))
     got = {}
     for role, falls in owed:
@@ -2585,9 +2658,9 @@ def _check_registry(path=REGISTRY, quiet=False):
         except resolve.Unresolved as e:
             fault(str(e))
             continue
-        if got[role]["effort"] != REVIEW_EFFORT or got[role]["effort_checked"] != "yes":
-            fault("%s reads at %r; every read is owed %s, on an effort its model is known to take"
-                  % (role, got[role]["effort"], REVIEW_EFFORT))
+        if got[role]["effort"] != REVIEW_EFFORTS[role] or got[role]["effort_checked"] != "yes":
+            fault("%s reads at %r; it is owed %s, on an effort its model is known to take"
+                  % (role, got[role]["effort"], REVIEW_EFFORTS[role]))
         if bool(got[role]["fallback"]) != falls:
             fault("%s falls back to %r; nothing may stand behind a reviewer (his rulings, 5 and 6 "
                   "October 2026)" % (role, got[role]["fallback"]))
@@ -2631,9 +2704,9 @@ def _check_registry(path=REGISTRY, quiet=False):
         except resolve.Unresolved:
             pass
     if not bad and not quiet:
-        print("ok: the registry resolves %s and %s, both at %s with nothing behind them; a "
+        print("ok: the registry resolves %s at %s and %s at %s, with nothing behind them; a "
               "switch is one edit to %s, and an unknown role or a blocked model fails closed"
-              % (ORDINARY_ROLE, RISKY_ROLE, REVIEW_EFFORT, REGISTRY))
+              % (ORDINARY_ROLE, REVIEW_EFFORTS[ORDINARY_ROLE], RISKY_ROLE, REVIEW_EFFORTS[RISKY_ROLE], REGISTRY))
     return bad
 
 
@@ -2855,6 +2928,292 @@ def _check_conversation(quiet=False):
     return bad
 
 
+# THE SELF-TEST'S PLAN, HELD (his ask, 7 October 2026). The rule run on its
+# cases; the command run end to end on a GitHub answering from a dictionary;
+# check.sh and check.yml held to calling it as the rule assumes; and every file
+# this gate names held to being one the plan counts as the self-test's input.
+PLAN_CASES = (
+    # (what, event, files, earlier steps, the plan's answer: "skip", "run all", or "run <parts>")
+    ("an earlier attempt of this run passed the self-test", "pull_request", ["review-gate.py"],
+     [("selftest", "success"), ("gate", "failure")], "skip"),
+    ("an earlier attempt failed it", "pull_request", ["review-gate.py"], [("selftest", "failure")], "run all"),
+    ("an earlier attempt skipped the step", "pull_request", ["review-gate.py"], [("selftest", "skipped")], "run all"),
+    ("an earlier attempt passed another step only", "pull_request", ["board/robots.txt", "check.sh"],
+     [("gate", "success")], "run all"),
+    ("a push to main", "push", [], None, "run all"),
+    ("a run by hand", "", None, None, "run all"),
+    ("files that could not be read", "pull_request", None, None, "run all"),
+    ("no file listed", "pull_request", [], None, "run all"),
+    ("a change to the gate", "pull_request", ["review-gate.py"], None, "run all"),
+    ("a change to the check", "pull_request", ["check.sh"], None, "run all"),
+    ("a change to a workflow", "pull_request", [".github/workflows/review.yml"], None, "run all"),
+    ("a change to a workflow a branch adds", "pull_request", [".github/workflows/new.yml"], None, "run all"),
+    ("a change to the board's build", "pull_request", ["board/build.py"], None, "run all"),
+    ("a file never seen before", "pull_request", ["board/new.txt"], None, "run all"),
+    ("a new module beside the registry, which no part is measured to read", "pull_request",
+     ["model-registry/new.py"], None, "run all"),
+    ("a new script beside the product reads", "pull_request", ["product-reads/new.py"], None, "run all"),
+    ("one input among files it never reads", "pull_request", ["board/robots.txt", "check.sh"], None, "run all"),
+    ("only files it never reads", "pull_request", ["board/robots.txt", "board/vercel.json"], None, "skip"),
+    # The parts (#187): the core always, and each part measured to read a changed file.
+    ("a library page", "pull_request", ["library/money.md"], None, "run core"),
+    ("the operating page and the charter, which the reviewers' class cases select from", "pull_request",
+     ["HOW-WE-BUILD.md", "CHARTER.md"], None, "run core,reviewers"),
+    ("papers, which the context pilot reads", "pull_request", ["juku-library/README.md"], None, "run core"),
+    ("the brief, which the kit and the reviewers' cases read", "pull_request", ["AGENTS.md"], None,
+     "run core,kit,reviewers"),
+    ("the README, which the product readers and the reviewers' cases read", "pull_request", ["README.md"], None,
+     "run core,product,preflight,asker,board,reviewers"),
+    ("a change to the registry", "pull_request", ["model-registry/registry.json"], None,
+     "run core,reviewers,caller,glm"),
+    ("a change to the selector", "pull_request", ["model-registry/context.py"], None, "run core,reviewers"),
+    ("a change to the caller", "pull_request", ["model-registry/ask.py"], None,
+     "run core,product,reviewers,caller,glm"),
+    ("a page the reviewers' cases name", "pull_request", ["library/reviewer.md"], None, "run core,reviewers"),
+    ("the board's middleware", "pull_request", ["board/middleware.js"], None, "run core,board"),
+    ("a change to the product read's rules", "pull_request", ["product-reads/reads.py"], None,
+     "run core,product,preflight,asker,kit,reviewers"),
+    ("a change to the asker", "pull_request", ["product-reads/ask.py"], None, "run core,asker"),
+    ("a change to the starter kit", "pull_request", ["product-reads/kit/gate.yml"], None, "run core,kit"),
+    ("a page beside a file it never reads", "pull_request", ["library/money.md", "board/robots.txt"], None, "run core"),
+    ("a page beside the gate", "pull_request", ["library/money.md", "check.sh"], None, "run all"),
+)
+
+
+def _plan_net(files, jobs, fail=None, main=()):
+    """An urlopen for the plan: the pull request's files, an earlier attempt's jobs, and main's commits
+    as (sha, pushed at, check runs), one page each."""
+    def urlopen(req, timeout=None):
+        parts = urllib.parse.urlsplit(req.full_url)
+        page = urllib.parse.parse_qs(parts.query).get("page", ["1"])[0]
+        if fail and parts.path.endswith(fail):
+            raise urllib.error.HTTPError(req.full_url, 403, "no", {}, None)
+        if parts.path.endswith("/pulls/7/files"):
+            return _Answer(json.dumps(files if page == "1" else []).encode("utf-8"))
+        if parts.path.endswith("/actions/runs/9/attempts/1/jobs"):
+            return _Answer(json.dumps({"jobs": jobs if page == "1" else []}).encode("utf-8"))
+        if parts.path == "/repos/o/r/commits":
+            return _Answer(json.dumps([{"sha": sha, "commit": {"committer": {"date": at}}} for sha, at, _ in main])
+                           .encode("utf-8"))
+        if parts.path.endswith("/check-runs"):
+            sha = parts.path.split("/")[-2]
+            runs = {sha_: runs_ for sha_, _, runs_ in main}.get(sha, [])
+            return _Answer(json.dumps({"check_runs": runs if page == "1" else []}).encode("utf-8"))
+        raise urllib.error.URLError("no route: %s" % parts.path)
+    return urlopen
+
+
+def _check_selftest_plan(quiet=False):
+    bad = 0
+
+    def fault(what):
+        nonlocal bad
+        if not quiet:
+            print("  plan: %s" % what)
+        bad += 1
+    for what, event, files, earlier, want in PLAN_CASES:
+        what_, run_, why = selftest_plan(event, files, earlier)
+        got = " ".join(x for x in (what_, run_) if x)
+        if got != want:
+            fault("%s: the plan says %s, not %s" % (what, got, want))
+        if "\n" in why or "\r" in why:
+            fault("%s: the plan's reason runs to more than one line, and check.sh reads the last" % what)
+    # MAIN'S OWN CHECK (#187, item 3): while it cannot be trusted every part runs,
+    # a skip included, and a trusted one leaves the plan to the files.
+    passed = [(SELFTEST_STEP, "success")]
+    for what, files, earlier, main, want in (
+            ("a page while main's check is red", ["library/money.md"], None, "is red at 1234567890ab", "run all"),
+            ("a page while main's check has not finished", ["library/money.md"], None,
+             "has not finished on any of main's newest 3 commit(s)", "run all"),
+            ("a page while main's check could not be read", ["library/money.md"], None, "could not be read", "run all"),
+            ("a re-run whose earlier attempt passed, while main's check is red", ["library/money.md"], passed,
+             "is red at 1234567890ab", "run all"),
+            ("a file it never reads, while main's check is red", ["board/robots.txt"], None,
+             "is red at 1234567890ab", "run all"),
+            ("a page while main's check passed", ["library/money.md"], None, None, "run core")):
+        got = " ".join(x for x in selftest_plan("pull_request", files, earlier, main)[:2] if x)
+        if got != want:
+            fault("%s: the plan says %s, not %s" % (what, got, want))
+    for what, files, want in (
+            ("a name carrying a line break and a forged plan", ["board/x\nskip: forged.txt"], "run all"),
+            ("a page whose name carries a line break", ["library/a\nrun core: forged.md"], "run core")):
+        what_, run_, why = selftest_plan("pull_request", files, None)
+        got = " ".join(x for x in (what_, run_) if x)
+        if got != want or "\n" in why:
+            fault("%s: the plan says %r with reason %r; it must say %s on one line" % (what, got, why, want))
+    # The command, end to end: what GitHub answers is all that decides.
+    jobs_passed = [{"name": SELFTEST_JOB, "steps": [{"name": SELFTEST_STEP, "conclusion": "success"},
+                                                    {"name": "gate", "conclusion": "failure"}]}]
+    jobs_other = [{"name": "another", "steps": [{"name": SELFTEST_STEP, "conclusion": "success"}]}]
+    papers = [{"filename": "board/robots.txt"}]
+    renamed = [{"filename": "board/vercel.json", "previous_filename": "check.sh"}]
+    env = {"GITHUB_EVENT_NAME": "pull_request", "GITHUB_REPOSITORY": "o/r", "PR_NUMBER": "7",
+           "GH_TOKEN": "t", "GITHUB_RUN_ID": "9"}
+    old = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 86400))
+    whole = lambda c: {"name": MAIN_CHECK, "app": {"id": ACTIONS_APP}, "status": "completed", "conclusion": c,
+                       "completed_at": "2026-10-11T19:00:00Z"}
+    trusted, broken = [("m2", old, [whole("success")])], [("m2", old, [whole("failure")])]
+    commands = (
+        ("a re-run whose first attempt passed the self-test", "2", [{"filename": "review-gate.py"}],
+         jobs_passed, None, "skip"),
+        ("a first attempt", "1", [{"filename": "review-gate.py"}], jobs_passed, None, "run all"),
+        ("a re-run whose passing step was in another job", "2", [{"filename": "review-gate.py"}],
+         jobs_other, None, "run all"),
+        ("only a file it never reads", "1", papers, [], None, "skip"),
+        ("a rename away from an input", "1", renamed, [], None, "run all"),
+        ("the files refused", "1", papers, [], "/files", "run all"),
+        ("a re-run whose jobs are refused, on an input", "2", [{"filename": "check.sh"}], jobs_passed,
+         "/jobs", "run all"),
+        ("a page alone", "1", [{"filename": "library/money.md"}], [], None, "run core"),
+        ("the asker alone", "1", [{"filename": "product-reads/ask.py"}], [], None, "run core,asker"),
+        ("a page while main's check is red", "1", [{"filename": "library/money.md"}], [], None, "run all", broken),
+        ("a re-run whose first attempt passed, while main's check is red", "2", [{"filename": "library/money.md"}],
+         jobs_passed, None, "run all", broken),
+        ("a page while main's commits are refused", "1", [{"filename": "library/money.md"}], [], "/commits",
+         "run all"),
+        ("a page while main's check runs are refused", "1", [{"filename": "library/money.md"}], [], "/check-runs",
+         "run all"))
+    for what, attempt, files, jobs, fail, want, *main in commands:
+        real, out = urllib.request.urlopen, sys.stdout
+        urllib.request.urlopen, sys.stdout = _plan_net(files, jobs, fail, main[0] if main else trusted), io.StringIO()
+        try:
+            _selftest_plan_main(dict(env, GITHUB_RUN_ATTEMPT=attempt))
+            said = sys.stdout.getvalue().strip()
+        except Exception as e:  # noqa: BLE001
+            said = "raised %s" % type(e).__name__
+        finally:
+            urllib.request.urlopen, sys.stdout = real, out
+        if not said.startswith(want + ": "):
+            fault("%s: the command said %r, not %s" % (what, said, want))
+    # check.sh asks the plan first, runs the self-test on anything but a skip,
+    # and runs its gate only outside the self-test step; check.yml runs the two
+    # steps in that order, named as the plan reads them, with leave to read them.
+    try:
+        sh, yml = _read("check.sh"), _read(CHECK_WORKFLOW)
+    except OSError as e:
+        fault(str(e))
+        return bad
+    for line in (PLAN_ASK, PLAN_SKIP, PLAN_PARTS, PLAN_ELSE, PLAN_RUN, PLAN_GATE):
+        if line not in sh:
+            fault("check.sh has lost `%s`" % line)
+    if len(re.findall(r"(?<![\w/.-])review-gate\.py --selftest(?![-\w])", sh)) != 1:
+        fault("check.sh runs the self-test other than once, behind the plan")
+    # THE PARTS (#187): each function the suite runs is in exactly one part, the
+    # core comes first, every part names only files the tree has, `all` runs
+    # every function in the suite's order, and a part no plan could name is
+    # refused rather than taken for nothing.
+    funcs = [f for _, fs, _ in SELFTEST_PARTS for f in fs]
+    if SELFTEST_PARTS[0][0] != SELFTEST_CORE:
+        fault("the first part is not the core")
+    if len(set(funcs)) != len(funcs):
+        fault("a function is in two parts: %s" % sorted(f for f in funcs if funcs.count(f) > 1))
+    missing = sorted(f for f in funcs if not callable(globals().get(f)))
+    if missing:
+        fault("a part names a function this file does not have: %s" % ", ".join(missing))
+    if selftest_functions("all") != funcs:
+        fault("`all` does not run every part in order")
+    if selftest_functions("%s,asker" % SELFTEST_CORE) != list(SELFTEST_PARTS[0][1]) + ["_check_ask_run",
+                                                                                      "_check_ask_run_loosenings"]:
+        fault("`core,asker` does not run the core and then the asker's functions")
+    for spec in ("", "nothing", "core,nothing"):
+        try:
+            selftest_functions(spec)
+            fault("the part spec %r was taken for something" % spec)
+        except ValueError:
+            pass
+    steps = re.findall(r"^      - name: (\S+)\n        run: bash check\.sh\n        env:\n          CHECK_PART: (\S+)$",
+                       yml, re.M)
+    if steps != [(SELFTEST_STEP, "selftest"), ("gate", "gate")]:
+        fault("%s's steps are %s, not the self-test then the gate, named as the plan reads them"
+              % (CHECK_WORKFLOW, steps))
+    if not re.search(r"^  %s:$" % SELFTEST_JOB, yml, re.M) or "actions: read" not in yml:
+        fault("%s has no `%s` job, or no `actions: read` for the plan to read an earlier attempt"
+              % (CHECK_WORKFLOW, SELFTEST_JOB))
+    # Every file this gate names, and every workflow, is an input.
+    try:
+        tree = set(subprocess.run(["git", "ls-files"], capture_output=True, text=True, check=True,
+                                  timeout=30).stdout.split())
+    except (OSError, subprocess.SubprocessError):
+        tree = set()
+    named = {v for v in globals().values() if isinstance(v, str) and v in tree}
+    named |= {f for f in tree if f.startswith(".github/workflows/")}
+    named |= {"check.sh", "review-gate.py", "board/build.py", "README.md", "HOW-WE-BUILD.md", "AGENTS.md"}
+    missed = sorted(f for f in named if not selftest_input(f))
+    if missed:
+        fault("the self-test reads %s, which the plan would skip it for" % ", ".join(missed))
+    for f in SELFTEST_NOT_READ:
+        if f not in tree:
+            fault("%s is listed as never read but is not in the tree; the list is measured, never guessed" % f)
+    # Every file a part names is in the tree (a pattern matches at least one).
+    for name, _, files in SELFTEST_PARTS:
+        for f in files:
+            if not any(t == f or fnmatch.fnmatchcase(t, f) for t in tree):
+                fault("the part %s names %s, which no file in the tree matches" % (name, f))
+    # MAIN'S OWN CHECK: the rule on the shapes GitHub gives, newest commit first.
+    now = time.time()
+    young = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now - 60))
+    head = "090e429a31cd5f0b2e4d7a1c9b8e6f4d2a1c3b5e"
+
+    def run(conclusion="success", status="completed", app=ACTIONS_APP, name=MAIN_CHECK, at="2026-10-11T19:00:00Z"):
+        return {"name": name, "status": status, "conclusion": conclusion, "completed_at": at,
+                "app": {"id": app} if app is not None else None}
+    red, none = "is red at %s" % head[:12], "has not finished on any of main's newest %d commit(s)"
+    for what, commits, want in (
+            ("main's check green", [(head, old, [run()])], None),
+            ("main's check red", [(head, old, [run("failure")])], red),
+            ("main's check timed out", [(head, old, [run("timed_out")])], red),
+            ("main's check neutral or stale: any finish but success", [(head, old, [run("neutral")])], red),
+            ("main's check still running on the tip; the one before it, green, decides",
+             [("m2", young, [run(None, status="in_progress")]), (head, old, [run()])], None),
+            ("main's check still running on the tip; the one before it, red, holds",
+             [("m2", young, [run(None, status="in_progress")]), (head, old, [run("failure")])], red),
+            ("no check on a tip pushed a minute ago; the one before it decides",
+             [("m2", young, []), (head, old, [run("failure")])], red),
+            ("no check at all on a tip pushed a day ago: check.yml did not run, and nothing is trusted",
+             [("m2", old, []), (head, old, [run()])], "has not run on m2"),
+            ("a cancelled run on the tip says nothing; the one before it decides",
+             [("m2", old, [run("cancelled")]), (head, old, [run("failure")])], red),
+            ("a skipped run on the tip says nothing; the one before it decides",
+             [("m2", old, [run("skipped")]), (head, old, [run()])], None),
+            ("still running on the tip and nothing finished before it: no run to trust",
+             [(head, young, [run(None, status="in_progress")])], none % 1),
+            ("no commit at all: no run to trust", [], none % 0),
+            ("a red run under another app is not the check; the one before it decides",
+             [("m2", young, [run("failure", app=REVIEWER_APP_ID)]), (head, old, [run()])], None),
+            ("a red run under another name is not the check; the one before it decides",
+             [("m2", young, [run("failure", name="build")]), (head, old, [run()])], None),
+            ("red, then green again on the tip", [(head, old, [run("failure", at="2026-10-11T18:00:00Z"), run()])], None),
+            ("green, then red on the tip", [(head, old, [run(at="2026-10-11T18:00:00Z"), run("failure")])], red),
+            ("red on the tip, green before it: the newest finished decides",
+             [(head, old, [run("failure")]), ("m1", old, [run()])], red)):
+        got = main_red_from(iter(commits), now)
+        if got != want:
+            fault("%s: main_red_from says %r, not %r" % (what, got, want))
+    try:
+        gate = _read("review-gate.py")
+    except OSError as e:
+        fault(str(e))
+        return bad
+    for line in ('    if main:\n        return "run", "all", "main\'s own check %s',
+                 "            main = main_red(api, token)",
+                 '            main = "could not be read"',
+                 "    what, run, why = selftest_plan(event, files, earlier, main)"):
+        if line not in gate:
+            fault("the plan has lost `%s`" % line.strip())
+    if "main_red(" in gate.split("\ndef main(argv)")[1]:
+        fault("main() asks after main's check: the plan does, and a hold at the gate deadlocks the repair (#190)")
+    if not bad and not quiet:
+        print("ok: the self-test runs on any change to what it reads and is skipped only for files it never opens, "
+              "or on a re-run whose earlier attempt passed it on the same commit; in a pull request it runs the core "
+              "and the parts measured to read a changed file, and every part on a change to the gate, a workflow or a "
+              "file no part names, and while main's own check is red, unfinished or unreadable, since a run of parts "
+              "trusts main's whole run and the gate holds nothing on it; the rule run on %d case(s), the command "
+              "on %d answers GitHub could give, the %d parts held whole, and check.sh and check.yml held to "
+              "calling it so"
+              % (len(PLAN_CASES), len(commands), len(SELFTEST_PARTS)))
+    return bad
+
+
 # THE CALLER, model-registry/ask.py: the OpenAI-compatible read, and the one place
 # a verdict is made. What it must do is run here on answers a provider could
 # give, never on a network: refuse a model it did not pin (no silent
@@ -2920,6 +3279,23 @@ def _check_attempts(ask, quiet=False):
                                               {"is_error": True, "subtype": "budget_refused"}, None))
             if "budget refused, 0 USD" not in line or "cash, all attempts: 0 USD" not in line or "unresolved: 0" not in line:
                 fault("a request the spending check refused was not a record of budget refused that cost nothing (%s)" % line)
+            big, line = ledger("big.jsonl", ("reviewer-main", "m1", "openai-compatible", 1,
+                                             {"is_error": True, "subtype": "too_big"}, None))
+            if "not sent: past the most a read may carry, 0 USD" not in line or "cash, all attempts: 0 USD" not in line:
+                fault("a read refused as too big was not a record that sent nothing and cost nothing (%s)" % line)
+            # NOTHING SENT, NOTHING SPENT (9 October 2026): what `record unsent` says,
+            # which the reviewers sign as "budget refused, nothing spent".
+            spent, _ = ledger("spent.jsonl",
+                              ("reviewer-main", "m1", "openai-compatible", 0, {"result": "r", "total_cost_usd": 0.2}, 0.5),
+                              ("reviewer-main", "m1", "openai-compatible", 1, {"is_error": True, "subtype": "budget_refused"}, None))
+            lost, _ = ledger("lost.jsonl", ("reviewer-main", "m1", "openai-compatible", None, None, 0.5))
+            for what, led_, want in (("a job the check refused outright", os.path.join(d, "budget.jsonl"), True),
+                                     ("a job refused as too big", big, True),
+                                     ("a re-read refused after a read that spent", spent, False),
+                                     ("an attempt never closed", lost, False),
+                                     ("a ledger with no attempt", os.path.join(d, "none.jsonl"), False)):
+                if ask.unsent(led_) != want:
+                    fault("%s was read as %s" % (what, "sending nothing" if not want else "sending something"))
             _, line = ledger("both.jsonl",
                              ("reviewer-main", "m1", "openai-compatible", 0, {"result": "r", "total_cost_usd": 0.25}, 0.5),
                              ("reviewer-fallback", "m2", "claude-code", 0, {"result": "r", "total_cost_usd": 4}, None))
@@ -3032,6 +3408,17 @@ def _check_spending(ask, path, quiet=False):
                 fault("%s was %s (%s), checked on %r" % (what, "admitted" if most is not None else "refused", why, basis))
         if ask.admit("https://provider.test", "k", None, 10, "", "1", "1", "0", fetch=_fake_net({}, []))[0] is not None:
             fault("a request whose most is unknown, with no limits in the registry, was admitted")
+        # WHICH LIMIT REFUSED IT, by name and first, never its amount (9 October 2026).
+        for what, weekly, data, name in (
+                ("the weekly limit binding", "1", {"usage_weekly": 0.995, "limit_remaining": 10}, "REVIEW_CASH_WEEKLY"),
+                ("the key's own limit binding", "1", {"usage_weekly": 0, "limit_remaining": 0.005},
+                 "the key's own limit at the provider"),
+                ("the key's own limit alone", "", {"limit_remaining": 0.005}, "the key's own limit at the provider")):
+            why = ask.admit("https://provider.test/api/v1", "k", lim, 9000, "", "9", weekly, "0",
+                            fetch=_fake_net({"/key": {"data": data}}, []))[1] or ""
+            if not why.startswith(("the weekly limit, " + name if name == "REVIEW_CASH_WEEKLY" else name)) \
+                    or re.search(r"\d", why):
+                fault("%s: the refusal did not lead with %s, or carried a figure (%r)" % (what, name, why))
     # End to end: the caller's own main(), on the real registry, the network faked.
     reg = json.load(open(REGISTRY, encoding="utf-8"))
     model = resolve_role(reg, ORDINARY_ROLE)
@@ -3050,8 +3437,10 @@ def _check_spending(ask, path, quiet=False):
     with tempfile.TemporaryDirectory() as d:
         system = os.path.join(d, "system.txt")
         open(system, "w").write("s")
-        for what, key, chat, sub, sent in (
+        for what, key, chat, sub, sent, *prompt in (
                 ("an admitted read", {"limit_remaining": 100}, good, None, True),
+                ("a read past the most one may carry", {"limit_remaining": 100}, good, "too_big", False,
+                 "x" * ask.READ_MOST),
                 ("a read past the key's limit", {"limit_remaining": 0.0001}, good, "budget_refused", False),
                 ("a read whose headroom is unknown", OSError("down"), good, "budget_refused", False),
                 ("a read the provider's own limit refuses", {"limit_remaining": 100}, limit402, "provider_limit", True),
@@ -3063,7 +3452,7 @@ def _check_spending(ask, path, quiet=False):
             asked = []
             urllib.request.urlopen = _fake_net({"/key": key if isinstance(key, Exception) else {"data": key},
                                                 "/chat/completions": chat}, asked)
-            sys.stdin = io.StringIO("p")
+            sys.stdin = io.StringIO(prompt[0] if prompt else "p")
             heard = io.StringIO()
             try:
                 import contextlib
@@ -3076,6 +3465,8 @@ def _check_spending(ask, path, quiet=False):
             finally:
                 urllib.request.urlopen, sys.stdin = real_urlopen, real_stdin
             chats = [b for p, b in asked if p.endswith("/chat/completions")]
+            if sub == "too_big" and asked:
+                fault("%s asked the provider %d time(s) before refusing it" % (what, len(asked)))
             if got.get("subtype") != sub or bool(chats) != sent or (sub is None and rc != 0):
                 fault("%s answered %s (%s) and %s a request" % (what, rc, got.get("subtype"),
                                                                "sent" if chats else "sent no"))
@@ -3329,11 +3720,31 @@ def _check_caller(path=None, quiet=False):
     if obj is None or obj.get("ignored") != ["verdict"] or obj.get("findings") != [
             {"severity": "blocking", "text": "b"}, {"severity": "advisory", "text": "a"}]:
         fault("the findings were not carried on as typed, or the model's own verdict not named as ignored (%s)" % obj)
+    # Every file a shortfall asks for is kept, each once: none trimmed, none
+    # filtered, so a refusal names the whole request; what a re-read tries to
+    # add is every name a read may fetch, and `more()` gives what it can of
+    # them and marks the rest (#187; before, one name a read may not fetch
+    # refused the whole request, and #181 parked three rounds on one).
     obj, _ = ask.derive(answer([finding("needs-context", "n", ["a.md", "../up", "/etc/x", "b c", "a.md", "x/y.py",
                                                                  "z.sh", "four.md"])]))
-    if obj is None or obj.get("needs") != ["a.md", "x/y.py", "z.sh"]:
-        fault("a shortfall's files were not the paths a read may fetch, each once, at most %d (%s)"
-              % (getattr(ask, "NEEDED", 0), obj and obj.get("needs")))
+    if obj is None or obj.get("needs") != ["a.md", "../up", "/etc/x", "b c", "x/y.py", "z.sh", "four.md"]:
+        fault("a shortfall's files were not every file it asked for, each once (%s)" % (obj and obj.get("needs")))
+    request = getattr(ask, "request", None)
+    for what, needs, want in (
+            ("three paths a read may fetch", ["a.md", "x/y.py", "z.sh"], ["a.md", "x/y.py", "z.sh"]),
+            ("four paths a read may fetch, every one handed on for more() to hold to three",
+             ["a.md", "b.md", "c.md", "d.md"], ["a.md", "b.md", "c.md", "d.md"]),
+            ("a fetchable path beside one out of the repository, handed on as the stand-in", ["a.md", "../up"],
+             ["a.md", "?"]),
+            ("a path with a space", ["b c"], None),
+            ("one unit of a file, by a name with a space", ["a.md#Part one"], ["a.md#Part one"]),
+            ("a unit of a path out of the repository", ["../a.md#x"], None),
+            ("a unit with no name", ["a.md#"], None),
+            ("a unit whose name a shell would expand", ["a.md#$(x)"], None),
+            ("nothing asked for", [], None)):
+        got = request(needs)[0] if request else "no request()"
+        if got != want:
+            fault("a request of %s was answered %s, not %s" % (what, got, want or "a refusal"))
     obj, _ = ask.derive(clean)
     if obj is None or obj.get("ignored") != []:
         fault("a read that sent no verdict of its own was said to have had one ignored (%s)" % obj)
@@ -3427,7 +3838,7 @@ def _check_caller(path=None, quiet=False):
                     ("a second shortfall", answer([finding("needs-context", "n", ["check.sh"])]), "blocking",
                      "incomplete read: needed check.sh"),
                     ("a second shortfall naming no fetchable path", answer([finding("needs-context", "n", ["../x"])]),
-                     "blocking", "incomplete read: needed files it did not name as paths"),
+                     "blocking", "incomplete read: needed ../x"),
                     ("a clean re-read", clean, "clean", None)):
                 rc, got, err = run({"is_error": False, "result": content})
                 with contextlib.redirect_stderr(io.StringIO()):
@@ -3437,6 +3848,21 @@ def _check_caller(path=None, quiet=False):
                                                                      for x in body.get("findings", []))):
                     fault("%s was signed %s, not %s%s (%s)" % (what, body.get("verdict"), want,
                                                               " saying %r" % says if says else "", body))
+            # What a re-read tries to add, asked of the first answer: every name a
+            # read may fetch, printed, and 0; with none, 1 and nothing printed.
+            for what, files, want in (
+                    ("a request a re-read can meet", ["a.md", "x/y.py"], (0, "a.md\nx/y.py")),
+                    ("a request for a unit by its name", ["a.md#Part one", "x/y.py#f"], (0, "a.md#Part one\nx/y.py#f")),
+                    ("four files, every one handed on", ["a.md", "b.md", "c.md", "d.md"], (0, "a.md\nb.md\nc.md\nd.md")),
+                    ("a request naming a path out of the repository beside one it may fetch", ["a.md", "../x"],
+                     (0, "a.md\n?")),
+                    ("a request naming only a path out of the repository", ["../x"], (1, ""))):
+                run({"is_error": False, "result": answer([finding("needs-context", "n", files)])})
+                said = io.StringIO()
+                with contextlib.redirect_stdout(said), contextlib.redirect_stderr(io.StringIO()):
+                    code = ask.main(["ask.py", "request", f])
+                if (code, said.getvalue().strip()) != want:
+                    fault("%s: `ask.py request` answered %s, not %s" % (what, (code, said.getvalue().strip()), want))
         except AssertionError as e:
             fault("deriving a verdict reached for the network: %s" % e)
         finally:
@@ -3551,8 +3977,12 @@ CALLER_LOOSENINGS = (
     # A read short of context (decision 0014, F(2)).
     ("a shortfall taken as a clean read", '    if short:\n', '    if False:\n'),
     ("a shortfall naming no file taken", '            or any(severity(f) == "needs-context" and not _files(f) for f in findings)):', '            ):'),
-    ("any path a shortfall names fetched", "            if PATH.fullmatch(p) and p not in out:", "            if p not in out:"),
-    ("a shortfall's files unbounded", "    return out[:NEEDED]", "    return out"),
+    ("a shortfall's files filtered", "            if p not in out:", "            if PATH.fullmatch(p) and p not in out:"),
+    ("a shortfall's files trimmed", "    return out\n\n\ndef request(", "    return out[:NEEDED]\n\n\ndef request("),
+    ("a path a read may not fetch handed on as itself", "    return [p if ok else UNFETCHABLE for p, ok in zip(needs, fetchable)], None", "    return list(needs), None"),
+    ("a path a read may not fetch dropped", "    return [p if ok else UNFETCHABLE for p, ok in zip(needs, fetchable)], None", "    return [p for p, ok in zip(needs, fetchable) if ok], None"),
+    ("a request with nothing fetchable met", "    if not any(fetchable):\n        return None", "    if False:\n        return None"),
+    ("a refused request printed for a re-read", "    if paths is None:", "    if False:"),
     ("a second shortfall left unsigned", '    if not isinstance(got, dict) or got.get("verdict") != "needs-context":\n        return', '    return'),
     # One record per attempt (decision 0014, A).
     ("an attempt never closed counted as resolved", 'a["unresolved"] = not a.get("closed") or not a.get("settled", True)', 'a["unresolved"] = False'),
@@ -3572,7 +4002,14 @@ CALLER_LOOSENINGS = (
     ("the weekly limit ignored", '        caps.append(limit - data["usage_weekly"] - finished)', '        pass'),
     ("the key's own limit ignored", '        caps.append(data["limit_remaining"] - finished)', '        pass'),
     ("unknown headroom let through", 'return None, "no weekly limit is set and the key has no limit of its own, so the headroom is unknown", ""', 'return this, None, "nothing"'),
-    ("the reads in flight not reserved", 'reserved = others * RUN_ATTEMPTS * bound(lim, lim["context"])', 'reserved = 0'),
+    ("the reads in flight not reserved", 'reserved = others * RUN_ATTEMPTS * bound(lim, READ_MOST)', 'reserved = 0'),
+    ("a request past the most a read may carry sent", "    if len(data) > READ_MOST:", "    if False:"),
+    ("a read refused as too big counted as sent", '"too_big": ("not sent: past the most a read may carry", False, True),',
+     '"too_big": ("not sent: past the most a read may carry", True, True),'),
+    ("a job that sent a request read as one that sent none", 'all(a.get("closed") and not a.get("sent", True) for a in got)', 'True'),
+    ("a job with no attempt read as one that sent none", '    return bool(got) and all(', '    return all('),
+    ("a refusal that does not say which limit refused it", "                      % names[caps.index(min(caps))]), \"\"",
+     "                      % \"the cash limit\"), \"\""),
     ("a read in flight reserved at one request, not its two", "RUN_ATTEMPTS = 2", "RUN_ATTEMPTS = 1"),
     ("a read in flight reserved at a fallback's request no route sends", "RUN_ATTEMPTS = 2", "RUN_ATTEMPTS = 3"),
     ("the reads in flight taken as none when uncounted", '        others = int(inflight)', '        others = int(inflight) if str(inflight).isdigit() else 0'),
@@ -3745,16 +4182,74 @@ def _check_attempt_loosenings():
 # THE FILES A SHORT READ ASKED FOR (decision 0014, F(2)), each reviewer's real
 # `more()` run on a made-up head: a plain path that exists is added, a path out
 # of the repository or of odd characters is never tried, a missing one is named,
-# the re-read stops at 200 KB, and with nothing added there is no re-read.
+# the re-read stops at three files and 200 KB, naming what it left out, and
+# with nothing added there is no re-read. What can be given is given and the
+# rest marked, so the re-read sees what it still lacks (#187; before, one name
+# that could not be met cancelled the re-read, and #181 parked three rounds on
+# `build-board.yml` without its folder and a unit the selector could not find).
 # (what is asked, whether a re-read follows, files added, markers it must write, paths never named).
-MORE_TREE = {"a.md": "page a\n", "big.md": "x" * 150000 + "\n", "b.md": "y" * 100000 + "\n"}
+# huge.py is the size review-gate.py was when the break test of 8 October 2026
+# asked for it beside a small file.
+MORE_TREE = {"a.md": "page a\n", "big.md": "x" * 150000 + "\n", "b.md": "y" * 100000 + "\n",
+             "huge.py": "z" * 479081 + "\n", "c.md": "page c\n", "d.md": "page d\n",
+             "gate.py": "def wanted():\n    return 'the unit asked for'\n\n\ndef other():\n    return 'not asked'\n"
+                        + "x = %r\n" % ("w" * 300000),
+             "small.py": "def one():\n    return 'the small file whole'\n",
+             "docs/deep/only.md": "the one page of that name\n", "notonly.md": "a name that merely ends the same\n",
+             "x/same.md": "one of two\n", "y/same.md": "two of two\n"}
+# Each case: what, the files asked for, whether it is read again, the files it
+# adds, words the prompt must hold, words it must not.
 MORE_CASES = (
     ("a page that exists", ["a.md"], True, {"a.md"}, (), ()),
-    ("paths out of the repository or of odd characters", ["../a.md", "/etc/passwd", "a b.md"], False, set(), (),
-     ("../a.md", "/etc/passwd", "a b.md")),
+    ("nothing asked for", [], False, set(), (), ()),
+    ("every file asked for, each whole", ["a.md", "b.md", "c.md"], True, {"a.md", "b.md", "c.md"}, (), ()),
+    # A name a read may not fetch is counted, never echoed, so the re-read knows
+    # part of its request was dropped without the prompt carrying the name.
+    ("paths out of the repository or of odd characters", ["../a.md", "/etc/passwd", "a b.md"], False, set(),
+     ("3 name(s) that are not paths a read may fetch: not given",), ("../a.md", "/etc/passwd", "a b.md")),
+    ("a good file beside a path a read may not fetch", ["a.md", "../a.md"], True, {"a.md"},
+     ("1 name(s) that are not paths a read may fetch: not given",), ("../a.md",)),
+    ("a good file beside the caller's stand-in for one", ["a.md", "?"], True, {"a.md"},
+     ("1 name(s) that are not paths a read may fetch: not given",), ()),
     ("a file the change does not have", ["missing.md"], False, set(), ("missing.md: not in this change",), ()),
     ("more than the re-read holds", ["big.md", "b.md"], True, {"big.md"},
      ("b.md: 100001 bytes, left out: past the re-read limit",), ()),
+    ("a fourth file, past the three a re-read holds", ["a.md", "c.md", "d.md", "b.md"], True, {"a.md", "c.md", "d.md"},
+     ("b.md: left out: past the three files a re-read holds",), ("yyyy",)),
+    ("a small file and a missing one: the small one given, the missing one named", ["a.md", "missing.md"], True,
+     {"a.md"}, ("missing.md: not in this change",), ()),
+    ("a small file and a 479,082-byte one: the small one given, the large one named", ["a.md", "huge.py"], True,
+     {"a.md"}, ("huge.py: 479082 bytes, left out: past the re-read limit",), ("zzzz",)),
+    # One unit of a large file, alone (decision 0018): what a reader asks for
+    # instead of the file, met whole, and nothing of the file beside it.
+    ("one function of a large file", ["gate.py#wanted"], True, {"gate.py#wanted"}, ("the unit asked for",),
+     ("not asked", "wwww")),
+    ("a unit a small file does not have: the file whole", ["small.py#missing"], True, {"small.py"},
+     ("small.py#missing: no such unit; small.py whole", "the small file whole"), ()),
+    ("a unit a large file does not have: the file named, not given", ["a.md", "gate.py#missing"], True, {"a.md"},
+     ("gate.py#missing: no such unit; gate.py whole",
+      "gate.py: %d bytes, left out: past the re-read limit" % len(MORE_TREE["gate.py"])), ("wwww",)),
+    ("a unit of a path out of the repository", ["../gate.py#wanted"], False, set(), (), ("the unit asked for",)),
+    # A name without its folder (#181's `build-board.yml`): the one file of that
+    # name, or nothing when two share it.
+    ("a name without its folder, which one file has", ["only.md"], True, {"docs/deep/only.md"},
+     ("the one page of that name",), ("merely ends the same",)),
+    ("a name without its folder, which two files share", ["same.md"], False, set(), ("same.md: not in this change",),
+     ("one of two", "two of two")),
+    ("a unit of a name without its folder", ["deep/only.md#x"], True, {"docs/deep/only.md"},
+     ("docs/deep/only.md#x: no such unit; docs/deep/only.md whole",), ()),
+    # Two names for one file take one slot: the file is given once and the second name says so.
+    ("a unit the file lacks, and the file", ["small.py#missing", "small.py", "a.md", "c.md"], True,
+     {"small.py", "a.md", "c.md"}, ("small.py: given above",), ("past the three files",)),
+    ("a name without its folder, and its path", ["only.md", "docs/deep/only.md"], True, {"docs/deep/only.md"},
+     ("docs/deep/only.md: given above",), ()),
+)
+# With the re-read's limit raised past the large file, the same request is met whole.
+MORE_RAISED = (
+    ("-gt 400000 ]", ("a 479,082-byte file, the limit raised short of it", ["a.md", "huge.py"], True,
+                      {"a.md"}, ("huge.py: 479082 bytes, left out: past the re-read limit",), ())),
+    ("-gt 600000 ]", ("a 479,082-byte file, the limit raised past it, so met whole", ["a.md", "huge.py"],
+                      True, {"a.md", "huge.py"}, (), ())),
 )
 
 
@@ -3762,10 +4257,12 @@ MORE_CASES = (
 # point at, absent from the product, is added from this repository's checkout and
 # labelled as the rulebook's; nothing else of the rulebook's is, and a product
 # page of the same name is the product's.
-MORE_RULEBOOK = {"library/reviewer.md": "a rulebook page\n", "check.sh": "echo rulebook\n", "a.md": "the rulebook's a\n"}
+MORE_RULEBOOK = {"library/reviewer.md": "# Reviewer\n\n## Part\n\na rulebook page\n", "check.sh": "echo rulebook\n", "a.md": "the rulebook's a\n"}
 MORE_PRODUCT_CASES = (
     ("a rulebook page the product points at", ["library/reviewer.md"], True, {"rulebook:library/reviewer.md"},
      ("a rulebook page",), ()),
+    ("one unit of a rulebook page the product points at", ["library/reviewer.md#Part"], True,
+     {"rulebook:library/reviewer.md#Part"}, ("a rulebook page",), ()),
     ("a rulebook file that is not a library page", ["check.sh"], False, set(), ("check.sh: not in this change",),
      ("echo rulebook",)),
     # (a real page's name, so the repository's own link check holds; the made-up rulebook lacks it)
@@ -3784,6 +4281,7 @@ def more_says(text, path, asked):
         tree = os.path.join(d, "product")
         os.makedirs(tree)
         for f, body in MORE_TREE.items():
+            os.makedirs(os.path.dirname(os.path.join(tree, f)), exist_ok=True)
             open(os.path.join(tree, f), "w").write(body)
         rulebook = os.path.join(d, "rulebook")
         for f, body in MORE_RULEBOOK.items():
@@ -3798,12 +4296,17 @@ def more_says(text, path, asked):
             return None
         prompt = os.path.join(d, "prompt.txt")
         open(prompt, "w").close()
+        # main's selector, where each reviewer finds it: review.yml's copy in
+        # RUNNER_TEMP, the product reader's in this repository's checkout.
+        shutil.copy(CONTEXT, os.path.join(d, "context.py"))
+        os.makedirs(os.path.join(rulebook, "model-registry"), exist_ok=True)
+        shutil.copy(CONTEXT, os.path.join(rulebook, CONTEXT))
         body = "\n".join(l.replace("/tmp/", d + "/") for l in fn)
         script = "set -euo pipefail\ncd '%s'\nt='%s'\n%s\nif more %s; then echo yes; else echo no; fi\n" % (
             tree, d, body, " ".join("'%s'" % a for a in asked))
         try:
             p = subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=60,
-                               env=dict(os.environ, SHA=sha, GITHUB_WORKSPACE=rulebook))
+                               env=dict(os.environ, SHA=sha, GITHUB_WORKSPACE=rulebook, RUNNER_TEMP=d))
             wrote = open(prompt, encoding="utf-8").read()
         except (OSError, subprocess.SubprocessError):
             return None
@@ -3814,8 +4317,10 @@ def more_says(text, path, asked):
 
 def more_faults(text, path):
     lost = []
-    for what, asked, again, added, marks, never in MORE_CASES + (MORE_PRODUCT_CASES if path == PRODUCT_WORKFLOW else ()):
-        got = more_says(text, path, asked)
+    cases = [(text, c) for c in MORE_CASES + (MORE_PRODUCT_CASES if path == PRODUCT_WORKFLOW else ())]
+    cases += [(text.replace("-gt 200000 ]", limit, 1), c) for limit, c in MORE_RAISED]
+    for run_on, (what, asked, again, added, marks, never) in cases:
+        got = more_says(run_on, path, asked)
         if got is None:
             lost.append("a `more()` that runs (%s)" % what)
             continue
@@ -3832,17 +4337,25 @@ def more_faults(text, path):
 
 
 MORE_LOOSENINGS = (
-    ("any path tried", lambda t: t.replace("              case \"$f\" in /*|*..*|*[!A-Za-z0-9._/-]*) continue ;; esac\n", "", 1)),
+    ("any path tried", lambda t: t.replace("              case \"$f\" in /*|*..*|*[!A-Za-z0-9._/-]*) unfetchable=$((unfetchable + 1)); continue ;; esac\n", "", 1)),
     ("the re-read unbounded", lambda t: t.replace("-gt 200000 ]; then", "-gt 2000000 ]; then", 1)),
+    ("a re-read of any number of files", lambda t: t.replace('if [ "$files" -ge 3 ]; then', 'if false; then', 1)),
     ("a re-read with nothing added", lambda t: t.replace('            [ "$any" = yes ]\n', "            true\n", 1)),
-    ("a missing file unnamed", lambda t: t.replace(": not in this change =====", ": =====", 1)),
+    ("a missing file not named", lambda t: t.replace("not in this change =====\\n' \"$want\" >> ", "x =====\\n' \"\" >> ", 1)),
+    ("a file past the limit not named", lambda t: t.replace("bytes, left out: past the re-read limit", "bytes", 1)),
+    ("a fourth file not named", lambda t: t.replace("left out: past the three files a re-read holds", "left out", 1)),
+    ("a missing unit not named", lambda t: t.replace("no such unit; %s whole", "%s", 1)),
+    ("a name without its folder taken as any file of that name", lambda t: t.replace('[ "$n" -eq 1 ] ||', '[ "$n" -ge 1 ] ||', 1)),
+    ("a name without its folder matched inside a name", lambda t: t.replace('case "$p" in *"/$f")', 'case "$p" in *"$f")', 1)),
+    ("a file given twice", lambda t: t.replace('case " $given " in *" $want "*)', 'case "" in x)', 1)),
+    ("a name a read may not fetch dropped without a word", lambda t: t.replace('[ "$unfetchable" -eq 0 ] ||', "true ||", 1)),
 )
 MORE_PRODUCT_LOOSENINGS = (
     ("any rulebook file added", lambda t: t.replace('case "$f" in library/*.md) true ;; *) false ;; esac', 'true', 1)),
     ("a rulebook page unlabelled", lambda t: t.replace("===== rulebook:%s =====", "===== %s =====", 1)),
     ("the rulebook's page over the product's own", lambda t: t.replace(
-        'if size=$(git -C "$t/product" cat-file -s "$SHA:$f" 2>/dev/null); then :\n              elif',
-        'if false; then :\n              elif', 1)),
+        'if git -C "$t/product" cat-file -e "$SHA:$f" 2>/dev/null; then size=$(git -C "$t/product" cat-file -s "$SHA:$f")',
+        'if [ -f "$GITHUB_WORKSPACE/$f" ]; then src=rulebook size=$(wc -c < "$GITHUB_WORKSPACE/$f")', 1)),
     ("no rulebook page at all", lambda t: t.replace('[ -f "$GITHUB_WORKSPACE/$f" ]', 'false', 1)),
 )
 
@@ -3989,22 +4502,28 @@ def _check_more_loosenings():
                 print("  wiring: %s with %s passes the re-read hold — the guard for it is gone" % (path, what))
                 bad += 1
     if not bad:
-        print("ok: each reviewer's own more() adds a named file that exists, never tries a path out of the "
-              "repository, names a missing one, stops at the re-read's 200 KB, and asks no re-read with nothing "
-              "added, and the product's adds only a rulebook library page it lacks, labelled as the rulebook's; run in "
+        print("ok: each reviewer's own more() adds what it can give of what a short read named, a name without "
+              "its folder as the one file of that name and a unit it cannot find as its file whole, never tries a "
+              "path out of the repository, names what it left out and why, stops at three files and 200 KB, and asks "
+              "no re-read with nothing added, and the product's adds only a rulebook library page it lacks, "
+              "labelled as the rulebook's; run in "
               "%d case(s) a file, and each of %d loosenings refused" % (len(MORE_CASES) + len(MORE_PRODUCT_CASES),
                                                                       len(MORE_LOOSENINGS) + len(MORE_PRODUCT_LOOSENINGS)))
     return bad
 
 
-# THE CONTEXT PILOT, ON THE REAL TREE (decision 0014, F(1) and order item 4).
-# The selector is run on this repository as it stands, with a one-line change:
-# a README-only change stays near 60 KB and a one-line code change near 120 KB,
-# while a risky change still gets every file whole. A code read carries the
-# registry; a words read names it as left out with its size. The bounds are the
-# pilot's: a tree that outgrows them turns this red, for the month review.
-CONTEXT_WORDS_MAX = 60000
-CONTEXT_CODE_MAX = 120000
+# THE SELECTION, ON THE REAL TREE (decisions 0014 and 0018). The selector is run
+# on this repository as it stands, with a one-line change: a README-only change
+# and a one-line code change are given their partners and the pages naming them,
+# and a one-line change to check.sh, risky, is given its partners too, the
+# gate's sections naming it by name, and the registry, and nothing else whole.
+# No read is given every file (his ruling, 9 October 2026: "Yes, I want the full
+# read narrowing switched on now."). What each is given is printed against its
+# target as a reading, never a failure (decision 0017); what it must and must
+# not be given is held, which is coverage, before any size.
+CONTEXT_WORDS_TARGET = 60000
+CONTEXT_CODE_TARGET = 120000
+CONTEXT_RISKY_TARGET = 150000
 
 
 def _check_context(path=None, quiet=False):
@@ -4032,25 +4551,21 @@ def _check_context(path=None, quiet=False):
         given = {re.split(r"[,:]", m)[0]: b for m, t, b in picked if t is not None}
         left = [m for m, t, b in picked if t is None]
         return given, left, sum(b for m, t, b in picked if t is not None) + len(diff.encode("utf-8"))
-    pool = sorted(f for f in tree if re.search(r"\.(md|sh|py|ya?ml)$", f) or f == REGISTRY)
-    # A partner entry whose files are all risky is never run: a risky read is
-    # given every file whole, and only a words or code read is selected.
-    arms = RISK_GATE.split(")")[0].split("|")
 
-    def risky(f):
-        return any(fnmatch.fnmatchcase(f.lower(), a) for a in arms)
-    for pattern, theirs in getattr(ctx, "PARTNERS", ()):
-        if risky(pattern) and all(risky(p.split("#")[0]) for p in theirs):
-            fault("the partner entry for %s brings only risky files, which no selection reaches" % pattern)
+    def made_up(cls, files, changed, diff):
+        """What a made-up tree is given: (the files given, whole or in part, the markers, the files left out)."""
+        picked = ctx.select(cls, sorted(files), changed, diff, read=lambda f: files.get(f))
+        given = {re.split(r"[,:]", m)[0] for m, t, b in picked if t is not None}
+        left = {m.split(":")[0] for m, t, b in picked if t is None}
+        return given, [m for m, t, b in picked if t is not None], left, {m: t for m, t, b in picked if t is not None}
+    sizes = []
     try:
         given, left, size = run("words", ["README.md"])
-        if size > CONTEXT_WORDS_MAX:
-            fault("a README-only change is given %d bytes, past the pilot's %d" % (size, CONTEXT_WORDS_MAX))
+        sizes.append(("a README-only change", size, CONTEXT_WORDS_TARGET))
         if not any(m.startswith("%s: " % REGISTRY) and re.search(r": \d+ bytes, left out", m) for m in left):
             fault("a words read does not name %s as left out with its size" % REGISTRY)
         given, left, size = run("code", ["HOW-WE-BUILD.md"])
-        if size > CONTEXT_CODE_MAX:
-            fault("a one-line code change is given %d bytes, past the pilot's %d" % (size, CONTEXT_CODE_MAX))
+        sizes.append(("a one-line code change", size, CONTEXT_CODE_TARGET))
         for want, why in ((REGISTRY, "a code read carries the registry (F(1))"),
                           ("check.sh", "its partner"), ("library/reviewer.md", "a page that names it"),
                           ("README.md", "the README's index")):
@@ -4059,11 +4574,51 @@ def _check_context(path=None, quiet=False):
         given, left, size = run("words", ["library/rulebook-files.md"])
         if "check.sh" not in given:
             fault("a change to library/rulebook-files.md is not given check.sh, its partner")
+        # A RISKY CHANGE IS A CLASS, NEVER EVERY FILE (decision 0018).
         given, left, size = run("risky", ["check.sh"])
-        if sorted(given) != pool or left:
-            fault("a risky change is not given every page whole and the registry (missing %s)"
-                  % sorted(set(pool) - set(given))[:5])
-        # A touched file past the pilot's limit is given the sections it touches.
+        sizes.append(("a one-line change to check.sh, risky", size, CONTEXT_RISKY_TARGET))
+        for want, why in ((REGISTRY, "a risky read carries the registry"),
+                          (".github/workflows/check.yml", "the workflow that runs it"),
+                          ("review-gate.py", "the gate it runs, as its sections naming check.sh"),
+                          ("library/rulebook-files.md", "its partner")):
+            if want not in given:
+                fault("a one-line change to check.sh is not given %s: %s" % (want, why))
+        for never in ("RICH-DATA.md", "board/build.py", "CHARTER.md"):
+            if never in given:
+                fault("a one-line change to check.sh is given %s, which names nothing it changed" % never)
+        if len(given) >= len(tree) // 2:
+            fault("a risky change is given %d of %d files: every file, near enough" % (len(given), len(tree)))
+        # Coverage on a made-up tree. An omitted partner that changes the verdict
+        # is selected: the workflow that runs a check, and the function of a large
+        # gate that names it, while the gate's other functions and a page naming
+        # nothing changed are left out, named with their sizes.
+        gate = "".join("def other_%d():\n    %r\n\n\n" % (i, "x" * 3000) for i in range(30))
+        gate += "def runs_the_check():\n    return 'check.sh runs this'\n"
+        files = {"HOW-WE-BUILD.md": "page\n", "README.md": "# map\n\n## Where each topic lives\n\nrows\n",
+                 "check.sh": "echo the guard\n", "review-gate.py": gate, ".github/workflows/check.yml": "run: check.sh\n",
+                 "library/rulebook-files.md": "Scope: x. Open when: y.\n", "stray.md": "names nothing changed\n",
+                 REGISTRY: "{}\n"}
+        got, marks, left_out, texts = made_up("risky", files, ["check.sh"],
+                                               "diff --git a/check.sh b/check.sh\n@@ -1,1 +1,1 @@\n-a\n+b\n")
+        want = {"HOW-WE-BUILD.md", "README.md", "check.sh", "review-gate.py", ".github/workflows/check.yml",
+                "library/rulebook-files.md", REGISTRY}
+        if got != want or "stray.md" not in left_out:
+            fault("a risky change to check.sh on a made-up tree is given %s, not %s with stray.md left out"
+                  % (sorted(got), sorted(want)))
+        gate_part = "".join(t for m, t in texts.items() if m.startswith("review-gate.py"))
+        if "def runs_the_check" not in gate_part or "def other_1(" in gate_part:
+            fault("a large partner was not given as its one function naming the touched file")
+        # Over-selection, held without a size: a page that names no changed file
+        # and is no partner of one is left out, named with its size.
+        picked = ctx.select("words", ["HOW-WE-BUILD.md", "a.md", "names-a.md", "stray.md"], ["a.md"],
+                            "diff --git a/a.md b/a.md\n@@ -1,1 +1,1 @@\n-a\n+b\n",
+                            read=lambda f: {"names-a.md": "see a.md\n"}.get(f, "page\n"))
+        got = {re.split(r"[,:]", m)[0] for m, t, b in picked if t is not None}
+        if got != {"HOW-WE-BUILD.md", "a.md", "names-a.md"}:
+            fault("a change to a.md is given %s, not the operating page, a.md and the page naming it" % sorted(got))
+        if not any(t is None and m.startswith("stray.md: ") for m, t, b in picked):
+            fault("a page naming no changed file is not named as left out")
+        # A touched file past the limit is given the sections it touches.
         big = "# Big\n\n" + "".join("## Part %d\n\n%s\n" % (i, "words " * 2000) for i in range(8))
         picked = ctx.select("words", ["HOW-WE-BUILD.md", "big.md"], ["big.md"],
                             "diff --git a/big.md b/big.md\n@@ -30,1 +30,1 @@\n-a\n+b\n",
@@ -4072,13 +4627,42 @@ def _check_context(path=None, quiet=False):
         if len(part) != 1 or not 0 < part[0] < len(big) // 2:
             fault("a touched file past %d bytes was not given as the sections its hunks fall in (%s)"
                   % (ctx.WHOLE, part))
+        # A generated file of records, one a line, is given the records touched.
+        rows = "[" + ",\n".join('{"from":"%d","text":"%s"}' % (i, "words " * 400) for i in range(60)) + "]\n"
+        got = ctx.widened(rows, "knows.json", ctx.hunks(
+            "diff --git a/knows.json b/knows.json\n@@ -30,1 +30,1 @@\n-a\n+b\n", "knows.json")) or ""
+        if '"from":"29"' not in got or '"from":"28"' in got or '"from":"31"' in got:
+            fault("a one-record change to a file of records, one a line, was not given that record alone")
+        # MORE COMES WHEN THE READER ASKS: one unit of a file, alone.
+        road = json.dumps({"items": [{"id": "P1", "plain": "one"}, {"id": "P2", "plain": "two"}]}, indent=2)
+        for text, want, has, hasnt in ((gate, "review-gate.py#runs_the_check", "check.sh runs this", "other_1"),
+                                       (big, "big.md#Part 3", "## Part 3", "## Part 4"),
+                                       ("# T\n\n## 6. Evidence\n\nkept\n\n## 7. Other\n\nnot\n", "PRODUCT.md#6",
+                                        "kept", "not"),
+                                       (road, "roadmap.json#P2", '"two"', '"one"'),
+                                       ("# D\n\n- **G. One.** gone\n- **H. Two.** kept\n  - its own line\n"
+                                        "- **I. Three.** not\n\nAfter.\n", "D.md#H", "its own line", "not")):
+            got = ctx.unit(text, *want.split("#", 1))
+            if not got or has not in got or hasnt in got:
+                fault("%s was not given as that unit alone" % want)
+        if ctx.unit(gate, "review-gate.py", "no_such_thing") is not None:
+            fault("a unit a file does not have was given as something")
+        items = ctx.touched_items(road, "diff --git a/roadmap.json b/roadmap.json\n@@ -9,1 +9,1 @@\n-a\n+b\n",
+                                  "roadmap.json")
+        if not items or '"two"' not in items or '"one"' in items:
+            fault("a change to one roadmap item was not given that item alone (%r)" % items)
     except Exception as e:  # noqa: BLE001
         fault("the selector raised %s" % type(e).__name__)
+    if not quiet and len(sizes) == 3:
+        for what, size, target in sizes:
+            print("size: %s is given %d bytes (target %d%s)" % (
+                what, size, target, ", %d over: a reading, never a failure" % (size - target)
+                if size > target else ""))
     if not bad and not quiet:
-        print("ok: the context pilot gives a README-only change at most %d bytes and a one-line code change at most "
-              "%d, with its partners, the pages naming it and on a code read the registry, names every other file "
-              "with its size, gives a large file the sections it touches, and gives a risky change every file whole"
-              % (CONTEXT_WORDS_MAX, CONTEXT_CODE_MAX))
+        print("ok: every read is a selection: a change is given its partners, a large one as its sections naming "
+              "the change, the pages naming it and on a code or risky read the registry, and no page naming none "
+              "of it; every other file is named with its size, a large file is given the sections it touches, a "
+              "risky change is given no file it does not touch or need, and a unit asked for is given alone")
     return bad
 
 
@@ -4298,8 +4882,18 @@ def canary_faults(text, review, caller):
     lost = [what for line, what in CANARY_MUST if line not in text]
     if re.search(r"^  (schedule|pull_request|issue_comment)", text, re.M):
         lost.append("no clock and no trigger a branch can start (library/reviewer-parking.md)")
-    if sorted(set(re.findall(r"secrets\.([A-Z_]+)", text))) != ["OPENROUTER_API_KEY", "REVIEW_CASH_WEEKLY"]:
-        lost.append("no secret but the provider's key and the weekly limit")
+    if sorted(set(re.findall(r"secrets\.([A-Z_]+)", text))) != ["CLAUDE_CODE_OAUTH_TOKEN", "OPENROUTER_API_KEY",
+                                                                  "REVIEW_CASH_WEEKLY"]:
+        lost.append("no secret but the two providers' credentials and the weekly limit")
+    # A role read through claude-code (decision 0019) is read by review.yml's
+    # own pinned tool, installed where no secret is, as review.yml installs it.
+    steps = re.split(r"\n\s*- name: ", text)
+    if (re.findall(TOOL_PIN, text) != re.findall(TOOL_PIN, review) or len(re.findall(TOOL_PIN, text)) != 1
+            or re.search(r"npm install[^\n]*@anthropic-ai/claude-code(?!@\d)", text)
+            or any("npm install" in s and "secrets." in s for s in steps)):
+        lost.append("review.yml's pinned reviewer tool, installed once in a step that holds no secret")
+    if '--tools "" --restricted' not in text or '--model "$model" --effort "$effort"' not in text:
+        lost.append("a claude-code read with every tool off, at the registry's model and effort")
     # The schema it asks for is review.yml's own line, and the one the gate holds.
     m = re.findall(r"^ *schema='(.*)'$", review, re.M)
     try:
@@ -4339,7 +4933,12 @@ CANARY_LOOSENINGS = (
     ("the reviewer's signing key held", lambda t: t.replace("          GH_TOKEN: ${{ github.token }}\n          PROBE:",
                                                              "          KEY: ${{ secrets.REVIEWER_APP_KEY }}\n          GH_TOKEN: ${{ github.token }}\n          PROBE:", 1)),
     ("a probe's failure told as an outage", lambda t: t.replace("if: failure() && (inputs.probe == '' || inputs.probe == 'none')", "if: failure()", 1)),
-    ("the read never recorded", lambda t: t.replace('python3 "$reg/ask.py" record open "$ledger"', 'echo 1 #', 1)),
+    ("the read never recorded", lambda t: t.replace('python3 "$reg/ask.py" record open "$ledger"', 'echo 1 #')),
+    ("the tool unpinned", lambda t: t.replace("claude-code@2.1.285", "claude-code", 1)),
+    ("the tool installed beside the token", lambda t: t.replace(
+        "        run: npm install -g @anthropic-ai/claude-code@",
+        "        env:\n          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}\n        run: npm install -g @anthropic-ai/claude-code@", 1)),
+    ("a claude-code read with its tools on", lambda t: t.replace('--tools "" --restricted', "--restricted", 1)),
 )
 
 
@@ -4633,7 +5232,7 @@ def product_glm_faults(text):
     pinned = reg["roles"][ORDINARY_ROLE]["model"]
     lim = ask.limits(reg, pinned)
     # Room for this read and one other in flight, never two.
-    one = ask.RUN_ATTEMPTS * ask.bound(lim, lim["context"])
+    one = ask.RUN_ATTEMPTS * ask.bound(lim, ask.READ_MOST)
     weekly = round(ask.bound(lim, 4000) + 1.5 * one, 2)
     lost = []
     sent = product_glm_says(text, {"review.yml": [1], "review-product.yml": [99]}, weekly)
@@ -4679,16 +5278,18 @@ def _check_product_glm(quiet=False):
 
 
 CONTEXT_LOOSENINGS = (
-    ("the registry dropped from a code read", "            give(REGISTRY, read(REGISTRY))", "            pass"),
-    ("a risky read given the selection", '    if cls not in ("words", "code"):', '    if cls == "none":'),
+    ("the registry dropped from a code read", "        give(REGISTRY, read(REGISTRY))", "        pass"),
+    ("a risky read given every file whole", "    touched = [f for f in changed if f in tree]\n",
+     "    touched = [f for f in changed if f in tree]\n    if cls == \"risky\":\n        touched = list(pool)\n"),
     ("a file left out unnamed", "            out.append((LEFT_OUT % (f, size), None))", "            pass"),
-    ("every page given to the pilot", "            if not text or not any(t in text for t in touched):", "            if not text:"),
+    ("every page given to the pilot", "        if not text or not any(t in text for t in touched):", "        if not text:"),
     ("the operating page's partner lost", '    ("HOW-WE-BUILD.md", ["check.sh"]),\n', ""),
-    ("a partner entry no selection reaches", '    ("check.sh", ["library/rulebook-files.md"]),\n',
-     '    ("model-registry/*", ["model-registry/ask.py"]),\n    ("check.sh", ["library/rulebook-files.md"]),\n'),
+    ("the gate's partners lost", ") + GATE_PARTNERS\n", ")\n"),
     ("a partner never brought back", "            out.extend(matched)", "            pass"),
-    ("a large file given whole", '            if len(text.encode("utf-8")) <= WHOLE:', "            if True:"),
-    ("the pages naming a change not given", "                give(f, text)\n        if cls", "                pass\n        if cls"),
+    ("a large file given whole", '        if len(text.encode("utf-8")) <= WHOLE:', "        if True:"),
+    ("a large partner given whole", '        elif text is None or len(text.encode("utf-8")) <= WHOLE:', "        elif True:"),
+    ("the pages naming a change not given", "            give(f, text)\n    if cls", "            pass\n    if cls"),
+    ("any unit given for the one asked", "if n is not None and (n == name", "if True or (n == name"),
 )
 
 
@@ -5118,6 +5719,8 @@ BOARD_HOLDS = (
     ("select(.merged_at != null and .head.repo.full_name == $r)", "a fork's merge left off the board"),
     ("github.event.check_run.app.id == %d" % REVIEWER_APP_ID, "only the reviewer's own check run waking it"),
     ("github.event.check_run.name == '%s'" % REVIEWER_CHECK, "only the reviewer's check run by name"),
+    # 13 October 2026: the verdict wakes it, never a read started (#211's ask).
+    ("  check_run:\n    types: [completed]\n", "only the reviewer's verdict waking it, not a read started"),
     ("cancel-in-progress: false", "no deploy cut off between going live and its smoke test"),
     # What the fake host below cannot tell apart, because it answers both alike.
     ("for p in / /index.html; do", "a stranger asked at the root and at the page's own name"),
@@ -5138,6 +5741,16 @@ BOARD_HOLDS = (
      "a dispatch's own target, never production by default"),
     # #117's second read, 6: the render takes the time the clock stamped.
     ('jq -n --arg at "$AT"', "the snapshot's time taken from before the first read"),
+    # The fingerprint the deploy compares (13 October 2026), taken in the render,
+    # which the fake host does not run: over the page rendered with the read's time
+    # at the start of its day, and the gate's three files, so a change to either deploys.
+    ("""jq --arg d "${AT:0:10}T00:00:00Z" '.checked_at = $d' "$RUNNER_TEMP/reads.json\"""",
+     "the fingerprint taken over the page with the read's time at the start of its day"),
+    ('python3 board/build.py "$RUNNER_TEMP/fp.json" "$RUNNER_TEMP/fp.html"', "the fingerprint's page rendered by the board's own build"),
+    ('h=$(cat "$RUNNER_TEMP/fp.html" board/middleware.js board/robots.txt board/vercel.json | sha256sum',
+     "the fingerprint taken over that page and the gate's three files"),
+    ("BOARD_HASH: ${{ steps.render.outputs.board_hash }}", "the deploy given the render's fingerprint"),
+    ('echo "::add-mask::$h"', "the fingerprint masked before the deploy step's environment shows it in the log"),
 )
 # The snapshot's stamp, before the first product is read (#117's second read, 6).
 BOARD_STAMP = 'echo "checked_at='
@@ -5230,6 +5843,7 @@ case "$method $path" in
   "POST https://api.vercel.com/v13/deployments")
     case "$data" in
       @*) grep -q '"target"' "${data#@}" && refuse "a deployment given a target, which the host would put on the domain by itself"
+          { grep -q '"file": "board.sha"' "${data#@}" && grep -q "\"data\": \"$BOARD_HASH\"" "${data#@}"; } || refuse "a deployment that does not carry the board's fingerprint as board.sha"
           echo "$FAKE_NEW" > "$S/new"
           reply 200 '{"id":"dpl_new","readyState":"QUEUED"}' ;;
       # The host's CLI promotes a preview so: a production copy, which takes the domain once ready.
@@ -5255,7 +5869,37 @@ case "$method $path" in
     [ "${FAKE_CANCEL:-ok}" = ok ] || { reply 400 '{}'; exit 0; }
     echo CANCELED > "$S/copy"; reply 200 '{"readyState":"CANCELED"}' ;;
   "GET https://api.vercel.com/v13/deployments/dpl_before")
-    reply 200 '{"id":"dpl_before","readyState":"READY"}' ;;
+    # What the domain serves, made an hour, or six hours and a minute, ago.
+    case "${FAKE_LIVE:-none}" in
+      stale) reply 200 "{\"id\":\"dpl_before\",\"readyState\":\"READY\",\"createdAt\":$(( (now - 21660) * 1000 ))}" ;;
+      *) reply 200 "{\"id\":\"dpl_before\",\"readyState\":\"READY\",\"createdAt\":$(( (now - 3600) * 1000 ))}" ;;
+    esac ;;
+  "GET https://api.vercel.com/v6/deployments/dpl_before/files")
+    # Its file tree, as the host lists it: each file's uid the SHA-1 of its bytes,
+    # board.sha this board's fingerprint, another's, or none.
+    sha() { printf '%s' "$1" | sha1sum | cut -d' ' -f1; }
+    case "${FAKE_LIVE:-none}" in
+      same|stale) fp=$(sha "$BOARD_HASH") ;;
+      other) fp=$(sha "$(printf '%064d' 0)") ;;
+      unread) reply 500 '{}'; exit 0 ;;
+      *) fp="" ;;
+    esac
+    tree="{\"name\":\"index.html\",\"type\":\"file\",\"uid\":\"$(sha x)\"}"
+    [ -z "$fp" ] || tree="$tree,{\"name\":\"board.sha\",\"type\":\"file\",\"uid\":\"$fp\"}"
+    reply 200 "[{\"name\":\"src\",\"type\":\"directory\",\"children\":[$tree]}]" ;;
+  "GET https://api.vercel.com/v6/deployments")
+    # The account's deployments, newest first, as the host lists them: FAKE_USED
+    # made in the last day, and five older it returned beside them. Asked of the
+    # last 24 hours on one page of 100, or refused.
+    case "$url" in *"&limit=100"*) ;; *) refuse "the day counted on a page too short to reach the ceiling: $url" ;; esac
+    since=$(printf '%s' "$url" | sed -n 's/.*[?&]since=\([0-9]*\).*/\1/p')
+    { [ -n "$since" ] && [ $(( now - 86400 - since / 1000 )) -ge -5 ] && [ $(( now - 86400 - since / 1000 )) -le 5 ]; } \
+      || refuse "a day counted over a window other than the last 24 hours: $url"
+    [ "${FAKE_USED:-59}" != unread ] || { reply 500 '{}'; exit 0; }
+    rows=""
+    for i in $(seq 1 "${FAKE_USED:-59}"); do rows="$rows{\"id\":\"dpl_u$i\",\"created\":$(( (now - i * 60) * 1000 ))},"; done
+    for i in 1 2 3 4 5; do rows="$rows{\"id\":\"dpl_o$i\",\"created\":$(( (now - 90000 - i) * 1000 ))},"; done
+    reply 200 "{\"deployments\":[${rows%,}],\"pagination\":{\"count\":$(( ${FAKE_USED:-59} + 5 ))}}" ;;
   "PATCH https://api.vercel.com/v12/deployments/dpl_new/cancel")
     [ "${FAKE_CANCEL:-ok}" = ok ] || { reply 400 '{}'; exit 0; }
     echo CANCELED > "$S/new"; reply 200 '{"readyState":"CANCELED"}' ;;
@@ -5281,7 +5925,8 @@ case "$method $path" in
     case "${FAKE_NEXT:-wall}" in board) reply 200 "$board" ;; *) reply 302 '' "$sso" ;; esac ;;
   "GET https://$DOMAIN/"|"GET https://$DOMAIN/index.html")
     [ "$auth" = no ] || refuse "a stranger's request carrying a key"
-    [ "$serving" = dpl_copy ] || { reply 200 "$pin"; exit 0; }
+    # What it served before: the PIN screen, unless a case says it shows a stranger the board.
+    if [ "$serving" != dpl_copy ]; then case "${FAKE_BEFORE:-pin}" in board) reply 200 "$board" ;; *) reply 200 "$pin" ;; esac; exit 0; fi
     case "${FAKE_DOMAIN:-pin}" in
       board) reply 200 "$board" ;;
       blank) reply 502 'bad gateway' ;;
@@ -5383,6 +6028,47 @@ BOARD_DEPLOY_CASES = (
      "could not be recorded", "deployment:"),
     ("too little of the job is left", {"LATE": "yes"}, 1, "dpl_before", "none", "too little of the job",
      "deployment:"),
+    # 13 October 2026: the host's 100 deployments a day, 82 of them the board's
+    # on events that changed nothing on it. Only a changed board, or one live
+    # six hours, is deployed to production; a preview is always made.
+    ("the same board, live for an hour", {"FAKE_LIVE": "same", "GITHUB_EVENT_NAME": "check_run"}, 0, "dpl_before",
+     "none", "unchanged: roadmap.juku.pro serves dpl_before", "deployment:"),
+    ("the same board, live for over six hours", {"FAKE_LIVE": "stale", "GITHUB_EVENT_NAME": "check_run"}, 0,
+     "dpl_copy", "READY", "live: dpl_copy, the copy of dpl_new", "unchanged"),
+    ("a changed board", {"FAKE_LIVE": "other", "GITHUB_EVENT_NAME": "check_run"}, 0, "dpl_copy", "READY",
+     "live: dpl_copy, the copy of dpl_new", "unchanged"),
+    ("what is live cannot be read: deployed as before", {"FAKE_LIVE": "unread", "GITHUB_EVENT_NAME": "check_run"}, 0,
+     "dpl_copy", "READY", "live: dpl_copy, the copy of dpl_new", "unchanged"),
+    # #210's first read: the fingerprint is stamped on a copy before its smoke,
+    # so one that landed after a red run is kept only if it passes the smoke now.
+    ("the same board, live for an hour, showing a stranger the board",
+     {"FAKE_LIVE": "same", "FAKE_BEFORE": "board", "GITHUB_EVENT_NAME": "check_run"}, 0, "dpl_copy", "READY",
+     "live: dpl_copy, the copy of dpl_new", "unchanged"),
+    ("the same board, dispatched", {"FAKE_LIVE": "same"}, 0, "dpl_copy", "READY",
+     "live: dpl_copy, the copy of dpl_new", "unchanged"),
+    ("the same board asked for as a preview", {"TARGET": "preview", "LIVE": "no", "FAKE_LIVE": "same"}, 0,
+     "dpl_before", "READY", "preview ready at the fixed address", "unchanged"),
+    ("no fingerprint taken", {"BOARD_HASH": ""}, 1, "dpl_before", "none", "fingerprint was not taken",
+     "deployment:"),
+    # His ask, 15 October 2026: at 60 of the account's deployments in 24 hours
+    # the board makes none, so it never starves a product. Every path above runs
+    # at 59, with five older the host returned beside them, and deploys.
+    ("the account at its ceiling", {"FAKE_USED": "60", "GITHUB_EVENT_NAME": "check_run"}, 0, "dpl_before", "none",
+     "ceiling: the account has made 60 or more deployments", "deployment:"),
+    ("the account at its ceiling, dispatched", {"FAKE_USED": "60"}, 0, "dpl_before", "none",
+     "ceiling: the account has made 60 or more deployments", "deployment:"),
+    ("the account at its ceiling, asked for as a preview", {"TARGET": "preview", "LIVE": "no", "FAKE_USED": "60"}, 0,
+     "dpl_before", "none", "ceiling: the account has made 60 or more", "deployment:"),
+    # #219's first read: a domain showing a stranger the board is replaced, ceiling or not.
+    ("the account at its ceiling, the same board live showing a stranger the board",
+     {"FAKE_USED": "60", "FAKE_LIVE": "same", "FAKE_BEFORE": "board", "GITHUB_EVENT_NAME": "check_run"}, 0,
+     "dpl_copy", "READY", "live: dpl_copy, the copy of dpl_new", "ceiling:"),
+    ("the account at its ceiling, dispatched, the domain showing a stranger the board",
+     {"FAKE_USED": "60", "FAKE_BEFORE": "board"}, 0, "dpl_copy", "READY", "the ceiling is passed over", "ceiling:"),
+    ("under the ceiling, the count kept out of the public log", {"GITHUB_EVENT_NAME": "check_run"}, 0, "dpl_copy",
+     "READY", "the account's deployments in the last 24 hours: under the ceiling of 60", "hours: 59"),
+    ("the account's day cannot be counted", {"FAKE_USED": "unread"}, 1, "dpl_before", "none",
+     "could not be counted", "deployment:"),
 )
 _board_runs = {}
 
@@ -5436,7 +6122,8 @@ def _board_deploy_case(script, job, case):
                   "JOB_END": str(start + job - 30), "RUNNER_TEMP": run, "STARTED": str(start),
                   "GITHUB_EVENT_NAME": "workflow_dispatch", "LIVE": "yes", "TARGET": "production",
                   "VERCEL_TOKEN": "not-a-token", "TEAM": "team_x", "PROJECT": "prj_x",
-                  "DOMAIN": "roadmap.juku.pro", "NEXT": "juku-build-board-next.vercel.app", "FAKE_NEW": env.get("FAKE_READY", "READY")})
+                  "DOMAIN": "roadmap.juku.pro", "NEXT": "juku-build-board-next.vercel.app", "FAKE_NEW": env.get("FAKE_READY", "READY"),
+                  "BOARD_HASH": "%064x" % 0xb0a2d})
         e.update({k: v for k, v in env.items() if k != "LATE"})
         try:
             p = subprocess.run(["bash", "-c", script], env=e, capture_output=True, text=True, timeout=60)
@@ -5565,7 +6252,7 @@ def _check_board_wiring(board=None, product=None, readme=None, quiet=False):
             "on the README's map with a token each, contents read alone, its grant and reach "
             "checked before anything is read; it checks out nothing of a pull request, uploads "
             "nothing, and its deploy, run against a fake host on %d paths, gives production only a "
-            "copy of a preview it has smoked, cancels or deletes one that fails, and on a red after "
+            "copy of a preview it has smoked, on an event only of a board changed, live six hours or failing its smoke, never once the account has made 60 in 24 hours, cancels or deletes one that fails, and on a red after "
             "the copy cancels one still building and puts back what the domain served, inside the job's time"
             % (KEY_ENVIRONMENT, len(listed), len(BOARD_DEPLOY_CASES)))
     return bad
@@ -5584,6 +6271,7 @@ BOARD_LOOSENINGS = (
     ("a fork's pull request waking it", lambda t: t.replace("github.event.pull_request.head.repo.full_name == github.repository", "true", 1)),
     ("a fork's pull request read", lambda t: t.replace("'[.[] | select(.head.repo.full_name == $r)", "'[.[] | select(true)", 1)),
     ("any check run waking it", lambda t: t.replace("github.event.check_run.app.id == 5000405 &&", "", 1)),
+    ("a read started waking it", lambda t: t.replace("    types: [completed]\n", "    types: [created, rerequested, completed]\n", 1)),
     ("an artifact uploaded", lambda t: t.replace("      - name: Render\n", "      - uses: actions/upload-artifact@v4\n        with:\n          path: ${{ runner.temp }}\n      - name: Render\n", 1)),
     ("a traced shell", lambda t: t.replace("set -euo pipefail", "set -euxo pipefail", 1)),
     ("the pull request's head checked out", lambda t: t.replace("          persist-credentials: false\n", "          persist-credentials: false\n          ref: ${{ github.event.pull_request.head.sha }}\n", 1)),
@@ -5645,6 +6333,28 @@ BOARD_LOOSENINGS = (
     ("a roadmap read before the grant is checked", lambda t: t.replace(BOARD_SCOPE, 'curl -sS "https://api.github.com/repos/$REPO/contents/roadmap.json" > /dev/null\n            ' + BOARD_SCOPE, 1)),
     ("a pull request fetched", lambda t: t.replace("      - name: Render\n", "      - run: git fetch origin pull/1/head\n      - name: Render\n", 1)),
     ("a row the workflow does not read", lambda t: t.replace("          Adonis80/phena=Phena\n", "          Adonis80/phena=Phena Two\n", 1)),
+    # 13 October 2026: only a changed board, or one live six hours, deployed to production.
+    ("the six hours stretched to a day", lambda t: t.replace("-lt 21600 ]", "-lt 86400 ]", 1)),
+    ("the live board's age not asked", lambda t: t.replace(' && [ $(( $(date +%s) - made_at )) -lt 21600 ]', "", 1)),
+    ("the fingerprint not compared", lambda t: t.replace('if [ "$was" = "$want" ] &&', "if true &&", 1)),
+    ("a dispatch passed over too", lambda t: t.replace('if [ "$GITHUB_EVENT_NAME" != workflow_dispatch ]; then\n            live=', "if true; then\n            live=", 1)),
+    ("a live board kept unsmoked", lambda t: t.replace(' -lt 21600 ] && gated "$DOMAIN" pin; then', " -lt 21600 ]; then", 1)),
+    ("the fingerprint printed", lambda t: t.replace('          echo "::add-mask::$h"\n', "", 1)),
+    ("a run with no fingerprint deployed", lambda t: t.replace('[[ "${BOARD_HASH:-}" =~ ^[0-9a-f]{64}$ ]] ||', "true ||", 1)),
+    ("the fingerprint left off the preview", lambda t: t.replace(',\n                      {file: "board.sha", data: $h}]}', "]}", 1)),
+    ("the fingerprint compared unhashed", lambda t: t.replace("want=$(printf '%s' \"$BOARD_HASH\" | sha1sum | cut -d' ' -f1)", 'want="$BOARD_HASH"', 1)),
+    ("the read's time in the fingerprint", lambda t: t.replace("'.checked_at = $d'", "'.'", 1)),
+    ("the page left out of the fingerprint", lambda t: t.replace('h=$(cat "$RUNNER_TEMP/fp.html" board/middleware.js', "h=$(cat board/middleware.js", 1)),
+    # His ask, 15 October 2026: no deploy once the account has made 60 in 24 hours.
+    ("the ceiling raised to the host's own", lambda t: t.replace('if [ "$used" -ge 60 ]; then', 'if [ "$used" -ge 100 ]; then', 1)),
+    ("the ceiling never asked", lambda t: t.replace('if [ "$used" -ge 60 ]; then', "if false; then", 1)),
+    ("the ceiling held on an event alone", lambda t: t.replace('if [ "$used" -ge 60 ]; then', 'if [ "$GITHUB_EVENT_NAME" != workflow_dispatch ] && [ "$used" -ge 60 ]; then', 1)),
+    ("an uncounted day deployed", lambda t: t.replace('[[ "$used" =~ ^[0-9]+$ ]] ||', "true ||", 1)),
+    ("a page too short to reach the ceiling", lambda t: t.replace("&since=$since&limit=100", "&since=$since&limit=20", 1)),
+    ("a leaking board left live at the ceiling", lambda t: t.replace('if [ "$leak" -ne 2 ]; then', "if true; then", 1)),
+    ("the domain unsmoked at the ceiling", lambda t: t.replace('            gated "$DOMAIN" pin || leak=$?\n', "", 1)),
+    ("the count printed", lambda t: t.replace("under the ceiling of 60", "$used, under the ceiling of 60", 1)),
+    ("a week counted as the day", lambda t: t.replace("since=$(( ($(date +%s) - 86400) * 1000 ))", "since=$(( ($(date +%s) - 604800) * 1000 ))", 1)),
 )
 
 
@@ -5965,6 +6675,23 @@ ASK_GRANT = "want='{\"checks\":\"read\",\"contents\":\"read\",\"pull_requests\":
 ASK_REVOKE = ("revoke() { [ -z \"$tok\" ] || curl -sS --max-time 20 -o /dev/null -X DELETE -H \"Authorization: token $tok\" \\\n"
               "            -H \"Accept: application/vnd.github+json\" \"https://api.github.com/installation/token\" || true; tok=\"\"; }")
 ASK_DISPATCH_ENV = "DISPATCH: ${{ github.event_name == 'schedule' && 'true' || inputs.dispatch }}"
+# THE RELAY (#202, agreed with the consultant 13 October 2026): an asking run starts its
+# own successor at its last look, unless an asking run already waits; a dry run never
+# yields or relays; only the relay's own starts count, 12 a UTC day at most.
+ASK_RELAY_CAP = 12
+ASK_LOOKS_ENV = "LOOKS: ${{ (github.event_name == 'schedule' || (inputs.dispatch && inputs.relay)) && '32' || '1' }}"
+ASK_RUN_NAME = ('run-name: "${{ github.event_name == \'schedule\' && \'Ask for product reads: timed\' || !inputs.dispatch && '
+                '\'Ask for product reads: dry run\' || inputs.relay && \'Ask for product reads: relay\' || '
+                '\'Ask for product reads: asking\' }}"\n')
+ASK_WAITING = ('--jq "[.workflow_runs[] | select(.id != $GITHUB_RUN_ID and .head_branch == \\"main\\" and '
+               '(.display_title | test(\\"^Ask for product reads: (timed|asking|relay)\\$\\")) and (.status == \\"queued\\" or '
+               '.status == \\"pending\\" or .status == \\"waiting\\" or .status == \\"requested\\"))] | length"; }')
+ASK_COUNT = ('started=$(timeout 60 gh api --paginate "repos/$GITHUB_REPOSITORY/actions/workflows/ask-product-reads.yml/runs?'
+             'event=workflow_dispatch&created=%3E%3D$day&per_page=100" \\\n'
+             '                --jq "[.workflow_runs[] | select(.display_title == \\"Ask for product reads: relay\\" and '
+             '.created_at >= \\"$day\\")] | length" | awk \'{ n += $1 } END { print n + 0 }\') || started=""')
+ASK_RELAY_START = ('elif timeout 30 gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/ask-product-reads.yml/dispatches" \\\n'
+                   '                  -f ref=main -f \'inputs[dispatch]=true\' -f \'inputs[relay]=true\' > /dev/null; then')
 ASK_HOLDS = (
     (ASK_SCOPE, "a token scoped to one product with contents, pull requests and checks read alone"),
     (ASK_GRANT, "the grant checked against read alone"),
@@ -5987,13 +6714,34 @@ ASK_HOLDS = (
     ('env -u APP_KEY -u APP_ID PRODUCT_TOKEN="$tok" REVIEWER_APP_ID="$APP_ID" python3 -I product-reads/ask.py "$REPO" $flag || rc=$?',
      "the App's key and id kept out of the program that asks"),
     ('[ "$rc" -eq 0 ] || failed=1', "one product's trouble remembered"),
-    ('[ "$failed" -eq 0 ]', "a job that is red when any product could not be looked at"),
+    ('[ "$failed" -eq 0 ] || { red=1;', "a red look remembered, and the next look taken"),
+    ('\n          done\n          # THE RELAY (#202)', "the relay taken after the last look"),
     (ASK_DISPATCH_ENV, "the choice passed as a variable, a timed run always asking and a person's run asking only if told to"),
     ("GH_TOKEN: ${{ github.token }}", "this repository's own token, for the one dispatch"),
+    # THE CLOCK INSIDE THE TICK (9 October 2026): GitHub fired the one schedule 3 to 7
+    # hours apart, so a tick that lands looks every ten minutes for about five hours.
+    (ASK_LOOKS_ENV, "a timed run and a relay looking 32 times and a person's run once"),
+    ('[[ "$looks" =~ ^[1-9][0-9]?$ ]] && [ "$looks" -le 32 ] || { echo "::error::looks is 1 to 32"; exit 1; }',
+     "the looks bounded, 1 to 32, inside the job's limit"),
+    ("            sleep 600\n", "ten minutes between looks, never less"),
+    ("    timeout-minutes: 340\n", "a job limit that holds 32 looks ten minutes apart"),
+    # THE RELAY (#202): the names the runs wear are the names the shell counts by.
+    (ASK_RUN_NAME, "each run named for its mode, timed, dry run, relay or asking"),
+    (ASK_WAITING, "only an asking run on main, waiting its turn, counted as one that carries the clock"),
+    ('            if [ "$DISPATCH" = "true" ]; then\n              pending=$(waiting) || pending=0\n',
+     "a dry run that never yields"),
+    ('          if [ "$DISPATCH" = "true" ] && [ "$yielded" -eq 0 ]; then\n', "only an asking run relaying, and not one that yielded"),
+    (ASK_COUNT, "the relay's own starts counted from every page of GitHub's list since midnight UTC"),
+    ('              if ! [[ "$started" =~ ^[0-9]+$ ]]; then\n                red=1;', "a count that cannot be read refusing the relay, red"),
+    ('              elif [ "$started" -ge %d ]; then\n                red=1;' % ASK_RELAY_CAP, "the cap of %d a day refusing the relay, red" % ASK_RELAY_CAP),
+    (ASK_RELAY_START, "the one successor started on main, asking, marked a relay"),
+    ("                red=1; echo \"::error::relay refused: GitHub would not start", "a start GitHub refused, red"),
+    ('\n          fi\n          [ "$red" -eq 0 ]\n', "a job that is red at the end when any look could not look at a product, or the relay was refused"),
 )
-ASK_ON = 'on:\n  schedule:\n    - cron: "*/10 * * * *"\n  workflow_dispatch:\n    inputs:\n'
+ASK_ON = 'on:\n  schedule:\n    - cron: "7-59/10 * * * *"\n  workflow_dispatch:\n    inputs:\n'
 ASK_PERMISSIONS = "permissions:\n  contents: read\n  actions: write\n"
-ASK_CONCURRENCY = "concurrency:\n  group: ask-product-reads\n  cancel-in-progress: false\n"
+ASK_CONCURRENCY = ("concurrency:\n  group: ${{ (github.event_name == 'schedule' || inputs.dispatch) && 'ask-product-reads' "
+                   "|| 'ask-product-reads-dry' }}\n  cancel-in-progress: false\n")
 # The grant and reach are checked before the program that reads a product runs.
 ASK_ORDER = (ASK_SCOPE, 'if [ "$granted" != "$want" ]; then', 'if [ "$reach" != "$REPO" ]; then',
              'python3 -I product-reads/ask.py "$REPO" $flag')
@@ -6021,7 +6769,7 @@ def _check_ask_wiring(ask=None, product=None, quiet=False):
               % triggers(ask))
     if ask.count(ASK_ON) != 1 or len(re.findall(r"^\s*-?\s*cron:", ask, re.M)) != 1 \
             or len(re.findall(r"^\s+schedule:", ask, re.M)) != 1:
-        fault("must have exactly one schedule, `*/10 * * * *`, every ten minutes (`%s`)"
+        fault("must have exactly one schedule, `7-59/10 * * * *`, every ten minutes (`%s`)"
               % ASK_ON.strip().replace("\n", " "))
     if not USES_ENVIRONMENT.search(ask):
         fault("does not run in the `%s` environment, so the App's key is readable from any branch"
@@ -6067,21 +6815,30 @@ def _check_ask_wiring(ask=None, product=None, quiet=False):
     choice = re.search(r"^      dispatch:\n((?:        .*\n)+)", ask, re.M)
     if not choice or "        type: boolean\n" not in choice.group(1) or "        default: false\n" not in choice.group(1):
         fault("must offer `dispatch` as a boolean that is false unless set: by default it only says what it would ask")
+    relay = re.search(r"^      relay:\n((?:        .*\n)+)", ask, re.M)
+    if not relay or "        type: boolean\n" not in relay.group(1) or "        default: false\n" not in relay.group(1):
+        fault("must offer `relay` as a boolean that is false unless set: it marks the asker's own successor, "
+              "and only those are counted against the cap (#202)")
+    starts = [l for l in ask.splitlines() if not l.strip().startswith("#") and "/dispatches" in l]
+    if len(starts) != 1 or "/actions/workflows/ask-product-reads.yml/dispatches" not in starts[0]:
+        fault("must start nothing but its own one successor, once (`%s`)" % ASK_RELAY_START.split("\n")[0])
     if [l for l in ask.splitlines() if not l.strip().startswith("#") and re.search(r"\bagain\b", l)]:
         fault("passes `again`; the asker never retries a read that did not finish, only a builder does")
     if not bad:
         say("ok: the asker runs on its one ten-minute timer and when a person starts it, behind the `%s` door, "
             "looking at each product the README lists with a token scoped to it, read alone, its grant and "
             "reach checked, the key kept from the program that asks; a timed run asks, a person's run asks "
-            "only if told to, and nothing retries a read that did not finish" % KEY_ENVIRONMENT)
+            "only if told to, and nothing retries a read that did not finish; each run is named for its mode, a "
+            "dry run waits in a group of its own, and the one start it makes is its own successor on main, "
+            "marked a relay, under the cap of %d a day" % (KEY_ENVIRONMENT, ASK_RELAY_CAP))
     return bad
 
 
 ASK_LOOSENINGS = (
-    ("a second clock", lambda t: t.replace('    - cron: "*/10 * * * *"\n', '    - cron: "*/10 * * * *"\n    - cron: "0 * * * *"\n', 1)),
-    ("a faster clock", lambda t: t.replace('"*/10 * * * *"', '"* * * * *"', 1)),
-    ("a slower clock", lambda t: t.replace('"*/10 * * * *"', '"0 * * * *"', 1)),
-    ("no clock", lambda t: t.replace('  schedule:\n    - cron: "*/10 * * * *"\n', "", 1)),
+    ("a second clock", lambda t: t.replace('    - cron: "7-59/10 * * * *"\n', '    - cron: "7-59/10 * * * *"\n    - cron: "0 * * * *"\n', 1)),
+    ("a faster clock", lambda t: t.replace('"7-59/10 * * * *"', '"* * * * *"', 1)),
+    ("a slower clock", lambda t: t.replace('"7-59/10 * * * *"', '"0 * * * *"', 1)),
+    ("no clock", lambda t: t.replace('  schedule:\n    - cron: "7-59/10 * * * *"\n', "", 1)),
     ("a push", lambda t: t.replace("  workflow_dispatch:\n    inputs:", "  push:\n  workflow_dispatch:\n    inputs:", 1)),
     ("a pull request's own copy", lambda t: t.replace("  workflow_dispatch:\n    inputs:", "  pull_request:\n  workflow_dispatch:\n    inputs:", 1)),
     ("a timed run that only says what it would ask", lambda t: t.replace(ASK_DISPATCH_ENV, "DISPATCH: ${{ inputs.dispatch }}", 1)),
@@ -6102,10 +6859,25 @@ ASK_LOOSENINGS = (
     ("every ask, whatever was chosen", lambda t: t.replace('if [ "$DISPATCH" = "true" ]; then flag="--dispatch"; fi', 'flag="--dispatch"', 1)),
     ("a choice that is not true or false", lambda t: t.replace('[[ "$DISPATCH" =~ ^(true|false)$ ]] || { echo "::error::dispatch is true or false"; exit 1; }', "true", 1)),
     ("a product's trouble forgotten", lambda t: t.replace('[ "$rc" -eq 0 ] || failed=1', "true", 1)),
-    ("a red job switched off", lambda t: t.replace('[ "$failed" -eq 0 ]\n', 'true\n', 1)),
+    ("a red job switched off", lambda t: t.replace('[ "$red" -eq 0 ]\n', 'true\n', 1)),
     ("more than read at the workflow", lambda t: t.replace("  contents: read\n  actions: write\n", "  contents: write\n  actions: write\n", 1)),
-    ("a second permissions block", lambda t: t.replace("    timeout-minutes: 30\n", "    timeout-minutes: 30\n    permissions: write-all\n", 1)),
-    ("another group", lambda t: t.replace("  group: ask-product-reads\n", "  group: ask\n", 1)),
+    ("a second permissions block", lambda t: t.replace("    timeout-minutes: 340\n", "    timeout-minutes: 340\n    permissions: write-all\n", 1)),
+    ("a person's run that keeps looking", lambda t: t.replace("&& '32' || '1' }}", "&& '32' || '32' }}", 1)),
+    ("looks a minute apart", lambda t: t.replace("            sleep 600\n", "            sleep 60\n", 1)),
+    ("looks without end", lambda t: t.replace(' && [ "$looks" -le 32 ] ||', " ||", 1)),
+    ("another group", lambda t: t.replace("&& 'ask-product-reads' ||", "&& 'ask' ||", 1)),
+    ("a dry run in the asking group", lambda t: t.replace("|| 'ask-product-reads-dry' }}", "|| 'ask-product-reads' }}", 1)),
+    ("a relay looking once", lambda t: t.replace(" || (inputs.dispatch && inputs.relay)) && '32'", ") && '32'", 1)),
+    ("a dry run marked a relay looking 32 times", lambda t: t.replace("(inputs.dispatch && inputs.relay)", "inputs.relay", 1)),
+    ("a relay run named otherwise", lambda t: t.replace("inputs.relay && 'Ask for product reads: relay'", "inputs.relay && 'Ask for product reads: again'", 1)),
+    ("a relay by default", lambda t: t.replace("Counted against the day's cap; a person leaves it off.\n        required: false\n        type: boolean\n        default: false\n",
+                                                "Counted against the day's cap; a person leaves it off.\n        required: false\n        type: boolean\n        default: true\n", 1)),
+    ("a relay on a branch", lambda t: t.replace("-f ref=main -f 'inputs[dispatch]=true'", "-f ref=\"$GITHUB_REF_NAME\" -f 'inputs[dispatch]=true'", 1)),
+    ("a relay that only says", lambda t: t.replace("-f 'inputs[dispatch]=true' -f 'inputs[relay]=true'", "-f 'inputs[dispatch]=false' -f 'inputs[relay]=true'", 1)),
+    ("a relay not marked", lambda t: t.replace(" -f 'inputs[relay]=true' > /dev/null", " > /dev/null", 1)),
+    ("a higher cap", lambda t: t.replace('[ "$started" -ge 12 ]', '[ "$started" -ge 24 ]', 1)),
+    ("a second start", lambda t: t.replace('                echo "relayed: a successor is started',
+                                           '                gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/review.yml/dispatches" -f ref=main\n                echo "relayed: a successor is started', 1)),
     ("an asker cut off", lambda t: t.replace("  cancel-in-progress: false\n", "  cancel-in-progress: true\n", 1)),
     ("the JWT's lifetime altered", lambda t: t.replace("$((now + 540))", "$((now + 3600))", 1)),
     ("the token never revoked", lambda t: t.replace("            revoke\n            [ \"$rc\" -eq 0 ] || failed=1", "            [ \"$rc\" -eq 0 ] || failed=1", 1)),
@@ -6240,6 +7012,46 @@ KIT_WAKE_IF = "if: github.event.check_run.app.id == %d && github.event.check_run
 KIT_WAKE_ENV = ("GH_TOKEN: ${{ github.token }}", "SHA: ${{ github.event.check_run.head_sha }}",
                 "REPO: ${{ github.repository }}")
 KIT_GATE_RUN = 'python3 review-gate.py "$REPO" "$HEAD_SHA" "$GH_TOKEN"'
+# A READY MARK ON A DRAFT IS SAID OUT LOUD (#202): the product's own verify fails on it,
+# saying why, and runs again when the pull request leaves draft, on the same commit.
+KIT_VERIFY_TYPES = "    types: [opened, synchronize, reopened, ready_for_review]\n"
+KIT_DRAFT_STEP = "A ready mark is not left on a draft"
+KIT_DRAFT_ENV = ("DRAFT: ${{ github.event.pull_request.draft }}", "HEAD_SHA: ${{ github.event.pull_request.head.sha }}",
+                 "REPO: ${{ github.repository }}", "GH_TOKEN: ${{ github.token }}")
+STUB_DRAFT_GH = """#!/usr/bin/env bash
+echo "GH $*" >> "$DRAFT_LOG"
+[ "$*" = "api repos/Adonis80/p/commits/$(printf 'c%.0s' $(seq 40)) --jq .commit.message" ] || exit 97
+[ -z "${DRAFT_GH_FAILS:-}" ] || exit 1
+printf '%s\\n' "$DRAFT_MESSAGE"
+"""
+KIT_MARK = "Ready for review\n\nReview-Ready: yes\nReview-Parent: %s\n" % ("b" * 40)
+KIT_DRAFT_CASES = (
+    ("a ready mark on a draft", {"DRAFT": "true", "DRAFT_MESSAGE": KIT_MARK}, 1, True),
+    ("a ready mark written with Windows line ends on a draft", {"DRAFT": "true", "DRAFT_MESSAGE": KIT_MARK.replace("\n", "\r\n")}, 1, True),
+    ("a draft whose head is no mark", {"DRAFT": "true", "DRAFT_MESSAGE": "just a fix\n"}, 0, True),
+    ("a draft whose mark is not alone on its line", {"DRAFT": "true", "DRAFT_MESSAGE": "Review-Ready: yes, nearly\n"}, 0, True),
+    ("a ready mark out of draft", {"DRAFT": "false", "DRAFT_MESSAGE": KIT_MARK}, 0, False),
+    ("a draft whose commit GitHub would not give", {"DRAFT": "true", "DRAFT_MESSAGE": KIT_MARK, "DRAFT_GH_FAILS": "1"}, 1, True),
+)
+
+
+def _run_draft_step(script, env):
+    """(exit status, what it printed, whether it asked GitHub) for verify.yml's draft step."""
+    with tempfile.TemporaryDirectory() as d:
+        binned, log = os.path.join(d, "bin"), os.path.join(d, "log")
+        os.mkdir(binned)
+        with open(os.path.join(binned, "gh"), "w", encoding="utf-8") as f:
+            f.write(STUB_DRAFT_GH)
+        os.chmod(os.path.join(binned, "gh"), 0o755)
+        e = dict(os.environ, PATH=binned + os.pathsep + os.environ.get("PATH", ""), DRAFT_LOG=log,
+                 REPO="Adonis80/p", HEAD_SHA="c" * 40, GH_TOKEN="product-token")
+        e.pop("DRAFT_GH_FAILS", None)
+        e.update(env)
+        try:
+            p = subprocess.run(["bash", "-c", script], cwd=d, env=e, capture_output=True, text=True, timeout=60)
+        except (OSError, subprocess.SubprocessError) as exc:
+            return None, str(exc), False
+        return p.returncode, p.stdout + p.stderr, os.path.exists(log)
 
 
 def _kit_files():
@@ -6407,6 +7219,25 @@ def _check_kit(kit=None, wake=None, quiet=False, deep=True):
         fault("verify.yml must run on a pull request, which is where the ready commit is pushed")
     if "run: python3 review-gate.py --selftest" not in verify:
         fault("verify.yml must run the kit gate's own selftest")
+    if KIT_VERIFY_TYPES not in verify:
+        fault("verify.yml must run on a pull request opened, pushed to, reopened or taken out of draft (`%s`): "
+              "leaving draft is what gives a ready mark a fresh `verify` on the same commit (#202)" % KIT_VERIFY_TYPES.strip())
+    if re.findall(r"^permissions:\n((?:  .*\n)+)", verify, re.M) != ["  contents: read\n"] or verify.count("permissions:") != 1:
+        fault("verify.yml may read contents and nothing else")
+    for line in KIT_DRAFT_ENV:
+        if [l.strip() for l in verify.splitlines()].count(line) != 1:
+            fault("verify.yml must hand its draft step `%s`" % line)
+    draft = _step_script(verify, KIT_DRAFT_STEP)
+    if draft is None:
+        fault("verify.yml has no `%s` step this build can run" % KIT_DRAFT_STEP)
+    elif deep:
+        for what, env, want, asks in KIT_DRAFT_CASES:
+            code, printed, asked = _run_draft_step(draft, env)
+            if code != want or asked != asks:
+                fault("verify.yml's draft step, on %s, came out %s and %s GitHub, and must come out %s and %s it"
+                      % (what, code, "asked" if asked else "did not ask", want, "ask" if asks else "not ask"))
+            elif want and "draft" not in printed and not env.get("DRAFT_GH_FAILS"):
+                fault("verify.yml's draft step, on %s, fails without saying the pull request is a draft" % what)
     script = _agents_step(verify)
     starter = kit["AGENTS.starter.md"]
     if script is None:
@@ -6436,7 +7267,8 @@ def _check_kit(kit=None, wake=None, quiet=False, deep=True):
         say("ok: the starter kit's gate gives the rulebook's verdict on %d cases and says how to mark a "
             "commit ready; its wake is the rulebook's wake with two changes and fails loudly in each of "
             "%d places it is made to; its workflows have the shape the wake, the ready check and the "
-            "setup script assume; its AGENTS.md passes its own check, and its roadmap is one the board reads"
+            "setup script assume, and its verify fails out loud on a ready mark left on a draft and runs again "
+            "when the draft is made ready; its AGENTS.md passes its own check, and its roadmap is one the board reads"
             % (len(_kit_runs(head)), len([c for c in SWALLOW_CASES if "SWALLOW_HEAD" not in c[1]])))
     return bad
 
@@ -6475,6 +7307,13 @@ KIT_LOOSENINGS = (
     ("the review guidelines not required", "verify.yml", lambda t: t.replace('if not re.search(r"(?m)^## Review guidelines\\s*$", text):', "if False:", 1)),
     ("the word cap not held", "verify.yml", lambda t: t.replace("if len(text.split()) >= 500:", "if False:", 1)),
     ("a verify that runs on a push", "verify.yml", lambda t: t.replace("on:\n  pull_request:", "on:\n  push:\n  pull_request:", 1)),
+    ("a verify not run when a draft is made ready", "verify.yml", lambda t: t.replace(", ready_for_review]", "]", 1)),
+    ("a ready mark on a draft let through", "verify.yml", lambda t: t.replace("grep -qx 'Review-Ready: yes'", "grep -qx 'Review-Ready: no'", 1)),
+    ("the draft step skipped", "verify.yml", lambda t: t.replace('[ "$DRAFT" = "true" ] || exit 0', "exit 0", 1)),
+    ("a commit GitHub would not give read as no mark", "verify.yml", lambda t: t.replace("--jq .commit.message)", "--jq .commit.message) || message=\"\"", 1)),
+    ("the merge commit read for the mark", "verify.yml", lambda t: t.replace("HEAD_SHA: ${{ github.event.pull_request.head.sha }}", "HEAD_SHA: ${{ github.sha }}", 1)),
+    ("the draft state taken from nowhere", "verify.yml", lambda t: t.replace("DRAFT: ${{ github.event.pull_request.draft }}", "DRAFT: false", 1)),
+    ("a verify token that writes", "verify.yml", lambda t: t.replace("permissions:\n  contents: read\n", "permissions:\n  contents: write\n", 1)),
     ("a starter that breaks its own check", "AGENTS.starter.md", lambda t: t.replace("Rulebook:", "See:", 1)),
     ("a starter with no review guidelines", "AGENTS.starter.md", lambda t: t.replace("## Review guidelines", "## Notes", 1)),
     ("a starter roadmap the board cannot read", "roadmap.starter.json", lambda t: t.replace('"items": []', '"items": "none"', 1)),
@@ -6578,6 +7417,72 @@ case "$*" in
   *) exec "$REAL_PY" "$@" ;;
 esac
 """
+# A look after the first sleeps, then asks GitHub whether a newer run waits; after the
+# last, an asking run counts today's relays and starts its successor (#202). The stubs
+# write the sleep down, and `gh` answers from the scenario's `runs` as GitHub would:
+# newest first, filtered by `event` and `created`, a page at a time, each page put
+# through the shell's own --jq by the real jq, so the shell's filters are what is run.
+STUB_ASK_SLEEP = """#!/usr/bin/env bash
+echo "SLEPT $*" >> "$ASK_LOG"
+"""
+STUB_ASK_GH = r"""#!/usr/bin/env python3
+import json, os, subprocess, sys, urllib.parse
+scenario = json.loads(os.environ["ASK_SCENARIO"])
+log = open(os.environ["ASK_LOG"], "a")
+args = sys.argv[1:]
+if args[:1] != ["api"]:
+    sys.exit(97)
+method, fields, jq, paginate, path, i = "GET", [], None, False, None, 1
+while i < len(args):
+    a = args[i]
+    if a in ("-X", "-f", "--jq"):
+        method, fields, jq = (args[i + 1], fields, jq) if a == "-X" else (method, fields + [args[i + 1]], jq) if a == "-f" else (method, fields, args[i + 1])
+        i += 2
+    elif a == "--paginate":
+        paginate, i = True, i + 1
+    elif path is None and not a.startswith("-"):
+        path, i = a, i + 1
+    else:
+        sys.exit(97)
+base, _, query = path.partition("?")
+q = dict(urllib.parse.parse_qsl(query))
+log.write("GH %s %s\n" % (method, path))
+if not base.startswith("repos/Adonis80/how-we-build/actions/workflows/ask-product-reads.yml/"):
+    sys.exit(97)
+if method == "POST" and base.endswith("/dispatches"):
+    log.write("RELAYED %s\n" % " ".join(sorted(fields)))
+    sys.exit(1 if scenario.get("relay_fails") else 0)
+if method != "GET" or not base.endswith("/runs"):
+    sys.exit(97)
+counting = "event" in q
+if scenario.get("count_fails" if counting else "gh_fails"):
+    sys.exit(1)
+runs = sorted(scenario.get("runs", []), key=lambda r: r["created_at"], reverse=True)
+if "event" in q:
+    runs = [r for r in runs if r["event"] == q["event"]]
+if q.get("created", "").startswith(">="):
+    runs = [r for r in runs if r["created_at"] >= q["created"][2:]]
+size, page = int(q.get("per_page", 30)), int(q.get("page", 1))
+while True:
+    if counting and page == scenario.get("count_fails_on_page"):
+        sys.exit(1)
+    body = {"total_count": len(runs), "workflow_runs": runs[(page - 1) * size:page * size]}
+    out = subprocess.run(["jq", "-r", jq], input=json.dumps(body), capture_output=True, text=True) if jq else None
+    if out is not None and out.returncode != 0:
+        sys.stderr.write(out.stderr)
+        sys.exit(1)
+    sys.stdout.write(out.stdout if out is not None else json.dumps(body) + "\n")
+    if not paginate or page * size >= len(runs):
+        break
+    page += 1
+"""
+# The day the relay counts from is the scenario's, far from any real one, so a shell that
+# asks for the day in another way is given another day and counts the wrong runs.
+STUB_ASK_DATE = """#!/usr/bin/env bash
+if [ "$*" = "-u +%Y-%m-%dT00:00:00Z" ]; then echo "2030-01-15T00:00:00Z"; exit 0; fi
+exec "$REAL_DATE" "$@"
+"""
+ASK_DAY = "2030-01-15"
 ASK_README = ("# t\n\n## Products under this rulebook\n\n- **A** — `https://github.com/Adonis80/a` one.\n"
               "- **B** — `https://github.com/Adonis80/b` two.\n- **C** — `https://github.com/Adonis80/c` three.\n\n## Next\n")
 ASK_BROKEN_README = "# t\n\n## Products under this rulebook\n\nNone listed here.\n"
@@ -6589,7 +7494,8 @@ def _run_ask(script, scenario=None, fails="", readme=ASK_README, env=None):
         binned, work, temp = (os.path.join(d, n) for n in ("bin", "work", "tmp"))
         for path in (binned, work, temp, os.path.join(work, "product-reads")):
             os.makedirs(path)
-        for name, body in (("curl", STUB_ASK_CURL), ("openssl", STUB_ASK_OPENSSL), ("python3", STUB_ASK_PYTHON)):
+        for name, body in (("curl", STUB_ASK_CURL), ("openssl", STUB_ASK_OPENSSL), ("python3", STUB_ASK_PYTHON),
+                           ("sleep", STUB_ASK_SLEEP), ("gh", STUB_ASK_GH), ("date", STUB_ASK_DATE)):
             with open(os.path.join(binned, name), "w", encoding="utf-8") as f:
                 f.write(body)
             os.chmod(os.path.join(binned, name), 0o755)
@@ -6601,9 +7507,11 @@ def _run_ask(script, scenario=None, fails="", readme=ASK_README, env=None):
         log = os.path.join(d, "log")
         e = dict(os.environ)
         e.update({"PATH": binned + os.pathsep + os.environ.get("PATH", ""), "REAL_PY": sys.executable,
+                  "REAL_DATE": shutil.which("date") or "/bin/date",
                   "RUNNER_TEMP": temp, "ASK_LOG": log, "ASK_SCENARIO": json.dumps(scenario or {}),
                   "ASK_FAILS": fails, "APP_ID": str(REVIEWER_APP_ID), "APP_KEY": "KEY-MATERIAL",
-                  "GH_TOKEN": "this-repository", "DISPATCH": "false"})
+                  "GH_TOKEN": "this-repository", "DISPATCH": "false",
+                  "GITHUB_RUN_ID": "5", "GITHUB_REPOSITORY": "Adonis80/how-we-build"})
         e.update(env or {})
         try:
             p = subprocess.run(["bash", "-c", script], cwd=work, env=e, capture_output=True, text=True, timeout=120)
@@ -6676,6 +7584,71 @@ def _check_ask_run(ask=None, quiet=False):
                     fault("%s: the program was handed the App's key or id, or the wrong token: %s" % (what, line))
                 if ("--dispatch" in line) != (env.get("DISPATCH") == "true"):
                     fault("%s: the program was told to ask %s" % (what, "when it should not" if "--dispatch" in line else "not to when it should"))
+    # The looks of a timed run: ten minutes apart, a newer asking run taking over, a red look
+    # looked past and the run red at its end, and no count of looks outside 1 to 32. Then
+    # THE RELAY (#202), each case the agreement names: ordinary use, a waiting run that
+    # replaces another, a dry run during a relay, the cap reached, and the count unreadable.
+    made = [100]
+
+    def mk(mode, status="completed", event="workflow_dispatch", branch="main", day=ASK_DAY, at="12:00:00"):
+        made[0] += 1
+        return {"id": made[0], "display_title": "Ask for product reads: " + mode, "status": status,
+                "event": event, "head_branch": branch, "created_at": "%sT%sZ" % (day, at)}
+
+    yesterday = "2030-01-14"
+    crowd = [mk("dry run", at="18:%02d:00" % (i % 60)) for i in range(150)]   # newer than any relay below
+    ordinary = (crowd + [mk("timed", event="schedule", at="%02d:07:00" % (i % 24)) for i in range(40)]
+                + [mk("asking", at="15:%02d:00" % i) for i in range(8)]
+                + [mk("relay", at="06:%02d:00" % i) for i in range(4)] + [mk("relay", status="cancelled", at="07:00:00")]
+                + [mk("relay", day=yesterday, at="%02d:00:00" % (i % 24)) for i in range(30)])
+    capped = ([mk("relay", at="0%d:00:00" % i) for i in range(9)]
+              + [mk("relay", status="cancelled", at="1%d:00:00" % i) for i in range(3)])
+    start = "RELAYED inputs[dispatch]=true inputs[relay]=true ref=main"
+    for what, scenario, env, code_want, asked_want, slept_want, relayed_want, said in (
+            ("three looks, ten minutes apart, then the relay", {}, {"LOOKS": "3", "DISPATCH": "true"}, 0, repos * 3, 2, 1, "1 of 12"),
+            ("a newer asking run waiting, which takes over at the second look, and no relay",
+             {"runs": [mk("timed", status="queued", event="schedule")]}, {"LOOKS": "3", "DISPATCH": "true"}, 0, repos, 1, 0, "takes over"),
+            ("a list of waiting runs that does not come, so it looks again and relays", {"gh_fails": True},
+             {"LOOKS": "2", "DISPATCH": "true"}, 0, repos * 2, 1, 1, None),
+            ("a red first look, which the run looks past, relays after, and ends red on", {"timeout": ["Adonis80/a"]},
+             {"LOOKS": "3", "DISPATCH": "true"}, 1, repos[1:] * 3, 2, 1, "look 1 was red"),
+            ("thirty-three looks", {}, {"LOOKS": "33", "DISPATCH": "true"}, 1, [], 0, 0, None),
+            ("no looks", {}, {"LOOKS": "0", "DISPATCH": "true"}, 1, [], 0, 0, None),
+            ("a person's dry run, which looks once and never relays", {}, {}, 0, repos, 0, 0, None),
+            ("a person's run told to ask, which looks once and relays", {}, {"DISPATCH": "true"}, 0, repos, 0, 1, "1 of 12"),
+            ("ordinary use: 150 dry runs, 40 ticks, 8 asking runs and yesterday's 30 relays today, 5 relays of its own",
+             {"runs": ordinary}, {"DISPATCH": "true"}, 0, repos, 0, 1, "6 of 12"),
+            ("pending replacement: a relay waiting at the last look carries the chain, so none is started",
+             {"runs": [mk("relay", status="queued", at="23:00:00")]}, {"DISPATCH": "true"}, 0, repos, 0, 0, "waiting its turn"),
+            ("pending replacement: a person's asking run waiting likewise",
+             {"runs": [mk("asking", status="pending", at="23:00:00")]}, {"DISPATCH": "true"}, 0, repos, 0, 0, "waiting its turn"),
+            ("an asking run waiting on another branch, which carries nothing, so it relays",
+             {"runs": [mk("asking", status="queued", branch="elsewhere", at="23:00:00")]}, {"LOOKS": "2", "DISPATCH": "true"}, 0, repos * 2, 1, 1, None),
+            ("a dry run during a relay, which neither makes it yield nor stops its relay",
+             {"runs": [mk("dry run", status="queued", at="23:00:00")]}, {"LOOKS": "3", "DISPATCH": "true"}, 0, repos * 3, 2, 1, None),
+            ("a dry run with an asking run waiting, which neither yields nor relays",
+             {"runs": [mk("asking", status="queued", at="23:00:00")]}, {"LOOKS": "3", "DISPATCH": "false"}, 0, repos * 3, 2, 0, None),
+            ("the cap reached, three of the twelve cancelled", {"runs": capped}, {"DISPATCH": "true"}, 1, repos, 0, 0, "the cap is 12"),
+            ("the cap reached on the second page", {"runs": crowd + capped}, {"DISPATCH": "true"}, 1, repos, 0, 0, "the cap is 12"),
+            ("eleven today and twelve before midnight UTC", {"runs": capped[1:] + [mk("relay", day=yesterday, at="23:59:%02d" % i) for i in range(12)]},
+             {"DISPATCH": "true"}, 0, repos, 0, 1, "12 of 12"),
+            ("the count unreadable", {"count_fails": True}, {"DISPATCH": "true"}, 1, repos, 0, 0, "did not give the count"),
+            ("the count's second page unreadable", {"runs": crowd + capped[:5], "count_fails_on_page": 2},
+             {"DISPATCH": "true"}, 1, repos, 0, 0, "did not give the count"),
+            ("the start refused", {"relay_fails": True}, {"DISPATCH": "true"}, 1, repos, 0, 1, "would not start")):
+        code, printed, kept = _run_ask(script, scenario, "", ASK_README, env)
+        asked = [l.split()[1] for l in kept.splitlines() if l.startswith("ASKED ")]
+        slept = [l for l in kept.splitlines() if l.startswith("SLEPT ")]
+        relayed = [l for l in kept.splitlines() if l.startswith("RELAYED ")]
+        if code is None or (code != 0) != bool(code_want) or asked != asked_want or len(slept) != slept_want \
+                or any(l != "SLEPT 600" for l in slept) or len(relayed) != relayed_want or any(l != start for l in relayed):
+            fault("%s: came out %s, asked %s, slept %s and relayed %s, where it must come out %s, ask %s, sleep 600 %d "
+                  "time(s) and relay %d time(s) as `%s`" % (what, code, asked, slept, relayed, "red" if code_want else "green",
+                                                           asked_want, slept_want, relayed_want, start))
+        elif said and said not in printed:
+            fault("%s: the log does not say `%s`" % (what, said))
+        if env.get("DISPATCH") != "true" and "GH " in kept:
+            fault("%s: a dry run asked GitHub about runs or starts, and it never yields or relays" % what)
     code, printed, kept = _run_ask(script, {}, "", ASK_BROKEN_README, {})
     if "could not be read" not in printed:
         fault("a README list that cannot be read goes unexplained in the log")
@@ -6683,7 +7656,11 @@ def _check_ask_run(ask=None, quiet=False):
         say("ok: the asker's shell was run against a GitHub failing one product at a time (a timeout, no token, "
             "a wider token, a second repository, the program failing, a README that cannot be read): the "
             "others are still looked at, the job is red, every token is revoked, the App's key never reaches "
-            "the program, and nothing is asked unless it was chosen")
+            "the program, and nothing is asked unless it was chosen; a timed run looks again every ten minutes "
+            "until a newer asking run waits, looks past a red look and ends red for it, and a person's run looks once; "
+            "an asking run relays at its last look unless an asking run waits, a dry run never yields or relays, and "
+            "only today's relays count against the cap of 12, every page of them, a count unread or a cap reached "
+            "refusing the relay red")
     return bad
 
 
@@ -6701,7 +7678,32 @@ ASK_RUN_LOOSENINGS = (
     ("a failed ask forgotten", lambda t: t.replace('[ "$rc" -eq 0 ] || failed=1', "true", 1)),
     ("a token left live after the ask", lambda t: t.replace("            revoke\n            [ \"$rc\" -eq 0 ] || failed=1", "            [ \"$rc\" -eq 0 ] || failed=1", 1)),
     ("asking whatever was chosen", lambda t: t.replace('if [ "$DISPATCH" = "true" ]; then flag="--dispatch"; fi', 'flag="--dispatch"', 1)),
-    ("a red job turned green", lambda t: t.replace('[ "$failed" -eq 0 ]\n', 'true\n', 1)),
+    ("a red job turned green", lambda t: t.replace('[ "$red" -eq 0 ]\n', 'true\n', 1)),
+    ("a newer run never taking over", lambda t: t.replace('takes over"; yielded=1; break; fi', 'takes over"; fi', 1)),
+    ("a failed list of waiting runs ending the run", lambda t: t.replace("              pending=$(waiting) || pending=0\n", "              pending=$(waiting)\n", 1)),
+    # THE RELAY (#202).
+    ("the relay never started", lambda t: t.replace("elif timeout 30 gh api -X POST", "elif false && timeout 30 gh api -X POST", 1)),
+    ("no cap", lambda t: t.replace('elif [ "$started" -ge 12 ]; then', "elif false; then", 1)),
+    ("every arrival counted, not the relay's own starts",
+     lambda t: t.replace('select(.display_title == \\"Ask for product reads: relay\\" and .created_at', "select(.created_at", 1)),
+    ("one page counted", lambda t: t.replace("gh api --paginate ", "gh api ", 1)),
+    ("a day that is not UTC's", lambda t: t.replace("day=$(date -u +%Y-%m-%dT00:00:00Z)", "day=$(date +%Y-%m-%dT00:00:00Z)", 1)),
+    ("midnight ignored", lambda t: t.replace("&created=%3E%3D$day", "", 1).replace(' and .created_at >= \\"$day\\"', "", 1)),
+    ("an unreadable count read as none", lambda t: t.replace('| awk \'{ n += $1 } END { print n + 0 }\') || started=""',
+                                                             '| awk \'{ n += $1 } END { print n + 0 }\') || started=0', 1)),
+    ("a dry run that relays", lambda t: t.replace('if [ "$DISPATCH" = "true" ] && [ "$yielded" -eq 0 ]; then', 'if [ "$yielded" -eq 0 ]; then', 1)),
+    ("a dry run that yields", lambda t: t.replace('            if [ "$DISPATCH" = "true" ]; then\n              pending=$(waiting)',
+                                                  '            if true; then\n              pending=$(waiting)', 1)),
+    ("a dry run that makes an asking run yield",
+     lambda t: t.replace('(.display_title | test(\\"^Ask for product reads: (timed|asking|relay)\\$\\")) and ', "", 1)),
+    ("a run on another branch carrying the clock", lambda t: t.replace('.head_branch == \\"main\\" and ', "", 1)),
+    ("a relay started though an asking run waits", lambda t: t.replace('            if [[ "$pending" =~ ^[1-9][0-9]*$ ]]; then\n              echo "an asking run',
+                                                                      '            if false; then\n              echo "an asking run', 1)),
+    ("an unreadable count left green", lambda t: t.replace('red=1; echo "::error::relay refused: GitHub did not give', 'echo "::error::relay refused: GitHub did not give', 1)),
+    ("a cap reached left green", lambda t: t.replace('red=1; echo "::error::relay refused: $started', 'echo "::error::relay refused: $started', 1)),
+    ("a refused start left green", lambda t: t.replace('red=1; echo "::error::relay refused: GitHub would not start', 'echo "::error::relay refused: GitHub would not start', 1)),
+    ("a red look forgotten", lambda t: t.replace('|| { red=1; echo', '|| { red=0; echo', 1)),
+    ("a red look ending the run", lambda t: t.replace('|| { red=1; echo', '|| { exit 1; echo', 1)),
 )
 
 
@@ -6979,7 +7981,8 @@ LINK_FAILED_READ = ("printf '\\n===== the source the change imports could not be
 LINK_KINDS = 'case "$f" in *.js|*.mjs|*.cjs|*.jsx|*.ts|*.tsx|*.py|*.html) ;; *) continue ;; esac'
 LINK_FEED = 'g show "$SHA:$f" > "$t/sources/$n" 2>/dev/null || continue'
 # The touched files' own loop, which the linked files must follow (#129's first read, 4a).
-LINK_AFTER = 'add "$f" || true\n          done < "$t/touched.txt"\n'
+LINK_AFTER = ('if [ "$size" -gt 40000 ]; then part "$f" || true; else add "$f" || true; fi\n'
+              '          done < "$t/touched.txt"\n')
 LINK_HTML = ('<script src="hosting/queue.js?v=3"></script>\n<script src="/app.js"></script>\n'
              '<script src="https://cdn.example/x.js"></script><script src="//cdn.example/y.js"></script>\n'
              '<script type="module">import { l } from \'./hosting/lib.js\'</script>\n')
@@ -7163,6 +8166,17 @@ def _check_link_loosenings():
     return bad
 
 
+# canary_red loosened: each must fail one of _check_main's cases.
+CANARY_RED_LOOSENINGS = (
+    ("a merged-in commit walked to", lambda t: t.replace('if want is not None and c.get("sha") != want:',
+                                                         "if False:", 1)),
+    ("a merge's second parent followed", lambda t: t.replace('(c.get("parents") or [None])[0]',
+                                                             '(c.get("parents") or [None])[-1]', 1)),
+    ("a push head with no canary passed over", lambda t: t.replace("                return c.get(\"sha\")\n            continue",
+                                                                   "                continue\n            continue", 1)),
+)
+
+
 def _run(conclusion=None, status="completed", app=REVIEWER_APP_ID, name=REVIEWER_CHECK, sha=None):
     return {"app": None if app is None else {"id": app}, "name": name,
             "head_sha": sha, "status": status, "conclusion": conclusion}
@@ -7231,21 +8245,47 @@ def _check_main():
         ([{"filename": "board/build.py"}], [ok], 0, "note:",
          "a red canary re-run green on the same commit holds nothing",
          [("m2", [canary("failure", "2026-10-06T20:00:00Z"), canary("success", "2026-10-06T21:00:00Z")])]),
+        ([{"filename": "review-gate.py"}], [ok], 0, "note:",
+         "a canary job skipped on a words-only merge, named by its unevaluated expression, says nothing; the green before it decides",
+         [("m2", [dict(canary("skipped"), name="(inputs.probe == '' || inputs.probe == 'none') && 'canary' || "
+                                                  "format('canary probe {0}', inputs.probe)")]),
+          ("m1", [canary("success")])]),
+        ([{"filename": "review-gate.py"}], [ok], 1, "the canary failed on main at m2",
+         "a failure under the unevaluated expression is no green either: only a skipped one is passed over",
+         [("m2", [dict(canary("failure"), name="(inputs.probe == '' || inputs.probe == 'none') && 'canary' || x")]),
+          ("m1", [canary("success")])]),
         ([{"filename": ".github/workflows/review.yml"}], [ok], 0, "note:",
          "a failure under another name, or from another app, is no canary",
          [("m2", [dict(canary("failure"), name="canary probe"), dict(canary("failure"), app={"id": 1}),
                   canary("success")])]),
+        # A MERGED-IN COMMIT WAS NEVER PUSHED (13 October 2026): a merge's second
+        # parent gets no canary, and held every machinery pull request (#201's
+        # 453b128 bringing in 5bb0410). Listed by date, it sits among the first parents.
+        ([{"filename": "review-gate.py"}], [ok], 0, "note:",
+         "a merge head whose canary skipped says nothing, and its second parent, never pushed, has none to say; "
+         "the first parent's green decides",
+         [("m3", [canary("skipped")], ["m1", "m2side"]), ("m2side", []), ("m1", [canary("success")])]),
+        ([{"filename": "review-gate.py"}], [ok], 1, "the canary failed on main at m3",
+         "a merge head with no canary at all, past the grace, still holds; a green merged in under it vouches for nothing",
+         [("m3", [], ["m1", "m2side"]), ("m2side", [canary("success")]), ("m1", [canary("success")])]),
+        ([{"filename": "review-gate.py"}], [ok], 1, "the canary failed on main at m1",
+         "and the first parent's red under a merge head whose canary skipped still holds",
+         [("m3", [canary("skipped")], ["m1", "m2side"]), ("m2side", [canary("success")]), ("m1", [canary("failure")])]),
     ]
-    bad = 0
     real = urllib.request.urlopen
-    for files, runs, code, must, what, *rest in cases:
+
+    def run(files, runs, code, must, what, *rest, say=print):
+        bad = 0
         main_commits = rest[0] if rest else []
         machine = machinery([f["filename"] for f in files])
         # The changed files and the head's check runs, and on a machinery change
         # main's commits and their canaries; never anything else.
         need = {"/repos/o/r/commits/%s/check-runs" % head, "/repos/o/r/pulls/7/files"}
-        allowed = need | ({"/repos/o/r/commits"} | {"/repos/o/r/commits/%s/check-runs" % s for s, _ in main_commits}
+        allowed = need | ({"/repos/o/r/commits"} | {"/repos/o/r/commits/%s/check-runs" % m[0] for m in main_commits}
                           if machine else set())
+        # Each commit's first parent is the next listed, unless the case names its parents.
+        parents = {m[0]: m[2] if len(m) > 2 else [n[0] for n in main_commits[i + 1:i + 2]]
+                   for i, m in enumerate(main_commits)}
         asked = []
 
         def fake(req, *a, **k):
@@ -7256,10 +8296,10 @@ def _check_main():
             if parts.path.endswith("/files"):
                 body = files if first else []
             elif parts.path == "/repos/o/r/commits":
-                body = [{"sha": s, "commit": {"committer": {"date": young if s.endswith("young") else old}}}
-                        for s, _ in main_commits]
+                body = [{"sha": m[0], "commit": {"committer": {"date": young if m[0].endswith("young") else old}},
+                         "parents": [{"sha": p} for p in parents[m[0]]]} for m in main_commits]
             elif parts.path.endswith("/check-runs") and head not in parts.path:
-                body = {"check_runs": dict(main_commits)[parts.path.split("/")[-2]] if first else []}
+                body = {"check_runs": {m[0]: m[1] for m in main_commits}[parts.path.split("/")[-2]] if first else []}
             elif parts.path.endswith("/check-runs"):
                 body = {"check_runs": runs if first else []}
             else:
@@ -7275,17 +8315,16 @@ def _check_main():
             got = main(["review-gate.py", "o/r", "7", head, "token"])
         except AssertionError as e:
             urllib.request.urlopen, sys.stdout = real, stdout
-            print("  main: %s — %s" % (what, e))
-            bad += 1
-            continue
+            say("  main: %s — %s" % (what, e))
+            return 1
         finally:
             urllib.request.urlopen, sys.stdout = real, stdout
         said = out.getvalue()
         if got != code:
-            print("  main: %s — expected exit %d, got %d (%s)" % (what, code, got, said.strip()))
+            say("  main: %s — expected exit %d, got %d (%s)" % (what, code, got, said.strip()))
             bad += 1
         if must not in said:
-            print("  main: %s — expected %r in the output, got %r" % (what, must, said.strip()))
+            say("  main: %s — expected %r in the output, got %r" % (what, must, said.strip()))
             bad += 1
         # A gate change is announced on the check as well as in its log, and
         # nothing else is: an annotation on every change would teach the same
@@ -7293,25 +8332,51 @@ def _check_main():
         noticed = any(l.startswith("::notice ") for l in said.splitlines())
         gate = bool(touches_the_gate([f["filename"] for f in files]))
         if noticed != gate or gate != ("note:" in said):
-            print("  main: %s — %s" % (what, "announced in the log but not on the check"
-                                       if gate else "annotated, and it is not a gate change"))
+            say("  main: %s — %s" % (what, "announced in the log but not on the check"
+                                     if gate else "annotated, and it is not a gate change"))
             bad += 1
         # And nothing else it prints is a runner command: the file names are the
         # pull request's writing, and one could otherwise start its own.
         stray = [l for l in said.splitlines()
                  if l.startswith("::") and not l.startswith("::notice title=")]
         if stray:
-            print("  main: %s — a line the runner would obey: %r" % (what, stray[0]))
+            say("  main: %s — a line the runner would obey: %r" % (what, stray[0]))
             bad += 1
         if not need <= set(asked) <= allowed or machine != ("/repos/o/r/commits" in asked):
-            print("  main: %s — asked GitHub for %s; it must ask for %s, and on a machinery change "
-                  "main's commits, within %s" % (what, sorted(set(asked)), sorted(need), sorted(allowed)))
+            say("  main: %s — asked GitHub for %s; it must ask for %s, and on a machinery change "
+                "main's commits, within %s" % (what, sorted(set(asked)), sorted(need), sorted(allowed)))
+            bad += 1
+        return bad
+
+    bad = sum(run(*c) for c in cases)
+    # Each loosening of canary_red is run, on a copy, against the cases above,
+    # and one of them must fail, or the case that guards it proves nothing.
+    gate = _read("review-gate.py")
+    start = gate.index("\ndef canary_red(") + 1
+    source, kept = gate[start:gate.index("\n\n\n", start)], canary_red
+    for what, loosen in CANARY_RED_LOOSENINGS:
+        changed = loosen(source)
+        if changed == source:
+            print("  main: the loosening '%s' no longer applies to canary_red — rewrite it against the "
+                  "function as it stands, or it proves nothing" % what)
+            bad += 1
+            continue
+        loose = dict(globals())
+        exec(compile(changed, "canary_red", "exec"), loose)
+        globals()["canary_red"] = loose["canary_red"]
+        try:
+            caught = sum(run(*c, say=lambda *_: None) for c in cases)
+        finally:
+            globals()["canary_red"] = kept
+        if not caught:
+            print("  main: canary_red with %s passes every case — the case for it is gone" % what)
             bad += 1
     if not bad:
         print("ok: main() was run against a GitHub answering from a dictionary in %d case(s) — "
               "it asked for the changed files and the check runs, and on a machinery change main's "
               "newest canary, and nothing else; a change to the gate itself opens on the one "
-              "reviewer's clean read, and no machinery change opens while that canary is red" % len(cases))
+              "reviewer's clean read, and no machinery change opens while that canary is red; each of %d "
+              "loosenings of canary_red was refused" % (len(cases), len(CANARY_RED_LOOSENINGS)))
     return bad
 
 
@@ -7339,7 +8404,8 @@ def _url_cases():
     ]
 
 
-def _selftest():
+def _selftest(funcs=None):
+    """The gate's own cases, always, then the parts named (every part when None): 0 clear, 1 not."""
     head = "090e429a31cd5f0b2e4d7a1c9b8e6f4d2a1c3b5e"
     other = "29d7b5435bf968d75ac7451c5457d440fcba5a0c"
     # The badge, and every way a looser test would be talked into one. Only the
@@ -7403,7 +8469,7 @@ def _selftest():
          "findings on a gate change still shut it"),
         (["review-gate.py"], [], (UNREAD, None), "and an unread gate change is still unread"),
         (["README.md"], [_run("success", sha=head)], (CLEAN, "claude"), "an ordinary change still clears"),
-        (["design/SCREEN-LAW.md", "README.md"], [_run("success", sha=head)], (CLEAN, "claude"),
+        (["library/hypersolid.md", "README.md"], [_run("success", sha=head)], (CLEAN, "claude"),
          "and so does one touching several ordinary files"),
     ]
     # gate_note() is the whole of what a gate change now buys, so it is held to
@@ -7443,7 +8509,7 @@ def _selftest():
     # of its own. `GATE_DIRS` is held by the class's own directory arms.
     bad += hold(sorted(f for f in GATE_FILES if ([f], "risky") not in CLASS_CASES), [],
                 "every gate file has a class case that reads it as risky")
-    bad += hold(touches_the_gate(["design/ARCHITECT.md", "AGENTS.md"]), [], "and which are not")
+    bad += hold(touches_the_gate(["design/NOTES.md", "AGENTS.md"]), [], "and which are not")
     # machinery() reads a change as both reviewers' class does: the canary and
     # its hold never call machinery what a reviewer reads as ordinary, or the
     # other way round.
@@ -7490,43 +8556,12 @@ def _selftest():
           "than idle; it asks GitHub for %d URL(s) that carry the parameters they say they do; "
           "and it is fooled by none of the %d fakes"
           % (len(REVIEWERS), len(_url_cases()), fakes))
-    # Both run, always: `or` stopped at the first failure and hid the second
-    # until the next push.
-    failed = _check_main()
-    failed += _check_wiring()
-    failed += _check_product_wiring()
-    failed += _check_product_loosenings()
-    failed += _check_preflight_run()
-    failed += _check_preflight_loosenings()
-    failed += _check_ask_wiring()
-    failed += _check_ask_loosenings()
-    failed += _check_ask_run()
-    failed += _check_ask_run_loosenings()
-    failed += _check_ask_program()
-    failed += _check_kit()
-    failed += _check_kit_loosenings()
-    failed += _check_board_loosenings()
-    failed += _check_review_loosenings()
-    failed += _check_read_loosenings()
-    failed += _check_class_loosenings()
-    failed += _check_route_loosenings()
-    failed += _check_registry()
-    failed += _check_conversation()
-    failed += _check_caller()
-    failed += _check_caller_loosenings()
-    failed += _check_context()
-    failed += _check_brief()
-    failed += _check_monitor()
-    failed += _check_canary()
-    failed += _check_alert()
-    failed += _check_product_glm()
-    failed += _check_expressions()
-    failed += _check_attempt_loosenings()
-    failed += _check_more_loosenings()
-    failed += _check_rulebook_pages()
-    failed += _check_context_loosenings()
-    failed += _check_pick_loosenings()
-    failed += _check_link_loosenings()
+    # Every part asked for runs, always: `or` stopped at the first failure and
+    # hid the second until the next push. Which parts: SELFTEST_PARTS, whole by
+    # default, or what the plan chose (#187).
+    failed = 0
+    for name in funcs if funcs is not None else selftest_functions("all"):
+        failed += globals()[name]()
     return 1 if failed else 0
 
 
@@ -7588,6 +8623,13 @@ def _pages(url, token, key=None, params=None):
 # safer, lands by the emergency route (`library/reviewer-parking.md`), and the
 # canary that runs after it lifts the hold. A canary skipped or cancelled says
 # nothing, so the newest that ran is looked for, back CANARY_LOOKBACK commits.
+#
+# MAIN'S FIRST PARENTS ONLY (13 October 2026): a commit that reaches main as a
+# merge commit's second parent was never a push head, so no canary starts for
+# it; walked to, its silence held every machinery pull request red (#201's
+# merge 453b128 brought in 5bb0410, cleared by a canary dispatched by hand).
+# So the walk follows each commit's first parent, every one of which a merge to
+# main pushed; one GitHub lists without parents is followed by the next listed.
 
 
 def canary_red(api, token):
@@ -7597,10 +8639,23 @@ def canary_red(api, token):
                                           "Accept": "application/vnd.github+json"})
     with urllib.request.urlopen(req) as r:
         commits = json.load(r)
+    want = None
     for c in commits if isinstance(commits, list) else []:
+        if want is not None and c.get("sha") != want:
+            continue
+        want = ((c.get("parents") or [None])[0] or {}).get("sha")
+        # A SKIPPED CANARY KEEPS ITS NAME UNEVALUATED (9 October 2026): canary.yml
+        # names the job by an expression, and GitHub does not evaluate it for a
+        # job it skips, so a words-only merge left a run named by the expression
+        # itself; asked for by name, it was missing, and every machinery pull
+        # request was held on a canary that was never red (#173 on cb01d64). So
+        # every run is fetched, and a skipped one under that expression counts
+        # as the skipped canary it is.
         mine = [r for r in _pages("%s/commits/%s/check-runs" % (api, c.get("sha")), token, key="check_runs",
-                                  params={"check_name": CANARY_CHECK, "filter": "all"})
-                if r.get("name") == CANARY_CHECK and (r.get("app") or {}).get("id") == ACTIONS_APP]
+                                  params={"filter": "all"})
+                if (r.get("name") == CANARY_CHECK or (r.get("conclusion") == "skipped"
+                                                      and CANARY_UNEVALUATED in (r.get("name") or "")))
+                and (r.get("app") or {}).get("id") == ACTIONS_APP]
         # A CANARY THAT DID NOT RUN AT ALL IS RED (#161's read, advisory 3): every
         # push to main starts one, skipped or not, so a commit with none, past
         # the minutes one takes to appear, is a canary.yml GitHub would not load.
@@ -7616,9 +8671,250 @@ def canary_red(api, token):
     return None
 
 
+# MAIN'S OWN CHECK (#187, item 3): the whole self-test runs on every push to
+# main, and a pull request that runs only parts trusts that run. So while it
+# cannot be trusted nothing runs less than the whole: the plan runs every part
+# (selftest_plan), and the gate holds nothing on it (#190's third read: a hold
+# at the gate deadlocked the repair, a page change held for the very red it
+# repairs; so the repair runs whole and passes on its own showing). The newest
+# of main's last commits whose `check` has finished decides, as the canary's
+# does: a run still going on the tip is passed over to the commit before it, a
+# cancelled or skipped one says nothing, a commit with no run at all past the
+# minutes one takes to appear is a check.yml GitHub would not load, and red is
+# any finish but success. When none has finished there is no run to trust.
+MAIN_CHECK = "check"
+MAIN_LOOKBACK = CANARY_LOOKBACK
+MAIN_GRACE = CANARY_GRACE
+
+
+def main_red(api, token):
+    """Why main's check is not to be trusted, or None when its newest finished run passed."""
+    req = urllib.request.Request("%s/commits?sha=main&per_page=%d" % (api, MAIN_LOOKBACK),
+                                 headers={"Authorization": "Bearer " + token,
+                                          "Accept": "application/vnd.github+json"})
+    with urllib.request.urlopen(req) as r:
+        commits = json.load(r)
+
+    def seen():
+        # Each commit's runs are fetched only when the newer ones did not decide.
+        for c in commits if isinstance(commits, list) else []:
+            if c.get("sha"):
+                yield (c["sha"], ((c.get("commit") or {}).get("committer") or {}).get("date") or "",
+                       list(_pages("%s/commits/%s/check-runs" % (api, c["sha"]), token, key="check_runs",
+                                   params={"check_name": MAIN_CHECK, "filter": "all"})))
+    return main_red_from(seen())
+
+
+def main_red_from(commits, now=None):
+    """The rule alone, on main's commits newest first as (sha, pushed at, check runs): None when the
+    newest finished `check` by Actions passed, else why not."""
+    cutoff = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime((now or time.time()) - MAIN_GRACE))
+    n = 0
+    for sha, pushed, check_runs in commits:
+        n += 1
+        mine = [r for r in check_runs if r.get("name") == MAIN_CHECK and (r.get("app") or {}).get("id") == ACTIONS_APP]
+        if not mine:
+            if pushed and pushed < cutoff:
+                return "has not run on %s" % sha[:12]
+            continue
+        ran = [r for r in mine if r.get("status") == "completed" and r.get("conclusion") not in ("skipped", "cancelled")]
+        if ran:
+            newest = max(ran, key=lambda r: r.get("completed_at") or "")
+            return None if newest.get("conclusion") == "success" else "is red at %s" % sha[:12]
+    return "has not finished on any of main's newest %d commit(s)" % n
+
+
+# THE SELF-TEST, RUN ONLY WHEN IT CAN SAY SOMETHING NEW (his ask, 7 October
+# 2026: the full `--selftest` ran on every pull request and again when the
+# verdict landed, about 22 minutes each), AND ONLY THE PARTS A CHANGE TOUCHES
+# (#187, item 3: it still ran whole, 15 to 21 minutes on CI, on every words-only
+# pull request). check.yml runs check.sh in two steps, `selftest` and then
+# `gate`, and the first asks `--selftest-plan` before the heavy run. The plan
+# answers one of three ways:
+#   - skip: an earlier attempt of this very run passed its `selftest` step (a
+#     re-run is the same run, so the same commit and the same files: the wake
+#     re-runs a check to read a verdict that has landed, and the self-test it
+#     would repeat has already passed on exactly this tree), or no file the
+#     pull request changes is one the self-test reads (SELFTEST_NOT_READ);
+#   - run all: not a pull request (a push to main, a run by hand); main's own
+#     check red, unfinished or unreadable (main_red: a run of parts trusts
+#     main's whole run, so while that cannot be trusted nothing runs less than
+#     the whole, the repair of a red main included); the files unread, no file
+#     listed, a change to the gate itself (check.sh, review-gate.py, the
+#     board's build, any workflow: a change to what runs the parts is judged
+#     by every part), or a file no part is measured to read: anything never
+#     measured runs the whole, as before;
+#   - run core,…: the core, and every part measured to read a file the pull
+#     request changes. The core is every part that takes seconds; the parts
+#     named apart are the loosening suites and runs that take minutes, each
+#     with every file of this repository any process of it opened, measured on
+#     11 October 2026 by running each part alone under `strace -f` in this
+#     checkout, children included (a log of the parent's opens alone had
+#     missed README.md, which the asker's child opens by itself; found on
+#     #190's first read). Every part loads review-gate.py, which is the gate
+#     and runs the whole anyway, so the lines below leave it out. A part that
+#     later starts reading a file its line does not name is caught by the
+#     whole suite, which runs on every push to main; while that run is red
+#     every pull request runs the whole, the repair among them, so a red main
+#     is repaired by an ordinary pull request and held by nothing.
+SELFTEST_STEP = "selftest"
+SELFTEST_JOB = "check"
+# check.sh's lines that ask the plan and act on it, held by _check_selftest_plan.
+PLAN_ASK = 'plan=$(python3 review-gate.py --selftest-plan 2>/dev/null | tail -n 1) || plan="run all: the plan could not be made"'
+PLAN_SKIP = '  "skip: "*) echo "selftest: not run, ${plan#skip: }" ;;'
+PLAN_PARTS = '  "run "*": "*) parts=${plan%%:*}; parts=${parts#run }; echo "selftest: run $parts, ${plan#*: }" ;;'
+PLAN_ELSE = '  *) parts=all; echo "selftest: run all, the plan could not be read: $plan" ;;'
+PLAN_RUN = '[ -z "$parts" ] || python3 review-gate.py --selftest "$parts" || fail_gate=1'
+PLAN_GATE = '[ "$part" = selftest ] || case "${GITHUB_EVENT_NAME:-}" in push|"") : ;; *)'
+SELFTEST_NOT_READ = ("board/robots.txt", "board/vercel.json")
+# What the plan treats as the gate: a change to any of these runs every part.
+PLAN_GATE_FILES = GATE_FILES
+PLAN_GATE_DIRS = (".github/workflows/",)
+# THE PARTS: (name, the functions it runs, in order; the files it reads, as
+# paths or fnmatch patterns). The core runs on every plan that runs anything,
+# and names its files too, so a page is a measured input and not an unknown.
+# The order here is the order the whole suite runs in.
+SELFTEST_CORE = "core"
+SELFTEST_PARTS = (
+    (SELFTEST_CORE, ("_check_main", "_check_wiring", "_check_product_wiring", "_check_preflight_run",
+                     "_check_ask_wiring", "_check_ask_loosenings", "_check_ask_program", "_check_kit",
+                     "_check_review_loosenings", "_check_registry", "_check_selftest_plan", "_check_conversation",
+                     "_check_caller", "_check_context", "_check_brief", "_check_canary", "_check_alert",
+                     "_check_expressions", "_check_rulebook_pages", "_check_context_loosenings",
+                     "_check_pick_loosenings", "_check_link_loosenings"),
+     # The selector is run on the real tree, so the core reads every page, paper and script.
+     ("*.md", "library/*.md", "juku-library/*.md", "model-registry/ask.py", "model-registry/context.py",
+      "model-registry/registry.json", "model-registry/resolve.py", "product-reads/ask.py", "product-reads/reads.py",
+      "product-reads/setup.py", "product-reads/kit/*", "board/build.py", "check.sh", "review-gate.py",
+      ".github/workflows/*")),
+    ("product", ("_check_product_loosenings",),
+     (".github/workflows/review-product.yml", ".github/workflows/review.yml", "README.md",
+      "model-registry/ask.py", "model-registry/resolve.py", "product-reads/reads.py")),
+    ("preflight", ("_check_preflight_loosenings",),
+     (".github/workflows/review-product.yml", "README.md", "product-reads/reads.py")),
+    ("asker", ("_check_ask_run", "_check_ask_run_loosenings"),
+     (".github/workflows/ask-product-reads.yml", "README.md", "product-reads/ask.py", "product-reads/reads.py")),
+    ("kit", ("_check_kit_loosenings",),
+     (".github/workflows/wake.yml", "AGENTS.md", "board/build.py", "product-reads/kit/*",
+      "product-reads/reads.py")),
+    ("board", ("_check_board_loosenings",),
+     (".github/workflows/*", "README.md", "board/build.py", "board/middleware.js")),
+    ("reviewers", ("_check_read_loosenings", "_check_class_loosenings", "_check_route_loosenings",
+                   "_check_attempt_loosenings", "_check_more_loosenings"),
+     (".github/workflows/review-product.yml", ".github/workflows/review.yml", "AGENTS.md", "CHARTER.md",
+      "HOW-WE-BUILD.md", "README.md", "check.sh", "library/deploy.md", "library/reviewer.md",
+      "library/rulebook-files.md", "model-registry/ask.py", "model-registry/context.py",
+      "model-registry/registry.json", "model-registry/resolve.py", "product-reads/reads.py")),
+    ("caller", ("_check_caller_loosenings",),
+     ("model-registry/ask.py", "model-registry/registry.json", "model-registry/resolve.py")),
+    ("monitor", ("_check_monitor",),
+     (".github/workflows/monitor.yml", ".github/workflows/review.yml")),
+    ("glm", ("_check_product_glm",),
+     (".github/workflows/review-product.yml", "model-registry/ask.py", "model-registry/registry.json",
+      "model-registry/resolve.py")),
+)
+
+
+def selftest_input(path):
+    """Whether the full self-test reads `path`, so a change to it must run it: all but the measured few."""
+    return path not in SELFTEST_NOT_READ
+
+
+def selftest_parts_for(path):
+    """The parts measured to read `path`, by name; [] for a file no part names."""
+    return [name for name, _, files in SELFTEST_PARTS
+            if any(path == f or fnmatch.fnmatchcase(path, f) for f in files)]
+
+
+def selftest_functions(spec):
+    """The functions `--selftest SPEC` runs, in the suite's order: `all`, or a comma-separated list of parts."""
+    wanted = None if spec == "all" else set(spec.split(","))
+    known = {name for name, _, _ in SELFTEST_PARTS}
+    if wanted is not None and (not wanted or not wanted <= known):
+        raise ValueError("no such part: %s" % ", ".join(sorted(wanted - known) or ["(none)"]))
+    return [f for name, funcs, _ in SELFTEST_PARTS if wanted is None or name in wanted for f in funcs]
+
+
+def selftest_plan(event, files, earlier_steps, main=None):
+    """("run" or "skip", what to run, why). `files`: the pull request's changed paths, or
+    None when they could not be read; `earlier_steps`: the previous attempt's (name,
+    conclusion) steps of this job, or None when there is none or it could not be read;
+    `main`: why main's own check cannot be trusted (main_red), or None when it can.
+    What to run is "all", or the parts to run as "core,…"; on a skip it is "".
+    Every name in the reason is printed on the one line check.sh reads (a file name
+    may carry a line break, and the last line is the plan)."""
+    if event != "pull_request":
+        return "run", "all", "not a pull request (%s)" % (event or "a run by hand")
+    if main:
+        return "run", "all", "main's own check %s, and a run of parts would trust main's whole run" % main
+    if earlier_steps and (SELFTEST_STEP, "success") in earlier_steps:
+        return "skip", "", "an earlier attempt of this same run passed the self-test on this same commit"
+    if files is None:
+        return "run", "all", "the pull request's files could not be read"
+    if not files:
+        return "run", "all", "GitHub listed no changed file"
+    hit = sorted(set(" ".join(f.split()) for f in files if selftest_input(f)))
+    if not hit:
+        return "skip", "", "none of its %d changed file(s) is read by the self-test" % len(files)
+    gate = sorted(f for f in hit if f in PLAN_GATE_FILES or f.startswith(PLAN_GATE_DIRS))
+    if gate:
+        return "run", "all", "it changes the gate itself: %s" % ", ".join(gate[:6])
+    unmeasured = sorted(f for f in hit if not selftest_parts_for(f))
+    if unmeasured:
+        return "run", "all", "it changes a file no part is measured to read: %s%s" % (
+            ", ".join(unmeasured[:6]), " and %d more" % (len(unmeasured) - 6) if len(unmeasured) > 6 else "")
+    parts = [name for name, _, _ in SELFTEST_PARTS
+             if name == SELFTEST_CORE or any(name in selftest_parts_for(f) for f in hit)]
+    return "run", ",".join(parts), "it changes %s, read by %s" % (
+        ", ".join(hit[:6]) + (" and %d more" % (len(hit) - 6) if len(hit) > 6 else ""),
+        "the core alone" if parts == [SELFTEST_CORE] else "the core and " + ", ".join(parts[1:]))
+
+
+def _selftest_plan_main(env):
+    """The plan for this run, from the environment check.yml sets. Prints one line."""
+    event, repo, num = env.get("GITHUB_EVENT_NAME", ""), env.get("GITHUB_REPOSITORY", ""), env.get("PR_NUMBER", "")
+    token, run, attempt = env.get("GH_TOKEN", ""), env.get("GITHUB_RUN_ID", ""), env.get("GITHUB_RUN_ATTEMPT", "")
+    api = "https://api.github.com/repos/%s" % repo
+    earlier = None
+    if token and repo and run.isdigit() and attempt.isdigit() and int(attempt) > 1:
+        try:
+            for job in _pages("%s/actions/runs/%s/attempts/%d/jobs" % (api, run, int(attempt) - 1), token, key="jobs"):
+                if job.get("name") == SELFTEST_JOB:
+                    earlier = [(st.get("name"), st.get("conclusion")) for st in job.get("steps") or []]
+        except Exception:  # noqa: BLE001 — unread is "run", never "skip"
+            earlier = None
+    files = None
+    if event == "pull_request" and token and repo and num.isdigit():
+        try:
+            files = []
+            for f in _pages("%s/pulls/%s/files" % (api, num), token):
+                files += [n for n in (f.get("filename"), f.get("previous_filename")) if n]
+            # GitHub lists at most 3,000 files; at that size, read them all.
+            if len(files) >= 3000:
+                files = None
+        except Exception:  # noqa: BLE001
+            files = None
+    main = None
+    if event == "pull_request" and token and repo:
+        try:
+            main = main_red(api, token)
+        except Exception:  # noqa: BLE001 — unread is "run all", never a run of parts
+            main = "could not be read"
+    what, run, why = selftest_plan(event, files, earlier, main)
+    print("%s: %s" % (" ".join(x for x in (what, run) if x), why))
+    return 0
+
+
 def main(argv):
-    if len(argv) == 2 and argv[1] == "--selftest":
-        return _selftest()
+    if len(argv) in (2, 3) and argv[1] == "--selftest":
+        try:
+            funcs = selftest_functions(argv[2] if len(argv) == 3 else "all")
+        except ValueError as e:
+            print("review-gate selftest: %s" % e)
+            return 2
+        return _selftest(funcs)
+    if len(argv) == 2 and argv[1] == "--selftest-plan":
+        return _selftest_plan_main(os.environ)
     if len(argv) == 2 and argv[1] == "machinery":
         print("yes" if machinery([l for l in sys.stdin.read().splitlines() if l]) else "no")
         return 0

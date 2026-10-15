@@ -34,17 +34,55 @@ name: Ask for product reads
 # nothing of the App's key. The ask names the product, a pull request's number
 # and a commit; the log shows those and counts, and nothing a product holds.
 #
-# BUILT, NOT YET RUN. review-gate.py holds each line of this file against cases,
-# and product-reads/ask.py runs its rules against a made-up product. Neither is a
-# run. The first live tick, once this is on main, is its proof.
+# IT RUNS, AND IS HELD. review-gate.py holds each line of this file against cases,
+# and product-reads/ask.py runs its rules against a made-up product; the live
+# ticks are its runs on main (run 37911136877, 9 October 2026, the latest).
+#
+# OFF THE BUSY MINUTES (9 October 2026, in decision 0018's change). On "*/10" it ran four times on 8
+# October (UTC; runs 37720778799 to 37853290641), not every ten minutes: GitHub
+# delays and drops scheduled runs on round minutes, when everyone's schedules
+# fire. Minute 7 and every ten after is the same clock, still the one schedule
+# (his ruling, 4 October 2026).
+#
+# THE CLOCK INSIDE THE TICK (9 October 2026). Minute 7 did not mend it: the
+# schedule had fired 7 times since its first tick (7 October, 23:48 UTC, run
+# 37704348679), 3 to 7 hours apart, and none from 09:25 to 17:08 UTC on 9
+# October, minute 7 in place since 15:58. GitHub runs a schedule when it can
+# and drops what it cannot, and no cron line changes that. So a tick that lands keeps the ruling itself: it
+# looks, then every ten minutes again, LOOKS times in all (32, about five
+# hours, inside the job's limit), and a newer run waiting its turn, a tick or
+# a person's, takes over at its next look. One tick in five hours keeps the
+# ten-minute clock; a person's run looks once. On a public repository the
+# runner's minutes cost nothing. Still the one schedule, and nothing else.
+#
+# THE RELAY (#202, agreed with the consultant 13 October 2026). The tick that
+# lands still leaves hours between its last look and the next tick, so every
+# asking run (a tick, a relay, a person's run told to ask) starts its own
+# successor at its last look, unless an asking run on main is already waiting
+# its turn: GitHub keeps one waiting run in the group, and whichever survives
+# relays in its turn. A dry run asks nothing, waits in a group of its own, and
+# never yields or relays. Only the relay's own starts count, by their own input
+# and their own run name, against a cap of 12 a UTC day (about 5 are needed),
+# counted afresh from GitHub's whole list just before each start, cancelled
+# ones included; a tick or a person's start neither counts nor resets it. A
+# count that cannot be read, a cap reached, or a start refused is a red run
+# that says which, and the schedule stays as the restart. Ten minutes is the
+# target, not a promise: a runner outage or the cap can still leave a gap.
+
+run-name: "${{ github.event_name == 'schedule' && 'Ask for product reads: timed' || !inputs.dispatch && 'Ask for product reads: dry run' || inputs.relay && 'Ask for product reads: relay' || 'Ask for product reads: asking' }}"
 
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "7-59/10 * * * *"
   workflow_dispatch:
     inputs:
       dispatch:
         description: Ask for the reads it finds. False, it only says what it would ask.
+        required: false
+        type: boolean
+        default: false
+      relay:
+        description: Set by the asker alone, on the successor it starts. Counted against the day's cap; a person leaves it off.
         required: false
         type: boolean
         default: false
@@ -54,7 +92,7 @@ permissions:
   actions: write
 
 concurrency:
-  group: ask-product-reads
+  group: ${{ (github.event_name == 'schedule' || inputs.dispatch) && 'ask-product-reads' || 'ask-product-reads-dry' }}
   cancel-in-progress: false
 
 jobs:
@@ -63,7 +101,7 @@ jobs:
     # THE DOOR, as the reviewer's: without this line the App's key is readable
     # from any branch. review-gate.py refuses a build that loses it.
     environment: reviewer
-    timeout-minutes: 30
+    timeout-minutes: 340
     steps:
       - uses: actions/checkout@v4
         with:
@@ -75,6 +113,7 @@ jobs:
           APP_KEY: ${{ secrets.REVIEWER_APP_KEY }}
           GH_TOKEN: ${{ github.token }}
           DISPATCH: ${{ github.event_name == 'schedule' && 'true' || inputs.dispatch }}
+          LOOKS: ${{ (github.event_name == 'schedule' || (inputs.dispatch && inputs.relay)) && '32' || '1' }}
         run: |
           set -euo pipefail
           if [ -z "${APP_ID:-}" ] || [ -z "${APP_KEY:-}" ]; then
@@ -96,6 +135,37 @@ jobs:
           revoke() { [ -z "$tok" ] || curl -sS --max-time 20 -o /dev/null -X DELETE -H "Authorization: token $tok" \
             -H "Accept: application/vnd.github+json" "https://api.github.com/installation/token" || true; tok=""; }
           trap 'revoke; rm -f "$key" "$RUNNER_TEMP/mint.json"' EXIT
+          looks=${LOOKS:-1}
+          [[ "$looks" =~ ^[1-9][0-9]?$ ]] && [ "$looks" -le 32 ] || { echo "::error::looks is 1 to 32"; exit 1; }
+          look=0
+          # Each look is the whole of what follows, at this indentation so its lines
+          # stay the ones review-gate.py holds. A RED LOOK IS REMEMBERED, NEVER THE END
+          # (12 October 2026, run 38229766003): the tick died at its 20th look because one
+          # product's token did not mint once, Hemz-OS#150's verify passed fifteen minutes
+          # later, and no tick fired again for an hour, so nobody asked. One product's
+          # trouble, or one answer GitHub did not give, stops no other product being
+          # asked: the look goes on, the run looks again, and it ends red after its last
+          # look, naming every look that was red.
+          red=0
+          # THE RUNS THAT CARRY THE CLOCK (#202): an asking run on main waiting its turn,
+          # a tick, a relay or a person's run told to ask. A dry run waits in a group of
+          # its own and is never one, so it never makes an asking run yield.
+          waiting() { timeout 30 gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ask-product-reads.yml/runs?per_page=20" \
+            --jq "[.workflow_runs[] | select(.id != $GITHUB_RUN_ID and .head_branch == \"main\" and (.display_title | test(\"^Ask for product reads: (timed|asking|relay)\$\")) and (.status == \"queued\" or .status == \"pending\" or .status == \"waiting\" or .status == \"requested\"))] | length"; }
+          yielded=0
+          while [ "$look" -lt "$looks" ]; do
+          look=$((look + 1))
+          if [ "$look" -gt 1 ]; then
+            sleep 600
+            # A newer asking run waiting its turn takes over, so a person's run never waits
+            # behind this one. A list that does not come is no newer run: look again.
+            if [ "$DISPATCH" = "true" ]; then
+              pending=$(waiting) || pending=0
+              if [[ "$pending" =~ ^[1-9][0-9]*$ ]]; then echo "a newer run is waiting, and takes over"; yielded=1; break; fi
+            fi
+          fi
+          echo "look $look of $looks"
+          # The App's JWT lives nine minutes, so each look signs its own.
           printf '%s\n' "$APP_KEY" > "$key"
           b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
           now=$(date +%s)
@@ -119,7 +189,7 @@ jobs:
             curl -sS --max-time 20 -X POST -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
               "https://api.github.com/app/installations/$inst/access_tokens" -d "$body" > "$RUNNER_TEMP/mint.json" || : > "$RUNNER_TEMP/mint.json"
             tok=$(jq -r '.token // empty' "$RUNNER_TEMP/mint.json") || tok=""
-            [ -n "$tok" ] || { echo "::error::the App would not mint a token scoped to $REPO"; failed=1; continue; }
+            [ -n "$tok" ] || { echo "::error::the App would not mint a token scoped to $REPO: $(jq -r '.message // "no message"' "$RUNNER_TEMP/mint.json")"; failed=1; continue; }
             echo "::add-mask::$tok"
             want='{"checks":"read","contents":"read","pull_requests":"read"}'
             granted=$(jq -cS '(.permissions // {}) | del(.metadata)' "$RUNNER_TEMP/mint.json") || granted=""
@@ -144,6 +214,31 @@ jobs:
             revoke
             [ "$rc" -eq 0 ] || failed=1
           done
-          # One product's trouble does not stop the others being looked at, and it
-          # does not go unsaid: the job is red.
-          [ "$failed" -eq 0 ]
+          # One product's trouble does not stop the others being looked at, nor the
+          # next look; and it does not go unsaid: the job is red at the end.
+          [ "$failed" -eq 0 ] || { red=1; echo "::error::look $look was red; looking on"; }
+          done
+          # THE RELAY (#202): after its last look an asking run starts its one successor,
+          # unless an asking run already waits to carry the clock on. Only the relay's own
+          # starts are counted, afresh, from every page of GitHub's list since midnight UTC.
+          if [ "$DISPATCH" = "true" ] && [ "$yielded" -eq 0 ]; then
+            pending=$(waiting) || pending=0
+            if [[ "$pending" =~ ^[1-9][0-9]*$ ]]; then
+              echo "an asking run is waiting its turn, and relays in its turn"
+            else
+              day=$(date -u +%Y-%m-%dT00:00:00Z)
+              started=$(timeout 60 gh api --paginate "repos/$GITHUB_REPOSITORY/actions/workflows/ask-product-reads.yml/runs?event=workflow_dispatch&created=%3E%3D$day&per_page=100" \
+                --jq "[.workflow_runs[] | select(.display_title == \"Ask for product reads: relay\" and .created_at >= \"$day\")] | length" | awk '{ n += $1 } END { print n + 0 }') || started=""
+              if ! [[ "$started" =~ ^[0-9]+$ ]]; then
+                red=1; echo "::error::relay refused: GitHub did not give the count of today's relay starts. No successor; the schedule stays as the restart."
+              elif [ "$started" -ge 12 ]; then
+                red=1; echo "::error::relay refused: $started relay starts today (UTC), and the cap is 12. No successor; the schedule stays as the restart."
+              elif timeout 30 gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/ask-product-reads.yml/dispatches" \
+                  -f ref=main -f 'inputs[dispatch]=true' -f 'inputs[relay]=true' > /dev/null; then
+                echo "relayed: a successor is started, $((started + 1)) of 12 today (UTC)"
+              else
+                red=1; echo "::error::relay refused: GitHub would not start the successor. No successor; the schedule stays as the restart."
+              fi
+            fi
+          fi
+          [ "$red" -eq 0 ]
