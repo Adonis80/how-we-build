@@ -6054,11 +6054,19 @@ BOARD_DEPLOY_CASES = (
     # the board makes none, so it never starves a product. Every path above runs
     # at 59, with five older the host returned beside them, and deploys.
     ("the account at its ceiling", {"FAKE_USED": "60", "GITHUB_EVENT_NAME": "check_run"}, 0, "dpl_before", "none",
-     "ceiling: the account made 60 deployments in the last 24 hours", "deployment:"),
+     "ceiling: the account has made 60 or more deployments", "deployment:"),
     ("the account at its ceiling, dispatched", {"FAKE_USED": "60"}, 0, "dpl_before", "none",
-     "ceiling: the account made 60 deployments in the last 24 hours", "deployment:"),
+     "ceiling: the account has made 60 or more deployments", "deployment:"),
     ("the account at its ceiling, asked for as a preview", {"TARGET": "preview", "LIVE": "no", "FAKE_USED": "60"}, 0,
-     "dpl_before", "none", "ceiling: the account made 60", "deployment:"),
+     "dpl_before", "none", "ceiling: the account has made 60 or more", "deployment:"),
+    # #219's first read: a domain showing a stranger the board is replaced, ceiling or not.
+    ("the account at its ceiling, the same board live showing a stranger the board",
+     {"FAKE_USED": "60", "FAKE_LIVE": "same", "FAKE_BEFORE": "board", "GITHUB_EVENT_NAME": "check_run"}, 0,
+     "dpl_copy", "READY", "live: dpl_copy, the copy of dpl_new", "ceiling:"),
+    ("the account at its ceiling, dispatched, the domain showing a stranger the board",
+     {"FAKE_USED": "60", "FAKE_BEFORE": "board"}, 0, "dpl_copy", "READY", "the ceiling is passed over", "ceiling:"),
+    ("under the ceiling, the count kept out of the public log", {"GITHUB_EVENT_NAME": "check_run"}, 0, "dpl_copy",
+     "READY", "the account's deployments in the last 24 hours: under the ceiling of 60", "hours: 59"),
     ("the account's day cannot be counted", {"FAKE_USED": "unread"}, 1, "dpl_before", "none",
      "could not be counted", "deployment:"),
 )
@@ -6343,6 +6351,9 @@ BOARD_LOOSENINGS = (
     ("the ceiling held on an event alone", lambda t: t.replace('if [ "$used" -ge 60 ]; then', 'if [ "$GITHUB_EVENT_NAME" != workflow_dispatch ] && [ "$used" -ge 60 ]; then', 1)),
     ("an uncounted day deployed", lambda t: t.replace('[[ "$used" =~ ^[0-9]+$ ]] ||', "true ||", 1)),
     ("a page too short to reach the ceiling", lambda t: t.replace("&since=$since&limit=100", "&since=$since&limit=20", 1)),
+    ("a leaking board left live at the ceiling", lambda t: t.replace('if [ "$leak" -ne 2 ]; then', "if true; then", 1)),
+    ("the domain unsmoked at the ceiling", lambda t: t.replace('            gated "$DOMAIN" pin || leak=$?\n', "", 1)),
+    ("the count printed", lambda t: t.replace("under the ceiling of 60", "$used, under the ceiling of 60", 1)),
     ("a week counted as the day", lambda t: t.replace("since=$(( ($(date +%s) - 86400) * 1000 ))", "since=$(( ($(date +%s) - 604800) * 1000 ))", 1)),
 )
 
