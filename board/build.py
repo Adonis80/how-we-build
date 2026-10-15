@@ -3,15 +3,16 @@
 
 What the page shows and may claim is decision 0007 and its addendum
 (https://github.com/Adonis80/how-we-build/issues/97); the section marks below
-(§n, An) are its clauses. Decision 0012 (issues/145) adds one card above the pages:
-every product's `proposed` items in one folded list, a view only.
+(§n, An) are its clauses. Above the pages, #222's proposals card (Option D), in place of
+decision 0012's folded list: the open `proposal` issues here and every
+product's `proposed` items in one queue (decision 0020), a view only.
 
 DEPLOYED, IT IS THE BOARD'S FUNCTION (#222, his ruling, 15 October 2026: the
 board "must not use deploys, use resources, or compete with a real product").
 `.github/workflows/build-board.yml` deploys this file as `api/build.py`, behind
 the PIN gate, only when the board's own code changes; each time the page is
 opened, `handler` reads the products' roadmaps, this repository's pull requests
-and OpenRouter's spend there and then, with GETs alone, and keeps the page a
+and open `proposal` issues, and OpenRouter's spend there and then, with GETs alone, and keeps the page a
 minute. The keys are the project's own: BOARD_READ_TOKEN, a read-only GitHub
 token, and OPENROUTER_KEY. A source that cannot be read is said on its page;
 nothing a source holds reaches a log.
@@ -30,6 +31,7 @@ The reads, in the shape `read_live` makes them:
      "rulebook": {"open": [{"number", "title", "body", "draft", "created_at",
                             "url", "review": [{"status", "conclusion"}, ...]}],
                   "merged": [{"number", "title", "url", "merged_at"}, ...]},
+     "proposals": [{"number", "title", "body", "created_at", "url"}, ...],
      "spend": {"days": [{"date": "YYYY-MM-DD", "usage": <USD>}, ...]}}
 
 A product or the rulebook that could not be read is {"name": ..., "unread": true}
@@ -222,19 +224,6 @@ def fold(count, word, inner, label=None):
             '<span class="st">%s</span></summary>%s</details></li>' % (count, word, label or word.capitalize(), inner))
 
 
-def ideas_card(ideas):
-    """Decision 0012: every product's `proposed` items in one folded list, in the board's row
-    order. A view only: it shows what the project pages already read, keeps no copy, and
-    changes no count (§2: suggested stands outside progress; §3: his decisions are the pages')."""
-    total = sum(len(v) for v in ideas.values())
-    if not total:
-        return ""
-    inner = "".join('<section class="apart-set"><h3>%s <span class="n">%d</span></h3>%s</section>'
-                    % (e(name), len(ideas[name]), timeline("inner", ideas[name])) for name in ROWS if ideas.get(name))
-    return '<ol class="tl ideas">%s</ol>' % fold(total, "suggested idea" if total == 1 else "suggested ideas",
-                                               inner, "Every product")
-
-
 def unread_row(name, what):
     """A source that could not be read when the page opened: said, never shown as nothing."""
     return row(name, "Not read just now", "%s could not be read when this page opened. Open it again in a minute."
@@ -389,6 +378,124 @@ def rulebook_row(rb):
     return row(RULEBOOK, counts, line, asks + spine, progress, "Pull requests · in sequence"), len(waiting)
 
 
+# ---------------------------------------------------------------- proposals
+
+# THE PROPOSALS CARD (his approval, 15 October 2026, #222: Option D). One card above the
+# project pages: every open `proposal` issue here, and every product's `proposed` item, in
+# one queue (decision 0020), on the same live read. Pure HTML and CSS, cyan, yellow and teal
+# alone, under 10 KB; it replaces decision 0012's folded list of suggested ideas.
+ISSUE_LINK = re.compile(r"^https://github\.com/Adonis80/how-we-build/issues/[1-9][0-9]*$")
+STAGES = (("b", "Being built"), ("w", "Waiting for debate"), ("a", "Agreed"))
+SHOWN = 6
+DUE_COUNT, DUE_DAYS = 3, 7                              # decision 0020's trigger (trial thresholds)
+PQ_CSS = (".pq{--b:#53eafd;--w:#ffd23f;--a:#2dd4bf;background:#0b0d14;border:1px solid rgba(255,255,255,.1);"
+          "border-radius:16px;padding:20px;margin:0 0 16px;color:#fff}.pq-h{display:flex;justify-content:space-between;"
+          "align-items:baseline}.pq h2{margin:0;font-size:20px;font-weight:600}.pq-c{color:#b8c0cc;font-size:14px}"
+          ".pq-bar{display:flex;gap:3px;height:10px;margin:16px 0 10px}.pq-bar i{border-radius:5px}.pq-bar .e{flex:1;"
+          "background:#3a4350}.pq .b{--s:var(--b)}.pq .w{--s:var(--w)}.pq .a{--s:var(--a)}.pq-bar i,.pq-k li::before{background:var(--s)}"
+          ".pq-k{display:flex;flex-wrap:wrap;gap:4px 16px;list-style:none;margin:0;padding:0;font-size:13px;color:#b8c0cc}"
+          ".pq-k li::before{content:\"\";display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}"
+          ".pq-k b{color:#fff;font-weight:600}.pq-due{margin:14px 0 0;border-radius:10px;background:rgba(255,210,63,.12);"
+          "border:1px solid var(--w)}.pq-due summary{padding:10px 12px;color:var(--w);font-weight:600}.pq-due p{margin:0;"
+          "padding:0 12px 12px;color:#fff}.pq-l{list-style:none;margin:14px 0 0;padding:0;counter-reset:n var(--n0,0)}"
+          ".pq-r{position:relative;padding-left:36px;counter-increment:n}.pq-r::before{content:counter(n);position:absolute;"
+          "left:0;top:10px;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:12px;"
+          "background:#1b1f2a;color:#fff}.pq-r::after{content:\"\";position:absolute;left:11.5px;top:36px;bottom:-6px;"
+          "width:1px;background:#3a4350}.pq-r:last-child::after{display:none}.pq-r details{border-radius:10px;"
+          "background:#11141d;margin:0 0 8px}.pq-r summary{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;"
+          "padding:10px 12px;min-height:44px}.pq-t{flex:1 1 100%;font-weight:500}.pq-p{font-size:12px;padding:2px 8px;"
+          "border-radius:999px;color:#06070f;background:var(--s)}.pq-a{font-size:13px;color:#b8c0cc}.pq-r p{margin:0;"
+          "padding:0 12px 12px;color:#fff}.pq-r a{color:var(--b)}.p1::before{background:var(--b);color:#06070f;"
+          "box-shadow:0 0 12px rgba(83,234,253,.6)}.p1 details{box-shadow:0 0 0 1px var(--b),0 0 16px rgba(83,234,253,.25)}"
+          ".pq-more>summary{color:var(--b);padding:8px 0 0 36px;font-size:14px}.pq-0{color:#b8c0cc;margin:0}"
+          ".pq summary{cursor:pointer;list-style:none}.pq summary::-webkit-details-marker{display:none}")
+
+
+def level_of(text):
+    """`Priority: P1` .. `P4`, emphasis dropped; anything else is no level, and sorts last."""
+    m = field(text, "Priority", r"(P[1-4])\b")
+    return m.group(1).upper() if m else None
+
+
+def plain_of(body):
+    """A proposal's one plain sentence: its `Plain:` line, else its Priority line's reason, else nothing."""
+    m = field(body, "Plain", r"(.+)")
+    if m:
+        return m.group(1).strip()
+    m = field(body, "Priority", r"P[1-4]\b[\s,.:—–-]*(?:[a-z][\w ,'-]*?\.\s+)?([A-Z].+?[.!?])(?:\s|$)")
+    return m.group(1) if m else ""
+
+
+def waited(iso, now):
+    """How long it has waited, in whole days; None when its start is unknown."""
+    try:
+        t = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    t = t if t.tzinfo else t.replace(tzinfo=timezone.utc)
+    return max(0, (now - t).days)
+
+
+def proposals_queue(issues, open_prs, ideas, now):
+    """Decision 0020's one queue: the issues, staged and ranked, then each product's ideas."""
+    building = set()
+    for pr in open_prs or []:
+        building |= {int(n) for n in re.findall(r"(?<![\w/])#([1-9][0-9]*)\b", "%s %s" % (pr.get("title"), pr.get("body")))}
+    rows = []
+    for it in issues:
+        body = it.get("body") or ""
+        stage = "b" if it["number"] in building else \
+            "a" if re.search(r"^\W*Decision:\W*agreed\b", body, re.I | re.M) else "w"
+        rows.append({"stage": stage, "level": level_of(body), "title": it.get("title"), "plain": plain_of(body),
+                     "url": it.get("url"), "who": RULEBOOK, "days": waited(it.get("created_at"), now),
+                     "at": it.get("created_at") or ""})
+    for name in ROWS:
+        for it in ideas.get(name) or []:
+            m = re.search(r"Captured (\d{4}-\d{2}-\d{2})", it.get("plain") or "")
+            rows.append({"stage": "w", "level": None, "title": it["title"], "plain": it.get("plain") or "",
+                         "url": None, "who": name, "days": waited(m.group(1), now) if m else None,
+                         "at": m.group(1) if m else "~"})
+    return sorted(rows, key=lambda r: (r["level"] or "P9", r["at"]))
+
+
+def pq_row(r):
+    days = "waiting %s" % ("today" if r["days"] == 0 else "1 day" if r["days"] == 1 else "%d days" % r["days"]) \
+        if r["days"] is not None else "waiting, start not recorded"
+    where = ' <a href="%s">Open ↗</a>' % e(r["url"]) if isinstance(r["url"], str) and ISSUE_LINK.match(r["url"]) else ""
+    return ('<li class="pq-r %s%s"><details><summary><span class="pq-t">%s</span><span class="pq-p">%s</span>'
+            '<span class="pq-a">%s · %s</span></summary><p>%s%s</p></details></li>'
+            % (r["stage"], " p1" if r["level"] == "P1" else "", e(r["title"]), dict(STAGES)[r["stage"]],
+               e(r["who"]), days, e(r["plain"] or "No plain sentence recorded yet."), where))
+
+
+def proposals_card(issues, open_prs, ideas, now):
+    """The card he approved: the count, the stage bar, the debate banner, the numbered queue."""
+    if isinstance(issues, dict) and issues.get("unread"):
+        return ('<section class="pq" aria-label="Proposals"><div class="pq-h"><h2>Proposals</h2></div>'
+                '<p class="pq-0">The proposals could not be read when this page opened.</p></section>')
+    rows = proposals_queue(issues or [], open_prs, ideas, now)
+    n = {k: sum(1 for r in rows if r["stage"] == k) for k, _ in STAGES}
+    if not rows:
+        return ('<section class="pq" aria-label="Proposals"><div class="pq-h"><h2>Proposals</h2><span class="pq-c">0 open'
+                '</span></div><div class="pq-bar" role="img" aria-label="Nothing waiting"><i class="e"></i></div>'
+                '<p class="pq-0">Nothing waiting</p></section>')
+    label = ", ".join("%d %s" % (n[k], w.lower()) for k, w in STAGES)
+    bar = "".join('<i class="%s" style="flex:%d"></i>' % (k, n[k]) for k, _ in STAGES if n[k])
+    key = "".join('<li class="%s">%s <b>%d</b></li>' % (k, w, n[k]) for k, w in STAGES)
+    waiting = [r for r in rows if r["stage"] == "w" and r["who"] == RULEBOOK]
+    due = ""
+    if len(waiting) >= DUE_COUNT or any((r["days"] or 0) >= DUE_DAYS for r in waiting):
+        due = ('<details class="pq-due"><summary>Debate due - %d idea%s waiting</summary><p>A debate is due once %d '
+               'proposals wait for it or one has waited %d days (decision 0020).</p></details>'
+               % (len(waiting), "" if len(waiting) == 1 else "s", DUE_COUNT, DUE_DAYS))
+    top = '<ol class="pq-l">%s</ol>' % "".join(pq_row(r) for r in rows[:SHOWN])
+    more = ('<details class="pq-more"><summary>Show %d more</summary><ol class="pq-l" style="--n0:%d">%s</ol></details>'
+            % (len(rows) - SHOWN, SHOWN, "".join(pq_row(r) for r in rows[SHOWN:]))) if len(rows) > SHOWN else ""
+    return ('<section class="pq" aria-label="Proposals"><div class="pq-h"><h2>Proposals</h2><span class="pq-c">%d open'
+            '</span></div><div class="pq-bar" role="img" aria-label="%s">%s</div><ul class="pq-k">%s</ul>%s%s%s</section>'
+            % (len(rows), e(label), bar, key, due, top, more))
+
+
 # ---------------------------------------------------------------- spend
 
 # THE SPEND CARD (his ruling, 1 October 2026: "lift the freeze for the spend card";
@@ -538,6 +645,9 @@ m=it.querySelector(':scope>.body>.more');if(!m)return;if(it.open&&!m.open){ev.pr
 
 def render(reads):
     checked = when(reads["checked_at"], clock=True)
+    now = datetime.fromisoformat(str(reads["checked_at"]).replace("Z", "+00:00"))
+    rb = reads.get("rulebook")
+    open_prs = rb.get("open") if isinstance(rb, dict) and isinstance(rb.get("open"), list) else []
     rows, asked, ideas = {}, {}, {}
     for p in reads.get("products") or []:
         if p.get("name") not in ROWS or p["name"] == RULEBOOK:
@@ -576,8 +686,8 @@ def render(reads):
             '<div class="eyebrow">Juku OS · Build board</div>'
             '<p class="lede">%s</p><p class="snap">Read live %s.</p>'
             '%s%s<nav class="tabs" aria-label="Projects">%s</nav><div class="pages">%s</div></main><script>%s</script>'
-            '</body></html>\n' % (CSS, e(lede), e(checked), spend_card(reads.get("spend"), reads["checked_at"]),
-                                   ideas_card(ideas), tabs, pages, BOARD_JS))
+            '</body></html>\n' % (CSS + PQ_CSS, e(lede), e(checked), spend_card(reads.get("spend"), reads["checked_at"]),
+                                   proposals_card(reads.get("proposals"), open_prs, ideas, now), tabs, pages, BOARD_JS))
 
 
 # ---------------------------------------------------------------- the live read
@@ -660,6 +770,16 @@ def read_rulebook(get, token, pool):
         return {"unread": True}
 
 
+def read_proposals(get, token):
+    """This repository's open issues labelled `proposal`, pull requests left out (the API lists both); or unread."""
+    try:
+        got = get("%s/repos/%s/issues?labels=proposal&state=open&per_page=100" % (GITHUB, RULEBOOK_REPO), token)
+        return [{"number": int(i["number"]), "title": i.get("title"), "body": i.get("body") or "",
+                 "created_at": i.get("created_at"), "url": i.get("html_url")} for i in got if "pull_request" not in i]
+    except MISSED:
+        return {"unread": True}
+
+
 def read_spend(get, key):
     """OpenRouter's daily activity: null with no key, unread when the read fails."""
     if not key:
@@ -678,10 +798,12 @@ def read_live(env, get=_get, clock=time.time):
         if token:
             products = [pool.submit(read_product, get, token, repo, name) for repo, name in PRODUCTS]
             rulebook = pool.submit(read_rulebook, get, token, pool)
+            proposals = pool.submit(read_proposals, get, token)
         spend = pool.submit(read_spend, get, env.get("OPENROUTER_KEY") or "")
         return {"checked_at": at,
                 "products": [f.result() for f in products] if token else [{"name": n, "unread": True} for _, n in PRODUCTS],
                 "rulebook": rulebook.result() if token else {"unread": True},
+                "proposals": proposals.result() if token else {"unread": True},
                 "spend": spend.result()}
 
 
@@ -864,26 +986,46 @@ def _selftest():
     hold(page.count('<section class="page"') == 4 and 'href="#p-1" aria-label="On to Hemz OS"' in page and
          '<span class="step off" aria-hidden="true">‹</span>' in page and "{NAV}" not in page,
          "the board is four project pages, each stepping to its neighbours by a link that needs no script")
-    # Decision 0012: every product's `proposed` items in one folded list above the pages, a view only.
+    # THE PROPOSALS CARD (his approval, 15 October 2026, #222's Option D): the rulebook's open
+    # `proposal` issues and every product's `proposed` items in one queue above the pages.
     edit = lambda rd: {"name": rd[0], "last_edited": "2026-09-25T17:00:00Z", "roadmap": {"items": rd[1]}}
-    q2 = render(dict(reads, products=[
-        edit(("Phena", [it("P1", "proposed", title=evil)])),
+    iss = lambda n, body, at="2026-09-20T10:00:00Z", **kw: dict({"number": n, "title": "Issue %d" % n, "body": body,
+                                                                "created_at": at,
+                                                                "url": "https://github.com/Adonis80/how-we-build/issues/%d" % n}, **kw)
+    issues = [iss(301, "Priority: P3 — build. Plain: The third, waiting.", at="2026-09-01T00:00:00Z"),
+              iss(302, "Priority: P1 — a proven defect. Plain: The first, being built."),
+              iss(303, "Priority: P2 — repair. A sentence in the priority line.\nDecision: agreed, 2026-09-21."),
+              iss(304, "No level at all.", title=evil, url="javascript:alert(1)")]
+    rb = dict(reads["rulebook"], open=reads["rulebook"]["open"] + [pr(120, "Builds #302. " + ok)])
+    q2 = render(dict(reads, rulebook=rb, proposals=issues, products=[
+        edit(("Phena", [it("P1", "proposed", title="Phena idea", plain="Captured 2026-09-24; why.")])),
         edit(("Myst", road["items"])),
-        edit(("Hemz OS", [it("H1", "proposed", title="Hemz idea"), it("H2", "proposed", title="Asks him idea",
-                                                                  gate="Decision needed: the price."), it("H3", "building")]))]))
-    ideas = q2[q2.index('<ol class="tl ideas">'):q2.index('<nav class="tabs"')]
-    hold("4 suggested ideas</span>" in ideas and ideas.count('<details class="more">') == 4 and
-         ideas.index("Hemz idea") < ideas.index("Asks him idea") < ideas.index("Item X4") < ideas.index(html.escape(evil)) and
-         evil not in ideas, "0012: every product's suggested items, his own too, in row order whatever the read order, escaped, one list")
-    hold("1 suggested idea</span>" in render(dict(reads, products=[edit(("Hemz OS", [it("H1", "proposed")])),
-                                                                  edit(("Myst", [])), edit(("Phena", []))])),
-         "0012: one suggestion is counted in the singular")
-    hold('<details class="item" open>' not in ideas and q2.count('<section class="page"') == 4 and
-         "0 of 1 agreed done · 2 suggested · " in q2 and "3 of 9 agreed done · 1 suggested" in q2,
-         "0012: the card is folded, adds no page, and changes no count")
-    hold('class="tl ideas"' not in render(dict(reads, products=[edit(("Hemz OS", [it("H1", "building")])),
-                                                              edit(("Myst", [it("M1", "done")])), edit(("Phena", []))])),
-         "0012: with nothing suggested there is no card")
+        edit(("Hemz OS", [it("H1", "proposed", title="Hemz idea"), it("H3", "building")]))]))
+    card = q2[q2.index('<section class="pq"'):q2.index('<nav class="tabs"')]
+    hold(card.index("Issue 302") < card.index("Issue 303") < card.index("Issue 301") < card.index(html.escape(evil)) and
+         evil not in card and "javascript:" not in card,
+         "the card: ranked by priority, then oldest; no level sorts last; escaped; only this repository's issue links")
+    hold('<li class="pq-r b p1">' in card and card.count(" p1") == 1 and '<li class="pq-r a">' in card and
+         card.count('<li class="pq-r w') == 5, "the card: an issue an open pull request names is being built, a "
+         "`Decision: agreed` line is agreed, the rest wait for debate; P1 alone glows")
+    hold("The first, being built." in card and "A sentence in the priority line." in card and
+         "No plain sentence recorded yet." in card, "the card: each row's one sentence, from its Plain line or its priority's reason")
+    hold("7 open" in card and 'aria-label="1 being built, 5 waiting for debate, 1 agreed"' in card and
+         "Show 1 more" in card, "the card: its count and its stage bar by stage, the seventh row folded")
+    hold("Debate due - 2 ideas waiting" in card and "waiting 25 days" in card and "Phena" in card and "Hemz OS" in card,
+         "the card: debate due when one proposal has waited 7 days, the rule behind the tap; products' ideas beside them")
+    many = render(dict(reads, proposals=[iss(400 + i, "Priority: P4 — observe.", at="2026-09-26T00:00:00Z") for i in range(9)]))
+    many = many[many.index('<section class="pq"'):many.index('<nav class="tabs"')]
+    hold(many.count('<li class="pq-r') == 10 and "Show 4 more" in many and "Debate due - 9 ideas waiting" in many and
+         "waiting today" in many, "the card: the top six shown, the rest folded under Show N more")
+    hold(len((PQ_CSS + many).encode("utf-8")) < 10240, "the card is under 10 KB with ten rows, its styles included")
+    empty = render(dict(reads, proposals=[], products=[edit(("Hemz OS", [])), edit(("Myst", [])), edit(("Phena", []))]))
+    hold("Nothing waiting" in empty and 'class="e"' in empty and "Debate due" not in empty, "the card: empty, a grey bar and Nothing waiting")
+    hold("could not be read when this page opened" in render(dict(reads, proposals={"unread": True})),
+         "the card: proposals that could not be read are said")
+    hold(q2.count('<section class="page"') == 4 and "0 of 1 agreed done · 1 suggested" in q2 and
+         "3 of 9 agreed done · 1 suggested" in q2 and "<script" not in card,
+         "the card adds no page, changes no count, and needs no script")
     hold(readiness(pr(14, "**Priority:** p1. **Ready:** yes."))[2] == "P1", "a lower-case priority reads, and sorts, as its level")
     hold(pr_state(pr(15, "**Priority:** P3. **Ready:** no — Decision needed: none.")) == "Parked" and
          not needs_decision({"gate": "Decision needed: none"}), "\"Decision needed: none\" asks him nothing")
@@ -969,6 +1111,10 @@ def _selftest():
                 return runs
             if path.endswith("/commits"):
                 return [{"commit": {"committer": {"date": "2026-10-02T09:00:00Z"}}}]
+            if path.endswith("/issues"):
+                return [{"number": 50, "title": "A proposal", "body": "Priority: P2 — repair.", "created_at": "2026-10-01T00:00:00Z",
+                         "html_url": "https://github.com/Adonis80/how-we-build/issues/50"},
+                        {"number": 51, "title": "A pull request the issues list carries", "pull_request": {}}]
             if path.endswith("/pulls"):
                 return prs if "state=open" in url else [dict(prs[0], merged_at="2026-10-03T00:00:00Z"),
                                                         dict(prs[1], merged_at="2026-10-03T00:00:00Z")]
@@ -989,15 +1135,17 @@ def _selftest():
          live["rulebook"]["open"][0]["review"] == [{"status": "completed", "conclusion": "success"}],
          "the live read: a fork's pull request left off; only the reviewer's own check run, on this head, kept")
     hold(live["spend"] == {"days": [{"date": "2026-10-01", "usage": 1.5}]}, "the live read: of the spend, its days alone")
+    hold([i["number"] for i in live["proposals"]] == [50] and any("labels=proposal&state=open" in u for u, _, _ in calls),
+         "the live read: the open `proposal` issues, a pull request the list carries left out")
     hold("<body data-board>" in render(live) and "Item R1" in render(live), "the live read renders as the board")
     get, calls = fake(fail=("Adonis80/myst",))
     half = render(read_live(env, get))
     myst = half[half.index('<h2 class="pname">Myst</h2>'):half.index('<h2 class="pname">Phena</h2>')]
     hold("Its roadmap could not be read when this page opened" in myst and "Item R1" not in myst and
          half.count("Item R1") == 4, "a product that cannot be read is said on its page; the others still show")
-    get, calls = fake(fail=(SPEND_URL, "/pulls"))
+    get, calls = fake(fail=(SPEND_URL, "/pulls", "/issues"))
     down = read_live(env, get)
-    hold(down["spend"] == {"unread": True} and down["rulebook"] == {"unread": True} and
+    hold(down["spend"] == {"unread": True} and down["rulebook"] == {"unread": True} and down["proposals"] == {"unread": True} and
          "Its pull requests could not be read" in render(down), "a spend or pull-request read that fails is said, never guessed")
     get, calls = fake()
     none = read_live({}, get)

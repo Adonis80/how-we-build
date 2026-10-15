@@ -73,6 +73,7 @@ One page per topic, or a named few where a topic is large, opened when its trigg
 | `library/carries-sessions.md`: *What every product carries: open work, stopping, the consultant, the roadmap* | starting or stopping a product session, or leaving its roadmap |
 | `library/carries-evidence.md`: *What every product carries: milestones, evidence, the product's pages* | a slice touches money milestones, evidence, the product's own pages, its README route or its design folder, or a handover reports a read's cost or the efficiency duty is weighed |
 | `library/build-board.md`: *The build board* | working on the build board |
+| `library/board-proposals-card.md`: *The build board: the proposals card* | changing the proposals card, or checking it against what he approved |
 | `library/deploy.md`: *The deploy, in shape* | building or changing a product's deploy |
 | `library/money.md`: *Money out waits for money in* | anything would cost money, or a product's hosting plan comes up |
 | `library/code-and-words.md`: *Code and words* | deciding whether a change needs a code session or can be made from Cowork |

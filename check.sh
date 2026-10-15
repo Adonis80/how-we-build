@@ -133,6 +133,14 @@ shopt -s dotglob nullglob
 pages=(library/*)
 shopt -u dotglob nullglob
 for f in "${pages[@]}"; do
+  # A screen's approved picture (his ruling, 15 October 2026, #222): a PNG beside the
+  # page of its own name, which is its screen spec, and under 400 KB. Nothing else
+  # in the library is not a page.
+  case "$f" in library/*.png)
+    { [[ "$f" =~ ^library/[A-Za-z0-9._-]+\.png$ ]] && [ -f "${f%.png}.md" ] && [ "$(wc -c < "$f")" -le 409600 ]; } \
+      || { printf "FAIL: %q is an image with no page of its own name beside it, or over 400 KB.\n" "$f"; lib_fail=1; }
+    continue ;;
+  esac
   # A name the index cannot spell can never be named, so it is refused before
   # anything is read from it, and printed escaped, not raw.
   [[ "$f" =~ ^${page_re}$ ]] || { printf "FAIL: %q is not a page name the README can hold (letters, digits, '.', '_', '-', ending .md).\n" "$f"; lib_fail=1; continue; }
