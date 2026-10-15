@@ -76,6 +76,7 @@ One page per topic, or a named few where a topic is large, opened when its trigg
 | `library/deploy.md`: *The deploy, in shape* | building or changing a product's deploy |
 | `library/money.md`: *Money out waits for money in* | anything would cost money, or a product's hosting plan comes up |
 | `library/code-and-words.md`: *Code and words* | deciding whether a change needs a code session or can be made from Cowork |
+| `library/upgrade-log.md`: *The upgrade log* | proposing an upgrade, or the Chairman asks what changed |
 | `library/changing-the-rulebook.md`: *Changing the rulebook* | changing a rule, proposing, prioritising or merging a change to this repository, or a page reads over its size target |
 | `library/system-map.md`: *How Juku OS fits together* | explaining how Juku OS fits together, or finding which part owns what |
 
