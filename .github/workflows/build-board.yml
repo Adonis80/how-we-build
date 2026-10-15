@@ -42,6 +42,13 @@ run-name: Build the board (${{ github.event_name }})
 # preview that never came ready is cancelled, one that failed its smoke is
 # deleted. review-gate.py runs this step against a fake host, path by path.
 #
+# AN EVENT MOVES IT ONLY WHEN THE BOARD CHANGED (13 October 2026, the host's
+# 100 deployments a day): when what the domain serves carries this page's
+# fingerprint in board.sha, is under six hours old and shows a stranger the
+# PIN screen alone, nothing is deployed. Shown on 15 October 2026: run
+# 38480903245, attempt 4 deployed dpl_4o7THPZzCvkUti6aiACi4hS7C2DS, attempt 5
+# a minute later logged `unchanged:` and made no deployment.
+#
 # THIS LOG IS PUBLIC AND THE ROADMAPS ARE NOT. Nothing a product holds is
 # printed: byte counts and conclusions only. No artifact is uploaded and no
 # run summary written, because a public repository's are public too.

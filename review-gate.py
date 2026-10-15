@@ -5742,8 +5742,8 @@ BOARD_HOLDS = (
     # #117's second read, 6: the render takes the time the clock stamped.
     ('jq -n --arg at "$AT"', "the snapshot's time taken from before the first read"),
     # The fingerprint the deploy compares (13 October 2026), taken in the render,
-    # which the fake host does not run: over every read but the read's own time,
-    # and over the code that builds and gates the page, so a change to either deploys.
+    # which the fake host does not run: over the page rendered with the read's time
+    # at the start of its day, and the gate's three files, so a change to either deploys.
     ("""jq --arg d "${AT:0:10}T00:00:00Z" '.checked_at = $d' "$RUNNER_TEMP/reads.json\"""",
      "the fingerprint taken over the page with the read's time at the start of its day"),
     ('python3 board/build.py "$RUNNER_TEMP/fp.json" "$RUNNER_TEMP/fp.html"', "the fingerprint's page rendered by the board's own build"),
