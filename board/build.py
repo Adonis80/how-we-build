@@ -1,14 +1,20 @@
 #!/usr/bin/env python3
-"""The build board, rendered: one JSON of reads in, one index.html out.
+"""The build board, rendered: read live when it is opened, or one JSON of reads in, one index.html out.
 
 What the page shows and may claim is decision 0007 and its addendum
 (https://github.com/Adonis80/how-we-build/issues/97); the section marks below
 (§n, An) are its clauses. Decision 0012 (issues/145) adds one card above the pages:
-every product's `proposed` items in one folded list, a view only. `.github/workflows/build-board.yml` makes the reads
-and hands them here; a refresh by hand writes the same shape. This file
-fetches nothing and prints
-nothing a source holds: a fault names a product and a key, never a value,
-because the log it lands in is public and the roadmaps are not.
+every product's `proposed` items in one folded list, a view only.
+
+DEPLOYED, IT IS THE BOARD'S FUNCTION (#222, his ruling, 15 October 2026: the
+board "must not use deploys, use resources, or compete with a real product").
+`.github/workflows/build-board.yml` deploys this file as `api/build.py`, behind
+the PIN gate, only when the board's own code changes; each time the page is
+opened, `handler` reads the products' roadmaps, this repository's pull requests
+and OpenRouter's spend there and then, with GETs alone, and keeps the page a
+minute. The keys are the project's own: BOARD_READ_TOKEN, a read-only GitHub
+token, and OPENROUTER_KEY. A source that cannot be read is said on its page;
+nothing a source holds reaches a log.
 
     python3 board/build.py <reads.json> <index.html>
     python3 board/build.py --selftest
@@ -16,7 +22,7 @@ because the log it lands in is public and the roadmaps are not.
 Write both files outside the checkout: either one inside it is a `git add`
 away from putting a private roadmap in this public repository.
 
-The reads, in the shape #117's workflow is to write them:
+The reads, in the shape `read_live` makes them:
 
     {"checked_at": "2026-09-26T17:40:00Z",
      "products": [{"name": "Hemz OS", "last_edited": "<ISO time>",
@@ -26,18 +32,26 @@ The reads, in the shape #117's workflow is to write them:
                   "merged": [{"number", "title", "url", "merged_at"}, ...]},
      "spend": {"days": [{"date": "YYYY-MM-DD", "usage": <USD>}, ...]}}
 
+A product or the rulebook that could not be read is {"name": ..., "unread": true}
+or {"unread": true}, and its page says so.
+
 `spend` is OpenRouter's daily activity; null when no key is connected, and
 {"unread": true} when a key is but the read failed. The card says which.
 
 `review` is the juku-reviewer check runs on the pull request's head, newest
 first. Of a body, only its `Priority:` and `Ready:` lines are published (§8).
 """
+import concurrent.futures
 import html
 import json
 import os
 import re
 import sys
+import time
+import urllib.parse
+import urllib.request
 from datetime import datetime, timedelta, timezone
+from http.server import BaseHTTPRequestHandler
 
 try:
     from zoneinfo import ZoneInfo
@@ -47,6 +61,9 @@ except Exception:  # no tz database: say UTC rather than guess
 
 RULEBOOK = "Juku OS"
 ROWS = (RULEBOOK, "Hemz OS", "Myst", "Phena")          # §1: four rows, this order
+# THE PRODUCTS: the README's map, and nothing else; review-gate.py holds this list to the
+# map both ways, and its names to ROWS.
+PRODUCTS = (("Adonis80/Hemz-OS", "Hemz OS"), ("Adonis80/myst", "Myst"), ("Adonis80/phena", "Phena"))
 AGREED = ("done", "building", "next", "agreed")        # §2: the denominator
 DECISION = "Decision needed:"                          # §3: the only test
 MERGED_SHOWN = 10                                      # §7
@@ -218,8 +235,16 @@ def ideas_card(ideas):
                                                inner, "Every product")
 
 
+def unread_row(name, what):
+    """A source that could not be read when the page opened: said, never shown as nothing."""
+    return row(name, "Not read just now", "%s could not be read when this page opened. Open it again in a minute."
+               % e(what), ""), 0
+
+
 def product_row(p):
     name = p["name"]
+    if p.get("unread"):
+        return unread_row(name, "Its roadmap")
     items = items_of(name, p.get("roadmap"))
     n = tally(items)
     asks = [it for it in items if needs_decision(it)]
@@ -334,6 +359,8 @@ def pr_html(pr, merged=False):
 
 
 def rulebook_row(rb):
+    if isinstance(rb, dict) and rb.get("unread"):
+        return unread_row(RULEBOOK, "Its pull requests")
     # Refused rather than shown as "0 open", as a product's broken roadmap is (#113's fourth read).
     if not isinstance(rb, dict) or not all(isinstance(rb.get(k), list) for k in ("open", "merged")):
         raise Unreadable("%s: the reads hold no `open` and `merged` lists" % RULEBOOK)
@@ -516,7 +543,8 @@ def render(reads):
         if p.get("name") not in ROWS or p["name"] == RULEBOOK:
             raise Unreadable("a product named outside the board's rows")
         rows[p["name"]], asked[p["name"]] = product_row(p)
-        ideas[p["name"]] = [it for it in items_of(p["name"], p.get("roadmap")) if it["status"] == "proposed"]
+        ideas[p["name"]] = [] if p.get("unread") else [
+            it for it in items_of(p["name"], p.get("roadmap")) if it["status"] == "proposed"]
     rows[RULEBOOK], asked[RULEBOOK] = rulebook_row(reads.get("rulebook"))
     missing = [n for n in ROWS if n not in rows]
     if missing:
@@ -546,10 +574,152 @@ def render(reads):
             '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">\n'
             '<style>%s</style></head>\n<body data-board><main class="wrap">'
             '<div class="eyebrow">Juku OS · Build board</div>'
-            '<p class="lede">%s</p><p class="snap">Snapshot checked %s. Changes after this time may not appear.</p>'
+            '<p class="lede">%s</p><p class="snap">Read live %s.</p>'
             '%s%s<nav class="tabs" aria-label="Projects">%s</nav><div class="pages">%s</div></main><script>%s</script>'
             '</body></html>\n' % (CSS, e(lede), e(checked), spend_card(reads.get("spend"), reads["checked_at"]),
                                    ideas_card(ideas), tabs, pages, BOARD_JS))
+
+
+# ---------------------------------------------------------------- the live read
+
+# What the function reads, each time the page is opened (#222). GETs alone, each with a time
+# limit, to two hosts: GitHub, with the read-only BOARD_READ_TOKEN, and OpenRouter's daily
+# activity, the one read the spend card's management key is used for, never its keys.
+GITHUB = "https://api.github.com"
+SPEND_URL = "https://openrouter.ai/api/v1/activity"
+RULEBOOK_REPO = "Adonis80/how-we-build"
+REVIEWER_APP_ID = 5000405                              # the juku-reviewer App, as review-gate.py names it
+REVIEWER_CHECK = "juku-reviewer"
+READ_SECONDS = 8                                       # each request's limit, inside the host's ten
+KEEP_SECONDS = 60                                      # the page kept between opens: the short cache
+BRANCH = re.compile(r"^[A-Za-z0-9._/-]+$")
+SHA = re.compile(r"^[0-9a-f]{40}$")
+
+
+def _get(url, key, raw=False):
+    """One GET with a time limit: parsed JSON, or the bytes with `raw`. Nothing else is ever sent."""
+    head = {"Authorization": "Bearer " + key, "User-Agent": "juku-build-board"}
+    if url.startswith(GITHUB + "/"):
+        head["Accept"] = "application/vnd.github.raw+json" if raw else "application/vnd.github+json"
+    with urllib.request.urlopen(urllib.request.Request(url, headers=head), timeout=READ_SECONDS) as r:
+        body = r.read()
+    return body if raw else json.loads(body)
+
+
+# What a read that fails can throw: a refusal, a lost answer, or an answer not in shape.
+MISSED = (OSError, ValueError, KeyError, IndexError, TypeError, AttributeError, Unreadable)
+
+
+def read_product(get, token, repo, name):
+    """One product's roadmap on its main, and when it was last edited; or unread."""
+    try:
+        main = get("%s/repos/%s" % (GITHUB, repo), token)["default_branch"]
+        if not BRANCH.match(main or ""):
+            raise ValueError
+        ref = urllib.parse.quote(main, safe="")
+        road = json.loads(get("%s/repos/%s/contents/roadmap.json?ref=%s" % (GITHUB, repo, ref), token, raw=True))
+        if not isinstance(road, dict):
+            raise ValueError
+        items_of(name, road)
+        milestones(name, road)
+        edited = get("%s/repos/%s/commits?path=roadmap.json&sha=%s&per_page=1" % (GITHUB, repo, ref),
+                     token)[0]["commit"]["committer"]["date"]
+        return {"name": name, "last_edited": str(edited), "roadmap": road}
+    except MISSED:
+        return {"name": name, "unread": True}
+
+
+def read_rulebook(get, token, pool):
+    """This repository's own pull requests, open with the reviewer's check runs, and merged; or unread.
+
+    A fork's is left off his board (this repository is public). Each check run is kept only if
+    it is the reviewer's by App and name, on this head, as the gate's check_run_verdict keeps
+    it, not on the query's word (#113's fourth read); newest first (§7)."""
+    own = lambda p: ((p.get("head") or {}).get("repo") or {}).get("full_name") == RULEBOOK_REPO
+    try:
+        pulls = [p for p in get("%s/repos/%s/pulls?state=open&per_page=100" % (GITHUB, RULEBOOK_REPO), token) if own(p)]
+
+        def one(p):
+            sha = p["head"]["sha"]
+            if not SHA.match(sha or ""):
+                raise ValueError
+            runs = get("%s/repos/%s/commits/%s/check-runs?check_name=%s&app_id=%d&filter=all&per_page=100"
+                       % (GITHUB, RULEBOOK_REPO, sha, REVIEWER_CHECK, REVIEWER_APP_ID), token)["check_runs"]
+            runs = sorted((r for r in runs if (r.get("app") or {}).get("id") == REVIEWER_APP_ID and
+                           r.get("name") == REVIEWER_CHECK and r.get("head_sha") == sha),
+                          key=lambda r: r.get("started_at") or "", reverse=True)
+            return {"number": p["number"], "title": p.get("title"), "body": p.get("body") or "",
+                    "draft": bool(p.get("draft")), "created_at": p.get("created_at"), "url": p.get("html_url"),
+                    "review": [{"status": r.get("status"), "conclusion": r.get("conclusion")} for r in runs]}
+        open_ = list(pool.map(one, pulls))
+        closed = get("%s/repos/%s/pulls?state=closed&sort=updated&direction=desc&per_page=50" % (GITHUB, RULEBOOK_REPO), token)
+        merged = [{"number": p["number"], "title": p.get("title"), "url": p.get("html_url"), "merged_at": p["merged_at"]}
+                  for p in closed if p.get("merged_at") and own(p)]
+        return {"open": open_, "merged": merged}
+    except MISSED:
+        return {"unread": True}
+
+
+def read_spend(get, key):
+    """OpenRouter's daily activity: null with no key, unread when the read fails."""
+    if not key:
+        return None
+    try:
+        return {"days": [{"date": r["date"], "usage": r["usage"]} for r in get(SPEND_URL, key)["data"]]}
+    except MISSED:
+        return {"unread": True}
+
+
+def read_live(env, get=_get, clock=time.time):
+    """Every source at once, stamped before the first is asked (#117's second read, 6)."""
+    at = datetime.fromtimestamp(clock(), timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    token = env.get("BOARD_READ_TOKEN") or ""
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        if token:
+            products = [pool.submit(read_product, get, token, repo, name) for repo, name in PRODUCTS]
+            rulebook = pool.submit(read_rulebook, get, token, pool)
+        spend = pool.submit(read_spend, get, env.get("OPENROUTER_KEY") or "")
+        return {"checked_at": at,
+                "products": [f.result() for f in products] if token else [{"name": n, "unread": True} for _, n in PRODUCTS],
+                "rulebook": rulebook.result() if token else {"unread": True},
+                "spend": spend.result()}
+
+
+_kept = {"at": None, "page": None}
+
+
+def page_now(env=None, get=_get, clock=time.time):
+    """The board as it stands, read again once the page kept is a minute old."""
+    if _kept["page"] is not None and clock() - _kept["at"] < KEEP_SECONDS:
+        return _kept["page"]
+    page = render(read_live(os.environ if env is None else env, get, clock))
+    _kept.update(at=clock(), page=page)
+    return page
+
+
+FAILED = ('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="robots" content="noindex,nofollow">'
+          '<meta name="viewport" content="width=device-width,initial-scale=1"><title>Juku Build Board</title></head>'
+          '<body style="background:#06070f;color:#f2f4f7;font-family:system-ui,sans-serif;padding:24px">'
+          '<p>The board could not be drawn just now. Open it again in a minute.</p></body></html>')
+
+
+class handler(BaseHTTPRequestHandler):
+    """The host's entry point: every open, behind the PIN gate, gets the board read live."""
+
+    def do_GET(self):
+        try:
+            body, code = page_now().encode("utf-8"), 200
+        except Exception:  # never a trace: it could carry what a source holds
+            body, code = FAILED.encode("utf-8"), 503
+        self.send_response(code)
+        for k, v in (("Content-Type", "text/html; charset=utf-8"), ("Cache-Control", "private, no-store"),
+                     ("X-Robots-Tag", "noindex, nofollow"), ("Content-Length", str(len(body)))):
+            self.send_header(k, v)
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args):
+        pass                                           # the host's log gets no request lines
 
 
 # ---------------------------------------------------------------- selftest
@@ -682,8 +852,8 @@ def _selftest():
          "§8: only this repository's pull-request links are linked")
     hold(page.count('class="node s-done pr"') == MERGED_SHOWN and "#100 " not in page and "#101 " not in page,
          "§7: ten merged shown, newest first")
-    hold("Snapshot checked 26 September 2026, 18:40 BST" in page or LONDON is None,
-         "§5: the snapshot says its date, time and timezone")
+    hold("Read live 26 September 2026, 18:40 BST." in page or LONDON is None,
+         "§5: the page says when it was read, its date, time and timezone")
     hold("Not reached yet" in page and "Revenue passes one thousand a month." in page,
          "§8: the money milestone's sentence and whether it is reached")
     hold("3 of 9 agreed done · 1 suggested" in page, "§1: a row's counts")
@@ -767,12 +937,95 @@ def _selftest():
         bad.append("a board missing a row was rendered")
     except Unreadable as x:
         hold("Phena" in str(x), "a missing row names itself")
+    # THE LIVE READ (#222): every source asked with GETs alone, each to its own host with its own
+    # key; a fork's pull request and another App's check run left off; a source that fails said
+    # on its page while the rest still show; no read key, the board still opens and says so.
+    def fake(fail=()):
+        calls = []
+        sha = "a" * 40
+        prs = [{"number": 41, "title": "Ours", "body": ok, "draft": False, "created_at": "2026-10-01T00:00:00Z",
+                "html_url": "https://github.com/Adonis80/how-we-build/pull/41",
+                "head": {"sha": sha, "repo": {"full_name": RULEBOOK_REPO}}},
+               {"number": 42, "title": "A fork's", "body": ok, "html_url": "https://github.com/Adonis80/how-we-build/pull/42",
+                "head": {"sha": "b" * 40, "repo": {"full_name": "stranger/how-we-build"}}}]
+        runs = {"check_runs": [
+            {"app": {"id": REVIEWER_APP_ID}, "name": REVIEWER_CHECK, "head_sha": sha, "status": "completed",
+             "conclusion": "success", "started_at": "2026-10-01T01:00:00Z"},
+            {"app": {"id": 15368}, "name": REVIEWER_CHECK, "head_sha": sha, "status": "completed",
+             "conclusion": "failure", "started_at": "2026-10-01T02:00:00Z"},
+            {"app": {"id": REVIEWER_APP_ID}, "name": REVIEWER_CHECK, "head_sha": "c" * 40, "status": "completed",
+             "conclusion": "failure", "started_at": "2026-10-01T03:00:00Z"}]}
+
+        def get(url, key, raw=False):
+            calls.append((url, key, raw))
+            if any(f in url for f in fail):
+                raise OSError("refused")
+            if url == SPEND_URL:
+                return {"data": [{"date": "2026-10-01", "usage": 1.5, "model": "kept out"}]}
+            path = url[len(GITHUB):].split("?")[0]
+            if path.endswith("/contents/roadmap.json"):
+                return json.dumps({"items": [it("R1", "building"), it("R2", "proposed")]}).encode()
+            if "/commits/" in path:
+                return runs
+            if path.endswith("/commits"):
+                return [{"commit": {"committer": {"date": "2026-10-02T09:00:00Z"}}}]
+            if path.endswith("/pulls"):
+                return prs if "state=open" in url else [dict(prs[0], merged_at="2026-10-03T00:00:00Z"),
+                                                        dict(prs[1], merged_at="2026-10-03T00:00:00Z")]
+            return {"default_branch": "main"}
+        return get, calls
+
+    env = {"BOARD_READ_TOKEN": "read-key", "OPENROUTER_KEY": "spend-key"}
+    get, calls = fake()
+    live = read_live(env, get, clock=lambda: 1790000000)
+    hold(live["checked_at"] == "2026-09-21T14:13:20Z" and [p.get("name") for p in live["products"]] == list(ROWS[1:]) and
+         all(p.get("last_edited") == "2026-10-02T09:00:00Z" for p in live["products"]),
+         "the live read: stamped by the clock before it reads, each product on the map read, by name")
+    hold(all(k == ("spend-key" if u == SPEND_URL else "read-key") for u, k, _ in calls) and
+         all(u.startswith(GITHUB + "/") or u == SPEND_URL for u, _, _ in calls) and
+         sum(1 for u, _, _ in calls if u == SPEND_URL) == 1,
+         "the live read: GitHub asked with the read key alone, OpenRouter once, with its key alone")
+    hold([p["number"] for p in live["rulebook"]["open"]] == [41] and [p["number"] for p in live["rulebook"]["merged"]] == [41] and
+         live["rulebook"]["open"][0]["review"] == [{"status": "completed", "conclusion": "success"}],
+         "the live read: a fork's pull request left off; only the reviewer's own check run, on this head, kept")
+    hold(live["spend"] == {"days": [{"date": "2026-10-01", "usage": 1.5}]}, "the live read: of the spend, its days alone")
+    hold("<body data-board>" in render(live) and "Item R1" in render(live), "the live read renders as the board")
+    get, calls = fake(fail=("Adonis80/myst",))
+    half = render(read_live(env, get))
+    myst = half[half.index('<h2 class="pname">Myst</h2>'):half.index('<h2 class="pname">Phena</h2>')]
+    hold("Its roadmap could not be read when this page opened" in myst and "Item R1" not in myst and
+         half.count("Item R1") == 4, "a product that cannot be read is said on its page; the others still show")
+    get, calls = fake(fail=(SPEND_URL, "/pulls"))
+    down = read_live(env, get)
+    hold(down["spend"] == {"unread": True} and down["rulebook"] == {"unread": True} and
+         "Its pull requests could not be read" in render(down), "a spend or pull-request read that fails is said, never guessed")
+    get, calls = fake()
+    none = read_live({}, get)
+    hold(not [u for u, _, _ in calls] and none["spend"] is None and all(p.get("unread") for p in none["products"]) and
+         "No OpenRouter key is connected" in render(none), "no keys: nothing is asked, and the board opens saying so")
+    bent = {"items": [{"title": "t", "gate": 3}]}
+    get, calls = fake()
+    hold(read_product(lambda u, k, raw=False: json.dumps(bent).encode() if raw else get(u, k), "k", "Adonis80/myst", "Myst")
+         == {"name": "Myst", "unread": True}, "a roadmap not in shape reads as unread, never as a broken board")
+    tick = [1000.0]
+    get, calls = fake()
+    _kept.update(at=None, page=None)
+    first = page_now(env, get, clock=lambda: tick[0])
+    n = len(calls)
+    tick[0] += KEEP_SECONDS - 1
+    hold(page_now(env, get, clock=lambda: tick[0]) is first and len(calls) == n, "the page is kept for a minute between opens")
+    tick[0] += 2
+    page_now(env, get, clock=lambda: tick[0])
+    hold(len(calls) == 2 * n, "and read again once the minute is up")
+    _kept.update(at=None, page=None)
     for b in bad:
         print("  board: " + b)
     if not bad:
         print("ok: the board renders decision 0007 from its reads — §1's four rows, §2's denominator, §3's "
               "prefix, §5's snapshot, %d cases of §7's readiness states, the queue's order and §8's contract — "
-              "and refuses a roadmap it cannot read, naming the key and never the value" % len(states))
+              "and refuses a roadmap it cannot read, naming the key and never the value; and its live read asks "
+              "each source with GETs alone, its own key to its own host, keeps the page a minute, and says what it could not read"
+              % len(states))
     return 1 if bad else 0
 
 

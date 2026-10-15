@@ -5756,78 +5756,59 @@ PRODUCT_LOOSENINGS = (
 
 
 
-# THE BUILD BOARD'S BUILD (decision 0007 §6, #113). It is not a reviewer, but it
-# stands behind the same door and wears the same App: it mints a token for
-# each product on the README's map to read that product's roadmap.json, so it
-# is held as review-product.yml is — its triggers, the door, a token scoped to
-# one product with contents read and nothing else, its grant and reach
-# checked, the list of products held to the map both ways — and, because it
-# runs on pull_request_target in a public repository, nothing of a pull request
-# is checked out and a fork's wakes nothing and is not read.
+# THE BUILD BOARD'S BUILD (decision 0007 §6, #113; #222). It is not a reviewer
+# and, since #222, wears no App: it deploys the board's frame, its PIN gate and
+# board/build.py as the function that reads every source when the page is
+# opened, and reads nothing itself. It stands behind the same door for the
+# deploy key and the function's two read keys, which it carries to the project,
+# so it is held for that — its triggers (main's own push of the board's code, or
+# a dispatch: never a pull request, a verdict or a clock), the door, read and
+# nothing else, no App key, nothing of a pull request checked out — and the
+# function's own reads are held in board/build.py's text below.
 BOARD_WORKFLOW = ".github/workflows/build-board.yml"
-BOARD_TRIGGERS = ["check_run", "pull_request_target", "workflow_dispatch"]
-BOARD_SCOPE = """body=$(jq -cn --arg r "${REPO#*/}" '{repositories: [$r], permissions: {contents: "read"}}')"""
+BOARD_TRIGGERS = ["push", "workflow_dispatch"]
+BOARD_PUSH = ("  push:\n    branches: [main]\n    paths:\n      - board/**\n"
+              "      - .github/workflows/build-board.yml\n")
+BOARD_KEY = """jq -n --arg k "$k" '{key: $k, value: $ENV[$k], type: "sensitive", target: ["production", "preview"]}'"""
 BOARD_HOLDS = (
-    (BOARD_SCOPE, "a token scoped to one product with contents read alone"),
-    ("""want='{"contents":"read"}'""", "the grant checked against contents read alone"),
-    ('if [ "$granted" != "$want" ]; then', "a grant that is more, or less, refused"),
-    ('"https://api.github.com/installation/repositories"', "the token's reach asked of GitHub"),
-    ('if [ "$reach" != "$REPO" ]; then', "a token reaching past the one product refused"),
-    ("github.event.pull_request.head.repo.full_name == github.repository", "a fork's pull request waking nothing"),
-    ("'[.[] | select(.head.repo.full_name == $r)", "a fork's pull request left off the board"),
-    ("select(.merged_at != null and .head.repo.full_name == $r)", "a fork's merge left off the board"),
-    ("github.event.check_run.app.id == %d" % REVIEWER_APP_ID, "only the reviewer's own check run waking it"),
-    ("github.event.check_run.name == '%s'" % REVIEWER_CHECK, "only the reviewer's check run by name"),
-    # 13 October 2026: the verdict wakes it, never a read started (#211's ask).
-    ("  check_run:\n    types: [completed]\n", "only the reviewer's verdict waking it, not a read started"),
+    (BOARD_PUSH, "a push waking it only on main, and only when the board's own code changed (#222)"),
+    ("    if: github.ref == 'refs/heads/main'\n", "the job run from main alone"),
     ("cancel-in-progress: false", "no deploy cut off between going live and its smoke test"),
-    # What the fake host below cannot tell apart, because it answers both alike.
-    ("for p in / /index.html; do", "a stranger asked at the root and at the page's own name"),
+    # What the fake host below cannot tell apart, because it answers each alike.
+    ("for p in / /index.html /api/build; do", "a stranger asked at the root, the old page's name and the function's own"),
     # #117's second read, 5 and 7.
     ("persist-credentials: false", "no token left in the checkout"),
-    ("check_name=%s&app_id=%d&" % (REVIEWER_CHECK, REVIEWER_APP_ID), "the reviewer's own check runs read, by its name and App"),
-    # And each run kept only if it is the reviewer's, as check_run_verdict keeps
-    # it, not on the query's word (#113's fourth read).
-    ('select(.app.id == %d and .name == "%s" and .head_sha == $sha)' % (REVIEWER_APP_ID, REVIEWER_CHECK),
-     "each check run on the board held to the reviewer's App, name and head"),
     ("        default: preview\n", "a dispatch that is a preview unless production is chosen"),
     ("      NEXT: juku-build-board-next.vercel.app\n", "the one fixed name every preview lands at"),
-    ('-H "Authorization: Bearer $OPENROUTER_KEY" "https://openrouter.ai/api/v1/activity")',
-     "the spend card's key used for its one read, OpenRouter's daily activity"),
     # #117's fourth read, 4c: the fake sets TARGET itself, so the line that
     # sets it is held here.
     ("TARGET: ${{ github.event_name != 'workflow_dispatch' && 'production' || inputs.target }}",
      "a dispatch's own target, never production by default"),
-    # #117's second read, 6: the render takes the time the clock stamped.
-    ('jq -n --arg at "$AT"', "the snapshot's time taken from before the first read"),
-    # The fingerprint the deploy compares (13 October 2026), taken in the render,
-    # which the fake host does not run: over the page rendered with the read's time
-    # at the start of its day, and the gate's three files, so a change to either deploys.
-    ("""jq --arg d "${AT:0:10}T00:00:00Z" '.checked_at = $d' "$RUNNER_TEMP/reads.json\"""",
-     "the fingerprint taken over the page with the read's time at the start of its day"),
-    ('python3 board/build.py "$RUNNER_TEMP/fp.json" "$RUNNER_TEMP/fp.html"', "the fingerprint's page rendered by the board's own build"),
-    ('h=$(cat "$RUNNER_TEMP/fp.html" board/middleware.js board/robots.txt board/vercel.json | sha256sum',
-     "the fingerprint taken over that page and the gate's three files"),
-    ("BOARD_HASH: ${{ steps.render.outputs.board_hash }}", "the deploy given the render's fingerprint"),
-    ('echo "::add-mask::$h"', "the fingerprint masked before the deploy step's environment shows it in the log"),
+    # The frame and its fingerprint, laid out in a step the fake host does not run.
+    ('cp board/build.py "$site/api/build.py"', "the board's build deployed as its function"),
+    ('h=$(cat board/build.py board/middleware.js board/robots.txt board/vercel.json | sha256sum',
+     "the fingerprint taken over the build and the gate's three files"),
+    ("BOARD_HASH: ${{ steps.frame.outputs.board_hash }}", "the deploy given the frame's fingerprint"),
+    # The function's keys: from a file, stored sensitive, the read key's absence deploying nothing.
+    (BOARD_KEY, "each key sent from a file, stored where the host never gives it back"),
+    ("BOARD_READ_TOKEN: ${{ secrets.BOARD_READ_TOKEN }}", "the function's read key, from the door's environment"),
 )
-# The snapshot's stamp, before the first product is read (#117's second read, 6).
-BOARD_STAMP = 'echo "checked_at='
 # Read, and nothing else, for the whole workflow; one group, on the job (#117's second read, 5).
 BOARD_PERMISSIONS = re.compile(r"^permissions:\n((?:  .*\n)+)", re.M)
 BOARD_JOB_CONCURRENCY = "    concurrency:\n      group: build-board\n      cancel-in-progress: false\n"
-# The read in order: minted, its grant and reach checked, and only then a roadmap read.
-BOARD_ORDER = (BOARD_SCOPE, 'if [ "$granted" != "$want" ]; then', 'if [ "$reach" != "$REPO" ]; then',
-               "contents/roadmap.json")
 # The smoke's two markers, held on both sides: the PIN screen's words in the gate,
 # and the attribute only the board's page carries.
 BOARD_MARKS = (("board/middleware.js", "Directors only"), ("board/build.py", "<body data-board>"))
 BOARD_NEVER = (
     ("upload-artifact", "an artifact, which a public repository publishes"),
+    # #222: the board reads nothing here, and wears no App, so its run can sign nothing.
+    ("secrets.REVIEWER_APP", "the reviewer App's keys, which sign the gate's verdicts"),
+    ("api.github.com", "GitHub's API: the function reads, never this run"),
+    ("openrouter.ai", "OpenRouter: the function reads the spend, never this run"),
+    ("python3 board/build.py", "the board rendered here: the function renders it when it is opened"),
     # #117's fourth read, 4b.
     ("GITHUB_STEP_SUMMARY", "a run's summary, which a public repository publishes"),
     # The spend card's key is a management key (his, 1 October 2026): one read, never a key made.
-    ("openrouter.ai/api/v1/keys", "OpenRouter's keys, which the management key could make or change"),
     ("github.event.pull_request.head.sha", "the pull request's own code"),
     ("github.event.pull_request.head.ref", "the pull request's own branch"),
     ("github.head_ref", "the pull request's own branch"),
@@ -5836,7 +5817,24 @@ BOARD_NEVER = (
     ("git fetch", "anything fetched beside main's own checkout"),
 )
 BOARD_CHECKOUT_REF = re.compile(r"^\s*ref:", re.M)
-BOARD_PRODUCT = re.compile(r"^\s*(Adonis80/[A-Za-z0-9._-]+)=\S", re.M)
+# THE FUNCTION'S READS (#222), held in board/build.py's text: GETs alone, one Request, to
+# GitHub and OpenRouter's daily activity alone; the reviewer's own check runs, on the head;
+# a fork's pull request left off. Its selftest runs them against a fake of both hosts.
+BUILD_HOLDS = (
+    ('GITHUB = "https://api.github.com"', "GitHub's API the one GitHub host it asks"),
+    ('SPEND_URL = "https://openrouter.ai/api/v1/activity"', "the spend card's key used for its one read, OpenRouter's daily activity"),
+    ("urllib.request.urlopen(urllib.request.Request(url, headers=head), timeout=READ_SECONDS)",
+     "every request a GET with a time limit, and nothing sent but its headers"),
+    ("REVIEWER_APP_ID = %d " % REVIEWER_APP_ID, "the reviewer's own App"),
+    ('REVIEWER_CHECK = "%s"' % REVIEWER_CHECK, "the reviewer's check run by name"),
+    ('r.get("name") == REVIEWER_CHECK and r.get("head_sha") == sha', "each check run held to the reviewer's name and head"),
+    ('(r.get("app") or {}).get("id") == REVIEWER_APP_ID', "each check run held to the reviewer's App"),
+    ('.get("full_name") == RULEBOOK_REPO', "a fork's pull request left off the board"),
+    ('RULEBOOK_REPO = "Adonis80/how-we-build"', "this repository's own pull requests"),
+    ('token = env.get("BOARD_READ_TOKEN")', "GitHub read with the board's read key"),
+    ('read_spend, get, env.get("OPENROUTER_KEY")', "OpenRouter read with its own key"),
+)
+BUILD_NEVER = ("method=", "data=", "/keys")
 MAP_PRODUCT = re.compile(r"`https://github\.com/(Adonis80/[A-Za-z0-9._-]+)`")
 
 
@@ -5903,6 +5901,8 @@ case "$method $path" in
     case "$data" in
       @*) grep -q '"target"' "${data#@}" && refuse "a deployment given a target, which the host would put on the domain by itself"
           { grep -q '"file": "board.sha"' "${data#@}" && grep -q "\"data\": \"$BOARD_HASH\"" "${data#@}"; } || refuse "a deployment that does not carry the board's fingerprint as board.sha"
+          grep -q '"file": "api/build.py"' "${data#@}" || refuse "a deployment that does not carry the board's build as its function"
+          grep -qx BOARD_READ_TOKEN "$S/keys" 2>/dev/null || refuse "a frame made before its read key was stored on the project"
           echo "$FAKE_NEW" > "$S/new"
           reply 200 '{"id":"dpl_new","readyState":"QUEUED"}' ;;
       # The host's CLI promotes a preview so: a production copy, which takes the domain once ready.
@@ -5917,6 +5917,15 @@ case "$method $path" in
           reply 200 '{"id":"dpl_copy","readyState":"QUEUED"}' ;;
       *) refuse "a deployment with no files" ;;
     esac ;;
+  # The function's keys, stored on the project from a file (#222).
+  "POST https://api.vercel.com/v10/projects/$PROJECT/env")
+    case "$url" in *"upsert=true"*) ;; *) refuse "a key stored without upsert, refused once it exists: $url" ;; esac
+    case "$data" in @*) ;; *) refuse "a key sent on the command line" ;; esac
+    grep -q '"type": "sensitive"' "${data#@}" || refuse "a key stored where the host would give it back"
+    k=$(jq -r '.key' "${data#@}")
+    [ "$(jq -r '.value' "${data#@}")" = "${!k:-}" ] || refuse "a key stored with another value"
+    [ "${FAKE_KEY:-ok}" = ok ] || { reply 403 '{}'; exit 0; }
+    echo "$k" >> "$S/keys"; reply 201 '{}' ;;
   "GET https://api.vercel.com/v13/deployments/dpl_new")
     reply 200 "{\"id\":\"dpl_new\",\"readyState\":\"$(cat "$S/new")\",\"url\":\"juku-build-board-x1.vercel.app\"}" ;;
   "GET https://api.vercel.com/v13/deployments/dpl_copy")
@@ -5981,12 +5990,12 @@ case "$method $path" in
     [ "$(cat "$S/new")" = READY ] || refuse "the fixed preview name given before the smoke"
     [ "${FAKE_ALIAS:-ok}" = ok ] || { reply 403 '{}'; exit 0; }
     echo yes > "$S/aliased"; reply 200 '{}' ;;
-  "GET https://$NEXT/"|"GET https://$NEXT/index.html")
+  "GET https://$NEXT/"|"GET https://$NEXT/index.html"|"GET https://$NEXT/api/build")
     [ "$auth" = no ] || refuse "a stranger's request carrying a key"
     [ -f "$S/aliased" ] || refuse "the fixed preview name asked before it was given"
     [ "$(cat "$S/new")" = READY ] || { reply 404 'gone'; exit 0; }
     case "${FAKE_NEXT:-wall}" in board) reply 200 "$board" ;; *) reply 302 '' "$sso" ;; esac ;;
-  "GET https://$DOMAIN/"|"GET https://$DOMAIN/index.html")
+  "GET https://$DOMAIN/"|"GET https://$DOMAIN/index.html"|"GET https://$DOMAIN/api/build")
     [ "$auth" = no ] || refuse "a stranger's request carrying a key"
     # What it served before: the PIN screen, unless a case says it shows a stranger the board.
     if [ "$serving" != dpl_copy ]; then case "${FAKE_BEFORE:-pin}" in board) reply 200 "$board" ;; *) reply 200 "$pin" ;; esac; exit 0; fi
@@ -5996,7 +6005,7 @@ case "$method $path" in
       wall) reply 302 '' "$sso" ;;
       *) reply 200 "$pin" ;;
     esac ;;
-  "GET https://juku-build-board-x1.vercel.app/"|"GET https://juku-build-board-x1.vercel.app/index.html")
+  "GET https://juku-build-board-x1.vercel.app/"|"GET https://juku-build-board-x1.vercel.app/index.html"|"GET https://juku-build-board-x1.vercel.app/api/build")
     [ "$auth" = no ] || refuse "a stranger's request carrying a key"
     [ "$(cat "$S/new")" = READY ] || { reply 404 'gone'; exit 0; }
     # The host's sign-in wall, as run 36715901351 found it: a redirect.
@@ -6064,7 +6073,7 @@ BOARD_DEPLOY_CASES = (
      "dpl_before", "CANCELED", "cancelled: dpl_new", "fixed address"),
     ("a preview whose fixed name is refused", {"TARGET": "preview", "LIVE": "no", "FAKE_ALIAS": "no"}, 0,
      "dpl_before", "READY", "the fixed preview address was refused", "promote"),
-    ("an automatic run before his look", {"GITHUB_EVENT_NAME": "pull_request_target", "LIVE": "no"}, 0,
+    ("an automatic run before his look", {"GITHUB_EVENT_NAME": "push", "LIVE": "no"}, 0,
      "dpl_before", "none", "rendered, not deployed", "deployment:"),
     # #117's fourth read, 2: a production dispatch waits for his look too.
     ("a production dispatch before his look", {"LIVE": "no"}, 1, "dpl_before", "none",
@@ -6092,20 +6101,31 @@ BOARD_DEPLOY_CASES = (
     ("too little of the job is left", {"LATE": "yes"}, 1, "dpl_before", "none", "too little of the job",
      "deployment:"),
     # 13 October 2026: the host's 100 deployments a day, 82 of them the board's
-    # on events that changed nothing on it. Only a changed board, or one live
-    # six hours, is deployed to production; a preview is always made.
-    ("the same board, live for an hour", {"FAKE_LIVE": "same", "GITHUB_EVENT_NAME": "check_run"}, 0, "dpl_before",
+    # on events that changed nothing on it. Only a changed frame is deployed to
+    # production by a push, however long the same one has been live, since the
+    # board reads live and never ages (#222); a preview is always made.
+    ("the same board, live for an hour", {"FAKE_LIVE": "same", "GITHUB_EVENT_NAME": "push"}, 0, "dpl_before",
      "none", "unchanged: roadmap.juku.pro serves dpl_before", "deployment:"),
-    ("the same board, live for over six hours", {"FAKE_LIVE": "stale", "GITHUB_EVENT_NAME": "check_run"}, 0,
-     "dpl_copy", "READY", "live: dpl_copy, the copy of dpl_new", "unchanged"),
-    ("a changed board", {"FAKE_LIVE": "other", "GITHUB_EVENT_NAME": "check_run"}, 0, "dpl_copy", "READY",
+    ("the same board, live for over six hours", {"FAKE_LIVE": "stale", "GITHUB_EVENT_NAME": "push"}, 0,
+     "dpl_before", "none", "unchanged: roadmap.juku.pro serves dpl_before", "deployment:"),
+    # #222: the function's keys stored on the project before the frame is made;
+    # no read key deploys nothing, and a key the host will not store deploys nothing.
+    ("no read key in the environment", {"BOARD_READ_TOKEN": ""}, 0, "dpl_before", "none",
+     "No read key", "deployment:"),
+    ("the read key refused by the project", {"FAKE_KEY": "no"}, 1, "dpl_before", "none",
+     "KEY NOT STORED: HTTP 403 storing BOARD_READ_TOKEN", "deployment:"),
+    ("both keys stored before the frame is made", {}, 0, "dpl_copy", "READY",
+     "stored on the project: OPENROUTER_KEY", None),
+    ("no spend key: the read key alone stored", {"OPENROUTER_KEY": ""}, 0, "dpl_copy", "READY",
+     "stored on the project: BOARD_READ_TOKEN", "stored on the project: OPENROUTER_KEY"),
+    ("a changed board", {"FAKE_LIVE": "other", "GITHUB_EVENT_NAME": "push"}, 0, "dpl_copy", "READY",
      "live: dpl_copy, the copy of dpl_new", "unchanged"),
-    ("what is live cannot be read: deployed as before", {"FAKE_LIVE": "unread", "GITHUB_EVENT_NAME": "check_run"}, 0,
+    ("what is live cannot be read: deployed as before", {"FAKE_LIVE": "unread", "GITHUB_EVENT_NAME": "push"}, 0,
      "dpl_copy", "READY", "live: dpl_copy, the copy of dpl_new", "unchanged"),
     # #210's first read: the fingerprint is stamped on a copy before its smoke,
     # so one that landed after a red run is kept only if it passes the smoke now.
     ("the same board, live for an hour, showing a stranger the board",
-     {"FAKE_LIVE": "same", "FAKE_BEFORE": "board", "GITHUB_EVENT_NAME": "check_run"}, 0, "dpl_copy", "READY",
+     {"FAKE_LIVE": "same", "FAKE_BEFORE": "board", "GITHUB_EVENT_NAME": "push"}, 0, "dpl_copy", "READY",
      "live: dpl_copy, the copy of dpl_new", "unchanged"),
     ("the same board, dispatched", {"FAKE_LIVE": "same"}, 0, "dpl_copy", "READY",
      "live: dpl_copy, the copy of dpl_new", "unchanged"),
@@ -6116,7 +6136,7 @@ BOARD_DEPLOY_CASES = (
     # His ask, 15 October 2026: at 60 of the account's deployments in 24 hours
     # the board makes none, so it never starves a product. Every path above runs
     # at 59, with five older the host returned beside them, and deploys.
-    ("the account at its ceiling", {"FAKE_USED": "60", "GITHUB_EVENT_NAME": "check_run"}, 0, "dpl_before", "none",
+    ("the account at its ceiling", {"FAKE_USED": "60", "GITHUB_EVENT_NAME": "push"}, 0, "dpl_before", "none",
      "ceiling: the account has made 60 or more deployments", "deployment:"),
     ("the account at its ceiling, dispatched", {"FAKE_USED": "60"}, 0, "dpl_before", "none",
      "ceiling: the account has made 60 or more deployments", "deployment:"),
@@ -6124,17 +6144,17 @@ BOARD_DEPLOY_CASES = (
      "dpl_before", "none", "ceiling: the account has made 60 or more", "deployment:"),
     # #219's first read: a domain showing a stranger the board is replaced, ceiling or not.
     ("the account at its ceiling, the same board live showing a stranger the board",
-     {"FAKE_USED": "60", "FAKE_LIVE": "same", "FAKE_BEFORE": "board", "GITHUB_EVENT_NAME": "check_run"}, 0,
+     {"FAKE_USED": "60", "FAKE_LIVE": "same", "FAKE_BEFORE": "board", "GITHUB_EVENT_NAME": "push"}, 0,
      "dpl_copy", "READY", "live: dpl_copy, the copy of dpl_new", "ceiling:"),
     ("the account at its ceiling, dispatched, the domain showing a stranger the board",
      {"FAKE_USED": "60", "FAKE_BEFORE": "board"}, 0, "dpl_copy", "READY", "the ceiling is passed over", "ceiling:"),
-    ("under the ceiling, the count kept out of the public log", {"GITHUB_EVENT_NAME": "check_run"}, 0, "dpl_copy",
+    ("under the ceiling, the count kept out of the public log", {"GITHUB_EVENT_NAME": "push"}, 0, "dpl_copy",
      "READY", "the account's deployments in the last 24 hours: under the ceiling of 60", "hours: 59"),
     # #219's second read: the key's reach said on every run, and a preview never
     # passes over the ceiling, since it cannot replace the domain.
-    ("another project's deployment among the day's", {"GITHUB_EVENT_NAME": "check_run"}, 0, "dpl_copy", "READY",
+    ("another project's deployment among the day's", {"GITHUB_EVENT_NAME": "push"}, 0, "dpl_copy", "READY",
      "other projects' deployments among those counted: yes", None),
-    ("the board's own deployments alone in the day", {"FAKE_OTHERS": "no", "GITHUB_EVENT_NAME": "check_run"}, 0,
+    ("the board's own deployments alone in the day", {"FAKE_OTHERS": "no", "GITHUB_EVENT_NAME": "push"}, 0,
      "dpl_copy", "READY", "other projects' deployments among those counted: no", None),
     ("the account at its ceiling, a preview asked for while the domain shows a stranger the board",
      {"FAKE_USED": "60", "FAKE_BEFORE": "board", "TARGET": "preview", "LIVE": "no"}, 0, "dpl_before", "none",
@@ -6185,7 +6205,8 @@ def _board_deploy_case(script, job, case):
                            ("refused", "")):
             with open(os.path.join(fake, name), "w", encoding="utf-8") as f:
                 f.write("%s\n" % body if body != "" else "")
-        for name in ("index.html", "middleware.js", "robots.txt", "vercel.json"):
+        os.makedirs(os.path.join(run, "site", "api"))
+        for name in ("api/build.py", "middleware.js", "robots.txt", "vercel.json"):
             with open(os.path.join(run, "site", name), "w", encoding="utf-8") as f:
                 f.write("x")
         e = {k: v for k, v in os.environ.items() if not k.startswith("FAKE_")}
@@ -6195,7 +6216,9 @@ def _board_deploy_case(script, job, case):
                   "GITHUB_EVENT_NAME": "workflow_dispatch", "LIVE": "yes", "TARGET": "production",
                   "VERCEL_TOKEN": "not-a-token", "TEAM": "team_x", "PROJECT": "prj_x",
                   "DOMAIN": "roadmap.juku.pro", "NEXT": "juku-build-board-next.vercel.app", "FAKE_NEW": env.get("FAKE_READY", "READY"),
-                  "BOARD_HASH": "%064x" % 0xb0a2d})
+                  "BOARD_HASH": "%064x" % 0xb0a2d,
+                  # Each a key no log may print: the log is checked for the mark below.
+                  "BOARD_READ_TOKEN": "NOT-FOR-THE-LOG-read", "OPENROUTER_KEY": "NOT-FOR-THE-LOG-spend"})
         e.update({k: v for k, v in env.items() if k != "LATE"})
         try:
             p = subprocess.run(["bash", "-c", script], env=e, capture_output=True, text=True, timeout=60)
@@ -6231,29 +6254,29 @@ def _board_deploy_case(script, job, case):
         return faults
 
 
-def _check_board_wiring(board=None, product=None, readme=None, quiet=False):
-    """build-board.yml, held to the door, one product per token, and the README's map."""
+def _check_board_wiring(board=None, build=None, readme=None, quiet=False):
+    """build-board.yml, held to the door and a push of the board's code; board/build.py's reads, to the README's map."""
     say = (lambda *a: None) if quiet else print
     try:
         board = _read(BOARD_WORKFLOW) if board is None else board
-        product = _read(PRODUCT_WORKFLOW) if product is None else product
+        build = _read("board/build.py") if build is None else build
         readme = _read("README.md") if readme is None else readme
     except OSError as e:
         say("  wiring: %s" % e)
         return 1
     bad = 0
 
-    def fault(what):
+    def fault(what, where=BOARD_WORKFLOW):
         nonlocal bad
-        say("  wiring: %s %s" % (BOARD_WORKFLOW, what))
+        say("  wiring: %s %s" % (where, what))
         bad += 1
 
-    # No `pull_request`, whose run is a branch's own file, and no clock.
+    # No `pull_request`, no verdict, no clock: main's push of the board's own code, or a dispatch (#222).
     if triggers(board) != BOARD_TRIGGERS:
-        fault("triggers on %s; it must be %s and nothing else — never a branch's own copy, never "
+        fault("triggers on %s; it must be %s and nothing else — never a pull request, a verdict or "
               "a clock" % (triggers(board), BOARD_TRIGGERS))
     if not USES_ENVIRONMENT.search(board):
-        fault("does not run in the `%s` environment, so the App's key and the deploy key are "
+        fault("does not run in the `%s` environment, so the deploy key and the board's read keys are "
               "readable from any branch" % KEY_ENVIRONMENT)
     for line, what in BOARD_HOLDS:
         if line not in board:
@@ -6263,24 +6286,15 @@ def _check_board_wiring(board=None, product=None, readme=None, quiet=False):
             fault("reaches %s (`%s`)" % (what, word))
     if BOARD_CHECKOUT_REF.search(board) or board.count("uses: actions/checkout") != 1:
         fault("checks out something other than main's own tree, once")
-    at = [board.find(line) for line in BOARD_ORDER]
-    if -1 in at or at != sorted(at):
-        fault("reads a roadmap before its token's grant and reach are checked (%s)" % " < ".join(BOARD_ORDER))
     for path, mark in BOARD_MARKS:
         try:
-            if mark not in _read(path):
+            if mark not in (build if path == "board/build.py" else _read(path)):
                 fault("smokes for %r, which %s no longer carries" % (mark, path))
         except OSError as e:
             fault("smokes against %s, which cannot be read: %s" % (path, e))
     if XTRACE.search(board):
         fault("traces its shell, which prints what it holds into a public log")
-    # The spend card's management key: one read in this file, and in no other (#134's first read, 3).
-    if board.count("openrouter.ai") != 1:
-        fault("asks OpenRouter %d times; the spend card's key makes one read, its daily activity"
-              % board.count("openrouter.ai"))
-    if board.count("Bearer $OPENROUTER_KEY") != 1:
-        fault("sends the spend card's key %d times; it goes once, to OpenRouter's daily activity (#134's second read, 1)"
-              % board.count("Bearer $OPENROUTER_KEY"))
+    # The spend card's management key: carried here, read only by the function, and in no other workflow.
     for other in sorted(glob.glob(".github/workflows/*.yml")):
         if other != BOARD_WORKFLOW and "secrets.OPENROUTER_KEY" in _read(other):
             fault("shares the spend card's management key with %s" % other)
@@ -6295,58 +6309,51 @@ def _check_board_wiring(board=None, product=None, readme=None, quiet=False):
                  and not l.strip().startswith("#") and "--max-time" not in l]
     if unbounded:
         fault("makes a request with no time limit (`%s`)" % unbounded[0])
-    stamp, read = board.find(BOARD_STAMP), board.find("contents/roadmap.json")
-    if stamp == -1 or read == -1 or stamp > read:
-        fault("stamps the snapshot's time after the first product is read, or not at all")
     for f in board_deploy_faults(board):
         fault("deploy step %s" % f)
-    if _jwt(board) is None or _jwt(board) != _jwt(product):
-        fault("signs the App's JWT differently from %s" % PRODUCT_WORKFLOW)
-    listed = sorted(set(BOARD_PRODUCT.findall(board)))
+    # The function's reads (#222), in board/build.py.
+    for line, what in BUILD_HOLDS:
+        if line not in build:
+            fault("has lost %s (`%s`)" % (what, line), "board/build.py")
+    for word in BUILD_NEVER:
+        if word in build:
+            fault("sends more than a GET's headers, or asks for OpenRouter's keys (`%s`)" % word, "board/build.py")
+    if build.count("openrouter.ai") != 1 or build.count("urlopen(") != 1:
+        fault("asks OpenRouter %d times and opens %d requests; the spend card's key makes one read, its daily "
+              "activity, through the one GET" % (build.count("openrouter.ai"), build.count("urlopen(")), "board/build.py")
+    try:
+        spec = importlib.util.spec_from_file_location("board_build", "board/build.py")
+        mod = importlib.util.module_from_spec(spec)
+        exec(compile(build, "board/build.py", "exec"), mod.__dict__)
+        listed = sorted(r for r, _ in mod.PRODUCTS)
+        named = sorted(n for _, n in mod.PRODUCTS)
+        rows = sorted(r for r in mod.ROWS if r != mod.RULEBOOK)
+    except (OSError, ImportError, SyntaxError, AttributeError, TypeError, ValueError) as e:
+        listed, named, rows = [], [], ["unreadable: %s" % e]
     mapped = sorted(set(MAP_PRODUCT.findall(readme)))
     if not listed or listed != mapped:
         fault("reads %s, and the README's map names %s: the board reads the map's products, all "
-              "of them and nothing else" % (listed, mapped))
+              "of them and nothing else" % (listed, mapped), "board/build.py")
     # The page's rows are the same list, by name: two copies of one truth held equal.
-    named = sorted(set(re.findall(r"^\s*Adonis80/[A-Za-z0-9._-]+=(.+?)\s*$", board, re.M)))
-    try:
-        spec = importlib.util.spec_from_file_location("board_build", "board/build.py")
-        build = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(build)
-        rows = sorted(r for r in build.ROWS if r != build.RULEBOOK)
-    except (OSError, ImportError, SyntaxError, AttributeError) as e:
-        rows = ["unreadable: %s" % e]
     if rows != named:
-        fault("names its products %s, and board/build.py draws rows for %s" % (named, rows))
+        fault("names its products %s, and draws rows for %s" % (named, rows), "board/build.py")
     if not bad:
-        say("ok: the board's build runs only from main, behind the `%s` door, on a dispatch, this "
-            "repository's own pull requests and the reviewer's check run; it reads the %d products "
-            "on the README's map with a token each, contents read alone, its grant and reach "
-            "checked before anything is read; it checks out nothing of a pull request, uploads "
-            "nothing, and its deploy, run against a fake host on %d paths, gives production only a "
-            "copy of a preview it has smoked, on an event only of a board changed, live six hours or failing its smoke, never once the account has made 60 in 24 hours unless a production run finds the board leaking, cancels or deletes one that fails, and on a red after "
-            "the copy cancels one still building and puts back what the domain served, inside the job's time"
-            % (KEY_ENVIRONMENT, len(listed), len(BOARD_DEPLOY_CASES)))
+        say("ok: the board's build runs only from main, behind the `%s` door, on a dispatch or main's push of "
+            "the board's own code, never a pull request, a verdict or a clock; it wears no App and reads "
+            "nothing, carries the function's keys from a file, and its deploy, run against a fake host on %d "
+            "paths, gives production only a copy of a preview it has smoked, on a push only of a frame changed "
+            "or failing its smoke, never once the account has made 60 in 24 hours unless a production run finds "
+            "the board leaking, cancels or deletes one that fails, and on a red after the copy cancels one still "
+            "building and puts back what the domain served, inside the job's time; the function reads the %d "
+            "products on the README's map and this repository with GETs alone, to GitHub and OpenRouter's "
+            "daily activity alone" % (KEY_ENVIRONMENT, len(BOARD_DEPLOY_CASES), len(listed)))
     return bad
 
 
 # Each loosening of build-board.yml that the check above must refuse.
 BOARD_LOOSENINGS = (
-    ("a pull_request trigger", lambda t: t.replace("  pull_request_target:\n", "  pull_request:\n    types: [opened]\n  pull_request_target:\n", 1)),
-    ("a clock", lambda t: t.replace("  check_run:\n", "  schedule:\n    - cron: '0 * * * *'\n  check_run:\n", 1)),
     ("the door removed", lambda t: t.replace("    environment: reviewer\n", "", 1)),
-    ("a wider token", lambda t: t.replace(BOARD_SCOPE, BOARD_SCOPE.replace('{contents: "read"}', '{contents: "read", pull_requests: "write"}'), 1)),
-    ("the grant unchecked", lambda t: t.replace('if [ "$granted" != "$want" ]; then', "if false; then", 1)),
-    ("the reach unchecked", lambda t: t.replace('if [ "$reach" != "$REPO" ]; then', "if false; then", 1)),
-    ("a product not on the map", lambda t: t.replace("          PRODUCTS\n", "          Adonis80/elsewhere=Elsewhere\n          PRODUCTS\n", 1)),
-    ("a product on the map left out", lambda t: t.replace("          Adonis80/phena=Phena\n", "", 1)),
-    ("a fork's pull request waking it", lambda t: t.replace("github.event.pull_request.head.repo.full_name == github.repository", "true", 1)),
-    ("a fork's pull request read", lambda t: t.replace("'[.[] | select(.head.repo.full_name == $r)", "'[.[] | select(true)", 1)),
-    ("any check run waking it", lambda t: t.replace("github.event.check_run.app.id == 5000405 &&", "", 1)),
-    ("a read started waking it", lambda t: t.replace("    types: [completed]\n", "    types: [created, rerequested, completed]\n", 1)),
-    ("an artifact uploaded", lambda t: t.replace("      - name: Render\n", "      - uses: actions/upload-artifact@v4\n        with:\n          path: ${{ runner.temp }}\n      - name: Render\n", 1)),
     ("a traced shell", lambda t: t.replace("set -euo pipefail", "set -euxo pipefail", 1)),
-    ("the pull request's head checked out", lambda t: t.replace("          persist-credentials: false\n", "          persist-credentials: false\n          ref: ${{ github.event.pull_request.head.sha }}\n", 1)),
     ("a deploy cut off mid-way", lambda t: t.replace("cancel-in-progress: false", "cancel-in-progress: true", 1)),
     ("a rollback to the new deployment", lambda t: t.replace("promote/$before", "promote/$id", 1)),
     ("nothing put back on a red", lambda t: t.replace("          trap cleanup EXIT\n", "", 1)),
@@ -6356,7 +6363,6 @@ BOARD_LOOSENINGS = (
     ("a copy READY at its cancel left on the domain", lambda t: t.replace("                         READY) ;;\n", "                         READY) exit 1 ;;\n", 1)),
     ("a rollback never confirmed", lambda t: t.replace('serves "$before" && {', "true && {", 1)),
     ("a leaked board asked again", lambda t: t.replace('if grep -q "data-board" <<< "$body"; then return 2; fi', "if false; then return 2; fi", 1)),
-    ("the page's own name never smoked", lambda t: t.replace("for p in / /index.html; do", "for p in /; do", 1)),
     # #117's second read, 1: the host never moves the domain, and what it
     # served is what is put back.
     ("the domain left to the host", lambda t: t.replace("projectSettings: {framework: null},", 'projectSettings: {framework: null}, target: "production",', 1)),
@@ -6372,51 +6378,56 @@ BOARD_LOOSENINGS = (
     ("the preview named before its smoke", lambda t: t.replace("          g=1\n", '          echo "preview: https://$host"\n          g=1\n', 1)),
     # 3: a time limit on every request and a deadline on every wait.
     ("a host request with no time limit", lambda t: t.replace("v() { curl -sS --max-time 20 ", "v() { curl -sS ", 1)),
-    ("a read with no time limit", lambda t: t.replace("api() { curl -sSf --max-time 30 ", "api() { curl -sSf ", 1)),
     ("a wait with no deadline", lambda t: t.replace('while [ "$(date +%s)" -lt "$by" ]; do\n            state=', "while true; do\n            state=", 1)),
     ("waits that leave no time to roll back", lambda t: t.replace("          limit=9\n", "          limit=14\n", 1)),
     ("a rollback given longer than the job", lambda t: t.replace("local back=$(( $(date +%s) + 180 ))", "local back=$(( $(date +%s) + 600 ))", 1)),
     # 5.
-    ("a write permission", lambda t: t.replace("  checks: read\n", "  checks: read\n  statuses: write\n", 1)),
     ("a job asking for its own permissions", lambda t: t.replace("    runs-on: ubuntu-latest\n", "    runs-on: ubuntu-latest\n    permissions:\n      contents: write\n", 1)),
     ("the concurrency group on the workflow", lambda t: t.replace(BOARD_JOB_CONCURRENCY, "", 1).replace("\njobs:\n", "\nconcurrency:\n  group: build-board\n  cancel-in-progress: false\n\njobs:\n", 1)),
     ("credentials left in the checkout", lambda t: t.replace("persist-credentials: false", "persist-credentials: true", 1)),
-    ("another App's check runs read", lambda t: t.replace("&app_id=%d&" % REVIEWER_APP_ID, "&app_id=15368&", 1)),
-    ("check runs of another name read", lambda t: t.replace("check_name=%s&" % REVIEWER_CHECK, "check_name=review&", 1)),
-    ("another App's run kept on the board", lambda t: t.replace("select(.app.id == %d and " % REVIEWER_APP_ID, "select(", 1)),
-    ("a run of another name kept on the board", lambda t: t.replace(' and .name == "%s"' % REVIEWER_CHECK, "", 1)),
-    ("a run on another head kept on the board", lambda t: t.replace(" and .head_sha == $sha)", ")", 1)),
     # 6 and 7.
-    ("the snapshot stamped at the render", lambda t: t.replace('jq -n --arg at "$AT"', 'jq -n --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"', 1)),
-    ("the stamp after the first read", lambda t: t.replace(BOARD_STAMP, "true", 1).replace("          rm -f \"$road\"\n", "          rm -f \"$road\"\n          " + BOARD_STAMP + "x\" >> \"$GITHUB_OUTPUT\"\n", 1)),
     ("a dispatch that deploys production by default", lambda t: t.replace("        default: preview\n", "        default: production\n", 1)),
     # #117's fourth read, 2 and 4b-c, and run 36714764680.
     ("a production dispatch before his look", lambda t: t.replace('if [ "$TARGET" = production ] && [ "$LIVE" != yes ]; then', "if false; then", 1)),
     ("every run's target production", lambda t: t.replace("TARGET: ${{ github.event_name != 'workflow_dispatch' && 'production' || inputs.target }}", "TARGET: production", 1)),
-    ("a key made with the spend card's key", lambda t: t.replace('          rm -f "$RUNNER_TEMP/activity.json"\n', '          rm -f "$RUNNER_TEMP/activity.json"\n          curl -sS --max-time 30 -X POST -H "Authorization: Bearer $OPENROUTER_KEY" "https://openrouter.ai/api/v1/keys" -d \'{"name":"x"}\'\n', 1)),
-    ("a second OpenRouter read", lambda t: t.replace('          rm -f "$RUNNER_TEMP/activity.json"\n', '          rm -f "$RUNNER_TEMP/activity.json"\n          curl -sS --max-time 30 -H "Authorization: Bearer $OPENROUTER_KEY" "https://openrouter.ai/api/v1/credits"\n', 1)),
-    ("the spend card's key sent to another host", lambda t: t.replace('          rm -f "$RUNNER_TEMP/activity.json"\n', '          rm -f "$RUNNER_TEMP/activity.json"\n          curl -sS --max-time 30 -H "Authorization: Bearer $OPENROUTER_KEY" "https://example.com/"\n', 1)),
-    ("the spend card's key read from elsewhere", lambda t: t.replace('"https://openrouter.ai/api/v1/activity")', '"https://openrouter.ai/api/v1/credits")', 1)),
     ("the fixed name never smoked", lambda t: t.replace('gated "$NEXT" wall && g=0 || g=$?', "g=0", 1)),
-    ("a run summary written", lambda t: t.replace('          echo "open pull requests:', '          echo "rendered" >> "$GITHUB_STEP_SUMMARY"\n          echo "open pull requests:', 1)),
     ("any redirect taken as the wall", lambda t: t.replace('[[ "$loc" == "https://vercel.com/sso-api?"* ]]', "true", 1)),
     ("a redirect's address matched loosely", lambda t: t.replace('[[ "$loc" == "https://vercel.com/sso-api?"* ]]', '[[ "$loc" == *"sso-api"* ]]', 1)),
     ("the host's sign-in taken as gated at the domain", lambda t: t.replace('{ [ "$2" = wall ] && [[', "{ [[", 1)),
-    ("a roadmap read before the grant is checked", lambda t: t.replace(BOARD_SCOPE, 'curl -sS "https://api.github.com/repos/$REPO/contents/roadmap.json" > /dev/null\n            ' + BOARD_SCOPE, 1)),
-    ("a pull request fetched", lambda t: t.replace("      - name: Render\n", "      - run: git fetch origin pull/1/head\n      - name: Render\n", 1)),
-    ("a row the workflow does not read", lambda t: t.replace("          Adonis80/phena=Phena\n", "          Adonis80/phena=Phena Two\n", 1)),
     # 13 October 2026: only a changed board, or one live six hours, deployed to production.
-    ("the six hours stretched to a day", lambda t: t.replace("-lt 21600 ]", "-lt 86400 ]", 1)),
-    ("the live board's age not asked", lambda t: t.replace(' && [ $(( $(date +%s) - made_at )) -lt 21600 ]', "", 1)),
     ("the fingerprint not compared", lambda t: t.replace('if [ "$was" = "$want" ] &&', "if true &&", 1)),
-    ("a dispatch passed over too", lambda t: t.replace('if [ "$GITHUB_EVENT_NAME" != workflow_dispatch ]; then\n            live=', "if true; then\n            live=", 1)),
-    ("a live board kept unsmoked", lambda t: t.replace(' -lt 21600 ] && gated "$DOMAIN" pin; then', " -lt 21600 ]; then", 1)),
-    ("the fingerprint printed", lambda t: t.replace('          echo "::add-mask::$h"\n', "", 1)),
     ("a run with no fingerprint deployed", lambda t: t.replace('[[ "${BOARD_HASH:-}" =~ ^[0-9a-f]{64}$ ]] ||', "true ||", 1)),
     ("the fingerprint left off the preview", lambda t: t.replace(',\n                      {file: "board.sha", data: $h}]}', "]}", 1)),
     ("the fingerprint compared unhashed", lambda t: t.replace("want=$(printf '%s' \"$BOARD_HASH\" | sha1sum | cut -d' ' -f1)", 'want="$BOARD_HASH"', 1)),
-    ("the read's time in the fingerprint", lambda t: t.replace("'.checked_at = $d'", "'.'", 1)),
-    ("the page left out of the fingerprint", lambda t: t.replace('h=$(cat "$RUNNER_TEMP/fp.html" board/middleware.js', "h=$(cat board/middleware.js", 1)),
+    # #222: a frame deployed only on main's push of the board's code; never a pull request, a verdict or a clock.
+    ("a pull_request trigger", lambda t: t.replace("  push:\n", "  pull_request:\n    types: [opened]\n  push:\n", 1)),
+    ("a pull_request_target trigger", lambda t: t.replace("  push:\n", "  pull_request_target:\n    types: [opened]\n  push:\n", 1)),
+    ("the reviewer's verdict waking it", lambda t: t.replace("  push:\n", "  check_run:\n    types: [completed]\n  push:\n", 1)),
+    ("a clock", lambda t: t.replace("  push:\n", "  schedule:\n    - cron: '0 * * * *'\n  push:\n", 1)),
+    ("a push of any branch", lambda t: t.replace("    branches: [main]\n", "", 1)),
+    ("a push of anything on main", lambda t: t.replace("    paths:\n      - board/**\n      - .github/workflows/build-board.yml\n", "", 1)),
+    ("a push of a page beside the board's code", lambda t: t.replace("      - board/**\n", "      - board/**\n      - library/**\n", 1)),
+    ("the job let run from any branch", lambda t: t.replace("    if: github.ref == 'refs/heads/main'\n", "", 1)),
+    ("the App's key carried", lambda t: t.replace("          BOARD_READ_TOKEN: ${{ secrets.BOARD_READ_TOKEN }}\n", "          BOARD_READ_TOKEN: ${{ secrets.BOARD_READ_TOKEN }}\n          APP_KEY: ${{ secrets.REVIEWER_APP_KEY }}\n", 1)),
+    ("a product read here", lambda t: t.replace("      - name: Lay out the frame\n", "      - run: curl -sS --max-time 20 https://api.github.com/repos/Adonis80/myst/contents/roadmap.json\n      - name: Lay out the frame\n", 1)),
+    ("the spend read here", lambda t: t.replace("      - name: Lay out the frame\n", "      - run: curl -sS --max-time 20 https://openrouter.ai/api/v1/activity\n      - name: Lay out the frame\n", 1)),
+    ("the board rendered into the log", lambda t: t.replace('          cp board/build.py "$site/api/build.py"\n', '          cp board/build.py "$site/api/build.py"\n          python3 board/build.py --selftest\n', 1)),
+    ("an artifact uploaded", lambda t: t.replace("      - name: Lay out the frame\n", "      - uses: actions/upload-artifact@v4\n        with:\n          path: ${{ runner.temp }}\n      - name: Lay out the frame\n", 1)),
+    ("a write permission", lambda t: t.replace("  contents: read\n", "  contents: read\n  statuses: write\n", 1)),
+    ("the pull request's head checked out", lambda t: t.replace("          persist-credentials: false\n", "          persist-credentials: false\n          ref: ${{ github.event.pull_request.head.sha }}\n", 1)),
+    ("a pull request fetched", lambda t: t.replace("      - name: Lay out the frame\n", "      - run: git fetch origin pull/1/head\n      - name: Lay out the frame\n", 1)),
+    ("the function never smoked", lambda t: t.replace("for p in / /index.html /api/build; do", "for p in / /index.html; do", 1)),
+    ("a run summary written", lambda t: t.replace('          echo "the frame:', '          echo "laid out" >> "$GITHUB_STEP_SUMMARY"\n          echo "the frame:', 1)),
+    ("the build left out of the fingerprint", lambda t: t.replace("h=$(cat board/build.py board/middleware.js", "h=$(cat board/middleware.js", 1)),
+    ("a stale fingerprint deployed with", lambda t: t.replace("BOARD_HASH: ${{ steps.frame.outputs.board_hash }}", "BOARD_HASH: ${{ steps.clock.outputs.started }}", 1)),
+    ("the build left off the deployment", lambda t: t.replace('{file: "api/build.py", data: $build}, ', "", 1)),
+    ("a frame deployed with no read key", lambda t: t.replace('if [ -z "${BOARD_READ_TOKEN:-}" ]; then', "if false; then", 1)),
+    ("a key sent on the command line", lambda t: t.replace('-d @"$RUNNER_TEMP/key.json"', '-d "$(cat "$RUNNER_TEMP/key.json")"', 1)),
+    ("a key stored where the host gives it back", lambda t: t.replace('type: "sensitive"', 'type: "encrypted"', 1)),
+    ("a key the host refused taken as stored", lambda t: t.replace('[[ "$code" =~ ^2 ]] || { echo "::error::KEY NOT STORED', 'true || { echo "::error::KEY NOT STORED', 1)),
+    ("the keys stored after the frame is made", lambda t: _moved_lines(t, "          # THE FUNCTION'S KEYS (#222)", "          done\n", "          phase=building\n")),
+    ("a live frame kept unsmoked", lambda t: t.replace('if [ "$was" = "$want" ] && gated "$DOMAIN" pin; then', 'if [ "$was" = "$want" ]; then', 1)),
+    ("a dispatch passed over too", lambda t: t.replace('if [ "$GITHUB_EVENT_NAME" != workflow_dispatch ]; then\n            was=', "if true; then\n            was=", 1)),
     # His ask, 15 October 2026: no deploy once the account has made 60 in 24 hours.
     ("the ceiling raised to the host's own", lambda t: t.replace('if [ "$used" -ge 60 ]; then', 'if [ "$used" -ge 100 ]; then', 1)),
     ("the ceiling never asked", lambda t: t.replace('if [ "$used" -ge 60 ]; then', "if false; then", 1)),
@@ -6431,6 +6442,40 @@ BOARD_LOOSENINGS = (
     ("the day's older deployments taken for its own", lambda t: t.replace('any(.deployments[]; .created >= $s and', "any(.deployments[];", 1)),
     ("a week counted as the day", lambda t: t.replace("since=$(( ($(date +%s) - 86400) * 1000 ))", "since=$(( ($(date +%s) - 604800) * 1000 ))", 1)),
 )
+
+
+# Each loosening of board/build.py's reads that the check above must refuse (#222).
+BUILD_LOOSENINGS = (
+    ("another App's check run kept", lambda t: t.replace('(r.get("app") or {}).get("id") == REVIEWER_APP_ID and', "", 1)),
+    ("a check run on another head kept", lambda t: t.replace(' and r.get("head_sha") == sha', "", 1)),
+    ("a check run of another name kept", lambda t: t.replace('r.get("name") == REVIEWER_CHECK and ', "", 1)),
+    ("another App's check runs asked for", lambda t: t.replace("REVIEWER_APP_ID = %d " % REVIEWER_APP_ID, "REVIEWER_APP_ID = 15368 ", 1)),
+    ("a fork's pull request read", lambda t: t.replace('.get("full_name") == RULEBOOK_REPO', '.get("full_name") is not None', 1)),
+    ("OpenRouter's keys asked", lambda t: t.replace('SPEND_URL = "https://openrouter.ai/api/v1/activity"', 'SPEND_URL = "https://openrouter.ai/api/v1/keys"', 1)),
+    ("a second OpenRouter read", lambda t: t.replace("GITHUB = ", 'CREDITS = "https://openrouter.ai/api/v1/credits"\nGITHUB = ', 1)),
+    ("a request that sends more than a GET", lambda t: t.replace("urllib.request.Request(url, headers=head)", 'urllib.request.Request(url, headers=head, method="POST")', 1)),
+    ("a request with a body", lambda t: t.replace("urllib.request.Request(url, headers=head)", "urllib.request.Request(url, headers=head, data=b'')", 1)),
+    ("a second way out", lambda t: t.replace("MISSED = (", 'urllib.request.urlopen("https://example.com/", timeout=1) if False else None\nMISSED = (', 1)),
+    ("a request with no time limit", lambda t: t.replace(", timeout=READ_SECONDS)", ")", 1)),
+    ("another GitHub host", lambda t: t.replace('GITHUB = "https://api.github.com"', 'GITHUB = "https://github.example.com"', 1)),
+    ("a product not on the map", lambda t: t.replace('("Adonis80/phena", "Phena"))', '("Adonis80/phena", "Phena"), ("Adonis80/elsewhere", "Elsewhere"))', 1)),
+    ("a product on the map left out", lambda t: t.replace(', ("Adonis80/phena", "Phena"))', ")", 1)),
+    ("a row the reads do not name", lambda t: t.replace('("Adonis80/phena", "Phena"))', '("Adonis80/phena", "Phena Two"))', 1)),
+    ("the spend key sent to GitHub", lambda t: t.replace('token = env.get("BOARD_READ_TOKEN")', 'token = env.get("OPENROUTER_KEY")', 1)),
+    ("GitHub's key sent to OpenRouter", lambda t: t.replace('read_spend, get, env.get("OPENROUTER_KEY")', 'read_spend, get, env.get("BOARD_READ_TOKEN")', 1)),
+    ("the board's mark taken off, so a leak is missed", lambda t: t.replace("<body data-board>", "<body>")),
+)
+
+
+def _moved_lines(text, start, end, before):
+    """`text` with the block from `start` to the first `end` after it moved to just before `before`."""
+    i = text.find(start)
+    j = text.find(end, i) + len(end) if i >= 0 else -1
+    if i < 0 or j < len(end):
+        return text
+    block, rest = text[i:j], text[:i] + text[j:]
+    k = rest.find(before)
+    return text if k < 0 else rest[:k] + block + rest[k:]
 
 
 def _check_board_loosenings():
@@ -6453,9 +6498,23 @@ def _check_board_loosenings():
             print("  wiring: %s with %s passes the board's hold — the guard for it is gone"
                   % (BOARD_WORKFLOW, what))
             bad += 1
+    try:
+        build = _read("board/build.py")
+    except OSError as e:
+        print("  wiring: %s" % e)
+        return bad + 1
+    for what, loosen in BUILD_LOOSENINGS:
+        changed = loosen(build)
+        if changed == build:
+            print("  wiring: the loosening '%s' no longer applies to board/build.py — rewrite it against the "
+                  "file as it stands, or it proves nothing" % what)
+            bad += 1
+        elif not _check_board_wiring(build=changed, quiet=True):
+            print("  wiring: board/build.py with %s passes the board's hold — the guard for it is gone" % what)
+            bad += 1
     if not bad:
-        print("ok: each of %d loosenings of %s was applied to the real file and refused"
-              % (len(BOARD_LOOSENINGS), BOARD_WORKFLOW))
+        print("ok: each of %d loosenings of %s and %d of board/build.py's reads was applied to the real file and refused"
+              % (len(BOARD_LOOSENINGS), BOARD_WORKFLOW, len(BUILD_LOOSENINGS)))
     return bad
 
 def _check_product_loosenings():
