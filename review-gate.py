@@ -6463,7 +6463,7 @@ BUILD_LOOSENINGS = (
     ("a row the reads do not name", lambda t: t.replace('("Adonis80/phena", "Phena"))', '("Adonis80/phena", "Phena Two"))', 1)),
     ("the spend key sent to GitHub", lambda t: t.replace('token = env.get("BOARD_READ_TOKEN")', 'token = env.get("OPENROUTER_KEY")', 1)),
     ("GitHub's key sent to OpenRouter", lambda t: t.replace('read_spend, get, env.get("OPENROUTER_KEY")', 'read_spend, get, env.get("BOARD_READ_TOKEN")', 1)),
-    ("the board's mark taken off, so a leak is missed", lambda t: t.replace("<body data-board>", "<body>", 1)),
+    ("the board's mark taken off, so a leak is missed", lambda t: t.replace("<body data-board>", "<body>")),
 )
 
 
