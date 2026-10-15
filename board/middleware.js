@@ -68,5 +68,5 @@ export default async function middleware(req) {
   }
 
   if (!(await valid(req, secret))) return pinPage(false);
-  // authorised: fall through to the static file
+  // authorised: fall through to the board's function, which reads live (#222)
 }
