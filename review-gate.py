@@ -2982,7 +2982,7 @@ PLAN_CASES = (
 
 def _plan_net(files, jobs, fail=None, main=()):
     """An urlopen for the plan: the pull request's files, an earlier attempt's jobs, and main's commits
-    as (sha, pushed at, check runs), one page each."""
+    as (sha, pushed at, check runs[, parents]), one page each."""
     def urlopen(req, timeout=None):
         parts = urllib.parse.urlsplit(req.full_url)
         page = urllib.parse.parse_qs(parts.query).get("page", ["1"])[0]
@@ -2993,11 +2993,12 @@ def _plan_net(files, jobs, fail=None, main=()):
         if parts.path.endswith("/actions/runs/9/attempts/1/jobs"):
             return _Answer(json.dumps({"jobs": jobs if page == "1" else []}).encode("utf-8"))
         if parts.path == "/repos/o/r/commits":
-            return _Answer(json.dumps([{"sha": sha, "commit": {"committer": {"date": at}}} for sha, at, _ in main])
-                           .encode("utf-8"))
+            return _Answer(json.dumps([dict({"sha": m[0], "commit": {"committer": {"date": m[1]}}},
+                                            **({"parents": [{"sha": p} for p in m[3]]} if len(m) > 3 else {}))
+                                       for m in main]).encode("utf-8"))
         if parts.path.endswith("/check-runs"):
             sha = parts.path.split("/")[-2]
-            runs = {sha_: runs_ for sha_, _, runs_ in main}.get(sha, [])
+            runs = {m[0]: m[2] for m in main}.get(sha, [])
             return _Answer(json.dumps({"check_runs": runs if page == "1" else []}).encode("utf-8"))
         raise urllib.error.URLError("no route: %s" % parts.path)
     return urlopen
@@ -3158,7 +3159,8 @@ def _check_selftest_plan(quiet=False):
         return {"name": name, "status": status, "conclusion": conclusion, "completed_at": at,
                 "app": {"id": app} if app is not None else None}
     red, none = "is red at %s" % head[:12], "has not finished on any of main's newest %d commit(s)"
-    for what, commits, want in (
+    going = run(None, status="in_progress")
+    main_cases = (
             ("main's check green", [(head, old, [run()])], None),
             ("main's check red", [(head, old, [run("failure")])], red),
             ("main's check timed out", [(head, old, [run("timed_out")])], red),
@@ -3185,15 +3187,71 @@ def _check_selftest_plan(quiet=False):
             ("red, then green again on the tip", [(head, old, [run("failure", at="2026-10-11T18:00:00Z"), run()])], None),
             ("green, then red on the tip", [(head, old, [run(at="2026-10-11T18:00:00Z"), run("failure")])], red),
             ("red on the tip, green before it: the newest finished decides",
-             [(head, old, [run("failure")]), ("m1", old, [run()])], red)):
-        got = main_red_from(iter(commits), now)
-        if got != want:
-            fault("%s: main_red_from says %r, not %r" % (what, got, want))
+             [(head, old, [run("failure")]), ("m1", old, [run()])], red),
+            # A MERGED-IN COMMIT WAS NEVER PUSHED (#209's flaw, in this walk too): a
+            # merge's second parent gets no `check`. Listed by date, it sits among
+            # the first parents, and only the first parents are walked.
+            ("a merge head still running; its second parent, never pushed, has no run to say; the first "
+             "parent's green decides", [("m3", old, [going], ["m2", "m2side"]), ("m2side", old, [], ["m1"]),
+                                        ("m2", old, [run()], [head]), (head, old, [run("failure")])], None),
+            ("a merge head cancelled; its second parent, never pushed, has no run to say; the first "
+             "parent's red holds", [("m3", old, [run("cancelled")], [head, "m2side"]), ("m2side", old, []),
+                                    (head, old, [run("failure")])], red),
+            ("a merge head with no check at all past the grace still has not run; a green merged in "
+             "under it vouches for nothing", [("m3", old, [], [head, "m2side"]), ("m2side", old, [run()]),
+                                              (head, old, [run()])], "has not run on m3"),
+            ("and the first parent's red under a merge head still running holds, whatever was merged in",
+             [("m3", young, [going], [head, "m2side"]), ("m2side", old, [run()]), (head, old, [run("failure")])],
+             red))
+    # And end to end, through main_red and what GitHub lists: a merge whose second parent never ran.
+    merged = [("m3", old, [dict(whole(None), status="in_progress")], ["m2", "m2side"]),
+              ("m2side", old, [], ["m1"]), ("m2", old, [whole("success")], ["m1"])]
+
+    def walk(say):
+        missed = 0
+        for what, commits, want in main_cases:
+            got = main_red_from(iter(commits), now)
+            if got != want:
+                say("%s: main_red_from says %r, not %r" % (what, got, want))
+                missed += 1
+        real, out = urllib.request.urlopen, sys.stdout
+        urllib.request.urlopen, sys.stdout = _plan_net([{"filename": "library/money.md"}], [], None, merged), io.StringIO()
+        try:
+            _selftest_plan_main(dict(env, GITHUB_RUN_ATTEMPT="1"))
+            said = sys.stdout.getvalue().strip()
+        except Exception as e:  # noqa: BLE001
+            said = "raised %s" % type(e).__name__
+        finally:
+            urllib.request.urlopen, sys.stdout = real, out
+        if not said.startswith("run core: "):
+            say("a page while main's merge head is still running over a second parent never pushed: "
+                "the command said %r, not run core" % said)
+            missed += 1
+        return missed
+    walk(fault)
     try:
         gate = _read("review-gate.py")
     except OSError as e:
         fault(str(e))
         return bad
+    start = gate.index("\ndef main_red(") + 1
+    source = gate[start:gate.index("\n\n\n", gate.index("\ndef main_red_from(", start) + 1)]
+    kept = main_red, main_red_from
+    for what, loosen in MAIN_RED_LOOSENINGS:
+        changed = loosen(source)
+        if changed == source:
+            fault("the loosening '%s' no longer applies to main_red — rewrite it against the function as it "
+                  "stands, or it proves nothing" % what)
+            continue
+        loose = dict(globals())
+        exec(compile(changed, "main_red", "exec"), loose)
+        globals()["main_red"], globals()["main_red_from"] = loose["main_red"], loose["main_red_from"]
+        try:
+            caught = walk(lambda *_: None)
+        finally:
+            globals()["main_red"], globals()["main_red_from"] = kept
+        if not caught:
+            fault("main_red with %s passes every case — the case for it is gone" % what)
     for line in ('    if main:\n        return "run", "all", "main\'s own check %s',
                  "            main = main_red(api, token)",
                  '            main = "could not be read"',
@@ -3208,9 +3266,10 @@ def _check_selftest_plan(quiet=False):
               "and the parts measured to read a changed file, and every part on a change to the gate, a workflow or a "
               "file no part names, and while main's own check is red, unfinished or unreadable, since a run of parts "
               "trusts main's whole run and the gate holds nothing on it; the rule run on %d case(s), the command "
-              "on %d answers GitHub could give, the %d parts held whole, and check.sh and check.yml held to "
-              "calling it so"
-              % (len(PLAN_CASES), len(commands), len(SELFTEST_PARTS)))
+              "on %d answers GitHub could give, main's walk on %d case(s) along its first parents and each of %d "
+              "loosenings of it refused, the %d parts held whole, and check.sh and check.yml held to calling it so"
+              % (len(PLAN_CASES), len(commands) + 1, len(main_cases), len(MAIN_RED_LOOSENINGS),
+                 len(SELFTEST_PARTS)))
     return bad
 
 
@@ -8175,6 +8234,18 @@ CANARY_RED_LOOSENINGS = (
 )
 
 
+# main_red loosened: each must fail one of _check_selftest_plan's cases of main's walk.
+MAIN_RED_LOOSENINGS = (
+    ("a merged-in commit walked to", lambda t: t.replace("if want is not None and sha != want:", "if False:", 1)),
+    ("a merge's second parent followed", lambda t: t.replace("((parents or [None])[0] or [None])[0]",
+                                                             "((parents or [None])[0] or [None])[-1]", 1)),
+    ("a push head with no check passed over", lambda t: t.replace('return "has not run on %s" % sha[:12]',
+                                                                  "continue", 1)),
+    ("the parents GitHub lists dropped", lambda t: t.replace('[(p or {}).get("sha") for p in c.get("parents") or []]',
+                                                             "[]", 1)),
+)
+
+
 def _run(conclusion=None, status="completed", app=REVIEWER_APP_ID, name=REVIEWER_CHECK, sha=None):
     return {"app": None if app is None else {"id": app}, "name": name,
             "head_sha": sha, "status": status, "conclusion": conclusion}
@@ -8680,6 +8751,9 @@ def canary_red(api, token):
 # cancelled or skipped one says nothing, a commit with no run at all past the
 # minutes one takes to appear is a check.yml GitHub would not load, and red is
 # any finish but success. When none has finished there is no run to trust.
+# Main's first parents only, as the canary's walk (#209): a commit merged in as
+# a merge commit's second parent was never a push head, so no `check` starts for
+# it, and walked to past the grace it read as a check.yml that would not load.
 MAIN_CHECK = "check"
 MAIN_LOOKBACK = CANARY_LOOKBACK
 MAIN_GRACE = CANARY_GRACE
@@ -8694,21 +8768,26 @@ def main_red(api, token):
         commits = json.load(r)
 
     def seen():
-        # Each commit's runs are fetched only when the newer ones did not decide.
+        # Each commit's runs are fetched only when the walk reaches it and the newer ones did not decide.
         for c in commits if isinstance(commits, list) else []:
             if c.get("sha"):
                 yield (c["sha"], ((c.get("commit") or {}).get("committer") or {}).get("date") or "",
-                       list(_pages("%s/commits/%s/check-runs" % (api, c["sha"]), token, key="check_runs",
-                                   params={"check_name": MAIN_CHECK, "filter": "all"})))
+                       _pages("%s/commits/%s/check-runs" % (api, c["sha"]), token, key="check_runs",
+                              params={"check_name": MAIN_CHECK, "filter": "all"}),
+                       [(p or {}).get("sha") for p in c.get("parents") or []])
     return main_red_from(seen())
 
 
 def main_red_from(commits, now=None):
-    """The rule alone, on main's commits newest first as (sha, pushed at, check runs): None when the
-    newest finished `check` by Actions passed, else why not."""
+    """The rule alone, on main's commits newest first as (sha, pushed at, check runs[, parents]): None
+    when the newest finished `check` by Actions passed, else why not. The walk follows each commit's
+    first parent; a commit listed without parents is followed by the next listed."""
     cutoff = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime((now or time.time()) - MAIN_GRACE))
-    n = 0
-    for sha, pushed, check_runs in commits:
+    n, want = 0, None
+    for sha, pushed, check_runs, *parents in commits:
+        if want is not None and sha != want:
+            continue
+        want = ((parents or [None])[0] or [None])[0]
         n += 1
         mine = [r for r in check_runs if r.get("name") == MAIN_CHECK and (r.get("app") or {}).get("id") == ACTIONS_APP]
         if not mine:
