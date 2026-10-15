@@ -106,7 +106,7 @@ else
   size_line "the screen law in $guide" "$lawwords" 450 words
 fi
 
-# 2c. The library: one page per topic, opened only when a task touches it (his
+# 2c. The library: one page per topic, and beside a page only its screen's PNG, opened only when a task touches it (his
 # ruling of 23 September 2026, decision 0005, issue #75). The README is its
 # index, both ways: a page the README does not name is never opened, and a
 # name with no page sends a session nowhere. Each page is one topic, says whom

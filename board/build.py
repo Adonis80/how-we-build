@@ -41,7 +41,8 @@ or {"unread": true}, and its page says so.
 {"unread": true} when a key is but the read failed. The card says which.
 
 `review` is the juku-reviewer check runs on the pull request's head, newest
-first. Of a body, only its `Priority:` and `Ready:` lines are published (§8).
+first. Of a body, only its `Priority:` and `Ready:` lines are published (§8); of a proposal's,
+only its `Plain:` line or its priority's reason.
 """
 import concurrent.futures
 import html
@@ -386,6 +387,8 @@ def rulebook_row(rb):
 # alone, under 10 KB; it replaces decision 0012's folded list of suggested ideas.
 ISSUE_LINK = re.compile(r"^https://github\.com/Adonis80/how-we-build/issues/[1-9][0-9]*$")
 STAGES = (("b", "Being built"), ("w", "Waiting for debate"), ("a", "Agreed"))
+# An open pull request that says it builds, closes, fixes, resolves or implements #N; one that only cites it does not.
+BUILDS = re.compile(r"\b(?:builds|closes|fixes|resolves|implements)\s+\[?#([1-9][0-9]*)\b", re.I)
 SHOWN = 6
 DUE_COUNT, DUE_DAYS = 3, 7                              # decision 0020's trigger (trial thresholds)
 PQ_CSS = (".pq{--b:#53eafd;--w:#ffd23f;--a:#2dd4bf;background:#0b0d14;border:1px solid rgba(255,255,255,.1);"
@@ -440,8 +443,8 @@ def proposals_queue(issues, open_prs, ideas, now):
     """Decision 0020's one queue: the issues, staged and ranked, then each product's ideas."""
     building = set()
     for pr in open_prs or []:
-        building |= {int(n) for n in re.findall(r"(?<![\w/])#([1-9][0-9]*)\b", "%s %s" % (pr.get("title"), pr.get("body")))}
-    rows = []
+        building |= {int(n) for n in BUILDS.findall("%s %s" % (pr.get("title"), pr.get("body")))}
+    rows, ideas_rows = [], []
     for it in issues:
         body = it.get("body") or ""
         stage = "b" if it["number"] in building else \
@@ -452,10 +455,10 @@ def proposals_queue(issues, open_prs, ideas, now):
     for name in ROWS:
         for it in ideas.get(name) or []:
             m = re.search(r"Captured (\d{4}-\d{2}-\d{2})", it.get("plain") or "")
-            rows.append({"stage": "w", "level": None, "title": it["title"], "plain": it.get("plain") or "",
+            ideas_rows.append({"stage": "w", "level": None, "title": it["title"], "plain": it.get("plain") or "",
                          "url": None, "who": name, "days": waited(m.group(1), now) if m else None,
                          "at": m.group(1) if m else "~"})
-    return sorted(rows, key=lambda r: (r["level"] or "P9", r["at"]))
+    return sorted(rows, key=lambda r: (r["level"] or "P9", r["at"])) + sorted(ideas_rows, key=lambda r: r["at"])
 
 
 def pq_row(r):
@@ -470,7 +473,7 @@ def pq_row(r):
 
 def proposals_card(issues, open_prs, ideas, now):
     """The card he approved: the count, the stage bar, the debate banner, the numbered queue."""
-    if isinstance(issues, dict) and issues.get("unread"):
+    if issues is None or isinstance(issues, dict) and issues.get("unread"):
         return ('<section class="pq" aria-label="Proposals"><div class="pq-h"><h2>Proposals</h2></div>'
                 '<p class="pq-0">The proposals could not be read when this page opened.</p></section>')
     rows = proposals_queue(issues or [], open_prs, ideas, now)
@@ -1012,6 +1015,12 @@ def _selftest():
         edit(("Myst", road["items"])),
         edit(("Hemz OS", [it("H1", "proposed", title="Hemz idea"), it("H3", "building")]))]))
     card = q2[q2.index('<section class="pq"'):q2.index('<nav class="tabs"')]
+    hold(card.index(html.escape(evil)) < card.index("Hemz idea") and card.index(html.escape(evil)) < card.index("Phena idea") and
+         card.index("Phena idea") < card.index("Item X4"), "the card: every product's ideas after every issue, oldest first")
+    cited = proposals_queue([iss(310, "Priority: P3 — build.")], [pr(130, "As #310 says, and on #222. " + ok)], {}, datetime(2026, 9, 26, tzinfo=timezone.utc))
+    hold(cited[0]["stage"] == "w", "the card: a pull request that only cites a proposal does not make it being built")
+    hold("could not be read when this page opened" in proposals_card(None, [], {}, datetime(2026, 9, 26, tzinfo=timezone.utc)),
+         "the card: reads with no proposals at all say so, never nothing waiting")
     hold(card.index("Issue 302") < card.index("Issue 303") < card.index("Issue 301") < card.index(html.escape(evil)) and
          evil not in card and "javascript:" not in card,
          "the card: ranked by priority, then oldest; no level sorts last; escaped; only this repository's issue links")
