@@ -5897,8 +5897,12 @@ case "$method $path" in
       || refuse "a day counted over a window other than the last 24 hours: $url"
     [ "${FAKE_USED:-59}" != unread ] || { reply 500 '{}'; exit 0; }
     rows=""
-    for i in $(seq 1 "${FAKE_USED:-59}"); do rows="$rows{\"id\":\"dpl_u$i\",\"created\":$(( (now - i * 60) * 1000 ))},"; done
-    for i in 1 2 3 4 5; do rows="$rows{\"id\":\"dpl_o$i\",\"created\":$(( (now - 90000 - i) * 1000 ))},"; done
+    # One of the day's is another project's, unless a case says the board made them all.
+    for i in $(seq 1 "${FAKE_USED:-59}"); do
+      n=juku-build-board; [ "$i" != 1 ] || [ "${FAKE_OTHERS:-yes}" != yes ] || n=myst
+      rows="$rows{\"id\":\"dpl_u$i\",\"name\":\"$n\",\"created\":$(( (now - i * 60) * 1000 ))},"
+    done
+    for i in 1 2 3 4 5; do rows="$rows{\"id\":\"dpl_o$i\",\"name\":\"myst\",\"created\":$(( (now - 90000 - i) * 1000 ))},"; done
     reply 200 "{\"deployments\":[${rows%,}],\"pagination\":{\"count\":$(( ${FAKE_USED:-59} + 5 ))}}" ;;
   "PATCH https://api.vercel.com/v12/deployments/dpl_new/cancel")
     [ "${FAKE_CANCEL:-ok}" = ok ] || { reply 400 '{}'; exit 0; }
@@ -6067,6 +6071,15 @@ BOARD_DEPLOY_CASES = (
      {"FAKE_USED": "60", "FAKE_BEFORE": "board"}, 0, "dpl_copy", "READY", "the ceiling is passed over", "ceiling:"),
     ("under the ceiling, the count kept out of the public log", {"GITHUB_EVENT_NAME": "check_run"}, 0, "dpl_copy",
      "READY", "the account's deployments in the last 24 hours: under the ceiling of 60", "hours: 59"),
+    # #219's second read: the key's reach said on every run, and a preview never
+    # passes over the ceiling, since it cannot replace the domain.
+    ("another project's deployment among the day's", {"GITHUB_EVENT_NAME": "check_run"}, 0, "dpl_copy", "READY",
+     "other projects' deployments among those counted: yes", None),
+    ("the board's own deployments alone in the day", {"FAKE_OTHERS": "no", "GITHUB_EVENT_NAME": "check_run"}, 0,
+     "dpl_copy", "READY", "other projects' deployments among those counted: no", None),
+    ("the account at its ceiling, a preview asked for while the domain shows a stranger the board",
+     {"FAKE_USED": "60", "FAKE_BEFORE": "board", "TARGET": "preview", "LIVE": "no"}, 0, "dpl_before", "none",
+     "ceiling: the account has made 60 or more", "deployment:"),
     ("the account's day cannot be counted", {"FAKE_USED": "unread"}, 1, "dpl_before", "none",
      "could not be counted", "deployment:"),
 )
@@ -6252,7 +6265,7 @@ def _check_board_wiring(board=None, product=None, readme=None, quiet=False):
             "on the README's map with a token each, contents read alone, its grant and reach "
             "checked before anything is read; it checks out nothing of a pull request, uploads "
             "nothing, and its deploy, run against a fake host on %d paths, gives production only a "
-            "copy of a preview it has smoked, on an event only of a board changed, live six hours or failing its smoke, never once the account has made 60 in 24 hours, cancels or deletes one that fails, and on a red after "
+            "copy of a preview it has smoked, on an event only of a board changed, live six hours or failing its smoke, never once the account has made 60 in 24 hours unless a production run finds the board leaking, cancels or deletes one that fails, and on a red after "
             "the copy cancels one still building and puts back what the domain served, inside the job's time"
             % (KEY_ENVIRONMENT, len(listed), len(BOARD_DEPLOY_CASES)))
     return bad
@@ -6352,8 +6365,11 @@ BOARD_LOOSENINGS = (
     ("an uncounted day deployed", lambda t: t.replace('[[ "$used" =~ ^[0-9]+$ ]] ||', "true ||", 1)),
     ("a page too short to reach the ceiling", lambda t: t.replace("&since=$since&limit=100", "&since=$since&limit=20", 1)),
     ("a leaking board left live at the ceiling", lambda t: t.replace('if [ "$leak" -ne 2 ]; then', "if true; then", 1)),
-    ("the domain unsmoked at the ceiling", lambda t: t.replace('            gated "$DOMAIN" pin || leak=$?\n', "", 1)),
+    ("the domain unsmoked at the ceiling", lambda t: t.replace('[ "$TARGET" != production ] || gated "$DOMAIN" pin || leak=$?', "true", 1)),
     ("the count printed", lambda t: t.replace("under the ceiling of 60", "$used, under the ceiling of 60", 1)),
+    ("a preview passing over the ceiling", lambda t: t.replace('[ "$TARGET" != production ] || gated "$DOMAIN" pin', 'gated "$DOMAIN" pin', 1)),
+    ("the board's own deployments taken for another project's", lambda t: t.replace('.name != "juku-build-board") then', '.name == "juku-build-board") then', 1)),
+    ("the day's older deployments taken for its own", lambda t: t.replace('any(.deployments[]; .created >= $s and', "any(.deployments[];", 1)),
     ("a week counted as the day", lambda t: t.replace("since=$(( ($(date +%s) - 86400) * 1000 ))", "since=$(( ($(date +%s) - 604800) * 1000 ))", 1)),
 )
 

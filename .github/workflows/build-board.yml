@@ -51,8 +51,9 @@ run-name: Build the board (${{ github.event_name }})
 #
 # NOTHING IS DEPLOYED ONCE THE ACCOUNT HAS MADE 60 IN 24 HOURS (his ask, 15
 # October 2026), so the board can never starve a product of the host's 100,
-# unless a stranger is shown the board, whose replacement passes over it. It is
-# cited on the pull request a run shows it on, not claimed here.
+# unless a production run finds a stranger shown the board, whose replacement
+# passes over it. Run 38729496353 (15 October 2026), the first after its merge,
+# read the count and went on under it; a run held at the ceiling is not yet seen.
 #
 # THIS LOG IS PUBLIC AND THE ROADMAPS ARE NOT. Nothing a product holds is
 # printed: byte counts and conclusions only. No artifact is uploaded and no
@@ -421,16 +422,23 @@ jobs:
           # changes nothing. Each is held to the window by its own time, not on
           # the query's word. The count is not printed, since it is the
           # products' deploys too. A day that cannot be counted deploys nothing,
-          # red, since the ceiling could not be held. One thing passes over it:
-          # a domain showing a stranger the board (#219's first read), whose
-          # gated replacement is worth a deployment the products would miss.
+          # red, since the ceiling could not be held. One thing passes over it,
+          # on a production run alone: a domain showing a stranger the board
+          # (#219's first read), whose gated replacement is worth a deployment
+          # the products would miss. A preview never replaces the domain, so it
+          # buys nothing there (#219's second read, 2). Whether the count
+          # reached past the board's own project is said, yes or no, so the
+          # key's reach is shown on every run (#219's second read, 1).
           since=$(( ($(date +%s) - 86400) * 1000 ))
-          used=$(v "https://api.vercel.com/v6/deployments?$q&since=$since&limit=100" 2>/dev/null \
-            | jq --argjson s "$since" '[.deployments[] | select(.created >= $s)] | length' 2>/dev/null || true)
+          day=$(v "https://api.vercel.com/v6/deployments?$q&since=$since&limit=100" 2>/dev/null || true)
+          used=$(printf '%s' "$day" | jq --argjson s "$since" '[.deployments[] | select(.created >= $s)] | length' 2>/dev/null || true)
           [[ "$used" =~ ^[0-9]+$ ]] || { echo "::error::the account's deployments in the last 24 hours could not be counted, so the ceiling could not be held. Nothing is deployed."; exit 1; }
+          others=$(printf '%s' "$day" | jq -r --argjson s "$since" \
+            'if any(.deployments[]; .created >= $s and .name != "juku-build-board") then "yes" else "no" end' 2>/dev/null || echo unread)
+          echo "other projects' deployments among those counted: $others"
           if [ "$used" -ge 60 ]; then
             leak=0
-            gated "$DOMAIN" pin || leak=$?
+            [ "$TARGET" != production ] || gated "$DOMAIN" pin || leak=$?
             if [ "$leak" -ne 2 ]; then
               echo "::warning::ceiling: the account has made 60 or more deployments in the last 24 hours, so the rest of the day is left to the products. Nothing is deployed; the last snapshot stands."
               exit 0
