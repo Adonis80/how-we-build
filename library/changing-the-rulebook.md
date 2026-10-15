@@ -17,3 +17,5 @@ By pull request only; `main` is protected. `check.sh` runs in CI and refuses a f
 **What it does not promise.** A stale line nobody connects to a change can survive until cleanup or a failure finds it.
 
 **A ruling of his about how we build is not on the record until it is in this repository**, exactly as a product decision is not until it is in that product's.
+
+**The upgrade log.** A pull request that changes what runs adds its one line to `library/upgrade-log.md` in the same pull request; the gate is red until it does.
