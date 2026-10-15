@@ -5887,6 +5887,19 @@ case "$method $path" in
     tree="{\"name\":\"index.html\",\"type\":\"file\",\"uid\":\"$(sha x)\"}"
     [ -z "$fp" ] || tree="$tree,{\"name\":\"board.sha\",\"type\":\"file\",\"uid\":\"$fp\"}"
     reply 200 "[{\"name\":\"src\",\"type\":\"directory\",\"children\":[$tree]}]" ;;
+  "GET https://api.vercel.com/v6/deployments")
+    # The account's deployments, newest first, as the host lists them: FAKE_USED
+    # made in the last day, and five older it returned beside them. Asked of the
+    # last 24 hours on one page of 100, or refused.
+    case "$url" in *"&limit=100"*) ;; *) refuse "the day counted on a page too short to reach the ceiling: $url" ;; esac
+    since=$(printf '%s' "$url" | sed -n 's/.*[?&]since=\([0-9]*\).*/\1/p')
+    { [ -n "$since" ] && [ $(( now - 86400 - since / 1000 )) -ge -5 ] && [ $(( now - 86400 - since / 1000 )) -le 5 ]; } \
+      || refuse "a day counted over a window other than the last 24 hours: $url"
+    [ "${FAKE_USED:-59}" != unread ] || { reply 500 '{}'; exit 0; }
+    rows=""
+    for i in $(seq 1 "${FAKE_USED:-59}"); do rows="$rows{\"id\":\"dpl_u$i\",\"created\":$(( (now - i * 60) * 1000 ))},"; done
+    for i in 1 2 3 4 5; do rows="$rows{\"id\":\"dpl_o$i\",\"created\":$(( (now - 90000 - i) * 1000 ))},"; done
+    reply 200 "{\"deployments\":[${rows%,}],\"pagination\":{\"count\":$(( ${FAKE_USED:-59} + 5 ))}}" ;;
   "PATCH https://api.vercel.com/v12/deployments/dpl_new/cancel")
     [ "${FAKE_CANCEL:-ok}" = ok ] || { reply 400 '{}'; exit 0; }
     echo CANCELED > "$S/new"; reply 200 '{"readyState":"CANCELED"}' ;;
@@ -6037,6 +6050,25 @@ BOARD_DEPLOY_CASES = (
      "dpl_before", "READY", "preview ready at the fixed address", "unchanged"),
     ("no fingerprint taken", {"BOARD_HASH": ""}, 1, "dpl_before", "none", "fingerprint was not taken",
      "deployment:"),
+    # His ask, 15 October 2026: at 60 of the account's deployments in 24 hours
+    # the board makes none, so it never starves a product. Every path above runs
+    # at 59, with five older the host returned beside them, and deploys.
+    ("the account at its ceiling", {"FAKE_USED": "60", "GITHUB_EVENT_NAME": "check_run"}, 0, "dpl_before", "none",
+     "ceiling: the account has made 60 or more deployments", "deployment:"),
+    ("the account at its ceiling, dispatched", {"FAKE_USED": "60"}, 0, "dpl_before", "none",
+     "ceiling: the account has made 60 or more deployments", "deployment:"),
+    ("the account at its ceiling, asked for as a preview", {"TARGET": "preview", "LIVE": "no", "FAKE_USED": "60"}, 0,
+     "dpl_before", "none", "ceiling: the account has made 60 or more", "deployment:"),
+    # #219's first read: a domain showing a stranger the board is replaced, ceiling or not.
+    ("the account at its ceiling, the same board live showing a stranger the board",
+     {"FAKE_USED": "60", "FAKE_LIVE": "same", "FAKE_BEFORE": "board", "GITHUB_EVENT_NAME": "check_run"}, 0,
+     "dpl_copy", "READY", "live: dpl_copy, the copy of dpl_new", "ceiling:"),
+    ("the account at its ceiling, dispatched, the domain showing a stranger the board",
+     {"FAKE_USED": "60", "FAKE_BEFORE": "board"}, 0, "dpl_copy", "READY", "the ceiling is passed over", "ceiling:"),
+    ("under the ceiling, the count kept out of the public log", {"GITHUB_EVENT_NAME": "check_run"}, 0, "dpl_copy",
+     "READY", "the account's deployments in the last 24 hours: under the ceiling of 60", "hours: 59"),
+    ("the account's day cannot be counted", {"FAKE_USED": "unread"}, 1, "dpl_before", "none",
+     "could not be counted", "deployment:"),
 )
 _board_runs = {}
 
@@ -6220,7 +6252,7 @@ def _check_board_wiring(board=None, product=None, readme=None, quiet=False):
             "on the README's map with a token each, contents read alone, its grant and reach "
             "checked before anything is read; it checks out nothing of a pull request, uploads "
             "nothing, and its deploy, run against a fake host on %d paths, gives production only a "
-            "copy of a preview it has smoked, on an event only of a board changed, live six hours or failing its smoke, cancels or deletes one that fails, and on a red after "
+            "copy of a preview it has smoked, on an event only of a board changed, live six hours or failing its smoke, never once the account has made 60 in 24 hours, cancels or deletes one that fails, and on a red after "
             "the copy cancels one still building and puts back what the domain served, inside the job's time"
             % (KEY_ENVIRONMENT, len(listed), len(BOARD_DEPLOY_CASES)))
     return bad
@@ -6313,6 +6345,16 @@ BOARD_LOOSENINGS = (
     ("the fingerprint compared unhashed", lambda t: t.replace("want=$(printf '%s' \"$BOARD_HASH\" | sha1sum | cut -d' ' -f1)", 'want="$BOARD_HASH"', 1)),
     ("the read's time in the fingerprint", lambda t: t.replace("'.checked_at = $d'", "'.'", 1)),
     ("the page left out of the fingerprint", lambda t: t.replace('h=$(cat "$RUNNER_TEMP/fp.html" board/middleware.js', "h=$(cat board/middleware.js", 1)),
+    # His ask, 15 October 2026: no deploy once the account has made 60 in 24 hours.
+    ("the ceiling raised to the host's own", lambda t: t.replace('if [ "$used" -ge 60 ]; then', 'if [ "$used" -ge 100 ]; then', 1)),
+    ("the ceiling never asked", lambda t: t.replace('if [ "$used" -ge 60 ]; then', "if false; then", 1)),
+    ("the ceiling held on an event alone", lambda t: t.replace('if [ "$used" -ge 60 ]; then', 'if [ "$GITHUB_EVENT_NAME" != workflow_dispatch ] && [ "$used" -ge 60 ]; then', 1)),
+    ("an uncounted day deployed", lambda t: t.replace('[[ "$used" =~ ^[0-9]+$ ]] ||', "true ||", 1)),
+    ("a page too short to reach the ceiling", lambda t: t.replace("&since=$since&limit=100", "&since=$since&limit=20", 1)),
+    ("a leaking board left live at the ceiling", lambda t: t.replace('if [ "$leak" -ne 2 ]; then', "if true; then", 1)),
+    ("the domain unsmoked at the ceiling", lambda t: t.replace('            gated "$DOMAIN" pin || leak=$?\n', "", 1)),
+    ("the count printed", lambda t: t.replace("under the ceiling of 60", "$used, under the ceiling of 60", 1)),
+    ("a week counted as the day", lambda t: t.replace("since=$(( ($(date +%s) - 86400) * 1000 ))", "since=$(( ($(date +%s) - 604800) * 1000 ))", 1)),
 )
 
 
