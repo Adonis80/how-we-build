@@ -4,8 +4,6 @@ The papers that lead to the rules, kept word for word. Where an agreement itself
 
 A later paper supersedes an earlier one, and the earlier stands as history. Papers are never edited, so their status lives here, not in them.
 
-This page was added under the Chairman's rulings of 2 and 3 October 2026, the last being *"yes do the one page library index now."* The CTO reads it as lifting the 10 October freeze for this one file only.
-
 ## Status words
 
 - **Live**: in force or built.

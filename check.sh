@@ -10,7 +10,8 @@
 # decision 0007 says, a product read's rules that no longer refuse what decision
 # 0013 says they must, and, in a pull request, a commit no reviewer
 # has read clean — unread, or read and left a blocking finding on — or a change to the review
-# machinery while the newest canary on main is red. Nothing else. A read by anybody the
+# machinery while the newest canary on main is red, or a change to what runs that adds
+# no line to library/upgrade-log.md. Nothing else. A read by anybody the
 # gate does not count is unread, not a shape of its own.
 # A third shape, "read clean by a reviewer the rulebook does not allow to
 # clear this change", was real while two vendors were on the register and is

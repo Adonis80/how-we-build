@@ -316,6 +316,19 @@ def touches_the_gate(paths):
     return sorted(set(p for p in paths if p in GATE_FILES or p.startswith(GATE_DIRS)))
 
 
+# THE UPGRADE LOG (his ruling, 15 October 2026, #222): a pull request that changes what
+# runs — the gate's files, its workflows, the registry, the product reads, or the board —
+# adds its one line to the log in the same pull request, so what changed and why is on
+# record without anyone remembering to write it.
+UPGRADE_LOG = "library/upgrade-log.md"
+
+
+def unlogged(paths):
+    """True when a change touches what runs and leaves the upgrade log as it was."""
+    runs = touches_the_gate(paths) or [p for p in paths if p.startswith("board/")]
+    return bool(runs) and UPGRADE_LOG not in paths
+
+
 def verdict(check_runs, head):
     """The gate's one answer about the head commit, and who gave it.
 
@@ -8425,6 +8438,23 @@ def _check_main():
          "and the first parent's red under a merge head whose canary skipped still holds",
          [("m3", [canary("skipped")], ["m1", "m2side"]), ("m2side", [canary("success")]), ("m1", [canary("failure")])]),
     ]
+    # Every case above that changes what runs carries its upgrade-log line, so each says what
+    # it said before; the cases after hold the log itself (#222).
+    log = {"filename": UPGRADE_LOG}
+    cases = [(c[0] + [log] if unlogged([f["filename"] for f in c[0]]) else c[0],) + tuple(c[1:]) for c in cases]
+    nolog = "adds no line to %s" % UPGRADE_LOG
+    cases += [
+        ([{"filename": "review-gate.py"}], [ok], 1, nolog, "a gate change read clean with no upgrade-log line is red"),
+        ([{"filename": ".github/workflows/build-board.yml"}], [findings], 1, "note:",
+         "and an unlogged workflow change with findings is red, announced as a gate change"),
+        ([{"filename": "board/robots.txt"}], [ok], 1, nolog, "a change to the board needs its line too"),
+        ([{"filename": "model-registry/registry.json"}], [ok], 1, nolog, "and so does a change to the model registry"),
+        ([{"filename": "product-reads/reads.py"}], [ok], 1, nolog, "and to the product reads"),
+        ([{"filename": "board/build.py"}, log], [ok], 0, "note:", "with its line, a change to what runs opens"),
+        ([{"filename": "library/money.md"}], [ok], 0, "ok:", "a page alone needs no line"),
+        ([{"filename": ".github/workflows/a\n::stop-commands::x.yml"}], [ok], 1, nolog,
+         "an unlogged change says so without printing a name it carries"),
+    ]
     real = urllib.request.urlopen
 
     def run(files, runs, code, must, what, *rest, say=print):
@@ -8528,7 +8558,8 @@ def _check_main():
         print("ok: main() was run against a GitHub answering from a dictionary in %d case(s) — "
               "it asked for the changed files and the check runs, and on a machinery change main's "
               "newest canary, and nothing else; a change to the gate itself opens on the one "
-              "reviewer's clean read, and no machinery change opens while that canary is red; each of %d "
+              "reviewer's clean read, no machinery change opens while that canary is red, and none that "
+              "changes what runs opens without its upgrade-log line; each of %d "
               "loosenings of canary_red was refused" % (len(cases), len(CANARY_RED_LOOSENINGS)))
     return bad
 
@@ -9128,6 +9159,12 @@ def main(argv):
         print("reason: the canary failed on main at %s, so no change to the review machinery goes green "
               "until one passes: revert that change, or repair it, by the emergency route in "
               "library/reviewer-parking.md" % held[:12])
+        return 1
+    # The names are not printed: they are the pull request's writing (see gate_note).
+    if unlogged(files):
+        print("reason: this changes what runs (the gate, a workflow, the registry, the product reads or the "
+              "board) and adds no line to %s: one line, the date, what changed, why, its proof and this pull "
+              "request, in this pull request" % UPGRADE_LOG)
         return 1
     if answer == CLEAN:
         print("ok: %s has read %s and left nothing on it" % (REVIEWERS[who]["name"], head))
