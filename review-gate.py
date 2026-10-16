@@ -1551,7 +1551,8 @@ def _check_read_loosenings():
 # pricing, live data or schema, sign-in or permissions, a public trust boundary
 # (every endpoint under an `api/` is one: it is where the internet meets the
 # data), or deploy and release (every script, and what a build installs). A
-# page is never risky by its name: a screen spec called garment-pricing.md is
+# page is never risky by its name but one, library/deploy.md (below): a screen
+# spec called garment-pricing.md is
 # words about pricing, and the diff shows what it says. The names are a rule,
 # not a proof, so an ordinary read is told it was not read as risky, and a reader
 # that finds a risky change the names missed says so as a finding — which
@@ -1569,6 +1570,9 @@ def _check_read_loosenings():
 # instructions are read as code by reviewer-main. Replayed on this
 # repository's last 20 merged pull requests, it moved none: 18 read risky,
 # each for a gate file it touched.
+# One page is risky by name: library/deploy.md, which every product's deploy
+# is built from, put here by the finding #226's first read left on it (16
+# October 2026), as the rule above says a missed risky change is.
 CLASS_FIRST = "class=words"
 CLASS_RISK_FIRST = "risky=no"
 CLASS_CODE = ("AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|library/hypersolid.md|design/*|"
@@ -1576,7 +1580,7 @@ CLASS_CODE = ("AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|lib
 CLASS_ARMS = (CLASS_CODE, "*.md) ;;", "*) class=code ;;")
 RISK_CASE = 'case "${f,,}" in'
 # The six classes, as the arms that name them, in the order they are tried.
-RISK_GATE = ("check.sh|*/check.sh|review-gate.py|*/review-gate.py|board/build.py|"
+RISK_GATE = ("check.sh|*/check.sh|review-gate.py|*/review-gate.py|board/build.py|library/deploy.md|"
              "model-registry/*|*/model-registry/*|product-reads/*|*/product-reads/*|.github/*|*/.github/*) risky=yes ;;")
 RISK_PRICING = "*pric*|*payment*|*billing*|*invoice*|*checkout*|*quote*) risky=yes ;;"
 RISK_DATA = ("*.sql|*migration*|*schema*|supabase/*|*/supabase/*|*backfill*|*purge*|*truncate*|"
@@ -1828,7 +1832,8 @@ CLASS_CASES = (
     (["AGENTS.md"], "code"),
     (["HOW-WE-BUILD.md"], "code"),
     (["README.md", "CHARTER.md"], "code"),
-    (["README.md", "library/deploy.md"], "words"),
+    (["README.md", "docs/deploy-notes.md"], "words"),
+    (["README.md", "library/deploy.md"], "risky"),
     (["RICH-DATA.md"], "code"),
     (["library/hypersolid.md"], "code"),
     (["design/CONSTITUTION.md", "README.md"], "code"),
@@ -2159,6 +2164,7 @@ CLASS_LOOSENINGS = (
     ("an unknown kind never tried", None, _without_arm(RISK_UNKNOWN)),
     ("a certificate's kind called ordinary", None, lambda t: t.replace(RISK_ORDINARY, RISK_ORDINARY.replace("*.woff2)", "*.woff2|*.pem)", 1), 1)),
     ("the registry read as ordinary", None, lambda t: t.replace(RISK_GATE, RISK_GATE.replace("model-registry/*|*/model-registry/*|", "", 1), 1)),
+    ("the deploy page read as words", None, lambda t: t.replace(RISK_GATE, RISK_GATE.replace("library/deploy.md|", "", 1), 1)),
     ("the product read's rules read as ordinary", None, lambda t: t.replace(RISK_GATE, RISK_GATE.replace("product-reads/*|*/product-reads/*|", "", 1), 1)),
     ("an endpoint read as ordinary", None, lambda t: t.replace(RISK_BOUNDARY, RISK_BOUNDARY.replace("api/*|*/api/*|", "", 1), 1)),
     ("every script read as ordinary", None, lambda t: t.replace(RISK_RELEASE, RISK_RELEASE.replace("*.sh|", "", 1), 1)),
