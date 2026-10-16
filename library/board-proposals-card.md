@@ -2,13 +2,13 @@
 
 Scope: the build board's proposals card. Open when: changing the proposals card, or checking it against what he approved.
 
-**Approved (his ruling, 15 October 2026, [#222](https://github.com/Adonis80/how-we-build/issues/222#issuecomment-6192725037): Option D).** One card above the product timelines, on the board's live read, so it adds no deploy. Built in `board/build.py` (`proposals_card`), held by its selftest. The picture below is the real card rendered from that day's open proposals at phone width (390 px); it shows this repository's issues only, since a product's ideas are private and this repository is public. It is accepted when he approves it by looking.
+**Approved (his ruling, 15 October 2026, [#222](https://github.com/Adonis80/how-we-build/issues/222#issuecomment-6192725037): Option D).** One card above the product timelines, on the board's live read, so it adds no deploy. Built in `board/build.py` (`proposals_card`), held by its selftest. The picture below is the real card rendered from the open proposals at phone width (390 px); it shows this repository's issues only, since a product's ideas are private and this repository is public. It is accepted when he approves it by looking.
 
 ![The proposals card at phone width](board-proposals-card.png)
 
 **The screen spec.**
 - Pure HTML and CSS: no image, no chart library, no script for looks; under 10 KB with its styles (the selftest holds it with ten rows).
-- Dark and high contrast, in cyan, yellow and teal alone (his ruling): near-black surfaces, white text, light-grey waiting times.
+- One dark scheme, cohesive, with high-contrast moments (his second look, 16 October 2026, replacing cyan, yellow and teal: *"start fresh using dark mode and an adaptive design that works on mobile and on desktop"*): neutral near-black surfaces and neutral ink; the stages blue (being built), amber (waiting for debate) and teal (agreed), one validated dark set (lightness, chroma, colour-blind separation and contrast checked); blue the one accent, on the P1 row, the links and Show more; a stage's colour on its dot and bar alone, never its text. On a wide screen each row's stage and age sit on its title's line when it fits.
 - Top: "Proposals" and the open count, then a stage bar sized by count: Being built (cyan), Waiting for debate (yellow), Agreed (teal), each labelled with its count.
 - A yellow "Debate due - N ideas waiting" banner when decision 0020's trigger is met (3 proposals waiting, or one waiting 7 days); the rule only behind its tap.
 - A numbered spine down the left; the P1 node and card glow cyan. Each row: the title, a stage pill and the time waited; a tap opens its one plain sentence.

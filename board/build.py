@@ -383,35 +383,53 @@ def rulebook_row(rb):
 
 # THE PROPOSALS CARD (his approval, 15 October 2026, #222: Option D). One card above the
 # project pages: every open `proposal` issue here, and every product's `proposed` item, in
-# one queue (decision 0020), on the same live read. Pure HTML and CSS, cyan, yellow and teal
-# alone, under 10 KB; it replaces decision 0012's folded list of suggested ideas.
+# one queue (decision 0020), on the same live read. Pure HTML and CSS, under 10 KB; it replaces decision 0012's folded list of suggested ideas.
 ISSUE_LINK = re.compile(r"^https://github\.com/Adonis80/how-we-build/issues/[1-9][0-9]*$")
 STAGES = (("b", "Being built"), ("w", "Waiting for debate"), ("a", "Agreed"))
 # An open pull request that says it builds, closes, fixes, resolves or implements #N; one that only cites it does not.
 BUILDS = re.compile(r"\b(?:builds|closes|fixes|resolves|implements)\s+\[?#([1-9][0-9]*)\b", re.I)
 SHOWN = 6
 DUE_COUNT, DUE_DAYS = 3, 7                              # decision 0020's trigger (trial thresholds)
-PQ_CSS = (".pq{--b:#53eafd;--w:#ffd23f;--a:#2dd4bf;background:#0b0d14;border:1px solid rgba(255,255,255,.1);"
-          "border-radius:16px;padding:20px;margin:0 0 16px;color:#fff}.pq-h{display:flex;justify-content:space-between;"
-          "align-items:baseline}.pq h2{margin:0;font-size:20px;font-weight:600}.pq-c{color:#b8c0cc;font-size:14px}"
-          ".pq-bar{display:flex;gap:3px;height:10px;margin:16px 0 10px}.pq-bar i{border-radius:5px}.pq-bar .e{flex:1;"
-          "background:#3a4350}.pq .b{--s:var(--b)}.pq .w{--s:var(--w)}.pq .a{--s:var(--a)}.pq-bar i,.pq-k li::before{background:var(--s)}"
-          ".pq-k{display:flex;flex-wrap:wrap;gap:4px 16px;list-style:none;margin:0;padding:0;font-size:13px;color:#b8c0cc}"
-          ".pq-k li::before{content:\"\";display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}"
-          ".pq-k b{color:#fff;font-weight:600}.pq-due{margin:14px 0 0;border-radius:10px;background:rgba(255,210,63,.12);"
-          "border:1px solid var(--w)}.pq-due summary{padding:10px 12px;color:var(--w);font-weight:600}.pq-due p{margin:0;"
-          "padding:0 12px 12px;color:#fff}.pq-l{list-style:none;margin:14px 0 0;padding:0;counter-reset:n var(--n0,0)}"
-          ".pq-r{position:relative;padding-left:36px;counter-increment:n}.pq-r::before{content:counter(n);position:absolute;"
-          "left:0;top:10px;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:12px;"
-          "background:#1b1f2a;color:#fff}.pq-r::after{content:\"\";position:absolute;left:11.5px;top:36px;bottom:-6px;"
-          "width:1px;background:#3a4350}.pq-r:last-child::after{display:none}.pq-r details{border-radius:10px;"
-          "background:#11141d;margin:0 0 8px}.pq-r summary{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;"
-          "padding:10px 12px;min-height:44px}.pq-t{flex:1 1 100%;font-weight:500}.pq-p{font-size:12px;padding:2px 8px;"
-          "border-radius:999px;color:#06070f;background:var(--s)}.pq-a{font-size:13px;color:#b8c0cc}.pq-r p{margin:0;"
-          "padding:0 12px 12px;color:#fff}.pq-r a{color:var(--b)}.p1::before{background:var(--b);color:#06070f;"
-          "box-shadow:0 0 12px rgba(83,234,253,.6)}.p1 details{box-shadow:0 0 0 1px var(--b),0 0 16px rgba(83,234,253,.25)}"
-          ".pq-more>summary{color:var(--b);padding:8px 0 0 36px;font-size:14px}.pq-0{color:#b8c0cc;margin:0}"
-          ".pq summary{cursor:pointer;list-style:none}.pq summary::-webkit-details-marker{display:none}")
+PQ_CSS = (
+    # His second look (16 October 2026): the layout kept, the colours started fresh as one dark
+    # scheme. Neutral near-black surfaces and neutral ink; three stage colours from one validated
+    # dark set (blue, amber, teal: lightness, chroma, colour-blind separation and contrast checked);
+    # one blue the high-contrast accent; text never in a stage colour. Wider screens put each
+    # row's stage and age on its title's line.
+    ".pq{--bg:#141619;--row:#1b1e22;--line:rgba(255,255,255,.08);--ink:#f0efec;--ink2:#c3c2b7;--ink3:#898781;"
+    "--b:#3987e5;--w:#c98500;--a:#199e70;--hi:#86b6ef;background:var(--bg);border:1px solid var(--line);"
+    "border-radius:16px;padding:20px 18px;margin:0 0 16px;color:var(--ink)}"
+    ".pq-h{display:flex;justify-content:space-between;align-items:baseline;gap:12px}.pq h2{margin:0;font-size:20px;"
+    "font-weight:600;letter-spacing:-.01em}.pq-c{color:var(--ink2);font-size:14px}"
+    ".pq-bar{display:flex;gap:2px;height:8px;margin:16px 0 12px}.pq-bar i{border-radius:4px}.pq-bar .e{flex:1;"
+    "background:#2a2d33}.pq .b{--s:var(--b)}.pq .w{--s:var(--w)}.pq .a{--s:var(--a)}"
+    ".pq-bar i,.pq-k li::before,.pq-p::before{background:var(--s)}"
+    ".pq-k{display:flex;flex-wrap:wrap;gap:6px 18px;list-style:none;margin:0;padding:0;font-size:13px;color:var(--ink2)}"
+    ".pq-k li::before,.pq-p::before{content:\"\";display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px}"
+    ".pq-k b{color:var(--ink);font-weight:600}"
+    ".pq-due{margin:16px 0 0;border-radius:10px;background:rgba(201,133,0,.12);border:1px solid rgba(201,133,0,.45)}"
+    ".pq-due summary{display:flex;align-items:center;gap:10px;padding:11px 12px;color:var(--ink);font-weight:600}"
+    ".pq-due summary::before{content:\"!\";display:grid;place-items:center;flex:none;width:20px;height:20px;"
+    "border-radius:50%;background:var(--w);color:#141619;font-size:13px;font-weight:700}"
+    ".pq-due p{margin:0;padding:0 12px 12px 42px;color:var(--ink2)}"
+    ".pq-l{list-style:none;margin:16px 0 0;padding:0;counter-reset:n var(--n0,0)}"
+    ".pq-r{position:relative;padding-left:36px;counter-increment:n}.pq-r::before{content:counter(n);position:absolute;"
+    "left:0;top:11px;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:12px;"
+    "background:#2a2d33;color:var(--ink2)}.pq-r::after{content:\"\";position:absolute;left:11.5px;top:37px;"
+    "bottom:-5px;width:1px;background:#2a2d33}.pq-r:last-child::after{display:none}"
+    ".pq-r details{border-radius:10px;background:var(--row);border:1px solid transparent;margin:0 0 8px}"
+    ".pq-r summary{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:11px 12px;min-height:44px}"
+    ".pq-r summary:hover{background:rgba(255,255,255,.03);border-radius:10px}"
+    ".pq-t{flex:1 1 100%;font-weight:500;line-height:1.35}"
+    ".pq-p{display:inline-flex;align-items:center;font-size:12px;padding:3px 9px;border-radius:999px;"
+    "background:rgba(255,255,255,.06);color:var(--ink2)}.pq-a{font-size:13px;color:var(--ink3)}"
+    ".pq-r p{margin:0;padding:0 12px 12px;color:var(--ink2);line-height:1.5}.pq-r a{color:var(--hi)}"
+    ".p1::before{background:var(--b);color:#fff;box-shadow:0 0 0 3px rgba(57,135,229,.25)}"
+    ".p1 details{border-color:rgba(57,135,229,.6);box-shadow:0 0 18px rgba(57,135,229,.18)}"
+    ".pq-more>summary{color:var(--hi);padding:8px 0 0 36px;font-size:14px}.pq-0{color:var(--ink2);margin:0}"
+    ".pq summary{cursor:pointer;list-style:none}.pq summary::-webkit-details-marker{display:none}"
+    ".pq summary:focus-visible{outline:2px solid var(--hi);outline-offset:2px;border-radius:10px}"
+    "@media (min-width:640px){.pq{padding:24px 24px}.pq-t{flex:1 1 auto}.pq-a{min-width:9em;text-align:right}}")
 
 
 def level_of(text):
