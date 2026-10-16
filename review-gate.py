@@ -1551,7 +1551,8 @@ def _check_read_loosenings():
 # pricing, live data or schema, sign-in or permissions, a public trust boundary
 # (every endpoint under an `api/` is one: it is where the internet meets the
 # data), or deploy and release (every script, and what a build installs). A
-# page is never risky by its name: a screen spec called garment-pricing.md is
+# page is never risky by its name but one, library/deploy.md (below): a screen
+# spec called garment-pricing.md is
 # words about pricing, and the diff shows what it says. The names are a rule,
 # not a proof, so an ordinary read is told it was not read as risky, and a reader
 # that finds a risky change the names missed says so as a finding — which
