@@ -1091,17 +1091,20 @@ def _selftest():
          "Show 1 more" in card, "the card: its count and its stage bar by stage, the seventh row folded")
     hold("Debate due - 2 ideas waiting" in card and "waiting 25 days" in card and "Phena" in card and "Hemz OS" in card,
          "the card: debate due when one proposal has waited 7 days, the rule behind the tap; products' ideas beside them")
-    many = render(dict(reads, proposals=[iss(400 + i, "Priority: P4 — observe.", at="2026-09-26T00:00:00Z") for i in range(9)]))
-    many = many[many.index('<section class="pq"'):many.index('<nav class="tabs"')]
+    many_whole = render(dict(reads, proposals=[iss(400 + i, "Priority: P4 — observe.", at="2026-09-26T00:00:00Z") for i in range(9)]))
+    many = many_whole[many_whole.index('<section class="pq"'):many_whole.index('<nav class="tabs"')]
     hold(many.count('<li class="pq-r') == 10 and "Show 4 more" in many and "Debate due - 9 ideas waiting" in many and
          "waiting today" in many, "the card: the top six shown, the rest folded under Show N more")
-    hold(len((PQ_CSS + many).encode("utf-8")) < 10240, "the card is under 10 KB with ten rows, its styles included")
+    tile = many_whole[many_whole.index('<details class="gl pq-gl'):many_whole.index('<nav class="tabs"')]
+    hold(len((PQ_CSS + GL_CSS + tile).encode("utf-8")) < 10240,
+         "the card is under 10 KB with ten rows, its tile and both its styles included")
     # His ruling, 17 October 2026: the detail hidden from the main screen, drilled down to. Both cards sit
     # closed in tiles above the projects, each saying its headline and state; nothing opens them but a tap.
     whole = render(dict(reads, proposals=[iss(400 + i, "Priority: P4 — observe.", at="2026-09-26T00:00:00Z") for i in range(9)],
                         spend={"days": [{"date": "2026-09-20", "usage": 3.2}]}))
     top = whole[whole.index('<div class="glance">'):whole.index('<nav class="tabs"')]
-    hold(top.count('<details class="gl ') == 2 and "<details open" not in top and " open>" not in top.split("<summary")[0] and
+    tiles = re.findall(r"<details[^>]*>", top)
+    hold(top.count('<details class="gl ') == 2 and all(" open" not in t for t in tiles if 'class="gl ' in t) and
          top.index("sp-gl") < top.index("pq-gl") and whole.index('class="glance"') < whole.index('class="pages"'),
          "the top: two tiles, spend then proposals, both closed, before the projects")
     hold('<span class="gl-v">10<span> open</span></span><span class="gl-c">Debate due</span>' in top and
