@@ -218,7 +218,7 @@ jobs:
             fi
           fi
           # A HARD CEILING ON THE HOST'S DAY (his ask, 15 October 2026: "the
-          # Roadmap counts the account's deploys in the last 24 hours and skips if
+          # board counts the account's deploys in the last 24 hours and skips if
           # 60 or more are used, so it can never starve a product"). Before
           # anything is made, the team's deployments in the last 24 hours are
           # counted, every project's: the account has the one team, and every
