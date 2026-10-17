@@ -212,7 +212,7 @@ jobs:
           # never turns the run red: the board is already live. It gives back
           # none of the host's day.
           tidy() {
-            local keep="" k o page rows until="" pages=0 old="" n code gone=0 refused=0 seen=0
+            local keep="" k o c page rows until="" pages=0 old="" n code gone=0 refused=0 seen=0 made="" wins
             local fresh=$(( ($(date +%s) - 7200) * 1000 )) stop=$(( STARTED + 13 * 60 ))
             kept() {
               [[ "$2" =~ ^dpl_[A-Za-z0-9]+$ ]] || { echo "::warning::$1 could not be read, so no preview is deleted"; return 1; }
@@ -225,14 +225,23 @@ jobs:
             [ -z "${id:-}" ] || kept "the preview just copied" "$id" || return 0
             for k in $keep; do
               # A kept deployment that cannot be read deletes nothing: what it
-              # was copied from is a keep too (#227's first read).
+              # was copied from is a keep too (#227's first read). This step
+              # makes a copy's source in the same job, minutes before the copy,
+              # so every preview made in the fifteen minutes before a kept
+              # deployment is kept, whether or not the host names its source
+              # (#227's fifth read): a kept one whose time cannot be read
+              # deletes nothing.
               page=$(v "https://api.vercel.com/v13/deployments/$k?$q" 2>/dev/null || true)
               printf '%s' "$page" | jq -e --arg k "$k" '.id == $k' >/dev/null 2>&1 \
                 || { echo "::warning::what $k was copied from could not be read, so no preview is deleted"; return 0; }
+              c=$(printf '%s' "$page" | jq -r '.createdAt // .created // empty' 2>/dev/null || true)
+              [[ "$c" =~ ^[0-9]+$ ]] || { echo "::warning::when $k was made could not be read, so no preview is deleted"; return 0; }
+              made="$made${made:+,}$c"
               o=$(printf '%s' "$page" | jq -r '.meta.originalDeploymentId // empty' 2>/dev/null || true)
               [[ "$o" =~ ^dpl_[A-Za-z0-9]+$ ]] || continue
               case " $keep " in *" $o "*) ;; *) keep="$keep $o"; echo "kept: what $k was copied from, $o" ;; esac
             done
+            wins="[$made]"
             # Every page of the project's previews, newest first, each held here
             # to the Roadmap's own, by name as the day's count holds them, and
             # not on the query's word (#227's fourth read), and to a finished one
@@ -245,8 +254,9 @@ jobs:
               page=$(v "https://api.vercel.com/v6/deployments?$q&projectId=$PROJECT&target=preview&limit=100${until:+&until=$until}" 2>/dev/null || true)
               printf '%s' "$page" | jq -e '.deployments | type == "array"' >/dev/null 2>&1 \
                 || { echo "::warning::page $pages of the previews could not be read; the rest wait for the next production run"; break; }
-              rows=$(printf '%s' "$page" | jq -r --argjson f "$fresh" '.deployments[]
-                | select((.name == "juku-build-board") and ((.target // "preview") == "preview") and ((.state // .readyState) as $s | ["READY", "ERROR", "CANCELED", "BLOCKED"] | index($s)) and ((.created | type) == "number") and (.created < $f))
+              rows=$(printf '%s' "$page" | jq -r --argjson f "$fresh" --argjson w "$wins" '.deployments[]
+                | select((.name == "juku-build-board") and ((.target // "preview") == "preview") and ((.state // .readyState) as $s | ["READY", "ERROR", "CANCELED", "BLOCKED"] | index($s)) and ((.created | type) == "number") and (.created < $f)
+                  and (.created as $t | all($w[]; $t > . or $t < . - 900000)))
                 | (.uid // .id // empty)' 2>/dev/null || true)
               seen=$(( seen + $(printf '%s' "$page" | jq '.deployments | length' 2>/dev/null || echo 0) ))
               for k in $rows; do

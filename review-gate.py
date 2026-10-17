@@ -5949,10 +5949,10 @@ case "$method $path" in
     [ "${FAKE_KEY:-ok}" = ok ] || { reply 403 '{}'; exit 0; }
     echo "$k" >> "$S/keys"; reply 201 '{}' ;;
   "GET https://api.vercel.com/v13/deployments/dpl_new")
-    reply 200 "{\"id\":\"dpl_new\",\"readyState\":\"$(cat "$S/new")\",\"url\":\"juku-build-board-x1.vercel.app\"}" ;;
+    reply 200 "{\"id\":\"dpl_new\",\"readyState\":\"$(cat "$S/new")\",\"url\":\"juku-build-board-x1.vercel.app\",\"createdAt\":$(( now * 1000 ))}" ;;
   "GET https://api.vercel.com/v13/deployments/dpl_copy")
     c=$(cat "$S/copy"); [ "$c" != late ] || c=BUILDING
-    reply 200 "{\"id\":\"dpl_copy\",\"readyState\":\"$c\"}" ;;
+    reply 200 "{\"id\":\"dpl_copy\",\"readyState\":\"$c\",\"createdAt\":$(( now * 1000 ))}" ;;
   "PATCH https://api.vercel.com/v12/deployments/dpl_copy/cancel")
     # late: the copy went READY and took the domain as it was cancelled.
     if [ "${FAKE_CANCEL:-ok}" = late ]; then echo READY > "$S/copy"; echo dpl_copy > "$S/serving"; reply 409 '{}'; exit 0; fi
@@ -5963,8 +5963,8 @@ case "$method $path" in
     # the preview it was copied from, unless a case says it is no copy.
     meta=',"meta":{"originalDeploymentId":"dpl_beforeorig"}'; [ "${FAKE_ORIG:-yes}" = yes ] || meta=""
     case "${FAKE_LIVE:-none}" in
-      stale) reply 200 "{\"id\":\"dpl_before\",\"readyState\":\"READY\",\"createdAt\":$(( (now - 21660) * 1000 ))$meta}" ;;
-      *) reply 200 "{\"id\":\"dpl_before\",\"readyState\":\"READY\",\"createdAt\":$(( (now - 3600) * 1000 ))$meta}" ;;
+      stale) reply 200 "{\"id\":\"dpl_before\",\"readyState\":\"READY\",\"createdAt\":$(( (STARTED - 21660) * 1000 ))$meta}" ;;
+      *) reply 200 "{\"id\":\"dpl_before\",\"readyState\":\"READY\",\"createdAt\":$(( (STARTED - 21660) * 1000 ))$meta}" ;;
     esac ;;
   "GET https://api.vercel.com/v6/deployments/dpl_before/files")
     # Its file tree, as the host lists it: each file's uid the SHA-1 of its bytes,
@@ -6001,6 +6001,8 @@ case "$method $path" in
           rows="$(row dpl_fresh null READY "$new"),$(row dpl_named null READY "$old"),$(row dpl_beforeorig null READY "$old")"
           [ "$(cat "$S/new")" = none ] || rows="$rows,$(row dpl_new null READY "$old")"
           # One of another project's, old and finished, which the host should not have listed.
+          # The preview the rollback target was copied from, made two minutes before it, its source unnamed.
+          rows="$rows,$(row dpl_source null READY $(( (STARTED - 21660 - 120) * 1000 )))"
           rows="$rows,{\"uid\":\"dpl_untimed\",\"name\":\"juku-build-board\",\"target\":null,\"state\":\"READY\"},{\"uid\":\"dpl_myst\",\"name\":\"myst\",\"target\":null,\"state\":\"READY\",\"created\":$old},$(row dpl_old1 null READY "$old"),$(row dpl_err '"preview"' ERROR "$old"),$(row dpl_building null BUILDING "$old"),$(row dpl_prodrow '"production"' READY "$old")"
           reply 200 "{\"deployments\":[$rows],\"pagination\":{\"next\":1000}}" ;;
       esac
@@ -6074,7 +6076,9 @@ case "$method $path" in
   # The fixed name's deployment, read for what it was copied from (FAKE_NAMEDREAD=no: unread).
   "GET https://api.vercel.com/v13/deployments/dpl_named")
     [ "${FAKE_NAMEDREAD:-ok}" = ok ] || { reply 500 '{}'; exit 0; }
-    reply 200 '{"id":"dpl_named","meta":{}}' ;;
+    # Its time, unless a case says the host gave none.
+    [ "${FAKE_NAMEDTIME:-ok}" = ok ] || { reply 200 '{"id":"dpl_named","meta":{}}'; exit 0; }
+    reply 200 "{\"id\":\"dpl_named\",\"meta\":{},\"createdAt\":$(( (STARTED - 30000) * 1000 ))}" ;;
   # An old preview deleted: dpl_old1 refused, or every one answered 429.
   "DELETE https://api.vercel.com/v13/deployments/dpl_"*)
     k=${path#https://api.vercel.com/v13/deployments/}
@@ -6097,7 +6101,7 @@ if [ "$*" = "+%s" ]; then cat "$FAKE/clock"; else exec /bin/date "$@"; fi
 # What the old-preview step deletes from the fake host's two pages, and what it never may.
 BOARD_TIDY_OLD = ["dpl_blocked", "dpl_err", "dpl_old1", "dpl_old2"]
 BOARD_TIDY_KEPT = ("dpl_before", "dpl_beforeorig", "dpl_copy", "dpl_named", "dpl_fresh", "dpl_new", "dpl_building",
-                   "dpl_queued", "dpl_prodrow", "dpl_untimed", "dpl_myst")
+                   "dpl_queued", "dpl_prodrow", "dpl_untimed", "dpl_myst", "dpl_source")
 BOARD_DEPLOY_CASES = (
     ("a production deploy that passes", {}, 0, "dpl_copy", "READY", "live: dpl_copy, the copy of dpl_new", None),
     ("the domain shows a stranger the Roadmap", {"FAKE_DOMAIN": "board"}, 1, "dpl_before", "READY",
@@ -6240,6 +6244,8 @@ BOARD_DEPLOY_CASES = (
      "what juku-build-board-next.vercel.app serves could not be read, so no preview is deleted", None, []),
     ("the rollback target is no copy", {"FAKE_ORIG": "no"}, 0, "dpl_copy", "READY",
      "old previews: 5 deleted", None, BOARD_TIDY_OLD + ["dpl_beforeorig"]),
+    ("when a kept one was made cannot be read", {"FAKE_NAMEDTIME": "no"}, 0, "dpl_copy", "READY",
+     "when dpl_named was made could not be read, so no preview is deleted", None, []),
     ("the previews cannot be listed", {"FAKE_TIDY_LIST": "no"}, 0, "dpl_copy", "READY",
      "page 1 of the previews could not be read", None, []),
     ("the second page of previews cannot be read", {"FAKE_TIDY_PAGE2": "no"}, 0, "dpl_copy", "READY",
@@ -6569,6 +6575,8 @@ BOARD_LOOSENINGS = (
     ("no deadline on reading the previews", lambda t: t.replace('[ "$(date +%s)" -lt "$stop" ] || { echo "::warning::out of time reading', 'true || { echo "::warning::out of time reading', 1)),
     ("a preview listed twice deleted twice", lambda t: t.replace('case " $keep $old " in *" $k "*) continue ;; esac', 'case " $keep " in *" $k "*) continue ;; esac', 1)),
     ("no deadline on the deletes", lambda t: t.replace('[ "$(date +%s)" -lt "$stop" ] || { echo "::warning::out of time: $((', 'true || { echo "::warning::out of time: $((', 1)),
+    ("a copy's unnamed source deleted", lambda t: t.replace("\n                  and (.created as $t | all($w[]; $t > . or $t < . - 900000)))", ")", 1)),
+    ("a kept one's unread time taken as none", lambda t: t.replace('[[ "$c" =~ ^[0-9]+$ ]] || { echo "::warning::when $k was made could not be read, so no preview is deleted"; return 0; }', 'true', 1)),
     ("another project's preview deleted", lambda t: t.replace('select((.name == "juku-build-board") and ', "select(", 1)),
     ("a row with no time taken as old", lambda t: t.replace(' and ((.created | type) == "number") and (.created < $f))', ' and (.created < $f))', 1)),
     ("the host's slow-down ignored", lambda t: t.replace('elif [ "$code" = 429 ]; then echo "::warning::the host asked', 'elif false; then echo "::warning::the host asked', 1)),
