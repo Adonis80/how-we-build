@@ -317,7 +317,7 @@ def touches_the_gate(paths):
 
 
 # THE UPGRADE LOG (his ruling, 15 October 2026, #222): a pull request that changes what
-# runs — the gate's files, its workflows, the registry, the product reads, or the board —
+# runs — the gate's files, its workflows, the registry, the product reads, or the Roadmap —
 # adds its one line to the log in the same pull request, so what changed and why is on
 # record without anyone remembering to write it.
 UPGRADE_LOG = "library/upgrade-log.md"
@@ -2967,7 +2967,7 @@ PLAN_CASES = (
     ("a change to the check", "pull_request", ["check.sh"], None, "run all"),
     ("a change to a workflow", "pull_request", [".github/workflows/review.yml"], None, "run all"),
     ("a change to a workflow a branch adds", "pull_request", [".github/workflows/new.yml"], None, "run all"),
-    ("a change to the board's build", "pull_request", ["board/build.py"], None, "run all"),
+    ("a change to the Roadmap's build", "pull_request", ["board/build.py"], None, "run all"),
     ("a file never seen before", "pull_request", ["board/new.txt"], None, "run all"),
     ("a new module beside the registry, which no part is measured to read", "pull_request",
      ["model-registry/new.py"], None, "run all"),
@@ -2989,7 +2989,7 @@ PLAN_CASES = (
     ("a change to the caller", "pull_request", ["model-registry/ask.py"], None,
      "run core,product,reviewers,caller,glm"),
     ("a page the reviewers' cases name", "pull_request", ["library/reviewer.md"], None, "run core,reviewers"),
-    ("the board's middleware", "pull_request", ["board/middleware.js"], None, "run core,board"),
+    ("the Roadmap's middleware", "pull_request", ["board/middleware.js"], None, "run core,board"),
     ("a change to the product read's rules", "pull_request", ["product-reads/reads.py"], None,
      "run core,product,preflight,asker,kit,reviewers"),
     ("a change to the asker", "pull_request", ["product-reads/ask.py"], None, "run core,asker"),
@@ -4447,14 +4447,14 @@ MORE_PRODUCT_LOOSENINGS = (
 RB_BEGIN = "# THE RULEBOOK PAGES A CHANGE POINTS AT"
 RB_END = "# (end of the rulebook pages)"
 RB_TREE = ("library/reviewer.md", "library/consultant.md", "library/deploy.md", "library/money.md",
-           "library/two-stacks.md", "library/build-board.md")
+           "library/two-stacks.md", "library/roadmap.md")
 # (what, the diff's lines, the pages it must carry)
 RB_CASES = (
     ("pages an added line points at", ["+Brief: the rulebook's `library/reviewer.md`.",
                                       "+the consultant (rulebook `library/consultant.md`)"],
      ["library/consultant.md", "library/reviewer.md"]),
     ("a page only a removed line names", ["-Brief: `library/deploy.md`"], []),
-    ("a page the product has", ["+see library/build-board.md"], []),
+    ("a page the product has", ["+see library/roadmap.md"], []),
     ("a page the rulebook lacks", ["+see library/rulebook-files.md"], []),
     ("names that are not a rulebook library page", ["+check.sh, juku-library/README.md and xlibrary/money.md"], []),
     ("more than four", ["+library/reviewer.md library/consultant.md library/deploy.md library/money.md "
@@ -4474,7 +4474,7 @@ def rb_says(text, diff_lines):
     body = textwrap.dedent("\n".join(lines[a:b + 1]))
     with tempfile.TemporaryDirectory() as d:
         product, rulebook = os.path.join(d, "product"), os.path.join(d, "rulebook")
-        for root, files in ((rulebook, RB_TREE), (product, ("library/build-board.md", "a.md"))):
+        for root, files in ((rulebook, RB_TREE), (product, ("library/roadmap.md", "a.md"))):
             for f in files:
                 os.makedirs(os.path.dirname(os.path.join(root, f)) or root, exist_ok=True)
                 with open(os.path.join(root, f), "w", encoding="utf-8") as h:
@@ -5776,11 +5776,11 @@ PRODUCT_LOOSENINGS = (
 
 
 # THE BUILD BOARD'S BUILD (decision 0007 §6, #113; #222). It is not a reviewer
-# and, since #222, wears no App: it deploys the board's frame, its PIN gate and
+# and, since #222, wears no App: it deploys the Roadmap's frame, its PIN gate and
 # board/build.py as the function that reads every source when the page is
 # opened, and reads nothing itself. It stands behind the same door for the
 # deploy key and the function's two read keys, which it carries to the project,
-# so it is held for that — its triggers (main's own push of the board's code, or
+# so it is held for that — its triggers (main's own push of the Roadmap's code, or
 # a dispatch: never a pull request, a verdict or a clock), the door, read and
 # nothing else, no App key, nothing of a pull request checked out — and the
 # function's own reads are held in board/build.py's text below.
@@ -5790,7 +5790,7 @@ BOARD_PUSH = ("  push:\n    branches: [main]\n    paths:\n      - board/**\n"
               "      - .github/workflows/build-board.yml\n")
 BOARD_KEY = """jq -n --arg k "$k" '{key: $k, value: $ENV[$k], type: "sensitive", target: ["production", "preview"]}'"""
 BOARD_HOLDS = (
-    (BOARD_PUSH, "a push waking it only on main, and only when the board's own code changed (#222)"),
+    (BOARD_PUSH, "a push waking it only on main, and only when the Roadmap's own code changed (#222)"),
     ("    if: github.ref == 'refs/heads/main'\n", "the job run from main alone"),
     ("cancel-in-progress: false", "no deploy cut off between going live and its smoke test"),
     # What the fake host below cannot tell apart, because it answers each alike.
@@ -5804,7 +5804,7 @@ BOARD_HOLDS = (
     ("TARGET: ${{ github.event_name != 'workflow_dispatch' && 'production' || inputs.target }}",
      "a dispatch's own target, never production by default"),
     # The frame and its fingerprint, laid out in a step the fake host does not run.
-    ('cp board/build.py "$site/api/build.py"', "the board's build deployed as its function"),
+    ('cp board/build.py "$site/api/build.py"', "the Roadmap's build deployed as its function"),
     ('h=$(cat board/build.py board/middleware.js board/robots.txt board/vercel.json | sha256sum',
      "the fingerprint taken over the build and the gate's three files"),
     ("BOARD_HASH: ${{ steps.frame.outputs.board_hash }}", "the deploy given the frame's fingerprint"),
@@ -5816,15 +5816,15 @@ BOARD_HOLDS = (
 BOARD_PERMISSIONS = re.compile(r"^permissions:\n((?:  .*\n)+)", re.M)
 BOARD_JOB_CONCURRENCY = "    concurrency:\n      group: build-board\n      cancel-in-progress: false\n"
 # The smoke's two markers, held on both sides: the PIN screen's words in the gate,
-# and the attribute only the board's page carries.
+# and the attribute only the Roadmap's page carries.
 BOARD_MARKS = (("board/middleware.js", "Directors only"), ("board/build.py", "<body data-board>"))
 BOARD_NEVER = (
     ("upload-artifact", "an artifact, which a public repository publishes"),
-    # #222: the board reads nothing here, and wears no App, so its run can sign nothing.
+    # #222: the Roadmap reads nothing here, and wears no App, so its run can sign nothing.
     ("secrets.REVIEWER_APP", "the reviewer App's keys, which sign the gate's verdicts"),
     ("api.github.com", "GitHub's API: the function reads, never this run"),
     ("openrouter.ai", "OpenRouter: the function reads the spend, never this run"),
-    ("python3 board/build.py", "the board rendered here: the function renders it when it is opened"),
+    ("python3 board/build.py", "the Roadmap rendered here: the function renders it when it is opened"),
     # #117's fourth read, 4b.
     ("GITHUB_STEP_SUMMARY", "a run's summary, which a public repository publishes"),
     # The spend card's key is a management key (his, 1 October 2026): one read, never a key made.
@@ -5848,9 +5848,9 @@ BUILD_HOLDS = (
     ('REVIEWER_CHECK = "%s"' % REVIEWER_CHECK, "the reviewer's check run by name"),
     ('r.get("name") == REVIEWER_CHECK and r.get("head_sha") == sha', "each check run held to the reviewer's name and head"),
     ('(r.get("app") or {}).get("id") == REVIEWER_APP_ID', "each check run held to the reviewer's App"),
-    ('.get("full_name") == RULEBOOK_REPO', "a fork's pull request left off the board"),
+    ('.get("full_name") == RULEBOOK_REPO', "a fork's pull request left off the Roadmap"),
     ('RULEBOOK_REPO = "Adonis80/how-we-build"', "this repository's own pull requests"),
-    ('token = env.get("BOARD_READ_TOKEN")', "GitHub read with the board's read key"),
+    ('token = env.get("BOARD_READ_TOKEN")', "GitHub read with the Roadmap's read key"),
     ('read_spend, get, env.get("OPENROUTER_KEY")', "OpenRouter read with its own key"),
 )
 BUILD_NEVER = ("method=", "data=", "/keys")
@@ -5919,8 +5919,8 @@ case "$method $path" in
   "POST https://api.vercel.com/v13/deployments")
     case "$data" in
       @*) grep -q '"target"' "${data#@}" && refuse "a deployment given a target, which the host would put on the domain by itself"
-          { grep -q '"file": "board.sha"' "${data#@}" && grep -q "\"data\": \"$BOARD_HASH\"" "${data#@}"; } || refuse "a deployment that does not carry the board's fingerprint as board.sha"
-          grep -q '"file": "api/build.py"' "${data#@}" || refuse "a deployment that does not carry the board's build as its function"
+          { grep -q '"file": "board.sha"' "${data#@}" && grep -q "\"data\": \"$BOARD_HASH\"" "${data#@}"; } || refuse "a deployment that does not carry the Roadmap's fingerprint as board.sha"
+          grep -q '"file": "api/build.py"' "${data#@}" || refuse "a deployment that does not carry the Roadmap's build as its function"
           grep -qx BOARD_READ_TOKEN "$S/keys" 2>/dev/null || refuse "a frame made before its read key was stored on the project"
           echo "$FAKE_NEW" > "$S/new"
           reply 200 '{"id":"dpl_new","readyState":"QUEUED"}' ;;
@@ -5982,8 +5982,8 @@ case "$method $path" in
     # one just made (if any), two old, one still building and a production row
     # the filter let through; then a second page.
     case "$url" in *"&target=preview&"*)
-      case "$url" in *"projectId=$PROJECT&target=preview&state=READY,ERROR,CANCELED,BLOCKED&limit=100"*) ;;
-        *) refuse "the previews asked for other than every finished one of the board's project: $url" ;; esac
+      case "$url" in *"projectId=$PROJECT&target=preview&limit=100"*) ;;
+        *) refuse "the previews asked for other than the Roadmap's project's, a page of 100: $url" ;; esac
       # Old: made two hours and more before the job began; new: ten minutes ago.
       old=$(( (STARTED - 7300) * 1000 )); new=$(( (now - 600) * 1000 ))
       row() { printf '{"uid":"%s","target":%s,"state":"%s","created":%s}' "$1" "$2" "$3" "$4"; }
@@ -5997,7 +5997,7 @@ case "$method $path" in
           [ "${FAKE_TIDY_LIST:-ok}" = ok ] || { reply 403 '{"error":{"code":"forbidden"}}'; exit 0; }
           rows="$(row dpl_fresh null READY "$new"),$(row dpl_named null READY "$old"),$(row dpl_beforeorig null READY "$old")"
           [ "$(cat "$S/new")" = none ] || rows="$rows,$(row dpl_new null READY "$old")"
-          rows="$rows,$(row dpl_old1 null READY "$old"),$(row dpl_err '"preview"' ERROR "$old"),$(row dpl_building null BUILDING "$old"),$(row dpl_prodrow '"production"' READY "$old")"
+          rows="$rows,{\"uid\":\"dpl_untimed\",\"target\":null,\"state\":\"READY\"},$(row dpl_old1 null READY "$old"),$(row dpl_err '"preview"' ERROR "$old"),$(row dpl_building null BUILDING "$old"),$(row dpl_prodrow '"production"' READY "$old")"
           reply 200 "{\"deployments\":[$rows],\"pagination\":{\"next\":1000}}" ;;
       esac
       exit 0 ;;
@@ -6011,7 +6011,7 @@ case "$method $path" in
       || refuse "a day counted over a window other than the last 24 hours: $url"
     [ "${FAKE_USED:-59}" != unread ] || { reply 500 '{}'; exit 0; }
     rows=""
-    # One of the day's is another project's, unless a case says the board made them all.
+    # One of the day's is another project's, unless a case says the Roadmap made them all.
     for i in $(seq 1 "${FAKE_USED:-59}"); do
       n=juku-build-board; [ "$i" != 1 ] || [ "${FAKE_OTHERS:-yes}" != yes ] || n=myst
       rows="$rows{\"id\":\"dpl_u$i\",\"name\":\"$n\",\"created\":$(( (now - i * 60) * 1000 ))},"
@@ -6043,7 +6043,7 @@ case "$method $path" in
     case "${FAKE_NEXT:-wall}" in board) reply 200 "$board" ;; *) reply 302 '' "$sso" ;; esac ;;
   "GET https://$DOMAIN/"|"GET https://$DOMAIN/index.html"|"GET https://$DOMAIN/api/build")
     [ "$auth" = no ] || refuse "a stranger's request carrying a key"
-    # What it served before: the PIN screen, unless a case says it shows a stranger the board.
+    # What it served before: the PIN screen, unless a case says it shows a stranger the Roadmap.
     if [ "$serving" != dpl_copy ]; then case "${FAKE_BEFORE:-pin}" in board) reply 200 "$board" ;; *) reply 200 "$pin" ;; esac; exit 0; fi
     case "${FAKE_DOMAIN:-pin}" in
       board) reply 200 "$board" ;;
@@ -6093,10 +6093,10 @@ if [ "$*" = "+%s" ]; then cat "$FAKE/clock"; else exec /bin/date "$@"; fi
 # What the old-preview step deletes from the fake host's two pages, and what it never may.
 BOARD_TIDY_OLD = ["dpl_blocked", "dpl_err", "dpl_old1", "dpl_old2"]
 BOARD_TIDY_KEPT = ("dpl_before", "dpl_beforeorig", "dpl_copy", "dpl_named", "dpl_fresh", "dpl_new", "dpl_building",
-                   "dpl_queued", "dpl_prodrow")
+                   "dpl_queued", "dpl_prodrow", "dpl_untimed")
 BOARD_DEPLOY_CASES = (
     ("a production deploy that passes", {}, 0, "dpl_copy", "READY", "live: dpl_copy, the copy of dpl_new", None),
-    ("the domain shows a stranger the board", {"FAKE_DOMAIN": "board"}, 1, "dpl_before", "READY",
+    ("the domain shows a stranger the Roadmap", {"FAKE_DOMAIN": "board"}, 1, "dpl_before", "READY",
      "rolled back: roadmap.juku.pro serves dpl_before", None),
     ("the domain never serves it", {"FAKE_DOMAIN": "never"}, 1, "dpl_before", "READY",
      "rolled back: roadmap.juku.pro serves dpl_before", None),
@@ -6130,8 +6130,8 @@ BOARD_DEPLOY_CASES = (
      "READY", "ROLLBACK REFUSED", None),
     ("a preview for his look", {"TARGET": "preview", "LIVE": "no"}, 0, "dpl_before", "READY",
      "preview ready at the fixed address: https://juku-build-board-next.vercel.app", "promote"),
-    ("the fixed address shows a stranger the board", {"TARGET": "preview", "LIVE": "no", "FAKE_NEXT": "board"}, 1,
-     "dpl_before", "DELETED", "A STRANGER WAS SERVED THE BOARD at the fixed address", "promote"),
+    ("the fixed address shows a stranger the Roadmap", {"TARGET": "preview", "LIVE": "no", "FAKE_NEXT": "board"}, 1,
+     "dpl_before", "DELETED", "A STRANGER WAS SERVED THE ROADMAP at the fixed address", "promote"),
     ("a preview that is never ready takes no fixed name", {"TARGET": "preview", "LIVE": "no", "FAKE_READY": "BUILDING"}, 1,
      "dpl_before", "CANCELED", "cancelled: dpl_new", "fixed address"),
     ("a preview whose fixed name is refused", {"TARGET": "preview", "LIVE": "no", "FAKE_ALIAS": "no"}, 0,
@@ -6149,9 +6149,9 @@ BOARD_DEPLOY_CASES = (
      "dpl_before", "DELETED", "neither the sign-in wall nor the PIN screen", "promote"),
     ("the domain shows a stranger the host's sign-in, not the PIN screen", {"FAKE_DOMAIN": "wall"}, 1,
      "dpl_before", "READY", "rolled back: roadmap.juku.pro serves dpl_before", None),
-    ("the preview shows a stranger the board", {"FAKE_PREVIEW": "board"}, 1, "dpl_before", "DELETED",
-     "A STRANGER WAS SERVED THE BOARD at the preview", "promote"),
-    ("the preview shows a stranger the board, asked for as a preview",
+    ("the preview shows a stranger the Roadmap", {"FAKE_PREVIEW": "board"}, 1, "dpl_before", "DELETED",
+     "A STRANGER WAS SERVED THE ROADMAP at the preview", "promote"),
+    ("the preview shows a stranger the Roadmap, asked for as a preview",
      {"TARGET": "preview", "FAKE_PREVIEW": "board"}, 1, "dpl_before", "DELETED",
      "deleted: dpl_new", "juku-build-board-x1.vercel.app"),
     ("the preview never answers", {"FAKE_PREVIEW": "none"}, 1, "dpl_before", "DELETED",
@@ -6163,13 +6163,13 @@ BOARD_DEPLOY_CASES = (
      "could not be recorded", "deployment:"),
     ("too little of the job is left", {"LATE": "yes"}, 1, "dpl_before", "none", "too little of the job",
      "deployment:"),
-    # 13 October 2026: the host's 100 deployments a day, 82 of them the board's
+    # 13 October 2026: the host's 100 deployments a day, 82 of them the Roadmap's
     # on events that changed nothing on it. Only a changed frame is deployed to
     # production by a push, however long the same one has been live, since the
-    # board reads live and never ages (#222); a preview is always made.
-    ("the same board, live for an hour", {"FAKE_LIVE": "same", "GITHUB_EVENT_NAME": "push"}, 0, "dpl_before",
+    # Roadmap reads live and never ages (#222); a preview is always made.
+    ("the same Roadmap, live for an hour", {"FAKE_LIVE": "same", "GITHUB_EVENT_NAME": "push"}, 0, "dpl_before",
      "none", "unchanged: roadmap.juku.pro serves dpl_before", "deployment:"),
-    ("the same board, live for over six hours", {"FAKE_LIVE": "stale", "GITHUB_EVENT_NAME": "push"}, 0,
+    ("the same Roadmap, live for over six hours", {"FAKE_LIVE": "stale", "GITHUB_EVENT_NAME": "push"}, 0,
      "dpl_before", "none", "unchanged: roadmap.juku.pro serves dpl_before", "deployment:"),
     # #222: the function's keys stored on the project before the frame is made;
     # no read key deploys nothing, and a key the host will not store deploys nothing.
@@ -6181,23 +6181,23 @@ BOARD_DEPLOY_CASES = (
      "stored on the project: OPENROUTER_KEY", None),
     ("no spend key: the read key alone stored", {"OPENROUTER_KEY": ""}, 0, "dpl_copy", "READY",
      "stored on the project: BOARD_READ_TOKEN", "stored on the project: OPENROUTER_KEY"),
-    ("a changed board", {"FAKE_LIVE": "other", "GITHUB_EVENT_NAME": "push"}, 0, "dpl_copy", "READY",
+    ("a changed Roadmap", {"FAKE_LIVE": "other", "GITHUB_EVENT_NAME": "push"}, 0, "dpl_copy", "READY",
      "live: dpl_copy, the copy of dpl_new", "unchanged"),
     ("what is live cannot be read: deployed as before", {"FAKE_LIVE": "unread", "GITHUB_EVENT_NAME": "push"}, 0,
      "dpl_copy", "READY", "live: dpl_copy, the copy of dpl_new", "unchanged"),
     # #210's first read: the fingerprint is stamped on a copy before its smoke,
     # so one that landed after a red run is kept only if it passes the smoke now.
-    ("the same board, live for an hour, showing a stranger the board",
+    ("the same Roadmap, live for an hour, showing a stranger the Roadmap",
      {"FAKE_LIVE": "same", "FAKE_BEFORE": "board", "GITHUB_EVENT_NAME": "push"}, 0, "dpl_copy", "READY",
      "live: dpl_copy, the copy of dpl_new", "unchanged"),
-    ("the same board, dispatched", {"FAKE_LIVE": "same"}, 0, "dpl_copy", "READY",
+    ("the same Roadmap, dispatched", {"FAKE_LIVE": "same"}, 0, "dpl_copy", "READY",
      "live: dpl_copy, the copy of dpl_new", "unchanged"),
-    ("the same board asked for as a preview", {"TARGET": "preview", "LIVE": "no", "FAKE_LIVE": "same"}, 0,
+    ("the same Roadmap asked for as a preview", {"TARGET": "preview", "LIVE": "no", "FAKE_LIVE": "same"}, 0,
      "dpl_before", "READY", "preview ready at the fixed address", "unchanged"),
     ("no fingerprint taken", {"BOARD_HASH": ""}, 1, "dpl_before", "none", "fingerprint was not taken",
      "deployment:"),
     # His ask, 15 October 2026: at 60 of the account's deployments in 24 hours
-    # the board makes none, so it never starves a product. Every path above runs
+    # the Roadmap makes none, so it never starves a product. Every path above runs
     # at 59, with five older the host returned beside them, and deploys.
     ("the account at its ceiling", {"FAKE_USED": "60", "GITHUB_EVENT_NAME": "push"}, 0, "dpl_before", "none",
      "ceiling: the account has made 60 or more deployments", "deployment:"),
@@ -6205,11 +6205,11 @@ BOARD_DEPLOY_CASES = (
      "ceiling: the account has made 60 or more deployments", "deployment:"),
     ("the account at its ceiling, asked for as a preview", {"TARGET": "preview", "LIVE": "no", "FAKE_USED": "60"}, 0,
      "dpl_before", "none", "ceiling: the account has made 60 or more", "deployment:"),
-    # #219's first read: a domain showing a stranger the board is replaced, ceiling or not.
-    ("the account at its ceiling, the same board live showing a stranger the board",
+    # #219's first read: a domain showing a stranger the Roadmap is replaced, ceiling or not.
+    ("the account at its ceiling, the same Roadmap live showing a stranger the Roadmap",
      {"FAKE_USED": "60", "FAKE_LIVE": "same", "FAKE_BEFORE": "board", "GITHUB_EVENT_NAME": "push"}, 0,
      "dpl_copy", "READY", "live: dpl_copy, the copy of dpl_new", "ceiling:"),
-    ("the account at its ceiling, dispatched, the domain showing a stranger the board",
+    ("the account at its ceiling, dispatched, the domain showing a stranger the Roadmap",
      {"FAKE_USED": "60", "FAKE_BEFORE": "board"}, 0, "dpl_copy", "READY", "the ceiling is passed over", "ceiling:"),
     ("under the ceiling, the count kept out of the public log", {"GITHUB_EVENT_NAME": "push"}, 0, "dpl_copy",
      "READY", "the account's deployments in the last 24 hours: under the ceiling of 60", "hours: 59"),
@@ -6217,9 +6217,9 @@ BOARD_DEPLOY_CASES = (
     # passes over the ceiling, since it cannot replace the domain.
     ("another project's deployment among the day's", {"GITHUB_EVENT_NAME": "push"}, 0, "dpl_copy", "READY",
      "other projects' deployments among those counted: yes", None),
-    ("the board's own deployments alone in the day", {"FAKE_OTHERS": "no", "GITHUB_EVENT_NAME": "push"}, 0,
+    ("the Roadmap's own deployments alone in the day", {"FAKE_OTHERS": "no", "GITHUB_EVENT_NAME": "push"}, 0,
      "dpl_copy", "READY", "other projects' deployments among those counted: no", None),
-    ("the account at its ceiling, a preview asked for while the domain shows a stranger the board",
+    ("the account at its ceiling, a preview asked for while the domain shows a stranger the Roadmap",
      {"FAKE_USED": "60", "FAKE_BEFORE": "board", "TARGET": "preview", "LIVE": "no"}, 0, "dpl_before", "none",
      "ceiling: the account has made 60 or more", "deployment:"),
     ("the account's day cannot be counted", {"FAKE_USED": "unread"}, 1, "dpl_before", "none",
@@ -6338,7 +6338,7 @@ def _board_deploy_case(script, job, case):
         if never and never in (log if never != "promote" else state("calls")):
             faults.append("on '%s' %s %r" % (what, "called" if never == "promote" else "says", never))
         if "NOT-FOR-THE-LOG" in log:
-            faults.append("on '%s' printed the board into the log" % what)
+            faults.append("on '%s' printed the Roadmap into the log" % what)
         gone = state("deleted").split() if os.path.exists(os.path.join(fake, "deleted")) else []
         if want_gone is None:
             ended = p.returncode == 0 and env.get("TARGET", "production") == "production" and (
@@ -6360,7 +6360,7 @@ def _board_deploy_case(script, job, case):
 
 
 def _check_board_wiring(board=None, build=None, readme=None, quiet=False):
-    """build-board.yml, held to the door and a push of the board's code; board/build.py's reads, to the README's map."""
+    """build-board.yml, held to the door and a push of the Roadmap's code; board/build.py's reads, to the README's map."""
     say = (lambda *a: None) if quiet else print
     try:
         board = _read(BOARD_WORKFLOW) if board is None else board
@@ -6376,12 +6376,12 @@ def _check_board_wiring(board=None, build=None, readme=None, quiet=False):
         say("  wiring: %s %s" % (where, what))
         bad += 1
 
-    # No `pull_request`, no verdict, no clock: main's push of the board's own code, or a dispatch (#222).
+    # No `pull_request`, no verdict, no clock: main's push of the Roadmap's own code, or a dispatch (#222).
     if triggers(board) != BOARD_TRIGGERS:
         fault("triggers on %s; it must be %s and nothing else — never a pull request, a verdict or "
               "a clock" % (triggers(board), BOARD_TRIGGERS))
     if not USES_ENVIRONMENT.search(board):
-        fault("does not run in the `%s` environment, so the deploy key and the board's read keys are "
+        fault("does not run in the `%s` environment, so the deploy key and the Roadmap's read keys are "
               "readable from any branch" % KEY_ENVIRONMENT)
     for line, what in BOARD_HOLDS:
         if line not in board:
@@ -6437,18 +6437,18 @@ def _check_board_wiring(board=None, build=None, readme=None, quiet=False):
         listed, named, rows = [], [], ["unreadable: %s" % e]
     mapped = sorted(set(MAP_PRODUCT.findall(readme)))
     if not listed or listed != mapped:
-        fault("reads %s, and the README's map names %s: the board reads the map's products, all "
+        fault("reads %s, and the README's map names %s: the Roadmap reads the map's products, all "
               "of them and nothing else" % (listed, mapped), "board/build.py")
     # The page's rows are the same list, by name: two copies of one truth held equal.
     if rows != named:
         fault("names its products %s, and draws rows for %s" % (named, rows), "board/build.py")
     if not bad:
-        say("ok: the board's build runs only from main, behind the `%s` door, on a dispatch or main's push of "
-            "the board's own code, never a pull request, a verdict or a clock; it wears no App and reads "
+        say("ok: the Roadmap's build runs only from main, behind the `%s` door, on a dispatch or main's push of "
+            "the Roadmap's own code, never a pull request, a verdict or a clock; it wears no App and reads "
             "nothing, carries the function's keys from a file, and its deploy, run against a fake host on %d "
             "paths, gives production only a copy of a preview it has smoked, on a push only of a frame changed "
             "or failing its smoke, never once the account has made 60 in 24 hours unless a production run finds "
-            "the board leaking, cancels or deletes one that fails, and on a red after the copy cancels one still "
+            "the Roadmap leaking, cancels or deletes one that fails, and on a red after the copy cancels one still "
             "building and puts back what the domain served, inside the job's time, and once production is "
             "confirmed deletes only finished previews over two hours old, never what it keeps, never red; "
             "the function reads the %d "
@@ -6501,24 +6501,24 @@ BOARD_LOOSENINGS = (
     ("any redirect taken as the wall", lambda t: t.replace('[[ "$loc" == "https://vercel.com/sso-api?"* ]]', "true", 1)),
     ("a redirect's address matched loosely", lambda t: t.replace('[[ "$loc" == "https://vercel.com/sso-api?"* ]]', '[[ "$loc" == *"sso-api"* ]]', 1)),
     ("the host's sign-in taken as gated at the domain", lambda t: t.replace('{ [ "$2" = wall ] && [[', "{ [[", 1)),
-    # 13 October 2026: only a changed board, or one live six hours, deployed to production.
+    # 13 October 2026: only a changed Roadmap, or one live six hours, deployed to production.
     ("the fingerprint not compared", lambda t: t.replace('if [ "$was" = "$want" ] &&', "if true &&", 1)),
     ("a run with no fingerprint deployed", lambda t: t.replace('[[ "${BOARD_HASH:-}" =~ ^[0-9a-f]{64}$ ]] ||', "true ||", 1)),
     ("the fingerprint left off the preview", lambda t: t.replace(',\n                      {file: "board.sha", data: $h}]}', "]}", 1)),
     ("the fingerprint compared unhashed", lambda t: t.replace("want=$(printf '%s' \"$BOARD_HASH\" | sha1sum | cut -d' ' -f1)", 'want="$BOARD_HASH"', 1)),
-    # #222: a frame deployed only on main's push of the board's code; never a pull request, a verdict or a clock.
+    # #222: a frame deployed only on main's push of the Roadmap's code; never a pull request, a verdict or a clock.
     ("a pull_request trigger", lambda t: t.replace("  push:\n", "  pull_request:\n    types: [opened]\n  push:\n", 1)),
     ("a pull_request_target trigger", lambda t: t.replace("  push:\n", "  pull_request_target:\n    types: [opened]\n  push:\n", 1)),
     ("the reviewer's verdict waking it", lambda t: t.replace("  push:\n", "  check_run:\n    types: [completed]\n  push:\n", 1)),
     ("a clock", lambda t: t.replace("  push:\n", "  schedule:\n    - cron: '0 * * * *'\n  push:\n", 1)),
     ("a push of any branch", lambda t: t.replace("    branches: [main]\n", "", 1)),
     ("a push of anything on main", lambda t: t.replace("    paths:\n      - board/**\n      - .github/workflows/build-board.yml\n", "", 1)),
-    ("a push of a page beside the board's code", lambda t: t.replace("      - board/**\n", "      - board/**\n      - library/**\n", 1)),
+    ("a push of a page beside the Roadmap's code", lambda t: t.replace("      - board/**\n", "      - board/**\n      - library/**\n", 1)),
     ("the job let run from any branch", lambda t: t.replace("    if: github.ref == 'refs/heads/main'\n", "", 1)),
     ("the App's key carried", lambda t: t.replace("          BOARD_READ_TOKEN: ${{ secrets.BOARD_READ_TOKEN }}\n", "          BOARD_READ_TOKEN: ${{ secrets.BOARD_READ_TOKEN }}\n          APP_KEY: ${{ secrets.REVIEWER_APP_KEY }}\n", 1)),
     ("a product read here", lambda t: t.replace("      - name: Lay out the frame\n", "      - run: curl -sS --max-time 20 https://api.github.com/repos/Adonis80/myst/contents/roadmap.json\n      - name: Lay out the frame\n", 1)),
     ("the spend read here", lambda t: t.replace("      - name: Lay out the frame\n", "      - run: curl -sS --max-time 20 https://openrouter.ai/api/v1/activity\n      - name: Lay out the frame\n", 1)),
-    ("the board rendered into the log", lambda t: t.replace('          cp board/build.py "$site/api/build.py"\n', '          cp board/build.py "$site/api/build.py"\n          python3 board/build.py --selftest\n', 1)),
+    ("the Roadmap rendered into the log", lambda t: t.replace('          cp board/build.py "$site/api/build.py"\n', '          cp board/build.py "$site/api/build.py"\n          python3 board/build.py --selftest\n', 1)),
     ("an artifact uploaded", lambda t: t.replace("      - name: Lay out the frame\n", "      - uses: actions/upload-artifact@v4\n        with:\n          path: ${{ runner.temp }}\n      - name: Lay out the frame\n", 1)),
     ("a write permission", lambda t: t.replace("  contents: read\n", "  contents: read\n  statuses: write\n", 1)),
     ("the pull request's head checked out", lambda t: t.replace("          persist-credentials: false\n", "          persist-credentials: false\n          ref: ${{ github.event.pull_request.head.sha }}\n", 1)),
@@ -6541,14 +6541,14 @@ BOARD_LOOSENINGS = (
     ("the ceiling held on an event alone", lambda t: t.replace('if [ "$used" -ge 60 ]; then', 'if [ "$GITHUB_EVENT_NAME" != workflow_dispatch ] && [ "$used" -ge 60 ]; then', 1)),
     ("an uncounted day deployed", lambda t: t.replace('[[ "$used" =~ ^[0-9]+$ ]] ||', "true ||", 1)),
     ("a page too short to reach the ceiling", lambda t: t.replace("&since=$since&limit=100", "&since=$since&limit=20", 1)),
-    ("a leaking board left live at the ceiling", lambda t: t.replace('if [ "$leak" -ne 2 ]; then', "if true; then", 1)),
+    ("a leaking Roadmap left live at the ceiling", lambda t: t.replace('if [ "$leak" -ne 2 ]; then', "if true; then", 1)),
     ("the domain unsmoked at the ceiling", lambda t: t.replace('[ "$TARGET" != production ] || gated "$DOMAIN" pin || leak=$?', "true", 1)),
     ("the count printed", lambda t: t.replace("under the ceiling of 60", "$used, under the ceiling of 60", 1)),
     ("a preview passing over the ceiling", lambda t: t.replace('[ "$TARGET" != production ] || gated "$DOMAIN" pin', 'gated "$DOMAIN" pin', 1)),
-    ("the board's own deployments taken for another project's", lambda t: t.replace('.name != "juku-build-board") then', '.name == "juku-build-board") then', 1)),
+    ("the Roadmap's own deployments taken for another project's", lambda t: t.replace('.name != "juku-build-board") then', '.name == "juku-build-board") then', 1)),
     # His ruling, 17 October 2026: old previews deleted once served, and nothing kept deleted.
     ("no old preview deleted after a live copy", lambda t: t.replace('the PIN screen alone to a stranger"\n              tidy || true\n', 'the PIN screen alone to a stranger"\n', 1)),
-    ("no old preview deleted on an unchanged board", lambda t: t.replace('Nothing is deployed."\n              tidy || true\n', 'Nothing is deployed."\n', 1)),
+    ("no old preview deleted on an unchanged Roadmap", lambda t: t.replace('Nothing is deployed."\n              tidy || true\n', 'Nothing is deployed."\n', 1)),
     ("old previews deleted before the domain is confirmed", lambda t: t.replace("          phase=promoted\n", "          phase=promoted\n          tidy || true\n", 1)),
     ("the two hours in flight not kept", lambda t: t.replace("local fresh=$(( ($(date +%s) - 7200) * 1000 ))", "local fresh=$(( $(date +%s) * 1000 ))", 1)),
     ("the fixed name's preview not kept", lambda t: t.replace('kept "what $NEXT serves"', 'true "what $NEXT serves"', 1)),
@@ -6563,7 +6563,8 @@ BOARD_LOOSENINGS = (
     ("a kept one unread taken as no copy", lambda t: t.replace('could not be read, so no preview is deleted"; return 0; }\n              o=', 'could not be read"; continue; }\n              o=', 1)),
     ("no deadline on reading the previews", lambda t: t.replace('[ "$(date +%s)" -lt "$stop" ] || { echo "::warning::out of time reading', 'true || { echo "::warning::out of time reading', 1)),
     ("a preview listed twice deleted twice", lambda t: t.replace('case " $keep $old " in *" $k "*) continue ;; esac', 'case " $keep " in *" $k "*) continue ;; esac', 1)),
-    ("no deadline on the deletes", lambda t: t.replace('[ "$(date +%s)" -lt "$stop" ] ||', "true ||", 1)),
+    ("no deadline on the deletes", lambda t: t.replace('[ "$(date +%s)" -lt "$stop" ] || { echo "::warning::out of time: $((', 'true || { echo "::warning::out of time: $((', 1)),
+    ("a row with no time taken as old", lambda t: t.replace(' and ((.created | type) == "number") and (.created < $f))', ' and (.created < $f))', 1)),
     ("the host's slow-down ignored", lambda t: t.replace('elif [ "$code" = 429 ]; then echo "::warning::the host asked', 'elif false; then echo "::warning::the host asked', 1)),
     ("a refused delete counted as done", lambda t: t.replace('if [[ "$code" =~ ^2 ]]; then gone=$((gone + 1)); echo "deleted: $k"', 'if true; then gone=$((gone + 1)); echo "deleted: $k"', 1)),
     ("old previews able to turn the run red", lambda t: t.replace('Nothing is deployed."\n              tidy || true\n', 'Nothing is deployed."\n              tidy\n              false\n', 1)),
@@ -6591,7 +6592,7 @@ BUILD_LOOSENINGS = (
     ("a row the reads do not name", lambda t: t.replace('("Adonis80/phena", "Phena"))', '("Adonis80/phena", "Phena Two"))', 1)),
     ("the spend key sent to GitHub", lambda t: t.replace('token = env.get("BOARD_READ_TOKEN")', 'token = env.get("OPENROUTER_KEY")', 1)),
     ("GitHub's key sent to OpenRouter", lambda t: t.replace('read_spend, get, env.get("OPENROUTER_KEY")', 'read_spend, get, env.get("BOARD_READ_TOKEN")', 1)),
-    ("the board's mark taken off, so a leak is missed", lambda t: t.replace("<body data-board>", "<body>")),
+    ("the Roadmap's mark taken off, so a leak is missed", lambda t: t.replace("<body data-board>", "<body>")),
 )
 
 
@@ -6623,7 +6624,7 @@ def _check_board_loosenings():
                   "file as it stands, or it proves nothing" % (what, BOARD_WORKFLOW))
             bad += 1
         elif not _check_board_wiring(board=changed, quiet=True):
-            print("  wiring: %s with %s passes the board's hold — the guard for it is gone"
+            print("  wiring: %s with %s passes the Roadmap's hold — the guard for it is gone"
                   % (BOARD_WORKFLOW, what))
             bad += 1
     try:
@@ -6638,7 +6639,7 @@ def _check_board_loosenings():
                   "file as it stands, or it proves nothing" % what)
             bad += 1
         elif not _check_board_wiring(build=changed, quiet=True):
-            print("  wiring: board/build.py with %s passes the board's hold — the guard for it is gone" % what)
+            print("  wiring: board/build.py with %s passes the Roadmap's hold — the guard for it is gone" % what)
             bad += 1
     if not bad:
         print("ok: each of %d loosenings of %s and %d of board/build.py's reads was applied to the real file and refused"
@@ -7261,7 +7262,7 @@ def _check_ask_program():
 #   - the gate and verify workflows have the shape the wake, the ready check and
 #     the setup script all assume;
 #   - the starter AGENTS.md satisfies the check that ships beside it, and the
-#     starter roadmap is one the board can read.
+#     starter roadmap is one the Roadmap can read.
 KIT_DIR = "product-reads/kit/"
 KIT_NAMES = ("review-gate.py", "gate.yml", "wake.yml", "verify.yml", "AGENTS.starter.md",
              "roadmap.starter.json")
@@ -7515,7 +7516,7 @@ def _check_kit(kit=None, wake=None, quiet=False, deep=True):
             if got != want:
                 fault("verify.yml's AGENTS.md step answers %s for %s, and must answer %s" % (got, what, want))
 
-    # 5. The starter roadmap is one the board reads.
+    # 5. The starter roadmap is one the Roadmap reads.
     try:
         road = json.loads(kit["roadmap.starter.json"])
         spec = importlib.util.spec_from_file_location("board_build", "board/build.py")
@@ -7524,13 +7525,13 @@ def _check_kit(kit=None, wake=None, quiet=False, deep=True):
         build.items_of("starter", road)
         build.milestones("starter", road)
     except Exception as e:
-        fault("roadmap.starter.json is not a roadmap the board can read (%s)" % type(e).__name__)
+        fault("roadmap.starter.json is not a roadmap the Roadmap can read (%s)" % type(e).__name__)
     if not bad:
         say("ok: the starter kit's gate gives the rulebook's verdict on %d cases and says how to mark a "
             "commit ready; its wake is the rulebook's wake with two changes and fails loudly in each of "
             "%d places it is made to; its workflows have the shape the wake, the ready check and the "
             "setup script assume, and its verify fails out loud on a ready mark left on a draft and runs again "
-            "when the draft is made ready; its AGENTS.md passes its own check, and its roadmap is one the board reads"
+            "when the draft is made ready; its AGENTS.md passes its own check, and its roadmap is one the Roadmap reads"
             % (len(_kit_runs(head)), len([c for c in SWALLOW_CASES if "SWALLOW_HEAD" not in c[1]])))
     return bad
 
@@ -7578,7 +7579,7 @@ KIT_LOOSENINGS = (
     ("a verify token that writes", "verify.yml", lambda t: t.replace("permissions:\n  contents: read\n", "permissions:\n  contents: write\n", 1)),
     ("a starter that breaks its own check", "AGENTS.starter.md", lambda t: t.replace("Rulebook:", "See:", 1)),
     ("a starter with no review guidelines", "AGENTS.starter.md", lambda t: t.replace("## Review guidelines", "## Notes", 1)),
-    ("a starter roadmap the board cannot read", "roadmap.starter.json", lambda t: t.replace('"items": []', '"items": "none"', 1)),
+    ("a starter roadmap the Roadmap cannot read", "roadmap.starter.json", lambda t: t.replace('"items": []', '"items": "none"', 1)),
 )
 
 
@@ -8555,7 +8556,7 @@ def _check_main():
         ([{"filename": "review-gate.py"}], [ok], 1, nolog, "a gate change read clean with no upgrade-log line is red"),
         ([{"filename": ".github/workflows/build-board.yml"}], [findings], 1, "note:",
          "and an unlogged workflow change with findings is red, announced as a gate change"),
-        ([{"filename": "board/robots.txt"}], [ok], 1, nolog, "a change to the board needs its line too"),
+        ([{"filename": "board/robots.txt"}], [ok], 1, nolog, "a change to the Roadmap needs its line too"),
         ([{"filename": "model-registry/registry.json"}], [ok], 1, nolog, "and so does a change to the model registry"),
         ([{"filename": "product-reads/reads.py"}], [ok], 1, nolog, "and to the product reads"),
         ([{"filename": "board/build.py"}, log], [ok], 0, "note:", "with its line, a change to what runs opens"),
@@ -8795,7 +8796,7 @@ def _selftest(funcs=None):
     bad += hold(touches_the_gate(["README.md", "check.sh", ".github/workflows/x.yml"]),
                 [".github/workflows/x.yml", "check.sh"], "which files are the gate")
     bad += hold(touches_the_gate(["board/build.py", "board/vercel.json"]), ["board/build.py"],
-                "the board's build is the gate, its other files are not (#113's fifth read)")
+                "the Roadmap's build is the gate, its other files are not (#113's fifth read)")
     # Every file the gate counts as itself is read as risky, so `GATE_FILES`
     # cannot drift from the class (#113's sixth read): each needs a class case
     # of its own. `GATE_DIRS` is held by the class's own directory arms.
@@ -9041,7 +9042,7 @@ def main_red_from(commits, now=None):
 #     main's whole run, so while that cannot be trusted nothing runs less than
 #     the whole, the repair of a red main included); the files unread, no file
 #     listed, a change to the gate itself (check.sh, review-gate.py, the
-#     board's build, any workflow: a change to what runs the parts is judged
+#     Roadmap's build, any workflow: a change to what runs the parts is judged
 #     by every part), or a file no part is measured to read: anything never
 #     measured runs the whole, as before;
 #   - run core,…: the core, and every part measured to read a file the pull
@@ -9271,7 +9272,7 @@ def main(argv):
     # The names are not printed: they are the pull request's writing (see gate_note).
     if unlogged(files):
         print("reason: this changes what runs (the gate, a workflow, the registry, the product reads or the "
-              "board) and adds no line to %s: one line, the date, what changed, why, its proof and this pull "
+              "Roadmap) and adds no line to %s: one line, the date, what changed, why, its proof and this pull "
               "request, in this pull request" % UPGRADE_LOG)
         return 1
     if answer == CLEAN:
