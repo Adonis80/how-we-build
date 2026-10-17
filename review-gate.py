@@ -5798,7 +5798,7 @@ BOARD_HOLDS = (
     # #117's second read, 5 and 7.
     ("persist-credentials: false", "no token left in the checkout"),
     ("        default: preview\n", "a dispatch that is a preview unless production is chosen"),
-    ("      NEXT: juku-build-board-next.vercel.app\n", "the one fixed name every preview lands at"),
+    ("      NEXT: next.roadmap.juku.pro\n", "the one fixed name every preview lands at"),
     # #117's fourth read, 4c: the fake sets TARGET itself, so the line that
     # sets it is held here.
     ("TARGET: ${{ github.event_name != 'workflow_dispatch' && 'production' || inputs.target }}",
@@ -6134,7 +6134,7 @@ BOARD_DEPLOY_CASES = (
     ("the rollback is refused", {"FAKE_DOMAIN": "board", "FAKE_ROLLBACK": "refused"}, 1, "dpl_copy",
      "READY", "ROLLBACK REFUSED", None),
     ("a preview for his look", {"TARGET": "preview", "LIVE": "no"}, 0, "dpl_before", "READY",
-     "preview ready at the fixed address: https://juku-build-board-next.vercel.app", "promote"),
+     "preview ready at the fixed address: https://next.roadmap.juku.pro", "promote"),
     ("the fixed address shows a stranger the Roadmap", {"TARGET": "preview", "LIVE": "no", "FAKE_NEXT": "board"}, 1,
      "dpl_before", "DELETED", "A STRANGER WAS SERVED THE ROADMAP at the fixed address", "promote"),
     ("a preview that is never ready takes no fixed name", {"TARGET": "preview", "LIVE": "no", "FAKE_READY": "BUILDING"}, 1,
@@ -6238,7 +6238,7 @@ BOARD_DEPLOY_CASES = (
     ("old previews deleted on an unchanged board", {"FAKE_LIVE": "same", "GITHUB_EVENT_NAME": "push"}, 0,
      "dpl_before", "none", "old previews: 4 deleted, 0 refused, of 4", "deployment:"),
     ("what the fixed name serves cannot be read", {"FAKE_NAMED": "no"}, 0, "dpl_copy", "READY",
-     "what juku-build-board-next.vercel.app serves could not be read, so no preview is deleted", None, []),
+     "what next.roadmap.juku.pro serves could not be read, so no preview is deleted", None, []),
     ("the rollback target is no copy", {"FAKE_ORIG": "no"}, 0, "dpl_copy", "READY",
      "old previews: 5 deleted", None, BOARD_TIDY_OLD + ["dpl_beforeorig"]),
     ("when a kept one was made cannot be read", {"FAKE_NAMEDTIME": "no"}, 0, "dpl_copy", "READY",
@@ -6312,7 +6312,7 @@ def _board_deploy_case(script, job, case):
                   "JOB_END": str(start + job - 30), "RUNNER_TEMP": run, "STARTED": str(start),
                   "GITHUB_EVENT_NAME": "workflow_dispatch", "LIVE": "yes", "TARGET": "production",
                   "VERCEL_TOKEN": "not-a-token", "TEAM": "team_x", "PROJECT": "prj_x",
-                  "DOMAIN": "roadmap.juku.pro", "NEXT": "juku-build-board-next.vercel.app", "FAKE_NEW": env.get("FAKE_READY", "READY"),
+                  "DOMAIN": "roadmap.juku.pro", "NEXT": "next.roadmap.juku.pro", "FAKE_NEW": env.get("FAKE_READY", "READY"),
                   "BOARD_HASH": "%064x" % 0xb0a2d,
                   # Each a key no log may print: the log is checked for the mark below.
                   "ROADMAP_READ_TOKEN": "NOT-FOR-THE-LOG-read", "OPENROUTER_KEY": "NOT-FOR-THE-LOG-spend"})
