@@ -205,8 +205,10 @@ jobs:
           # and any preview made in the last two hours; a production deployment
           # is never deleted. A keep that cannot be read deletes nothing. The list
           # is printed before anything is deleted, each refusal is said, it stops
-          # reading and deleting at minute 13 of the job, or when the host asks
-          # it to slow down, so a slow host cannot run it past the job's 15; it
+          # reading pages and deleting at minute 13 of the job, or when the host
+          # asks it to slow down; the few reads of what is kept before then are
+          # bounded by their number, so a slow host still cannot run it past the
+          # job's 15; it
           # never turns the run red: the board is already live. It gives back
           # none of the host's day.
           tidy() {
@@ -232,8 +234,9 @@ jobs:
               case " $keep " in *" $o "*) ;; *) keep="$keep $o"; echo "kept: what $k was copied from, $o" ;; esac
             done
             # Every page of the project's previews, newest first, each held here
-            # to a finished one made over two hours ago, a row with no time being
-            # new. The state is not asked of the host, which may refuse one it
+            # to the Roadmap's own, by name as the day's count holds them, and
+            # not on the query's word (#227's fourth read), and to a finished one
+            # made over two hours ago, a row with no time being new. The state is not asked of the host, which may refuse one it
             # does not list (Hemz-OS#166's first read), and a list refused would
             # delete nothing.
             while [ "$pages" -lt 50 ]; do
@@ -243,7 +246,7 @@ jobs:
               printf '%s' "$page" | jq -e '.deployments | type == "array"' >/dev/null 2>&1 \
                 || { echo "::warning::page $pages of the previews could not be read; the rest wait for the next production run"; break; }
               rows=$(printf '%s' "$page" | jq -r --argjson f "$fresh" '.deployments[]
-                | select(((.target // "preview") == "preview") and ((.state // .readyState) as $s | ["READY", "ERROR", "CANCELED", "BLOCKED"] | index($s)) and ((.created | type) == "number") and (.created < $f))
+                | select((.name == "juku-build-board") and ((.target // "preview") == "preview") and ((.state // .readyState) as $s | ["READY", "ERROR", "CANCELED", "BLOCKED"] | index($s)) and ((.created | type) == "number") and (.created < $f))
                 | (.uid // .id // empty)' 2>/dev/null || true)
               seen=$(( seen + $(printf '%s' "$page" | jq '.deployments | length' 2>/dev/null || echo 0) ))
               for k in $rows; do

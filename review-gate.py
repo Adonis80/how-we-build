@@ -5989,7 +5989,7 @@ case "$method $path" in
         *) refuse "the previews asked for other than the Roadmap's project's, a page of 100: $url" ;; esac
       # Old: made two hours and more before the job began; new: ten minutes ago.
       old=$(( (STARTED - 7300) * 1000 )); new=$(( (now - 600) * 1000 ))
-      row() { printf '{"uid":"%s","target":%s,"state":"%s","created":%s}' "$1" "$2" "$3" "$4"; }
+      row() { printf '{"uid":"%s","name":"juku-build-board","target":%s,"state":"%s","created":%s}' "$1" "$2" "$3" "$4"; }
       [ "${FAKE_TIDY_LATE:-no}" = no ] || echo $(( STARTED + 13 * 60 )) > "$S/clock"
       case "$url" in
         *"&until=1000"*)
@@ -6000,7 +6000,8 @@ case "$method $path" in
           [ "${FAKE_TIDY_LIST:-ok}" = ok ] || { reply 403 '{"error":{"code":"forbidden"}}'; exit 0; }
           rows="$(row dpl_fresh null READY "$new"),$(row dpl_named null READY "$old"),$(row dpl_beforeorig null READY "$old")"
           [ "$(cat "$S/new")" = none ] || rows="$rows,$(row dpl_new null READY "$old")"
-          rows="$rows,{\"uid\":\"dpl_untimed\",\"target\":null,\"state\":\"READY\"},$(row dpl_old1 null READY "$old"),$(row dpl_err '"preview"' ERROR "$old"),$(row dpl_building null BUILDING "$old"),$(row dpl_prodrow '"production"' READY "$old")"
+          # One of another project's, old and finished, which the host should not have listed.
+          rows="$rows,{\"uid\":\"dpl_untimed\",\"name\":\"juku-build-board\",\"target\":null,\"state\":\"READY\"},{\"uid\":\"dpl_myst\",\"name\":\"myst\",\"target\":null,\"state\":\"READY\",\"created\":$old},$(row dpl_old1 null READY "$old"),$(row dpl_err '"preview"' ERROR "$old"),$(row dpl_building null BUILDING "$old"),$(row dpl_prodrow '"production"' READY "$old")"
           reply 200 "{\"deployments\":[$rows],\"pagination\":{\"next\":1000}}" ;;
       esac
       exit 0 ;;
@@ -6096,7 +6097,7 @@ if [ "$*" = "+%s" ]; then cat "$FAKE/clock"; else exec /bin/date "$@"; fi
 # What the old-preview step deletes from the fake host's two pages, and what it never may.
 BOARD_TIDY_OLD = ["dpl_blocked", "dpl_err", "dpl_old1", "dpl_old2"]
 BOARD_TIDY_KEPT = ("dpl_before", "dpl_beforeorig", "dpl_copy", "dpl_named", "dpl_fresh", "dpl_new", "dpl_building",
-                   "dpl_queued", "dpl_prodrow", "dpl_untimed")
+                   "dpl_queued", "dpl_prodrow", "dpl_untimed", "dpl_myst")
 BOARD_DEPLOY_CASES = (
     ("a production deploy that passes", {}, 0, "dpl_copy", "READY", "live: dpl_copy, the copy of dpl_new", None),
     ("the domain shows a stranger the Roadmap", {"FAKE_DOMAIN": "board"}, 1, "dpl_before", "READY",
@@ -6559,7 +6560,7 @@ BOARD_LOOSENINGS = (
     ("the preview just copied not kept", lambda t: t.replace('            [ -z "${id:-}" ] || kept "the preview just copied" "$id" || return 0\n', "", 1)),
     ("a keep unread taken as nothing to keep", lambda t: t.replace('could not be read, so no preview is deleted"; return 1; }', 'could not be read"; return 0; }', 1)),
     ("what a kept one was copied from not kept", lambda t: t.replace('*) keep="$keep $o"; echo "kept: what $k was copied from', '*) echo "kept: what $k was copied from', 1)),
-    ("a production row deleted", lambda t: t.replace('select(((.target // "preview") == "preview") and ', "select(", 1)),
+    ("a production row deleted", lambda t: t.replace('(.name == "juku-build-board") and ((.target // "preview") == "preview") and ', '(.name == "juku-build-board") and ', 1)),
     ("a preview still building deleted", lambda t: t.replace('["READY", "ERROR", "CANCELED", "BLOCKED"] | index($s)', "true", 1)),
     ("one page of previews alone", lambda t: t.replace('[[ "$until" =~ ^[0-9]+$ ]] || break\n              [ "$pages" -lt 50 ]', 'break\n              [ "$pages" -lt 50 ]', 1)),
     ("an unreadable page taken as an empty one", lambda t: t.replace("""printf '%s' "$page" | jq -e '.deployments | type == "array"' >/dev/null 2>&1 \\""", "true \\", 1)),
@@ -6568,6 +6569,7 @@ BOARD_LOOSENINGS = (
     ("no deadline on reading the previews", lambda t: t.replace('[ "$(date +%s)" -lt "$stop" ] || { echo "::warning::out of time reading', 'true || { echo "::warning::out of time reading', 1)),
     ("a preview listed twice deleted twice", lambda t: t.replace('case " $keep $old " in *" $k "*) continue ;; esac', 'case " $keep " in *" $k "*) continue ;; esac', 1)),
     ("no deadline on the deletes", lambda t: t.replace('[ "$(date +%s)" -lt "$stop" ] || { echo "::warning::out of time: $((', 'true || { echo "::warning::out of time: $((', 1)),
+    ("another project's preview deleted", lambda t: t.replace('select((.name == "juku-build-board") and ', "select(", 1)),
     ("a row with no time taken as old", lambda t: t.replace(' and ((.created | type) == "number") and (.created < $f))', ' and (.created < $f))', 1)),
     ("the host's slow-down ignored", lambda t: t.replace('elif [ "$code" = 429 ]; then echo "::warning::the host asked', 'elif false; then echo "::warning::the host asked', 1)),
     ("a refused delete counted as done", lambda t: t.replace('if [[ "$code" =~ ^2 ]]; then gone=$((gone + 1)); echo "deleted: $k"', 'if true; then gone=$((gone + 1)); echo "deleted: $k"', 1)),
