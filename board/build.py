@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""The build board, rendered: read live when it is opened, or one JSON of reads in, one index.html out.
+"""The Roadmap, rendered: read live when it is opened, or one JSON of reads in, one index.html out.
 
 What the page shows and may claim is decision 0007 and its addendum
 (https://github.com/Adonis80/how-we-build/issues/97); the section marks below
 (§n, An) are its clauses. Decision 0012 (issues/145) adds one card above the pages:
 every product's `proposed` items in one folded list, a view only.
 
-DEPLOYED, IT IS THE BOARD'S FUNCTION (#222, his ruling, 15 October 2026: the
-board "must not use deploys, use resources, or compete with a real product").
+DEPLOYED, IT IS THE ROADMAP'S FUNCTION (#222, his ruling, 15 October 2026: the
+Roadmap "must not use deploys, use resources, or compete with a real product").
 `.github/workflows/build-board.yml` deploys this file as `api/build.py`, behind
-the PIN gate, only when the board's own code changes; each time the page is
+the PIN gate, only when the Roadmap's own code changes; each time the page is
 opened, `handler` reads the products' roadmaps, this repository's pull requests
 and OpenRouter's spend there and then, with GETs alone, and keeps the page a
 minute. The keys are the project's own: BOARD_READ_TOKEN, a read-only GitHub
@@ -130,7 +130,7 @@ def needs_decision(it):
 def milestones(name, road):
     """§8: each money milestone's sentence (`when`) and whether `reached_on` is set; nothing else.
     Read in the one shape the products keep, `money_milestones.items`, and refused in any
-    other, never dropped (#113's read): a milestone missing from his board is a false line."""
+    other, never dropped (#113's read): a milestone missing from his Roadmap is a false line."""
     if "money_milestones" not in road:
         return []
     mm = road["money_milestones"]
@@ -190,7 +190,7 @@ def item_html(it, open_=False):
     approved): the title; then the plain sentence; then Proof, Gate, Next and who agreed
     it, as a label and value grid. Native <details> both times: it opens without script."""
     status = it["status"] or ""
-    word = STATUS_WORD.get(status, "Status not one the board reads")
+    word = STATUS_WORD.get(status, "Status not one the Roadmap reads")
     who = it.get("decided_by")
     who = ("the " + who) if who in ("CTO", "Chairman") else who
     agreed = " · ".join(e(x) for x in (who, day(it["decided_on"]) if it.get("decided_on") else None) if x)
@@ -223,7 +223,7 @@ def fold(count, word, inner, label=None):
 
 
 def ideas_card(ideas):
-    """Decision 0012: every product's `proposed` items in one folded list, in the board's row
+    """Decision 0012: every product's `proposed` items in one folded list, in the Roadmap's row
     order. A view only: it shows what the project pages already read, keeps no copy, and
     changes no count (§2: suggested stands outside progress; §3: his decisions are the pages')."""
     total = sum(len(v) for v in ideas.values())
@@ -269,7 +269,7 @@ def product_row(p):
     progress = ('<div class="pprog"><span>Overall progress</span><span class="pnum">%d%% · %d/%d done</span></div>%s'
                 % (round(100.0 * n["done"] / total) if total else 0, n["done"], total, bar(n)))
     body = (group("Needs your decision", asks, "asks") + spine + group("", by("proposed")) +
-            group("Status not one the board reads", unknown) +
+            group("Status not one the Roadmap reads", unknown) +
             ('<section><h3>Money milestone</h3><ul class="money">%s</ul></section>' % money if money else "") +
             '<p class="edited">Roadmap last edited %s</p>' % e(when(p["last_edited"])))
     return row(name, counts, headline(items), body, progress, "Roadmap · in sequence"), n["decisions"]
@@ -434,7 +434,7 @@ def spend_card(spend, checked_at):
     if not ok:
         why = ("No OpenRouter key is connected" if spend is None else
                "OpenRouter's spend was not read this time" if isinstance(spend, dict) and spend.get("unread") else
-               "OpenRouter's answer was not in a shape the board reads")
+               "OpenRouter's answer was not in a shape the Roadmap reads")
         return ('<section class="spend st-none" aria-label="OpenRouter spend"><div class="sp-head">'
                 '<span class="sp-title">OpenRouter</span><span class="sp-chip">Data incomplete</span></div>'
                 '<div class="sp-big">? <span>/ $%d budget</span></div><p class="sp-proj">%s</p><p class="sp-basis">'
@@ -471,9 +471,9 @@ def spend_card(spend, checked_at):
 
 def row(name, counts, line, body, progress="", seq=""):
     """One project page, the view he approved (1 October 2026): its name with ‹ › beside
-    it, what it counts and what is in hand, overall progress, and its timeline. The board
+    it, what it counts and what is in hand, overall progress, and its timeline. The Roadmap
     is these pages side by side, swiped or stepped through; render() adds the ‹ ›."""
-    return ('<div class="crumb">Build board / Project</div><div class="ph"><h2 class="pname">%s</h2>{NAV}</div>'
+    return ('<div class="crumb">Roadmap / Project</div><div class="ph"><h2 class="pname">%s</h2>{NAV}</div>'
             '<p class="psub">%s</p><p class="pline">%s</p>%s<h3 class="seq">%s</h3>%s'
             % (e(name), counts, line, progress, e(seq), body))
 
@@ -541,7 +541,7 @@ def render(reads):
     rows, asked, ideas = {}, {}, {}
     for p in reads.get("products") or []:
         if p.get("name") not in ROWS or p["name"] == RULEBOOK:
-            raise Unreadable("a product named outside the board's rows")
+            raise Unreadable("a product named outside the Roadmap's pages")
         rows[p["name"]], asked[p["name"]] = product_row(p)
         ideas[p["name"]] = [] if p.get("unread") else [
             it for it in items_of(p["name"], p.get("roadmap")) if it["status"] == "proposed"]
@@ -555,7 +555,7 @@ def render(reads):
                                                 ", ".join("%s %d" % (n, asked[n]) for n in ROWS if asked[n]))
     else:
         lede = "No decisions are recorded as waiting on you."
-    # THE BOARD IS THE PAGES (his ruling, 1 October 2026: "just build the UIs we agreed"):
+    # THE ROADMAP IS THE PAGES (his ruling, 1 October 2026: "just build the UIs we agreed"):
     # the spend card, then one project page at a time, swiped sideways or stepped with
     # ‹ ›. Each step is a link to the next page, so it all moves without script too.
     ids = ["p-%d" % i for i in range(len(ROWS))]
@@ -569,11 +569,11 @@ def render(reads):
     return ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">\n'
             '<meta name="robots" content="noindex,nofollow"><meta name="theme-color" content="#06070f">\n'
-            '<title>Juku Build Board</title>\n'
+            '<title>Juku Roadmap</title>\n'
             '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n'
             '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">\n'
             '<style>%s</style></head>\n<body data-board><main class="wrap">'
-            '<div class="eyebrow">Juku OS · Build board</div>'
+            '<div class="eyebrow">Juku OS · Roadmap</div>'
             '<p class="lede">%s</p><p class="snap">Read live %s.</p>'
             '%s%s<nav class="tabs" aria-label="Projects">%s</nav><div class="pages">%s</div></main><script>%s</script>'
             '</body></html>\n' % (CSS, e(lede), e(checked), spend_card(reads.get("spend"), reads["checked_at"]),
@@ -632,7 +632,7 @@ def read_product(get, token, repo, name):
 def read_rulebook(get, token, pool):
     """This repository's own pull requests, open with the reviewer's check runs, and merged; or unread.
 
-    A fork's is left off his board (this repository is public). Each check run is kept only if
+    A fork's is left off his Roadmap (this repository is public). Each check run is kept only if
     it is the reviewer's by App and name, on this head, as the gate's check_run_verdict keeps
     it, not on the query's word (#113's fourth read); newest first (§7)."""
     own = lambda p: ((p.get("head") or {}).get("repo") or {}).get("full_name") == RULEBOOK_REPO
@@ -689,7 +689,7 @@ _kept = {"at": None, "page": None}
 
 
 def page_now(env=None, get=_get, clock=time.time):
-    """The board as it stands, read again once the page kept is a minute old."""
+    """The Roadmap as it stands, read again once the page kept is a minute old."""
     if _kept["page"] is not None and clock() - _kept["at"] < KEEP_SECONDS:
         return _kept["page"]
     page = render(read_live(os.environ if env is None else env, get, clock))
@@ -698,13 +698,13 @@ def page_now(env=None, get=_get, clock=time.time):
 
 
 FAILED = ('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="robots" content="noindex,nofollow">'
-          '<meta name="viewport" content="width=device-width,initial-scale=1"><title>Juku Build Board</title></head>'
+          '<meta name="viewport" content="width=device-width,initial-scale=1"><title>Juku Roadmap</title></head>'
           '<body style="background:#06070f;color:#f2f4f7;font-family:system-ui,sans-serif;padding:24px">'
-          '<p>The board could not be drawn just now. Open it again in a minute.</p></body></html>')
+          '<p>The Roadmap could not be drawn just now. Open it again in a minute.</p></body></html>')
 
 
 class handler(BaseHTTPRequestHandler):
-    """The host's entry point: every open, behind the PIN gate, gets the board read live."""
+    """The host's entry point: every open, behind the PIN gate, gets the Roadmap read live."""
 
     def do_GET(self):
         try:
@@ -804,8 +804,8 @@ def _selftest():
                                      for i in range(12)]}}
     page = render(reads)
     hold(page.count("<script") == 1 and "<script>%s</script>" % BOARD_JS in page and html.escape(evil) in page,
-         "§8: text is escaped, and the page's one script is the board's own fixed text")
-    hold("</" not in BOARD_JS, "the board's script carries nothing that could close its tag")
+         "§8: text is escaped, and the page's one script is the Roadmap's own fixed text")
+    hold("</" not in BOARD_JS, "the Roadmap's script carries nothing that could close its tag")
     # The timeline (his ruling, 1 October 2026), on Myst's made-up roadmap.
     myst = page[page.index('<h2 class="pname">Myst</h2>'):page.index('<h2 class="pname">Phena</h2>')]
     myst = myst[myst.index('<h3 class="seq">'):]
@@ -836,15 +836,15 @@ def _selftest():
          "no key is said, never shown as nothing spent")
     hold("was not read this time" in spend_card({"unread": True}, at),
          "a key whose read failed is told apart from no key at all")
-    hold("not in a shape the board reads" in card([{"date": "2026-09-01", "usage": "5"}]),
+    hold("not in a shape the Roadmap reads" in card([{"date": "2026-09-01", "usage": "5"}]),
          "an answer it cannot read is said, never guessed at")
-    hold("not in a shape the board reads" in card([d(1, 5.0), {"date": "2026-09-31", "usage": 1.0}]),
-         "a day that does not exist is said as unread, never stops the board")
+    hold("not in a shape the Roadmap reads" in card([d(1, 5.0), {"date": "2026-09-31", "usage": 1.0}]),
+         "a day that does not exist is said as unread, never stops the Roadmap")
     hold("Spent to yesterday · based on the last 7 days" in ok_ and "to yesterday" not in card(None) and
          ("updated 16 Sep, 13:00 BST" in ok_ or LONDON is None),
          "the card says its figure runs to yesterday, and its stamp carries the timezone (#135's read, 2)")
-    hold('class="spend' in page and "No OpenRouter key is connected" in page, "the board carries the card, read or not")
-    hold("<body data-board>" in page, "the marker #117's smoke test is to look for, so a board served to a stranger is caught")
+    hold('class="spend' in page and "No OpenRouter key is connected" in page, "the Roadmap carries the card, read or not")
+    hold("<body data-board>" in page, "the marker #117's smoke test is to look for, so a Roadmap served to a stranger is caught")
     hold(readiness(pr(12, "**Priority:** **P2**. **Ready:** no — **Decision needed:** which host."))[2] == "P2",
          "a bolded priority reads as its level")
     hold("UNSELECTED BODY TEXT" not in page, "§8: a pull request's body is never published beyond its two lines")
@@ -863,7 +863,7 @@ def _selftest():
          sorted(page.index('<h2 class="pname">%s</h2>' % r) for r in ROWS), "§1: four projects, Juku OS first")
     hold(page.count('<section class="page"') == 4 and 'href="#p-1" aria-label="On to Hemz OS"' in page and
          '<span class="step off" aria-hidden="true">‹</span>' in page and "{NAV}" not in page,
-         "the board is four project pages, each stepping to its neighbours by a link that needs no script")
+         "the Roadmap is four project pages, each stepping to its neighbours by a link that needs no script")
     # Decision 0012: every product's `proposed` items in one folded list above the pages, a view only.
     edit = lambda rd: {"name": rd[0], "last_edited": "2026-09-25T17:00:00Z", "roadmap": {"items": rd[1]}}
     q2 = render(dict(reads, products=[
@@ -934,12 +934,12 @@ def _selftest():
             hold(what in str(x) and "Myst" in str(x), "a fault names the product and the key: %s" % x)
     try:
         render(dict(reads, products=reads["products"][:2]))
-        bad.append("a board missing a row was rendered")
+        bad.append("a Roadmap missing a row was rendered")
     except Unreadable as x:
         hold("Phena" in str(x), "a missing row names itself")
     # THE LIVE READ (#222): every source asked with GETs alone, each to its own host with its own
     # key; a fork's pull request and another App's check run left off; a source that fails said
-    # on its page while the rest still show; no read key, the board still opens and says so.
+    # on its page while the rest still show; no read key, the Roadmap still opens and says so.
     def fake(fail=()):
         calls = []
         sha = "a" * 40
@@ -989,7 +989,7 @@ def _selftest():
          live["rulebook"]["open"][0]["review"] == [{"status": "completed", "conclusion": "success"}],
          "the live read: a fork's pull request left off; only the reviewer's own check run, on this head, kept")
     hold(live["spend"] == {"days": [{"date": "2026-10-01", "usage": 1.5}]}, "the live read: of the spend, its days alone")
-    hold("<body data-board>" in render(live) and "Item R1" in render(live), "the live read renders as the board")
+    hold("<body data-board>" in render(live) and "Item R1" in render(live), "the live read renders as the Roadmap")
     get, calls = fake(fail=("Adonis80/myst",))
     half = render(read_live(env, get))
     myst = half[half.index('<h2 class="pname">Myst</h2>'):half.index('<h2 class="pname">Phena</h2>')]
@@ -1002,11 +1002,11 @@ def _selftest():
     get, calls = fake()
     none = read_live({}, get)
     hold(not [u for u, _, _ in calls] and none["spend"] is None and all(p.get("unread") for p in none["products"]) and
-         "No OpenRouter key is connected" in render(none), "no keys: nothing is asked, and the board opens saying so")
+         "No OpenRouter key is connected" in render(none), "no keys: nothing is asked, and the Roadmap opens saying so")
     bent = {"items": [{"title": "t", "gate": 3}]}
     get, calls = fake()
     hold(read_product(lambda u, k, raw=False: json.dumps(bent).encode() if raw else get(u, k), "k", "Adonis80/myst", "Myst")
-         == {"name": "Myst", "unread": True}, "a roadmap not in shape reads as unread, never as a broken board")
+         == {"name": "Myst", "unread": True}, "a roadmap not in shape reads as unread, never as a broken Roadmap")
     tick = [1000.0]
     get, calls = fake()
     _kept.update(at=None, page=None)
@@ -1019,9 +1019,9 @@ def _selftest():
     hold(len(calls) == 2 * n, "and read again once the minute is up")
     _kept.update(at=None, page=None)
     for b in bad:
-        print("  board: " + b)
+        print("  roadmap: " + b)
     if not bad:
-        print("ok: the board renders decision 0007 from its reads — §1's four rows, §2's denominator, §3's "
+        print("ok: the Roadmap renders decision 0007 from its reads — §1's four rows, §2's denominator, §3's "
               "prefix, §5's snapshot, %d cases of §7's readiness states, the queue's order and §8's contract — "
               "and refuses a roadmap it cannot read, naming the key and never the value; and its live read asks "
               "each source with GETs alone, its own key to its own host, keeps the page a minute, and says what it could not read"
@@ -1050,10 +1050,10 @@ def main(argv):
         with open(argv[1], encoding="utf-8") as f:
             page = render(json.load(f))
     except Unreadable as x:
-        print("::error::the board was not rendered: %s. Nothing is deployed; the last snapshot stands." % x)
+        print("::error::the Roadmap was not rendered: %s. Nothing is deployed; the last snapshot stands." % x)
         return 1
     except (OSError, ValueError, KeyError, TypeError) as x:
-        print("::error::the board was not rendered: the reads were not in shape (%s). Nothing is deployed."
+        print("::error::the Roadmap was not rendered: the reads were not in shape (%s). Nothing is deployed."
               % type(x).__name__)
         return 1
     with open(argv[2], "w", encoding="utf-8") as f:

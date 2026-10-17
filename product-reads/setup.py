@@ -25,10 +25,11 @@ run from and is never printed, and the script prints no answer GitHub gives it,
 only the status and the endpoint, so a private repository's words never reach a
 log. The session that built this has no such token; that is why a person runs it.
 
-WHAT IT DOES NOT DO: join the rulebook's map. The README's line, the board's row
-and the board's product list are one pull request in the rulebook, and the board
-draws four rows today (decision 0007 §1, board/build.py's own fixtures), so a
-fifth product's row needs the board to change first. The script prints the lines
+WHAT IT DOES NOT DO: join the rulebook's map. The README's lines and the
+Roadmap's two lists in board/build.py, PRODUCTS and ROWS, are one pull request in
+the rulebook, and the Roadmap draws four pages today (decision 0007 §1,
+board/build.py's own fixtures), so a fifth product's page needs the Roadmap to
+change first. The script prints the lines
 that pull request carries, from --display and --about, and changes nothing there.
 
 KIT FILES. `owned` ones are the gate, and are made to match the kit exactly: a
@@ -141,11 +142,11 @@ def join_lines(name, display, about, today):
         "then `roadmap.json`." % (display, OWNER, name, today, about),
         "README, under *Where each product's plan lives*:",
         "- **%s** — [`roadmap.json`](https://github.com/%s/%s/blob/main/roadmap.json) on `main`. "
-        "On the board: its row, from that file's items." % (display, OWNER, name),
-        "build-board.yml's product list: %s/%s=%s" % (OWNER, name, display),
+        "On the Roadmap: its page, from that file's items." % (display, OWNER, name),
+        "board/build.py: %r added to PRODUCTS" % (("%s/%s" % (OWNER, name), display),),
         "board/build.py: %r added to ROWS" % display,
-        "All four go in one pull request: the board's selftest holds ROWS to the README, so a "
-        "pull request with only some of them turns check.sh red.",
+        "All four go in one pull request: the gate holds PRODUCTS to the README and ROWS to "
+        "PRODUCTS, so a pull request with only some of them turns check.sh red.",
     ]
 
 
@@ -478,7 +479,7 @@ def _selftest():
             attempt(f)
         n, said = attempt(f, display="Alpha", about="A thing for people.", **kwargs)
         want("%s prints the join lines" % what,
-             "build-board.yml's product list: Adonis80/alpha=Alpha" in said and "A thing for people." in said
+             "board/build.py: ('Adonis80/alpha', 'Alpha') added to PRODUCTS" in said and "A thing for people." in said
              and "board/build.py: 'Alpha' added to ROWS" in said, True)
     # Asked without a name or a line, it says what is missing and does not invent one.
     n, said = attempt(Fake(kit_dir), apply=False)
@@ -550,7 +551,7 @@ def main(argv):
     ap.add_argument("--commit", required=True, help="a commit of the rulebook that is on main, in full")
     ap.add_argument("--apply", action="store_true", help="write; without it, only read and say")
     ap.add_argument("--replace-gate", action="store_true", help="replace a gate the product already has")
-    ap.add_argument("--display", help="the product's name as the board shows it")
+    ap.add_argument("--display", help="the product's name as the Roadmap shows it")
     ap.add_argument("--about", help="one line on what the product is for")
     args = ap.parse_args(argv[1:])
     token = os.environ.get("SETUP_TOKEN", "")

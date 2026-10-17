@@ -6,7 +6,7 @@ The rulebook for every product Dhayan's AI studio builds. This repository says *
 
 ## Products under this rulebook
 
-The whole map: what exists, where it lives, and one line on what it is for. It is a directory board, not a summary — nothing here says more about a product than its one line.
+The whole map: what exists, where it lives, and one line on what it is for. It is a directory, not a summary — nothing here says more about a product than its one line.
 
 **Reading a product (decision 0015).** Open its `AGENTS.md` whole; from `PRODUCT.md`, the product's purpose, the rules it holds across every slice (whatever its page calls them), and the passages the task needs with what they reference; from `roadmap.json`, how its order is set (its `_what_this_is` and order note), its money milestones, and its open items with their `next` lines, the `retired` notes when an ideas review is due, and a `done` item only when its evidence is needed.
 
@@ -18,14 +18,14 @@ A repository not listed here is not under this rulebook. Papers for an idea that
 
 ## Where each product's plan lives
 
-One line per product: where its plan is, and how it reaches the build board ([decision 0010](juku-library/DECISION-0010-REVIEW-SPEND-AND-PLAN-MAP.md), 29 September 2026). A product with no `roadmap.json` is not a product with no plan: its plan is where this line says.
+One line per product: where its plan is, and how it reaches the Roadmap ([decision 0010](juku-library/DECISION-0010-REVIEW-SPEND-AND-PLAN-MAP.md), 29 September 2026). A product with no `roadmap.json` is not a product with no plan: its plan is where this line says.
 
-- **Juku OS** (this rulebook) — no `roadmap.json`. Its plan is its open pull requests, queued ready first, then by priority, then oldest, and after them its agreed `proposal` issues (`library/changing-the-rulebook.md`). On the board: the first row, from those pull requests, their `Priority:` and `Ready:` lines and their review check.
-- **Hemz OS** — [`roadmap.json`](https://github.com/Adonis80/Hemz-OS/blob/main/roadmap.json) on `main`. On the board: its row, from that file's items and money milestones.
-- **Myst** — [`roadmap.json`](https://github.com/Adonis80/myst/blob/main/roadmap.json) on `main`. On the board: its row, from that file's items.
-- **Phena** — [`roadmap.json`](https://github.com/Adonis80/phena/blob/main/roadmap.json) on `main`. On the board: its row, from that file's items and money milestones.
+- **Juku OS** (this rulebook) — no `roadmap.json`. Its plan is its open pull requests, queued ready first, then by priority, then oldest, and after them its agreed `proposal` issues (`library/changing-the-rulebook.md`). On the Roadmap: the first page, from those pull requests, their `Priority:` and `Ready:` lines and their review check.
+- **Hemz OS** — [`roadmap.json`](https://github.com/Adonis80/Hemz-OS/blob/main/roadmap.json) on `main`. On the Roadmap: its page, from that file's items and money milestones.
+- **Myst** — [`roadmap.json`](https://github.com/Adonis80/myst/blob/main/roadmap.json) on `main`. On the Roadmap: its page, from that file's items.
+- **Phena** — [`roadmap.json`](https://github.com/Adonis80/phena/blob/main/roadmap.json) on `main`. On the Roadmap: its page, from that file's items and money milestones.
 
-A product joins this map in the pull request that adds it to *Products under this rulebook*. How the board is built: `library/build-board.md`.
+A product joins this map in the pull request that adds it to *Products under this rulebook*. How the Roadmap is built: `library/roadmap.md`.
 
 A Project's instructions are its template, whole: `library/project-template-product.md`, or `library/project-template-juku-os.md` for the Juku OS Project.
 
@@ -72,7 +72,7 @@ One page per topic, or a named few where a topic is large, opened when its trigg
 | `library/model-registry.md`: *The model registry* | asking which model holds a role, what a read resolved to, or switching the model behind a role |
 | `library/carries-sessions.md`: *What every product carries: open work, stopping, the consultant, the roadmap* | starting or stopping a product session, or leaving its roadmap |
 | `library/carries-evidence.md`: *What every product carries: milestones, evidence, the product's pages* | a slice touches money milestones, evidence, the product's own pages, its README route or its design folder, or a handover reports a read's cost or the efficiency duty is weighed |
-| `library/build-board.md`: *The build board* | working on the build board |
+| `library/roadmap.md`: *The Roadmap* | working on the Roadmap |
 | `library/deploy.md`: *The deploy, in shape* | building or changing a product's deploy |
 | `library/money.md`: *Money out waits for money in* | anything would cost money, or a product's hosting plan comes up |
 | `library/code-and-words.md`: *Code and words* | deciding whether a change needs a code session or can be made from Cowork |
