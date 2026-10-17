@@ -6557,7 +6557,7 @@ BOARD_LOOSENINGS = (
     ("what a kept one was copied from not kept", lambda t: t.replace('*) keep="$keep $o"; echo "kept: what $k was copied from', '*) echo "kept: what $k was copied from', 1)),
     ("a production row deleted", lambda t: t.replace('select(((.target // "preview") == "preview") and ', "select(", 1)),
     ("a preview still building deleted", lambda t: t.replace('["READY", "ERROR", "CANCELED", "BLOCKED"] | index($s)', "true", 1)),
-    ("one page of previews alone", lambda t: t.replace('[[ "$until" =~ ^[0-9]+$ ]] || break\n            done\n            n=', "break\n            done\n            n=", 1)),
+    ("one page of previews alone", lambda t: t.replace('[[ "$until" =~ ^[0-9]+$ ]] || break\n              [ "$pages" -lt 50 ]', 'break\n              [ "$pages" -lt 50 ]', 1)),
     ("an unreadable page taken as an empty one", lambda t: t.replace("""printf '%s' "$page" | jq -e '.deployments | type == "array"' >/dev/null 2>&1 \\""", "true \\", 1)),
     ("deleted before the list is printed", lambda t: t.replace('            for k in $old; do echo "to delete: $k"; done\n', "", 1)),
     ("a kept one unread taken as no copy", lambda t: t.replace('could not be read, so no preview is deleted"; return 0; }\n              o=', 'could not be read"; continue; }\n              o=', 1)),
