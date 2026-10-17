@@ -1,14 +1,14 @@
-name: Build the board
-run-name: Build the board (${{ github.event_name }})
+name: Build the Roadmap
+run-name: Build the Roadmap (${{ github.event_name }})
 
-# THE BUILD BOARD'S FRAME, DEPLOYED ONLY WHEN ITS OWN CODE CHANGES (#222, his
-# ruling, 15 October 2026: the board "must not use deploys, use resources, or
+# THE ROADMAP'S FRAME, DEPLOYED ONLY WHEN ITS OWN CODE CHANGES (#222, his
+# ruling, 15 October 2026: the Roadmap "must not use deploys, use resources, or
 # compete with a real product"). It deploys board/'s PIN gate and board/build.py,
 # as the function api/build.py, to the Vercel project juku-build-board, and reads
 # nothing: each time the page is opened, the function reads every product's
 # roadmap.json, this repository's pull requests and OpenRouter's spend there and
 # then, with the project's own read-only keys. No pull request, verdict, product
-# or clock wakes this: a push to main that changes the board's code, or a dispatch.
+# or clock wakes this: a push to main that changes the Roadmap's code, or a dispatch.
 # review-gate.py holds this file: its triggers, its door, its read-only token, and
 # that it carries no App key.
 #
@@ -30,8 +30,8 @@ run-name: Build the board (${{ github.event_name }})
 # replaced: run 38480903245, attempt 5, `unchanged:`).
 #
 # NOTHING IS DEPLOYED ONCE THE ACCOUNT HAS MADE 60 IN 24 HOURS (his ask, 15
-# October 2026), so the board can never starve a product of the host's 100,
-# unless a production run finds a stranger shown the board, whose replacement
+# October 2026), so the Roadmap can never starve a product of the host's 100,
+# unless a production run finds a stranger shown the Roadmap, whose replacement
 # passes over it. Run 38729496353 (15 October 2026), the first after its merge,
 # read the count and went on under it; a run held at the ceiling is not yet seen.
 #
@@ -43,7 +43,7 @@ on:
   workflow_dispatch:
     inputs:
       target:
-        description: preview, a look first; production, the board itself, once LIVE is yes.
+        description: preview, a look first; production, the Roadmap itself, once LIVE is yes.
         required: true
         # A preview unless production is chosen (#117's second read, 7).
         default: preview
@@ -51,7 +51,7 @@ on:
         options:
           - production
           - preview
-  # The board's own code, merged: nothing else that lands on main moves it (#222).
+  # The Roadmap's own code, merged: nothing else that lands on main moves it (#222).
   push:
     branches: [main]
     paths:
@@ -78,7 +78,7 @@ jobs:
     concurrency:
       group: build-board
       cancel-in-progress: false
-    # THE DOOR. The deploy key and the board's two read keys are readable only
+    # THE DOOR. The deploy key and the Roadmap's two read keys are readable only
     # from main. review-gate.py refuses a build that loses it.
     environment: reviewer
     # The deploy's waits end at minute `limit` of this, so a rollback begun at
@@ -107,8 +107,8 @@ jobs:
         run: |
           set -euo pipefail
           # THE FRAME, AND NOTHING READ (#222): the gate's three files, and the
-          # board's build as its function. Its fingerprint is over those four
-          # files alone, so only a change to the board's code deploys it.
+          # Roadmap's build as its function. Its fingerprint is over those four
+          # files alone, so only a change to the Roadmap's code deploys it.
           site="$RUNNER_TEMP/site"
           mkdir -p "$site/api"
           cp board/build.py "$site/api/build.py"
@@ -138,12 +138,12 @@ jobs:
             echo "::notice::rendered, not deployed: automatic deploys begin when LIVE is yes, after the Chairman agrees the look"
             exit 0
           fi
-          [ -n "${VERCEL_TOKEN:-}" ] || { echo "::error::No deploy key: the reviewer environment holds no VERCEL_TOKEN. Nothing is deployed; the last board stands."; exit 1; }
+          [ -n "${VERCEL_TOKEN:-}" ] || { echo "::error::No deploy key: the reviewer environment holds no VERCEL_TOKEN. Nothing is deployed; the last Roadmap stands."; exit 1; }
           # A FRAME WITH NOTHING TO READ WITH IS NOT DEPLOYED (#222): until the
-          # reviewer environment holds the read key, the board the domain serves
+          # reviewer environment holds the read key, the Roadmap the domain serves
           # stands as it is, its own time on its first screen.
           if [ -z "${ROADMAP_READ_TOKEN:-}" ]; then
-            echo "::warning::No read key: the reviewer environment holds no ROADMAP_READ_TOKEN, so the live board would read nothing. Nothing is deployed; the last board stands."
+            echo "::warning::No read key: the reviewer environment holds no ROADMAP_READ_TOKEN, so the live Roadmap would read nothing. Nothing is deployed; the last Roadmap stands."
             exit 0
           fi
           case "$TARGET" in production|preview) ;; *) echo "::error::no such target"; exit 1 ;; esac
@@ -204,10 +204,10 @@ jobs:
           # middleware.js): the host kept no meta sent with a deployment. It is
           # stamped on a copy before its smoke, so a copy that landed after a red
           # run carries it too: the smoke asked here is what keeps such a copy
-          # from being kept (#210's first read). The board reads live, so it never
+          # from being kept (#210's first read). The Roadmap reads live, so it never
           # ages (#222). A dispatch always passes over this, and a live deployment
           # that cannot be read deploys; either is still held by the ceiling below.
-          [[ "${BOARD_HASH:-}" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::the board's fingerprint was not taken. Nothing is deployed."; exit 1; }
+          [[ "${BOARD_HASH:-}" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::the Roadmap's fingerprint was not taken. Nothing is deployed."; exit 1; }
           if [ "$GITHUB_EVENT_NAME" != workflow_dispatch ]; then
             was=$(v "https://api.vercel.com/v6/deployments/$before/files?$q" 2>/dev/null \
               | jq -r '[.. | objects | select(.type == "file" and .name == "board.sha") | .uid][0] // empty' 2>/dev/null || true)
@@ -230,13 +230,13 @@ jobs:
           # the query's word. The count is not printed, since it is the
           # products' deploys too. A day that cannot be counted deploys nothing,
           # red, since the ceiling could not be held. One thing passes over it,
-          # on a production run alone: a domain showing a stranger the board
+          # on a production run alone: a domain showing a stranger the Roadmap
           # (#219's first read), whose gated replacement is worth a deployment
           # the products would miss. A preview never replaces the domain, so it
           # buys nothing there (#219's second read, 2). Whether the count
-          # reached past the board's own project is said, yes or no (#219's
+          # reached past the Roadmap's own project is said, yes or no (#219's
           # second read, 1): yes shows the key reached the products; no is a
-          # quiet day for them or a key that sees the board alone (#221's read).
+          # quiet day for them or a key that sees the Roadmap alone (#221's read).
           since=$(( ($(date +%s) - 86400) * 1000 ))
           day=$(v "https://api.vercel.com/v6/deployments?$q&since=$since&limit=100" 2>/dev/null || true)
           used=$(printf '%s' "$day" | jq --argjson s "$since" '[.deployments[] | select(.created >= $s)] | length' 2>/dev/null || true)
@@ -248,10 +248,10 @@ jobs:
             leak=0
             [ "$TARGET" != production ] || gated "$DOMAIN" pin || leak=$?
             if [ "$leak" -ne 2 ]; then
-              echo "::warning::ceiling: the account has made 60 or more deployments in the last 24 hours, so the rest of the day is left to the products. Nothing is deployed; the last board stands."
+              echo "::warning::ceiling: the account has made 60 or more deployments in the last 24 hours, so the rest of the day is left to the products. Nothing is deployed; the last Roadmap stands."
               exit 0
             fi
-            echo "::error::A STRANGER IS SERVED THE BOARD on $DOMAIN: the ceiling is passed over to put a gated board in its place."
+            echo "::error::A STRANGER IS SERVED THE ROADMAP on $DOMAIN: the ceiling is passed over to put a gated Roadmap in its place."
           else
             echo "the account's deployments in the last 24 hours: under the ceiling of 60"
           fi
@@ -269,7 +269,7 @@ jobs:
             code=$(v -X POST "https://api.vercel.com/v10/projects/$PROJECT/env?$q&upsert=true" -d @"$RUNNER_TEMP/key.json" \
               -o /dev/null -w '%{http_code}') || code=000
             rm -f "$RUNNER_TEMP/key.json"
-            [[ "$code" =~ ^2 ]] || { echo "::error::KEY NOT STORED: HTTP $code storing $k on the project. Nothing is deployed; the last board stands."; exit 1; }
+            [[ "$code" =~ ^2 ]] || { echo "::error::KEY NOT STORED: HTTP $code storing $k on the project. Nothing is deployed; the last Roadmap stands."; exit 1; }
             echo "stored on the project: $k"
           done
           # EVERY RED PUTS THINGS BACK, by how far the deploy got: a preview
@@ -326,7 +326,7 @@ jobs:
                 fi
                 code=$(v -X POST "https://api.vercel.com/v10/projects/$PROJECT/promote/$before?$q" -o /dev/null -w '%{http_code}') || code=000
                 # The host answers 409 to a promote of what the domain still serves (run 36997804844).
-                [[ "$code" =~ ^2 ]] || { [ "$code" = 409 ] && serves "$before"; } || { echo "::error::ROLLBACK REFUSED: HTTP $code promoting $before. The domain may serve an unconfirmed board."; exit 1; }
+                [[ "$code" =~ ^2 ]] || { [ "$code" = 409 ] && serves "$before"; } || { echo "::error::ROLLBACK REFUSED: HTTP $code promoting $before. The domain may serve an unconfirmed Roadmap."; exit 1; }
                 local back=$(( $(date +%s) + 180 ))
                 while [ "$(date +%s)" -lt "$back" ]; do
                   serves "$before" && { echo "rolled back: $DOMAIN serves $before"; exit 1; }
@@ -372,13 +372,13 @@ jobs:
             [ "$g" -eq 1 ] || break
             sleep 10
           done
-          [ "$g" -ne 2 ] || { echo "::error::A STRANGER WAS SERVED THE BOARD at the preview $id"; exit 1; }
+          [ "$g" -ne 2 ] || { echo "::error::A STRANGER WAS SERVED THE ROADMAP at the preview $id"; exit 1; }
           [ "$g" -eq 0 ] || { echo "::error::the preview $id showed a stranger neither the sign-in wall nor the PIN screen by minute $limit of the job"; exit 1; }
           if [ "$TARGET" = preview ]; then
             ok=yes
             # The smoked preview takes the fixed name; the host moves it off the last.
             # The name is smoked as a stranger like the preview's own host before it
-            # is handed over; the board shown there deletes the preview (#136's read, 3).
+            # is handed over; the Roadmap shown there deletes the preview (#136's read, 3).
             code=$(v -X POST "https://api.vercel.com/v2/deployments/$id/aliases?$q" -d "{\"alias\":\"$NEXT\"}" -o /dev/null -w '%{http_code}') || code=000
             if [[ "$code" =~ ^2 ]]; then
               g=1
@@ -387,7 +387,7 @@ jobs:
                 [ "$g" -eq 1 ] || break
                 sleep 5
               done
-              if [ "$g" -eq 2 ]; then ok=no; echo "::error::A STRANGER WAS SERVED THE BOARD at the fixed address $NEXT"; exit 1; fi
+              if [ "$g" -eq 2 ]; then ok=no; echo "::error::A STRANGER WAS SERVED THE ROADMAP at the fixed address $NEXT"; exit 1; fi
               if [ "$g" -eq 0 ]; then echo "preview ready at the fixed address: https://$NEXT"
               else echo "::warning::the fixed address did not show a stranger the sign-in wall or the PIN screen; use this preview's own"; fi
             else echo "::warning::the fixed preview address was refused (HTTP $code); this preview has only its own"; fi
@@ -408,7 +408,7 @@ jobs:
           # THE SMOKE: the domain serves this deployment, and to a stranger
           # the PIN screen and nothing of the board. The edge follows the
           # control plane by a little, so a missing answer is asked again until
-          # the deadline; the board seen by a stranger is never asked again.
+          # the deadline; the Roadmap seen by a stranger is never asked again.
           g=1
           while [ "$(date +%s)" -lt "$by" ]; do
             gated "$DOMAIN" pin && g=0 || g=$?
@@ -420,6 +420,6 @@ jobs:
             fi
             sleep 10
           done
-          [ "$g" -ne 2 ] || { echo "::error::A STRANGER WAS SERVED THE BOARD on $DOMAIN"; exit 1; }
+          [ "$g" -ne 2 ] || { echo "::error::A STRANGER WAS SERVED THE ROADMAP on $DOMAIN"; exit 1; }
           echo "::error::$DOMAIN did not serve $copy, gated, by minute $limit of the job"
           exit 1

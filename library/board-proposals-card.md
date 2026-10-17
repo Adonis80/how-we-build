@@ -1,6 +1,6 @@
-# The build board: the proposals card
+# The Roadmap: the proposals card
 
-Scope: the build board's proposals card. Open when: changing the proposals card, or checking it against what he approved.
+Scope: the Roadmap's proposals card. Open when: changing the proposals card, or checking it against what he approved.
 
 **Approved (his ruling, 15 October 2026, [#222](https://github.com/Adonis80/how-we-build/issues/222#issuecomment-6192725037): Option D).** One card above the product timelines, on the board's live read, so it adds no deploy. Built in `board/build.py` (`proposals_card`), held by its selftest. The picture below is the real card rendered from the open proposals at phone width (390 px); it shows this repository's issues only, since a product's ideas are private and this repository is public. He approved it by looking on 17 October 2026: *"I approve the card colors."*
 

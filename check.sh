@@ -6,7 +6,7 @@
 # an index row that opens its first page on words that page does not say,
 # anything that looks like a secret (naming the place, never the value), a
 # model named anywhere but the registry, a review gate that no longer matches the reviewer's answers or has drifted from
-# the workflows that fetch them, a build board that no longer renders as
+# the workflows that fetch them, a Roadmap that no longer renders as
 # decision 0007 says, a product read's rules that no longer refuse what decision
 # 0013 says they must, and, in a pull request, a commit no reviewer
 # has read clean — unread, or read and left a blocking finding on — or a change to the review
@@ -58,7 +58,7 @@ done < <(ls -A)
 # `CHARTER.md/` that holds nothing this repository reads.
 for f in $allowed; do
   case "$f" in
-    # The build board (decision 0007): its gate's three files and the build that renders it, and nothing else. No roadmap data lives here.
+    # The Roadmap (decision 0007): its gate's three files and the build that renders it, and nothing else. No roadmap data lives here.
     board) { [ -d "$f" ] && [ "$(ls -A board | tr '\n' ' ')" = "build.py middleware.js robots.txt vercel.json " ]; } || { echo "FAIL: 'board/' holds only build.py, middleware.js, robots.txt and vercel.json."; fail=1; } ;;
     # Git keeps no empty directory, so an absent library is the empty one, and
     # the README's index holds it to the list both ways instead (2c).
@@ -118,10 +118,11 @@ fi
 # library, and that passes: the check exists before the pages it holds.
 lib_fail=0
 lib_max=0
-# Library pages a cleanup merged or deleted (#174). A frozen record in
-# juku-library/ keeps its text, so it may still link one, as history; the page
-# stays gone, and any other link to it fails below like any broken link.
-retired_pages="library/reviewer-one-vendor library/changing-the-rulebook-merge"
+# Library pages a cleanup merged or deleted (#174), or renamed (the build
+# board's page, now library/roadmap.md: his ruling, 17 October 2026). A frozen
+# record in juku-library/ keeps its text, so it may still link one, as history;
+# the page stays gone, and any other link to it fails below like any broken link.
+retired_pages="library/reviewer-one-vendor library/changing-the-rulebook-merge library/build-board"
 for o in $retired_pages; do
   [ ! -e "$o.md" ] || { echo "FAIL: '$o.md' exists; it was retired and only frozen records may still name it."; lib_fail=1; }
 done
@@ -240,7 +241,7 @@ fi
 # can arrive in, the fakes that once passed a looser test, the routes the gate
 # has stopped reading, and the workflow files — the check, the reviewer, the wake
 # it calls, the door's standing proof, the product reviewer, the asker and the
-# board's build — which must still agree with the register and with each other.
+# Roadmap's build — which must still agree with the register and with each other.
 # It runs unless review-gate.py's plan says it can say nothing new: an earlier
 # attempt of this same run passed it, or no file the pull request changes is
 # one it reads. In a pull request it runs the core and the parts measured to
@@ -260,9 +261,9 @@ case "$plan" in
 esac
 [ -z "$parts" ] || python3 review-gate.py --selftest "$parts" || fail_gate=1
 [ "${fail_gate:-0}" -eq 0 ] || { echo "FAIL: the review gate no longer matches the reviewer's answers, or has drifted from the workflows — see the cases above."; fail=1; }
-# The build board's build (decision 0007): what the page may say, run on
+# The Roadmap's build (decision 0007): what the page may say, run on
 # made-up roadmaps, since the real ones are private and never reach this log.
-python3 -I board/build.py --selftest || { echo "FAIL: board/build.py no longer renders the board as decision 0007 says — see the case above."; fail=1; }
+python3 -I board/build.py --selftest || { echo "FAIL: board/build.py no longer renders the Roadmap as decision 0007 says — see the case above."; fail=1; }
 # The product read's rules (decision 0013): the README's list, the ready mark, the
 # product's own check and the three kinds of not read, run on made-up cases and on
 # the real README, since a README edit that breaks the list would stop every read.
