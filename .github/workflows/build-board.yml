@@ -98,7 +98,7 @@ jobs:
       DOMAIN: roadmap.juku.pro
       # One address for every preview (his ask, 1 October 2026): the newest smoked
       # preview takes this name, so there is one link to open, never a new one.
-      NEXT: juku-build-board-next.vercel.app
+      NEXT: next.roadmap.juku.pro
     steps:
       - uses: actions/checkout@v4
         with:
