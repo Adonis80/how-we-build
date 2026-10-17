@@ -41,7 +41,10 @@ run-name: Build the Roadmap (${{ github.event_name }})
 # confirmed live and gated, a new copy or one unchanged, every finished preview
 # of the project made over two hours ago is deleted but what the domain and the
 # fixed name serve, the rollback target and the preview just copied, and what
-# any of those was copied from. Not yet seen on a run.
+# any of those was copied from, or made in the fifteen minutes before. First
+# seen on #227's merge (run 39050615164, 17 October 2026): 477 listed, 200
+# deleted and none refused before the host answered 429, the rest left for the
+# next production run; the host named the rollback target's source.
 #
 # THIS LOG IS PUBLIC. Nothing a key or a product holds is printed: conclusions
 # only. No artifact is uploaded and no run summary written, because a public
