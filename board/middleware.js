@@ -1,5 +1,5 @@
-// Juku OS directors' PIN gate for the build board (decision 0007 and its addendum).
-// Every path on every host of the project passes through here; nothing of the board is served without a valid signed cookie.
+// Juku OS directors' PIN gate for the Roadmap (decision 0007 and its addendum).
+// Every path on every host of the project passes through here; nothing of the Roadmap is served without a valid signed cookie.
 // Changing the PIN: rotate BOARD_COOKIE_SECRET at the same time, which ends every remembered session.
 export const config = { matcher: '/:path*' };
 
@@ -40,7 +40,7 @@ function pinPage(wrong) {
 form{width:100%;max-width:300px;display:grid;gap:14px;text-align:center}.e{font:500 11px ui-monospace,Menlo,monospace;letter-spacing:.22em;text-transform:uppercase;color:#6b7684}h1{margin:0;font-size:22px;font-weight:600}
 input{font:500 28px ui-monospace,Menlo,monospace;letter-spacing:.5em;text-align:center;padding:14px 0 14px .5em;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#f2f4f7;outline:none;width:100%}input:focus{border-color:#53eafd;box-shadow:0 0 0 3px rgba(83,234,253,.18)}
 button{font:600 15px system-ui,sans-serif;padding:13px;border-radius:10px;border:0;background:#53eafd;color:#06070f;cursor:pointer}.w{color:#ff9b9b;font-size:13px;min-height:1em}</style></head>
-<body><form method="post" action="/__pin"><div class="e">Juku OS</div><h1>Directors only</h1><input name="pin" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="off" autofocus aria-label="Directors' PIN"><div class="w">${wrong ? 'That PIN is not right.' : ''}</div><button type="submit">Open the board</button></form></body></html>`,
+<body><form method="post" action="/__pin"><div class="e">Juku OS</div><h1>Directors only</h1><input name="pin" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="off" autofocus aria-label="Directors' PIN"><div class="w">${wrong ? 'That PIN is not right.' : ''}</div><button type="submit">Open the Roadmap</button></form></body></html>`,
     { status: wrong ? 401 : 200, headers: { 'content-type': 'text/html; charset=utf-8', 'x-robots-tag': ROBOTS, 'cache-control': 'private, no-store' } });
 }
 
@@ -68,5 +68,5 @@ export default async function middleware(req) {
   }
 
   if (!(await valid(req, secret))) return pinPage(false);
-  // authorised: fall through to the board's function, which reads live (#222)
+  // authorised: fall through to the Roadmap's function, which reads live (#222)
 }
