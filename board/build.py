@@ -432,6 +432,30 @@ PQ_CSS = (
     "@media (min-width:640px){.pq{padding:24px 24px}.pq-t{flex:1 1 auto}.pq-a{min-width:9em;text-align:right}}")
 
 
+GL_CSS = (
+    # The top of the Roadmap distilled (his ruling, 17 October 2026): two tiles side by side, each its
+    # headline, a word on its state and a thin bar; a tap opens the full card across the row, in place.
+    # Inside an open tile, what the tile already says is not said again.
+    ".glance{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 0 20px;--b:#3987e5;--w:#c98500;--a:#199e70}"
+    ".gl{min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:16px;--st:var(--mint)}"
+    ".gl[open]{grid-column:1/-1}.gl.st-hot,.gl.st-due{--st:#f2c46d}.gl.st-over{--st:#f39b86}.gl.st-none,.gl.st-calm{--st:var(--ink2)}"
+    ".gl-s{display:grid;grid-template-columns:1fr auto;align-items:center;gap:8px;padding:14px 14px 16px;min-height:44px}"
+    ".gl-s::after{content:\"\\203A\";grid-row:1;grid-column:2;color:var(--ink2);font-size:20px;line-height:1;transition:transform .2s}"
+    ".gl[open]>.gl-s::after{transform:rotate(90deg)}"
+    ".gl-k{grid-row:1;font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink2)}"
+    ".gl-v{grid-column:1/-1;font-size:28px;font-weight:500;letter-spacing:-.02em;line-height:1.1}"
+    ".gl-v span{font-size:14px;font-weight:400;letter-spacing:0;color:var(--ink2)}"
+    ".gl-c{grid-column:1/-1;font-size:13px;color:var(--st);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
+    ".gl-c::before{content:\"\";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--st);margin-right:7px;vertical-align:middle}"
+    ".gl-bar{grid-column:1/-1;display:flex;gap:2px;height:4px;border-radius:2px;background:var(--grey);overflow:hidden}"
+    ".gl-bar i{display:block;background:var(--st)}.gl-bar i.b{background:var(--b)}.gl-bar i.w{background:var(--w)}.gl-bar i.a{background:var(--a)}"
+    ".gl .spend,.gl .pq{background:none;border:0;border-radius:0;margin:0;padding:0 14px 16px}"
+    ".gl .sp-head,.gl .sp-big,.gl .pq-h,.gl .pq-bar{display:none}.gl .sp-track{margin-top:8px}.gl .pq-l{margin-top:14px}"
+    ".gl[open] .gl-s{padding-bottom:12px}"
+    "@media (min-width:640px){.gl-v{font-size:32px}}"
+    "@media (prefers-reduced-motion:reduce){.gl-s::after{transition:none}}")
+
+
 def level_of(text):
     """`Priority: P1` .. `P4`, emphasis dropped; anything else is no level, and sorts last."""
     m = field(text, "Priority", r"(P[1-4])\b")
@@ -489,17 +513,28 @@ def pq_row(r):
                e(r["who"]), days, e(r["plain"] or "No plain sentence recorded yet."), where))
 
 
+def glance(cls, key, value, chip, bar, card):
+    """One tile at the top (his ruling, 17 October 2026: the detail organised and hidden from the main
+    screen, drilled down to): its headline, a word on its state and a thin bar; a tap opens the full
+    card in place. Every argument but `card` is fixed text or a number this file makes."""
+    return ('<details class="gl %s"><summary class="gl-s"><span class="gl-k">%s</span><span class="gl-v">%s</span>'
+            '<span class="gl-c">%s</span><span class="gl-bar">%s</span></summary>%s</details>'
+            % (cls, key, value, chip, bar, card))
+
+
 def proposals_card(issues, open_prs, ideas, now):
     """The card he approved: the count, the stage bar, the debate banner, the numbered queue."""
     if issues is None or isinstance(issues, dict) and issues.get("unread"):
-        return ('<section class="pq" aria-label="Proposals"><div class="pq-h"><h2>Proposals</h2></div>'
-                '<p class="pq-0">The proposals could not be read when this page opened.</p></section>')
+        return glance("pq-gl st-none", "Proposals", "?", "Not read", "",
+                      '<section class="pq" aria-label="Proposals"><div class="pq-h"><h2>Proposals</h2></div>'
+                      '<p class="pq-0">The proposals could not be read when this page opened.</p></section>')
     rows = proposals_queue(issues or [], open_prs, ideas, now)
     n = {k: sum(1 for r in rows if r["stage"] == k) for k, _ in STAGES}
     if not rows:
-        return ('<section class="pq" aria-label="Proposals"><div class="pq-h"><h2>Proposals</h2><span class="pq-c">0 open'
-                '</span></div><div class="pq-bar" role="img" aria-label="Nothing waiting"><i class="e"></i></div>'
-                '<p class="pq-0">Nothing waiting</p></section>')
+        return glance("pq-gl st-none", "Proposals", "0", "Nothing waiting", "",
+                      '<section class="pq" aria-label="Proposals"><div class="pq-h"><h2>Proposals</h2><span class="pq-c">0 open'
+                      '</span></div><div class="pq-bar" role="img" aria-label="Nothing waiting"><i class="e"></i></div>'
+                      '<p class="pq-0">Nothing waiting</p></section>')
     label = ", ".join("%d %s" % (n[k], w.lower()) for k, w in STAGES)
     bar = "".join('<i class="%s" style="flex:%d"></i>' % (k, n[k]) for k, _ in STAGES if n[k])
     key = "".join('<li class="%s">%s <b>%d</b></li>' % (k, w, n[k]) for k, w in STAGES)
@@ -512,9 +547,11 @@ def proposals_card(issues, open_prs, ideas, now):
     top = '<ol class="pq-l">%s</ol>' % "".join(pq_row(r) for r in rows[:SHOWN])
     more = ('<details class="pq-more"><summary>Show %d more</summary><ol class="pq-l" style="--n0:%d">%s</ol></details>'
             % (len(rows) - SHOWN, SHOWN, "".join(pq_row(r) for r in rows[SHOWN:]))) if len(rows) > SHOWN else ""
-    return ('<section class="pq" aria-label="Proposals"><div class="pq-h"><h2>Proposals</h2><span class="pq-c">%d open'
-            '</span></div><div class="pq-bar" role="img" aria-label="%s">%s</div><ul class="pq-k">%s</ul>%s%s%s</section>'
-            % (len(rows), e(label), bar, key, due, top, more))
+    chip = "Debate due" if due else "%d being built" % n["b"] if n["b"] else "No debate due"
+    return glance("pq-gl st-%s" % ("due" if due else "calm"), "Proposals", "%d<span> open</span>" % len(rows), chip, bar,
+                  '<section class="pq" aria-label="Proposals"><div class="pq-h"><h2>Proposals</h2><span class="pq-c">%d open'
+                  '</span></div><div class="pq-bar" role="img" aria-label="%s">%s</div><ul class="pq-k">%s</ul>%s%s%s</section>'
+                  % (len(rows), e(label), bar, key, due, top, more))
 
 
 # ---------------------------------------------------------------- spend
@@ -563,11 +600,12 @@ def spend_card(spend, checked_at):
         why = ("No OpenRouter key is connected" if spend is None else
                "OpenRouter's spend was not read this time" if isinstance(spend, dict) and spend.get("unread") else
                "OpenRouter's answer was not in a shape the Roadmap reads")
-        return ('<section class="spend st-none" aria-label="OpenRouter spend"><div class="sp-head">'
-                '<span class="sp-title">OpenRouter</span><span class="sp-chip">Data incomplete</span></div>'
-                '<div class="sp-big">? <span>/ $%d budget</span></div><p class="sp-proj">%s</p><p class="sp-basis">'
-                'Nothing is shown as spent until it is read.</p><div class="sp-foot"><span>%s</span><span>%s</span>'
-                '</div></section>' % (BUDGET_USD, e(why), e(left), e(stamp)))
+        return glance("sp-gl st-none", "AI spend", "?<span> / $%d</span>" % BUDGET_USD, "Data incomplete", "",
+                      '<section class="spend st-none" aria-label="OpenRouter spend"><div class="sp-head">'
+                      '<span class="sp-title">OpenRouter</span><span class="sp-chip">Data incomplete</span></div>'
+                      '<div class="sp-big">? <span>/ $%d budget</span></div><p class="sp-proj">%s</p><p class="sp-basis">'
+                      'Nothing is shown as spent until it is read.</p><div class="sp-foot"><span>%s</span><span>%s</span>'
+                      '</div></section>' % (BUDGET_USD, e(why), e(left), e(stamp)))
     day = lambda r: datetime.strptime(r["date"][:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)
     spent = sum(r["usage"] for r in rows if first <= day(r) < today)
@@ -583,16 +621,18 @@ def spend_card(spend, checked_at):
         state, chip, proj = "ok", "On track", "Projected $%d by %s" % (usd(projected), last_day)
     fill = min(share, 100.0)
     past = max(0.0, fill - time)
-    return ('<section class="spend st-%s" aria-label="OpenRouter spend"><div class="sp-head"><span class="sp-title">'
-            'OpenRouter</span><span class="sp-chip">%s</span></div><div class="sp-big">$%d '
-            '<span>/ $%d budget</span></div><div class="sp-track" role="img" aria-label="%d%% of the budget '
-            'spent, %d%% of %s gone"><span class="sp-fill" style="width:%.2f%%"></span><span class="sp-past" '
-            'style="left:%.2f%%;width:%.2f%%"></span><span class="sp-mark" style="left:%.2f%%"></span></div>'
-            '<div class="sp-legend"><span class="sp-pct">%d%% spent</span><span>%d%% of cycle</span></div>'
-            '<p class="sp-proj">%s</p><p class="sp-basis">Spent to yesterday · based on the last 7 days</p><div class="sp-foot">'
-            '<span>%s</span><span>%s</span></div></section>'
-            % (state, chip, usd(spent), BUDGET_USD, usd(share), usd(time), e(month), fill - past, fill - past,
-               past, time, usd(share), usd(time), e(proj), e(left), e(stamp)))
+    return glance("sp-gl st-%s" % state, "AI spend", "$%d<span> / $%d</span>" % (usd(spent), BUDGET_USD), chip,
+                  '<i style="width:%.2f%%"></i>' % fill,
+                  '<section class="spend st-%s" aria-label="OpenRouter spend"><div class="sp-head"><span class="sp-title">'
+                  'OpenRouter</span><span class="sp-chip">%s</span></div><div class="sp-big">$%d '
+                  '<span>/ $%d budget</span></div><div class="sp-track" role="img" aria-label="%d%% of the budget '
+                  'spent, %d%% of %s gone"><span class="sp-fill" style="width:%.2f%%"></span><span class="sp-past" '
+                  'style="left:%.2f%%;width:%.2f%%"></span><span class="sp-mark" style="left:%.2f%%"></span></div>'
+                  '<div class="sp-legend"><span class="sp-pct">%d%% spent</span><span>%d%% of cycle</span></div>'
+                  '<p class="sp-proj">%s</p><p class="sp-basis">Spent to yesterday · based on the last 7 days</p><div class="sp-foot">'
+                  '<span>%s</span><span>%s</span></div></section>'
+                  % (state, chip, usd(spent), BUDGET_USD, usd(share), usd(time), e(month), fill - past, fill - past,
+                     past, time, usd(share), usd(time), e(proj), e(left), e(stamp)))
 
 
 # ---------------------------------------------------------------- the page
@@ -706,8 +746,8 @@ def render(reads):
             '<style>%s</style></head>\n<body data-board><main class="wrap">'
             '<div class="eyebrow">Juku OS · Roadmap</div>'
             '<p class="lede">%s</p><p class="snap">Read live %s.</p>'
-            '%s%s<nav class="tabs" aria-label="Projects">%s</nav><div class="pages">%s</div></main><script>%s</script>'
-            '</body></html>\n' % (CSS + PQ_CSS, e(lede), e(checked), spend_card(reads.get("spend"), reads["checked_at"]),
+            '<div class="glance">%s%s</div><nav class="tabs" aria-label="Projects">%s</nav><div class="pages">%s</div></main><script>%s</script>'
+            '</body></html>\n' % (CSS + PQ_CSS + GL_CSS, e(lede), e(checked), spend_card(reads.get("spend"), reads["checked_at"]),
                                    proposals_card(reads.get("proposals"), open_prs, ideas, now), tabs, pages, BOARD_JS))
 
 
@@ -1056,6 +1096,20 @@ def _selftest():
     hold(many.count('<li class="pq-r') == 10 and "Show 4 more" in many and "Debate due - 9 ideas waiting" in many and
          "waiting today" in many, "the card: the top six shown, the rest folded under Show N more")
     hold(len((PQ_CSS + many).encode("utf-8")) < 10240, "the card is under 10 KB with ten rows, its styles included")
+    # His ruling, 17 October 2026: the detail hidden from the main screen, drilled down to. Both cards sit
+    # closed in tiles above the projects, each saying its headline and state; nothing opens them but a tap.
+    whole = render(dict(reads, proposals=[iss(400 + i, "Priority: P4 — observe.", at="2026-09-26T00:00:00Z") for i in range(9)],
+                        spend={"days": [{"date": "2026-09-20", "usage": 3.2}]}))
+    top = whole[whole.index('<div class="glance">'):whole.index('<nav class="tabs"')]
+    hold(top.count('<details class="gl ') == 2 and "<details open" not in top and " open>" not in top.split("<summary")[0] and
+         top.index("sp-gl") < top.index("pq-gl") and whole.index('class="glance"') < whole.index('class="pages"'),
+         "the top: two tiles, spend then proposals, both closed, before the projects")
+    hold('<span class="gl-v">10<span> open</span></span><span class="gl-c">Debate due</span>' in top and
+         '<span class="gl-v">$3<span> / $40</span></span>' in top and top.count("<script") == 0,
+         "each tile says its headline and its state, without script")
+    hold('pq-gl st-none' in render(dict(reads, proposals={"unread": True})) and
+         "No debate due" in proposals_card([iss(500, "Priority: P4 — observe.")], [], {}, datetime(2026, 9, 26, tzinfo=timezone.utc)),
+         "a tile says when its source was not read, and when no debate is due")
     empty = render(dict(reads, proposals=[], products=[edit(("Hemz OS", [])), edit(("Myst", [])), edit(("Phena", []))]))
     hold("Nothing waiting" in empty and 'class="e"' in empty and "Debate due" not in empty, "the card: empty, a grey bar and Nothing waiting")
     hold("could not be read when this page opened" in render(dict(reads, proposals={"unread": True})),
