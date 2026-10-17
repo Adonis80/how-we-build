@@ -5991,7 +5991,8 @@ case "$method $path" in
       case "$url" in
         *"&until=1000"*)
           [ "${FAKE_TIDY_PAGE2:-ok}" = ok ] || { reply 000 ''; exit 0; }
-          reply 200 "{\"deployments\":[$(row dpl_old2 null READY "$old"),$(row dpl_blocked null BLOCKED "$old"),$(row dpl_queued null QUEUED "$old")],\"pagination\":{\"next\":null}}" ;;
+          # The host's cursor may repeat the last row of the page before.
+          reply 200 "{\"deployments\":[$(row dpl_err null ERROR "$old"),$(row dpl_old2 null READY "$old"),$(row dpl_blocked null BLOCKED "$old"),$(row dpl_queued null QUEUED "$old")],\"pagination\":{\"next\":null}}" ;;
         *)
           [ "${FAKE_TIDY_LIST:-ok}" = ok ] || { reply 403 '{"error":{"code":"forbidden"}}'; exit 0; }
           rows="$(row dpl_fresh null READY "$new"),$(row dpl_named null READY "$old"),$(row dpl_beforeorig null READY "$old")"
@@ -6066,8 +6067,10 @@ case "$method $path" in
   "GET https://api.vercel.com/v13/deployments/$NEXT")
     [ "${FAKE_NAMED:-ok}" = ok ] || { reply 404 '{"error":{"code":"not_found"}}'; exit 0; }
     reply 200 '{"id":"dpl_named"}' ;;
-  "GET https://api.vercel.com/v13/deployments/dpl_"*)
-    reply 200 '{"meta":{}}' ;;
+  # The fixed name's deployment, read for what it was copied from (FAKE_NAMEDREAD=no: unread).
+  "GET https://api.vercel.com/v13/deployments/dpl_named")
+    [ "${FAKE_NAMEDREAD:-ok}" = ok ] || { reply 500 '{}'; exit 0; }
+    reply 200 '{"id":"dpl_named","meta":{}}' ;;
   # An old preview deleted: dpl_old1 refused, or every one answered 429.
   "DELETE https://api.vercel.com/v13/deployments/dpl_"*)
     k=${path#https://api.vercel.com/v13/deployments/}
@@ -6241,8 +6244,10 @@ BOARD_DEPLOY_CASES = (
      "DELETE REFUSED: HTTP 403 deleting dpl_old1", None, ["dpl_blocked", "dpl_err", "dpl_old2"]),
     ("the host asks the deletes to slow down", {"FAKE_DELETE": "slow"}, 0, "dpl_copy", "READY",
      "the host asked to slow down", None, []),
-    ("no time left to delete", {"FAKE_TIDY_LATE": "yes"}, 0, "dpl_copy", "READY",
-     "out of time: 4 left for the next production run", None, []),
+    ("no time left to read or delete", {"FAKE_TIDY_LATE": "yes"}, 0, "dpl_copy", "READY",
+     "out of time reading the previews", None, []),
+    ("what a kept one was copied from cannot be read", {"FAKE_NAMEDREAD": "no"}, 0, "dpl_copy", "READY",
+     "what dpl_named was copied from could not be read, so no preview is deleted", None, []),
     ("no old preview deleted on a preview run", {"TARGET": "preview", "LIVE": "no"}, 0, "dpl_before", "READY",
      "preview ready at the fixed address", "old previews:"),
 )
@@ -6555,6 +6560,9 @@ BOARD_LOOSENINGS = (
     ("one page of previews alone", lambda t: t.replace('[[ "$until" =~ ^[0-9]+$ ]] || break\n            done\n            n=', "break\n            done\n            n=", 1)),
     ("an unreadable page taken as an empty one", lambda t: t.replace("""printf '%s' "$page" | jq -e '.deployments | type == "array"' >/dev/null 2>&1 \\""", "true \\", 1)),
     ("deleted before the list is printed", lambda t: t.replace('            for k in $old; do echo "to delete: $k"; done\n', "", 1)),
+    ("a kept one unread taken as no copy", lambda t: t.replace('could not be read, so no preview is deleted"; return 0; }\n              o=', 'could not be read"; continue; }\n              o=', 1)),
+    ("no deadline on reading the previews", lambda t: t.replace('[ "$(date +%s)" -lt "$stop" ] || { echo "::warning::out of time reading', 'true || { echo "::warning::out of time reading', 1)),
+    ("a preview listed twice deleted twice", lambda t: t.replace('case " $keep $old " in *" $k "*) continue ;; esac', 'case " $keep " in *" $k "*) continue ;; esac', 1)),
     ("no deadline on the deletes", lambda t: t.replace('[ "$(date +%s)" -lt "$stop" ] ||', "true ||", 1)),
     ("the host's slow-down ignored", lambda t: t.replace('elif [ "$code" = 429 ]; then echo "::warning::the host asked', 'elif false; then echo "::warning::the host asked', 1)),
     ("a refused delete counted as done", lambda t: t.replace('if [[ "$code" =~ ^2 ]]; then gone=$((gone + 1)); echo "deleted: $k"', 'if true; then gone=$((gone + 1)); echo "deleted: $k"', 1)),

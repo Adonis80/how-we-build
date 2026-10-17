@@ -205,7 +205,8 @@ jobs:
           # and any preview made in the last two hours; a production deployment
           # is never deleted. A keep that cannot be read deletes nothing. The list
           # is printed before anything is deleted, each refusal is said, it stops
-          # at minute 13 of the job or when the host asks it to slow down, and it
+          # reading and deleting at minute 13 of the job, or when the host asks
+          # it to slow down, so a slow host cannot run it past the job's 15; it
           # never turns the run red: the board is already live. It gives back
           # none of the host's day.
           tidy() {
@@ -221,13 +222,19 @@ jobs:
             kept "what $NEXT serves" "$(v "https://api.vercel.com/v13/deployments/$NEXT?$q" 2>/dev/null | jq -r '.id // empty' 2>/dev/null || true)" || return 0
             [ -z "${id:-}" ] || kept "the preview just copied" "$id" || return 0
             for k in $keep; do
-              o=$(v "https://api.vercel.com/v13/deployments/$k?$q" 2>/dev/null | jq -r '.meta.originalDeploymentId // empty' 2>/dev/null || true)
+              # A kept deployment that cannot be read deletes nothing: what it
+              # was copied from is a keep too (#227's first read).
+              page=$(v "https://api.vercel.com/v13/deployments/$k?$q" 2>/dev/null || true)
+              printf '%s' "$page" | jq -e --arg k "$k" '.id == $k' >/dev/null 2>&1 \
+                || { echo "::warning::what $k was copied from could not be read, so no preview is deleted"; return 0; }
+              o=$(printf '%s' "$page" | jq -r '.meta.originalDeploymentId // empty' 2>/dev/null || true)
               [[ "$o" =~ ^dpl_[A-Za-z0-9]+$ ]] || continue
               case " $keep " in *" $o "*) ;; *) keep="$keep $o"; echo "kept: what $k was copied from, $o" ;; esac
             done
             # Every page of the project's previews, newest first, each held again
             # here to a finished preview made over two hours ago.
             while [ "$pages" -lt 50 ]; do
+              [ "$(date +%s)" -lt "$stop" ] || { echo "::warning::out of time reading the previews; the rest wait for the next production run"; break; }
               pages=$((pages + 1))
               page=$(v "https://api.vercel.com/v6/deployments?$q&projectId=$PROJECT&target=preview&state=READY,ERROR,CANCELED,BLOCKED&limit=100${until:+&until=$until}" 2>/dev/null || true)
               printf '%s' "$page" | jq -e '.deployments | type == "array"' >/dev/null 2>&1 \
@@ -238,7 +245,7 @@ jobs:
               seen=$(( seen + $(printf '%s' "$page" | jq '.deployments | length' 2>/dev/null || echo 0) ))
               for k in $rows; do
                 [[ "$k" =~ ^dpl_[A-Za-z0-9]+$ ]] || continue
-                case " $keep " in *" $k "*) continue ;; esac
+                case " $keep $old " in *" $k "*) continue ;; esac
                 old="$old $k"
               done
               until=$(printf '%s' "$page" | jq -r '.pagination.next // empty' 2>/dev/null || true)
