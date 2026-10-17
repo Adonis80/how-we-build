@@ -13,7 +13,7 @@ board "must not use deploys, use resources, or compete with a real product").
 the PIN gate, only when the board's own code changes; each time the page is
 opened, `handler` reads the products' roadmaps, this repository's pull requests
 and open `proposal` issues, and OpenRouter's spend there and then, with GETs alone, and keeps the page a
-minute. The keys are the project's own: BOARD_READ_TOKEN, a read-only GitHub
+minute. The keys are the project's own: ROADMAP_READ_TOKEN, a read-only GitHub
 token, and OPENROUTER_KEY. A source that cannot be read is said on its page;
 nothing a source holds reaches a log.
 
@@ -714,7 +714,7 @@ def render(reads):
 # ---------------------------------------------------------------- the live read
 
 # What the function reads, each time the page is opened (#222). GETs alone, each with a time
-# limit, to two hosts: GitHub, with the read-only BOARD_READ_TOKEN, and OpenRouter's daily
+# limit, to two hosts: GitHub, with the read-only ROADMAP_READ_TOKEN, and OpenRouter's daily
 # activity, the one read the spend card's management key is used for, never its keys.
 GITHUB = "https://api.github.com"
 SPEND_URL = "https://openrouter.ai/api/v1/activity"
@@ -824,7 +824,7 @@ def read_spend(get, key):
 def read_live(env, get=_get, clock=time.time):
     """Every source at once, stamped before the first is asked (#117's second read, 6)."""
     at = datetime.fromtimestamp(clock(), timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    token = env.get("BOARD_READ_TOKEN") or ""
+    token = env.get("ROADMAP_READ_TOKEN") or ""
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
         if token:
             products = [pool.submit(read_product, get, token, repo, name) for repo, name in PRODUCTS]
@@ -1158,7 +1158,7 @@ def _selftest():
             return {"default_branch": "main"}
         return get, calls
 
-    env = {"BOARD_READ_TOKEN": "read-key", "OPENROUTER_KEY": "spend-key"}
+    env = {"ROADMAP_READ_TOKEN": "read-key", "OPENROUTER_KEY": "spend-key"}
     get, calls = fake()
     live = read_live(env, get, clock=lambda: 1790000000)
     hold(live["checked_at"] == "2026-09-21T14:13:20Z" and [p.get("name") for p in live["products"]] == list(ROWS[1:]) and

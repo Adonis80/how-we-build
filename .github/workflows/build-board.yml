@@ -126,7 +126,7 @@ jobs:
           STARTED: ${{ steps.clock.outputs.started }}
           BOARD_HASH: ${{ steps.frame.outputs.board_hash }}
           # The function's two keys, carried to the project before the frame is made (#222).
-          BOARD_READ_TOKEN: ${{ secrets.BOARD_READ_TOKEN }}
+          ROADMAP_READ_TOKEN: ${{ secrets.ROADMAP_READ_TOKEN }}
           OPENROUTER_KEY: ${{ secrets.OPENROUTER_KEY }}
         run: |
           set -euo pipefail
@@ -142,8 +142,8 @@ jobs:
           # A FRAME WITH NOTHING TO READ WITH IS NOT DEPLOYED (#222): until the
           # reviewer environment holds the read key, the board the domain serves
           # stands as it is, its own time on its first screen.
-          if [ -z "${BOARD_READ_TOKEN:-}" ]; then
-            echo "::warning::No read key: the reviewer environment holds no BOARD_READ_TOKEN, so the live board would read nothing. Nothing is deployed; the last board stands."
+          if [ -z "${ROADMAP_READ_TOKEN:-}" ]; then
+            echo "::warning::No read key: the reviewer environment holds no ROADMAP_READ_TOKEN, so the live board would read nothing. Nothing is deployed; the last board stands."
             exit 0
           fi
           case "$TARGET" in production|preview) ;; *) echo "::error::no such target"; exit 1 ;; esac
@@ -257,12 +257,12 @@ jobs:
           fi
           # THE FUNCTION'S KEYS (#222), carried from the reviewer environment,
           # their one home, to the project before the frame is made, so the new
-          # deployment reads with them: BOARD_READ_TOKEN, a read-only GitHub
+          # deployment reads with them: ROADMAP_READ_TOKEN, a read-only GitHub
           # token, and OPENROUTER_KEY when the environment holds it. Each goes
           # from a file made here, never on a command line or into this log,
           # and is stored sensitive, which the host never gives back. One that
           # is not stored deploys nothing.
-          for k in BOARD_READ_TOKEN OPENROUTER_KEY; do
+          for k in ROADMAP_READ_TOKEN OPENROUTER_KEY; do
             [ -n "${!k:-}" ] || continue
             ( umask 077; jq -n --arg k "$k" '{key: $k, value: $ENV[$k], type: "sensitive", target: ["production", "preview"]}' \
               > "$RUNNER_TEMP/key.json" )
