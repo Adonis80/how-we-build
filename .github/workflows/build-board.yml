@@ -35,6 +35,14 @@ run-name: Build the board (${{ github.event_name }})
 # passes over it. Run 38729496353 (15 October 2026), the first after its merge,
 # read the count and went on under it; a run held at the ceiling is not yet seen.
 #
+# OLD PREVIEWS ARE DELETED ONCE THEY HAVE SERVED THEIR PURPOSE (his ruling, 17
+# October 2026: "previews are deleted once they have served their purpose. And
+# therefore, they cannot pile up."). After a production run whose domain is
+# confirmed live and gated, a new copy or one unchanged, every finished preview
+# of the project made over two hours ago is deleted but what the domain and the
+# fixed name serve, the rollback target and the preview just copied, and what
+# any of those was copied from. Not yet seen on a run.
+#
 # THIS LOG IS PUBLIC. Nothing a key or a product holds is printed: conclusions
 # only. No artifact is uploaded and no run summary written, because a public
 # repository's are public too.
@@ -190,6 +198,64 @@ jobs:
           serves() { local s; s=$(serving); [ -n "$s" ] && [ "$s" = "$1" ]; }
           # The production copy's state, asked of the host.
           copied() { v "https://api.vercel.com/v13/deployments/$copy?$q" 2>/dev/null | jq -r '.readyState // empty' 2>/dev/null || true; }
+          # OLD PREVIEWS DELETED (his ruling, 17 October 2026), called only once
+          # the domain is confirmed live and gated on a production run. Kept: what
+          # the domain and the fixed name serve, the rollback target, the preview
+          # just copied, what any of those was copied from (meta.originalDeploymentId),
+          # and any preview made in the last two hours; a production deployment
+          # is never deleted. A keep that cannot be read deletes nothing. The list
+          # is printed before anything is deleted, each refusal is said, it stops
+          # at minute 13 of the job or when the host asks it to slow down, and it
+          # never turns the run red: the board is already live. It gives back
+          # none of the host's day.
+          tidy() {
+            local keep="" k o page rows until="" pages=0 old="" n code gone=0 refused=0 seen=0
+            local fresh=$(( ($(date +%s) - 7200) * 1000 )) stop=$(( STARTED + 13 * 60 ))
+            kept() {
+              [[ "$2" =~ ^dpl_[A-Za-z0-9]+$ ]] || { echo "::warning::$1 could not be read, so no preview is deleted"; return 1; }
+              case " $keep " in *" $2 "*) ;; *) keep="$keep $2" ;; esac
+              echo "kept: $1, $2"
+            }
+            kept "the rollback target" "$before" || return 0
+            kept "what $DOMAIN serves" "$(serving)" || return 0
+            kept "what $NEXT serves" "$(v "https://api.vercel.com/v13/deployments/$NEXT?$q" 2>/dev/null | jq -r '.id // empty' 2>/dev/null || true)" || return 0
+            [ -z "${id:-}" ] || kept "the preview just copied" "$id" || return 0
+            for k in $keep; do
+              o=$(v "https://api.vercel.com/v13/deployments/$k?$q" 2>/dev/null | jq -r '.meta.originalDeploymentId // empty' 2>/dev/null || true)
+              [[ "$o" =~ ^dpl_[A-Za-z0-9]+$ ]] || continue
+              case " $keep " in *" $o "*) ;; *) keep="$keep $o"; echo "kept: what $k was copied from, $o" ;; esac
+            done
+            # Every page of the project's previews, newest first, each held again
+            # here to a finished preview made over two hours ago.
+            while [ "$pages" -lt 50 ]; do
+              pages=$((pages + 1))
+              page=$(v "https://api.vercel.com/v6/deployments?$q&projectId=$PROJECT&target=preview&state=READY,ERROR,CANCELED,BLOCKED&limit=100${until:+&until=$until}" 2>/dev/null || true)
+              printf '%s' "$page" | jq -e '.deployments | type == "array"' >/dev/null 2>&1 \
+                || { echo "::warning::page $pages of the previews could not be read; the rest wait for the next production run"; break; }
+              rows=$(printf '%s' "$page" | jq -r --argjson f "$fresh" '.deployments[]
+                | select(((.target // "preview") == "preview") and ((.state // .readyState) as $s | ["READY", "ERROR", "CANCELED", "BLOCKED"] | index($s)) and (.created < $f))
+                | (.uid // .id // empty)' 2>/dev/null || true)
+              seen=$(( seen + $(printf '%s' "$page" | jq '.deployments | length' 2>/dev/null || echo 0) ))
+              for k in $rows; do
+                [[ "$k" =~ ^dpl_[A-Za-z0-9]+$ ]] || continue
+                case " $keep " in *" $k "*) continue ;; esac
+                old="$old $k"
+              done
+              until=$(printf '%s' "$page" | jq -r '.pagination.next // empty' 2>/dev/null || true)
+              [[ "$until" =~ ^[0-9]+$ ]] || break
+            done
+            n=$(printf '%s\n' $old | grep -c '^dpl_' || true)
+            echo "previews read: $seen; old, to delete: $n"
+            for k in $old; do echo "to delete: $k"; done
+            for k in $old; do
+              [ "$(date +%s)" -lt "$stop" ] || { echo "::warning::out of time: $(( n - gone - refused )) left for the next production run"; break; }
+              code=$(v -X DELETE "https://api.vercel.com/v13/deployments/$k?$q" -o /dev/null -w '%{http_code}' 2>/dev/null) || code=000
+              if [[ "$code" =~ ^2 ]]; then gone=$((gone + 1)); echo "deleted: $k"
+              elif [ "$code" = 429 ]; then echo "::warning::the host asked to slow down at $k: $(( n - gone - refused )) left for the next production run"; break
+              else refused=$((refused + 1)); echo "::warning::DELETE REFUSED: HTTP $code deleting $k; it stays"; fi
+            done
+            echo "old previews: $gone deleted, $refused refused, of $n"
+          }
           # What the domain serves now is recorded before anything moves: what
           # it serves, not what the project calls production (#117's second
           # read, 1).
@@ -214,6 +280,7 @@ jobs:
             want=$(printf '%s' "$BOARD_HASH" | sha1sum | cut -d' ' -f1)
             if [ "$was" = "$want" ] && gated "$DOMAIN" pin; then
               echo "unchanged: $DOMAIN serves $before, made from this same frame, the PIN screen alone to a stranger. Nothing is deployed."
+              tidy || true
               exit 0
             fi
           fi
@@ -416,6 +483,7 @@ jobs:
             if [ "$g" -eq 0 ] && serves "$copy"; then
               ok=yes
               echo "live: $copy, the copy of $id, on $DOMAIN, the PIN screen alone to a stranger"
+              tidy || true
               exit 0
             fi
             sleep 10
