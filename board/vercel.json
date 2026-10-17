@@ -1,4 +1,9 @@
 {
+  "functions": {
+    "api/build.py": {
+      "maxDuration": 30
+    }
+  },
   "rewrites": [
     {
       "source": "/",
