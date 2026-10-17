@@ -5810,7 +5810,7 @@ BOARD_HOLDS = (
     ("BOARD_HASH: ${{ steps.frame.outputs.board_hash }}", "the deploy given the frame's fingerprint"),
     # The function's keys: from a file, stored sensitive, the read key's absence deploying nothing.
     (BOARD_KEY, "each key sent from a file, stored where the host never gives it back"),
-    ("BOARD_READ_TOKEN: ${{ secrets.BOARD_READ_TOKEN }}", "the function's read key, from the door's environment"),
+    ("ROADMAP_READ_TOKEN: ${{ secrets.ROADMAP_READ_TOKEN }}", "the function's read key, from the door's environment"),
 )
 # Read, and nothing else, for the whole workflow; one group, on the job (#117's second read, 5).
 BOARD_PERMISSIONS = re.compile(r"^permissions:\n((?:  .*\n)+)", re.M)
@@ -5842,15 +5842,18 @@ BOARD_CHECKOUT_REF = re.compile(r"^\s*ref:", re.M)
 BUILD_HOLDS = (
     ('GITHUB = "https://api.github.com"', "GitHub's API the one GitHub host it asks"),
     ('SPEND_URL = "https://openrouter.ai/api/v1/activity"', "the spend card's key used for its one read, OpenRouter's daily activity"),
-    ("urllib.request.urlopen(urllib.request.Request(url, headers=head), timeout=READ_SECONDS)",
+    ("_OPEN.open(urllib.request.Request(url, headers=head), timeout=READ_SECONDS)",
      "every request a GET with a time limit, and nothing sent but its headers"),
+    ("_OPEN = urllib.request.build_opener(_Stay)", "no redirect followed, so no key is carried to another host"),
+    ("class _Stay(urllib.request.HTTPRedirectHandler):", "the redirect handler replaced, not one added beside the default"),
+    ("    def redirect_request(self, *args, **kwargs):\n        return None\n", "a redirect refused"),
     ("REVIEWER_APP_ID = %d " % REVIEWER_APP_ID, "the reviewer's own App"),
     ('REVIEWER_CHECK = "%s"' % REVIEWER_CHECK, "the reviewer's check run by name"),
     ('r.get("name") == REVIEWER_CHECK and r.get("head_sha") == sha', "each check run held to the reviewer's name and head"),
     ('(r.get("app") or {}).get("id") == REVIEWER_APP_ID', "each check run held to the reviewer's App"),
     ('.get("full_name") == RULEBOOK_REPO', "a fork's pull request left off the Roadmap"),
     ('RULEBOOK_REPO = "Adonis80/how-we-build"', "this repository's own pull requests"),
-    ('token = env.get("BOARD_READ_TOKEN")', "GitHub read with the Roadmap's read key"),
+    ('token = env.get("ROADMAP_READ_TOKEN")', "GitHub read with the Roadmap's read key"),
     ('read_spend, get, env.get("OPENROUTER_KEY")', "OpenRouter read with its own key"),
 )
 BUILD_NEVER = ("method=", "data=", "/keys")
@@ -5921,7 +5924,7 @@ case "$method $path" in
       @*) grep -q '"target"' "${data#@}" && refuse "a deployment given a target, which the host would put on the domain by itself"
           { grep -q '"file": "board.sha"' "${data#@}" && grep -q "\"data\": \"$BOARD_HASH\"" "${data#@}"; } || refuse "a deployment that does not carry the Roadmap's fingerprint as board.sha"
           grep -q '"file": "api/build.py"' "${data#@}" || refuse "a deployment that does not carry the Roadmap's build as its function"
-          grep -qx BOARD_READ_TOKEN "$S/keys" 2>/dev/null || refuse "a frame made before its read key was stored on the project"
+          grep -qx ROADMAP_READ_TOKEN "$S/keys" 2>/dev/null || refuse "a frame made before its read key was stored on the project"
           echo "$FAKE_NEW" > "$S/new"
           reply 200 '{"id":"dpl_new","readyState":"QUEUED"}' ;;
       # The host's CLI promotes a preview so: a production copy, which takes the domain once ready.
@@ -6173,14 +6176,14 @@ BOARD_DEPLOY_CASES = (
      "dpl_before", "none", "unchanged: roadmap.juku.pro serves dpl_before", "deployment:"),
     # #222: the function's keys stored on the project before the frame is made;
     # no read key deploys nothing, and a key the host will not store deploys nothing.
-    ("no read key in the environment", {"BOARD_READ_TOKEN": ""}, 0, "dpl_before", "none",
+    ("no read key in the environment", {"ROADMAP_READ_TOKEN": ""}, 0, "dpl_before", "none",
      "No read key", "deployment:"),
     ("the read key refused by the project", {"FAKE_KEY": "no"}, 1, "dpl_before", "none",
-     "KEY NOT STORED: HTTP 403 storing BOARD_READ_TOKEN", "deployment:"),
+     "KEY NOT STORED: HTTP 403 storing ROADMAP_READ_TOKEN", "deployment:"),
     ("both keys stored before the frame is made", {}, 0, "dpl_copy", "READY",
      "stored on the project: OPENROUTER_KEY", None),
     ("no spend key: the read key alone stored", {"OPENROUTER_KEY": ""}, 0, "dpl_copy", "READY",
-     "stored on the project: BOARD_READ_TOKEN", "stored on the project: OPENROUTER_KEY"),
+     "stored on the project: ROADMAP_READ_TOKEN", "stored on the project: OPENROUTER_KEY"),
     ("a changed Roadmap", {"FAKE_LIVE": "other", "GITHUB_EVENT_NAME": "push"}, 0, "dpl_copy", "READY",
      "live: dpl_copy, the copy of dpl_new", "unchanged"),
     ("what is live cannot be read: deployed as before", {"FAKE_LIVE": "unread", "GITHUB_EVENT_NAME": "push"}, 0,
@@ -6308,7 +6311,7 @@ def _board_deploy_case(script, job, case):
                   "DOMAIN": "roadmap.juku.pro", "NEXT": "juku-build-board-next.vercel.app", "FAKE_NEW": env.get("FAKE_READY", "READY"),
                   "BOARD_HASH": "%064x" % 0xb0a2d,
                   # Each a key no log may print: the log is checked for the mark below.
-                  "BOARD_READ_TOKEN": "NOT-FOR-THE-LOG-read", "OPENROUTER_KEY": "NOT-FOR-THE-LOG-spend"})
+                  "ROADMAP_READ_TOKEN": "NOT-FOR-THE-LOG-read", "OPENROUTER_KEY": "NOT-FOR-THE-LOG-spend"})
         e.update({k: v for k, v in env.items() if k != "LATE"})
         try:
             p = subprocess.run(["bash", "-c", script], env=e, capture_output=True, text=True, timeout=60)
@@ -6423,9 +6426,10 @@ def _check_board_wiring(board=None, build=None, readme=None, quiet=False):
     for word in BUILD_NEVER:
         if word in build:
             fault("sends more than a GET's headers, or asks for OpenRouter's keys (`%s`)" % word, "board/build.py")
-    if build.count("openrouter.ai") != 1 or build.count("urlopen(") != 1:
+    opens = build.count("urlopen(") + build.count(".open(")
+    if build.count("openrouter.ai") != 1 or opens != 1:
         fault("asks OpenRouter %d times and opens %d requests; the spend card's key makes one read, its daily "
-              "activity, through the one GET" % (build.count("openrouter.ai"), build.count("urlopen(")), "board/build.py")
+              "activity, through the one GET" % (build.count("openrouter.ai"), opens), "board/build.py")
     try:
         spec = importlib.util.spec_from_file_location("board_build", "board/build.py")
         mod = importlib.util.module_from_spec(spec)
@@ -6515,7 +6519,7 @@ BOARD_LOOSENINGS = (
     ("a push of anything on main", lambda t: t.replace("    paths:\n      - board/**\n      - .github/workflows/build-board.yml\n", "", 1)),
     ("a push of a page beside the Roadmap's code", lambda t: t.replace("      - board/**\n", "      - board/**\n      - library/**\n", 1)),
     ("the job let run from any branch", lambda t: t.replace("    if: github.ref == 'refs/heads/main'\n", "", 1)),
-    ("the App's key carried", lambda t: t.replace("          BOARD_READ_TOKEN: ${{ secrets.BOARD_READ_TOKEN }}\n", "          BOARD_READ_TOKEN: ${{ secrets.BOARD_READ_TOKEN }}\n          APP_KEY: ${{ secrets.REVIEWER_APP_KEY }}\n", 1)),
+    ("the App's key carried", lambda t: t.replace("          ROADMAP_READ_TOKEN: ${{ secrets.ROADMAP_READ_TOKEN }}\n", "          ROADMAP_READ_TOKEN: ${{ secrets.ROADMAP_READ_TOKEN }}\n          APP_KEY: ${{ secrets.REVIEWER_APP_KEY }}\n", 1)),
     ("a product read here", lambda t: t.replace("      - name: Lay out the frame\n", "      - run: curl -sS --max-time 20 https://api.github.com/repos/Adonis80/myst/contents/roadmap.json\n      - name: Lay out the frame\n", 1)),
     ("the spend read here", lambda t: t.replace("      - name: Lay out the frame\n", "      - run: curl -sS --max-time 20 https://openrouter.ai/api/v1/activity\n      - name: Lay out the frame\n", 1)),
     ("the Roadmap rendered into the log", lambda t: t.replace('          cp board/build.py "$site/api/build.py"\n', '          cp board/build.py "$site/api/build.py"\n          python3 board/build.py --selftest\n', 1)),
@@ -6528,7 +6532,7 @@ BOARD_LOOSENINGS = (
     ("the build left out of the fingerprint", lambda t: t.replace("h=$(cat board/build.py board/middleware.js", "h=$(cat board/middleware.js", 1)),
     ("a stale fingerprint deployed with", lambda t: t.replace("BOARD_HASH: ${{ steps.frame.outputs.board_hash }}", "BOARD_HASH: ${{ steps.clock.outputs.started }}", 1)),
     ("the build left off the deployment", lambda t: t.replace('{file: "api/build.py", data: $build}, ', "", 1)),
-    ("a frame deployed with no read key", lambda t: t.replace('if [ -z "${BOARD_READ_TOKEN:-}" ]; then', "if false; then", 1)),
+    ("a frame deployed with no read key", lambda t: t.replace('if [ -z "${ROADMAP_READ_TOKEN:-}" ]; then', "if false; then", 1)),
     ("a key sent on the command line", lambda t: t.replace('-d @"$RUNNER_TEMP/key.json"', '-d "$(cat "$RUNNER_TEMP/key.json")"', 1)),
     ("a key stored where the host gives it back", lambda t: t.replace('type: "sensitive"', 'type: "encrypted"', 1)),
     ("a key the host refused taken as stored", lambda t: t.replace('[[ "$code" =~ ^2 ]] || { echo "::error::KEY NOT STORED', 'true || { echo "::error::KEY NOT STORED', 1)),
@@ -6582,6 +6586,9 @@ BUILD_LOOSENINGS = (
     ("a fork's pull request read", lambda t: t.replace('.get("full_name") == RULEBOOK_REPO', '.get("full_name") is not None', 1)),
     ("OpenRouter's keys asked", lambda t: t.replace('SPEND_URL = "https://openrouter.ai/api/v1/activity"', 'SPEND_URL = "https://openrouter.ai/api/v1/keys"', 1)),
     ("a second OpenRouter read", lambda t: t.replace("GITHUB = ", 'CREDITS = "https://openrouter.ai/api/v1/credits"\nGITHUB = ', 1)),
+    ("the redirect guard beside the default", lambda t: t.replace("class _Stay(urllib.request.HTTPRedirectHandler):", "class _Stay(urllib.request.BaseHandler):", 1)),
+    ("a redirect followed", lambda t: t.replace("_OPEN = urllib.request.build_opener(_Stay)", "_OPEN = urllib.request.build_opener()", 1)),
+    ("a redirect let through", lambda t: t.replace("    def redirect_request(self, *args, **kwargs):\n        return None\n", "    def redirect_request(self, *args, **kwargs):\n        return super().redirect_request(*args, **kwargs)\n", 1)),
     ("a request that sends more than a GET", lambda t: t.replace("urllib.request.Request(url, headers=head)", 'urllib.request.Request(url, headers=head, method="POST")', 1)),
     ("a request with a body", lambda t: t.replace("urllib.request.Request(url, headers=head)", "urllib.request.Request(url, headers=head, data=b'')", 1)),
     ("a second way out", lambda t: t.replace("MISSED = (", 'urllib.request.urlopen("https://example.com/", timeout=1) if False else None\nMISSED = (', 1)),
@@ -6590,8 +6597,8 @@ BUILD_LOOSENINGS = (
     ("a product not on the map", lambda t: t.replace('("Adonis80/phena", "Phena"))', '("Adonis80/phena", "Phena"), ("Adonis80/elsewhere", "Elsewhere"))', 1)),
     ("a product on the map left out", lambda t: t.replace(', ("Adonis80/phena", "Phena"))', ")", 1)),
     ("a row the reads do not name", lambda t: t.replace('("Adonis80/phena", "Phena"))', '("Adonis80/phena", "Phena Two"))', 1)),
-    ("the spend key sent to GitHub", lambda t: t.replace('token = env.get("BOARD_READ_TOKEN")', 'token = env.get("OPENROUTER_KEY")', 1)),
-    ("GitHub's key sent to OpenRouter", lambda t: t.replace('read_spend, get, env.get("OPENROUTER_KEY")', 'read_spend, get, env.get("BOARD_READ_TOKEN")', 1)),
+    ("the spend key sent to GitHub", lambda t: t.replace('token = env.get("ROADMAP_READ_TOKEN")', 'token = env.get("OPENROUTER_KEY")', 1)),
+    ("GitHub's key sent to OpenRouter", lambda t: t.replace('read_spend, get, env.get("OPENROUTER_KEY")', 'read_spend, get, env.get("ROADMAP_READ_TOKEN")', 1)),
     ("the Roadmap's mark taken off, so a leak is missed", lambda t: t.replace("<body data-board>", "<body>")),
 )
 
