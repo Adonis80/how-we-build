@@ -458,7 +458,7 @@ def _ender(toks, k):
     return None if val in ("++", "--") else False
 
 
-def _declared(toks, match, k, line_of):
+def _declared(toks, match, k, line_of, seen=None):
     """[(name, k, last token, None)] for each `NAME =` the declaration at token k makes.
 
     Its names are every `NAME =` at its own level that opens it or follows one
@@ -466,8 +466,10 @@ def _declared(toks, match, k, line_of):
     `}` closing what holds it, or at a line break the language ends it on:
     after a token an expression can end on, before one that cannot go on from
     it. A line break neither settles makes it unsure, and every name it was
-    seen to make is given as unsure, never as a unit.
+    seen to make is given as unsure, never as a unit. Each name's token is
+    added to `seen`.
     """
+    seen = set() if seen is None else seen
     names, last, j, head = [], k, k + 1, k and toks[k - 1][:2] == ("open", "(") and toks[k - 1][5] == "head"
     try:
         while j < len(toks):
@@ -475,6 +477,7 @@ def _declared(toks, match, k, line_of):
             if (j == k + 1 or toks[j - 1][:2] == ("p", ",")) and t[0] == "id" and toks[j + 1:j + 2] \
                     and toks[j + 1][:2] == ("p", "="):
                 names.append(t[1])
+                seen.add(j)
             if t[4] and last != k:
                 ends = _ender(toks, last)
                 if ends is None:
@@ -501,9 +504,52 @@ def _declared(toks, match, k, line_of):
             if toks[j - 1][:2] == ("p", ",") and toks[j][0] == "id" and toks[j + 1:j + 2] \
                     and toks[j + 1][:2] == ("p", "="):
                 names.append(toks[j][1])
+                seen.add(j)
             j = match[j] + 1 if toks[j][0] == "open" else j + 1
         return [(n, None, None, str(why)) for n in names]
     return [(n, k, last, None) for n in names]
+
+
+_NOT_METHODS = frozenset(("if", "for", "while", "switch", "catch", "with", "function"))
+
+
+def other_forms(toks, match, line_of):
+    """The names a script also gives in a form the selector does not give as a unit.
+
+    A method or shorthand `NAME(…) {`; a property `NAME:` or `.NAME =` given
+    a function, or `window.NAME =` given anything; or an
+    assignment `NAME =` no declaration makes (#236's first read: a recognised
+    definition beside one of these is not the only one). Counted loosely: a
+    name in here that is none of them only costs a fallback.
+    """
+    declared, out = set(), set()
+    for k, t in enumerate(toks):
+        if t[0] == "id" and t[1] in ("const", "let", "var") and not _after_dot(toks, k) and k + 1 < len(toks) \
+                and toks[k + 1][0] in ("id", "open"):
+            _declared(toks, match, k, line_of, declared)
+    for k, t in enumerate(toks[:-1]):
+        if t[0] != "id":
+            continue
+        nxt, prev = toks[k + 1], toks[k - 1] if k else None
+        # `exports.NAME = NAME;` and `{ NAME: NAME }` hand the definition on; they make no other.
+        if nxt[:2] in (("p", "="), ("p", ":")) and toks[k + 2:k + 3] and toks[k + 2][:2] == ("id", t[1]) \
+                and not (toks[k + 3:k + 4] and toks[k + 3][0] == "open" or toks[k + 3:k + 4] and toks[k + 3][1] in (".", "?.")):
+            continue
+        given = toks[k + 2:k + 3] and (toks[k + 2][:2] in (("id", "function"), ("id", "async"), ("open", "("))
+                                       or toks[k + 3:k + 4] and toks[k + 3][:2] == ("p", "=>"))
+        if nxt[:2] == ("p", "=") and toks[k + 2:k + 3] and toks[k + 2][:2] != ("p", "=") and k not in declared:
+            # A bare `NAME =` rebinds the name; `obj.NAME =` defines one when
+            # given a function, or on the page's global (`window.NAME =`).
+            if not _after_dot(toks, k) or given or (k > 1 and toks[k - 2][1] in ("window", "globalThis", "self")):
+                out.add(t[1])
+        elif nxt[:2] == ("p", ":") and prev is not None and prev[:2] in (("open", "{"), ("p", ",")) and given:
+            out.add(t[1])
+        elif nxt[:2] == ("open", "(") and t[1] not in _NOT_METHODS and not _after_dot(toks, k) \
+                and toks[match[k + 1] + 1:match[k + 1] + 2] and toks[match[k + 1] + 1][:2] == ("open", "{") \
+                and not (prev is not None and (prev[:2] == ("id", "function")
+                                               or (prev[:2] == ("p", "*") and toks[k - 2][:2] == ("id", "function")))):
+            out.add(t[1])
+    return out
 
 
 def _ends_before(toks, j, line_of):
@@ -557,13 +603,18 @@ def script_unit(text, path, name):
     def line_of(i):
         import bisect
         return bisect.bisect_right(starts_at, i)
-    found = []
+    found, other = [], False
     try:
         for off, src in scripts_of(text, path):
             toks = tokens(src, off, line_of)
-            found += [(toks, d) for d in definitions(toks, _matches(toks), line_of) if d[0] == name]
+            match = _matches(toks)
+            found += [(toks, d) for d in definitions(toks, match, line_of) if d[0] == name]
+            other = other or name in other_forms(toks, match, line_of)
     except Unsure as why:
         return None, "unsure, so no unit: %s" % why
+    if found and other:
+        return None, ("that name is also given as a method, a property or an assignment: which one is meant is "
+                      "not known")
     if len(found) != 1:
         return None, ("%d definitions of that name: which one is meant is not known" % len(found) if found else
                       "no definition of that name the selector knows (a function, a class, or a const, let or "
@@ -837,8 +888,10 @@ def part_main(path, diff_file):
 def unit_main(want):
     """`context.py unit PATH#NAME < FILE`: the one unit asked for, whole, on stdout; exit 1 when the file has none.
 
-    Why it has none goes to stderr in one line, for the reader's marker: words
-    and line numbers only, never a line of the file.
+    Why it has none goes to stderr in one line, for the reader's marker: fixed
+    words and line numbers, at most one name or token of the file beside them,
+    never a line of it. The marker goes into the reader's prompt alone; a
+    change that printed it to a public log would print that name too.
     """
     path, _, name = want.partition("#")
     text = sys.stdin.read()

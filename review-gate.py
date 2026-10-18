@@ -4697,6 +4697,13 @@ SCRIPT_CASES = (
      (("f", None), ("g", None))),
     ("an unterminated string, template or comment falls back", "x.js",
      "function f() { return '}; }\nfunction g() { return `${1}; }\n/* function h() {}\n", (("f", None), ("g", None))),
+    ("a name the selector knows, also given in a form it does not give, falls back (#236's first read)", "x.js",
+     "function m(l) { return 1; }\nconst o = { m(l) { return 2; } };\nfunction p() {}\nclass K { p() {} }\n"
+     "function q() {}\nobj.q = function () {};\nfunction r() {}\nwindow.r = 1;\nlet s = 1;\ns = 2;\n"
+     "function t() {}\nconst u = { t: () => 1 };\nfunction kept() {}\nmodule.exports.kept = kept;\n"
+     "const data = { kept: 'a value' };\nfunction data2() {}\nrow.data2 = 'a value';\n",
+     (("m", None), ("p", None), ("q", None), ("r", None), ("s", None), ("t", None),
+      ("kept", "function kept() {}\n"), ("data2", "function data2() {}\n"))),
     ("a name defined twice falls back, a second declarator among them", "x.js",
      "function f() { return 1; }\nfunction f() { return 2; }\nlet a = 1, vis = 2;\nfunction vis() {}\n",
      (("f", None), ("vis", None), ("a", "let a = 1, vis = 2;\n"))),
@@ -5488,6 +5495,7 @@ CONTEXT_LOOSENINGS = (
     ("a page's markup read as script", 'if not path.endswith((".html", ".htm")):\n        return [(0, text)]',
      "if True:\n        return [(0, text)]"),
     ("a declaration run on past its line", "if ends and _ends_before(toks, j, line_of):", "if False:"),
+    ("a name also given as a method or property given anyway", "    if found and other:", "    if False:"),
 )
 
 
