@@ -1001,10 +1001,10 @@ jobs:
                 f=$found want=$found$unit size=$(git -C "$t/product" cat-file -s "$SHA:$f")
               fi
               if [ -n "$unit" ]; then
-                if [ "$src" = product ]; then git -C "$t/product" show "$SHA:$f" | python3 "$GITHUB_WORKSPACE/model-registry/context.py" unit "$want" > "$t/unit" || : > "$t/unit"
-                else python3 "$GITHUB_WORKSPACE/model-registry/context.py" unit "$want" < "$GITHUB_WORKSPACE/$f" > "$t/unit" || : > "$t/unit"; fi
+                if [ "$src" = product ]; then git -C "$t/product" show "$SHA:$f" | python3 "$GITHUB_WORKSPACE/model-registry/context.py" unit "$want" > "$t/unit" 2> "$t/why" || : > "$t/unit"
+                else python3 "$GITHUB_WORKSPACE/model-registry/context.py" unit "$want" < "$GITHUB_WORKSPACE/$f" > "$t/unit" 2> "$t/why" || : > "$t/unit"; fi
                 if [ -s "$t/unit" ]; then size=$(wc -c < "$t/unit")
-                else printf '\n===== %s: no such unit; %s whole =====\n' "$want" "$f" >> "$t/prompt.txt"; unit="" want=$f; fi
+                else printf '\n===== %s: no such unit; %s whole; %s =====\n' "$want" "$f" "$(head -n 1 "$t/why" | cut -c 1-200)" >> "$t/prompt.txt"; unit="" want=$f; fi
               fi
               case " $given " in *" $want "*) printf '\n===== %s: given above =====\n' "$want" >> "$t/prompt.txt"; continue ;; esac
               if [ "$files" -ge 3 ]; then
