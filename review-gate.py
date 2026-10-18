@@ -1572,7 +1572,11 @@ def _check_read_loosenings():
 # each for a gate file it touched.
 # One page is risky by name: library/deploy.md, which every product's deploy
 # is built from, put here by the finding #226's first read left on it (16
-# October 2026), as the rule above says a missed risky change is.
+# October 2026), as the rule above says a missed risky change is. A till is
+# pricing too, as a quote and a checkout are: Hemz OS's the-till.html holds the
+# Confirm guard that decides which figures may back a customer's price, and
+# was read as ordinary code until Adonis80/Hemz-OS#168's first read said so
+# (17 October 2026).
 CLASS_FIRST = "class=words"
 CLASS_RISK_FIRST = "risky=no"
 CLASS_CODE = ("AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|library/hypersolid.md|design/*|"
@@ -1582,7 +1586,7 @@ RISK_CASE = 'case "${f,,}" in'
 # The six classes, as the arms that name them, in the order they are tried.
 RISK_GATE = ("check.sh|*/check.sh|review-gate.py|*/review-gate.py|board/build.py|library/deploy.md|"
              "model-registry/*|*/model-registry/*|product-reads/*|*/product-reads/*|.github/*|*/.github/*) risky=yes ;;")
-RISK_PRICING = "*pric*|*payment*|*billing*|*invoice*|*checkout*|*quote*) risky=yes ;;"
+RISK_PRICING = "*pric*|*payment*|*billing*|*invoice*|*checkout*|*quote*|*till*) risky=yes ;;"
 RISK_DATA = ("*.sql|*migration*|*schema*|supabase/*|*/supabase/*|*backfill*|*purge*|*truncate*|"
              "*wipe*|*seed*) risky=yes ;;")
 RISK_SIGN_IN = ("*auth*|*login*|*logout*|*session*|*password*|*permission*|.claude/settings*|"
@@ -1871,6 +1875,7 @@ CLASS_CASES = (
     (["lib/invoice.rb"], "risky"),
     (["web/checkout.tsx"], "risky"),
     (["the-quote.html", "README.md"], "risky"),
+    (["the-till.html"], "risky"),
     # Live data and schema.
     (["db/seed.sql"], "risky"),
     (["hosting/migrations/2026-09-24-add.js"], "risky"),
@@ -2154,6 +2159,7 @@ CLASS_LOOSENINGS = (
     ("agent settings read as ordinary", None, lambda t: t.replace(RISK_SIGN_IN, RISK_SIGN_IN.replace("|.claude/settings*|*/.claude/settings*", "", 1), 1)),
     ("the host's project link read as ordinary", None, lambda t: t.replace(RISK_RELEASE, RISK_RELEASE.replace("|.vercel/*|*/.vercel/*", "", 1), 1)),
     ("pricing read as ordinary", None, _without_arm(RISK_PRICING)),
+    ("the till read as ordinary", None, lambda t: t.replace(RISK_PRICING, RISK_PRICING.replace("|*till*", "", 1), 1)),
     ("live data read as ordinary", None, _without_arm(RISK_DATA)),
     ("sign-in read as ordinary", None, _without_arm(RISK_SIGN_IN)),
     ("a trust boundary read as ordinary", None, _without_arm(RISK_BOUNDARY)),
