@@ -4279,6 +4279,9 @@ MORE_TREE = {"a.md": "page a\n", "big.md": "x" * 150000 + "\n", "b.md": "y" * 10
              "gate.py": "def wanted():\n    return 'the unit asked for'\n\n\ndef other():\n    return 'not asked'\n"
                         + "x = %r\n" % ("w" * 300000),
              "small.py": "def one():\n    return 'the small file whole'\n",
+             "page.html": "<p>function wanted() {}</p>\n<script>\nfunction wanted() {\n  return 'the unit asked for';\n}\n"
+                          "function other() {\n  return 'not asked';\n}\n</script>\n",
+             "twice.js": "function twice() { return 1; }\nfunction twice() { return 2; }\n",
              "docs/deep/only.md": "the one page of that name\n", "notonly.md": "a name that merely ends the same\n",
              "x/same.md": "one of two\n", "y/same.md": "two of two\n"}
 # Each case: what, the files asked for, whether it is read again, the files it
@@ -4314,6 +4317,12 @@ MORE_CASES = (
      ("gate.py#missing: no such unit; gate.py whole",
       "gate.py: %d bytes, left out: past the re-read limit" % len(MORE_TREE["gate.py"])), ("wwww",)),
     ("a unit of a path out of the repository", ["../gate.py#wanted"], False, set(), (), ("the unit asked for",)),
+    # One function of a page's script (#217): that definition alone; one the
+    # selector cannot settle, the file whole, marked with why in one line.
+    ("one function of a page's script", ["page.html#wanted"], True, {"page.html#wanted"}, ("the unit asked for",),
+     ("not asked", "<p>")),
+    ("a function defined twice: the file whole, and why", ["twice.js#twice"], True, {"twice.js"},
+     ("twice.js#twice: no such unit; twice.js whole; 2 definitions of that name",), ()),
     # A name without its folder (#181's `build-board.yml`): the one file of that
     # name, or nothing when two share it.
     ("a name without its folder, which one file has", ["only.md"], True, {"docs/deep/only.md"},
@@ -4429,6 +4438,7 @@ MORE_LOOSENINGS = (
     ("a file past the limit not named", lambda t: t.replace("bytes, left out: past the re-read limit", "bytes", 1)),
     ("a fourth file not named", lambda t: t.replace("left out: past the three files a re-read holds", "left out", 1)),
     ("a missing unit not named", lambda t: t.replace("no such unit; %s whole", "%s", 1)),
+    ("a missing unit's reason dropped", lambda t: t.replace("whole; %s =====", "whole =====", 1)),
     ("a name without its folder taken as any file of that name", lambda t: t.replace('[ "$n" -eq 1 ] ||', '[ "$n" -ge 1 ] ||', 1)),
     ("a name without its folder matched inside a name", lambda t: t.replace('case "$p" in *"/$f")', 'case "$p" in *"$f")', 1)),
     ("a file given twice", lambda t: t.replace('case " $given " in *" $want "*)', 'case "" in x)', 1)),
@@ -4587,7 +4597,7 @@ def _check_more_loosenings():
                 bad += 1
     if not bad:
         print("ok: each reviewer's own more() adds what it can give of what a short read named, a name without "
-              "its folder as the one file of that name and a unit it cannot find as its file whole, never tries a "
+              "its folder as the one file of that name and a unit it cannot find as its file whole, marked with why, never tries a "
               "path out of the repository, names what it left out and why, stops at three files and 200 KB, and asks "
               "no re-read with nothing added, and the product's adds only a rulebook library page it lacks, "
               "labelled as the rulebook's; run in "
@@ -4608,6 +4618,89 @@ def _check_more_loosenings():
 CONTEXT_WORDS_TARGET = 60000
 CONTEXT_CODE_TARGET = 120000
 CONTEXT_RISKY_TARGET = 150000
+
+
+# A SCRIPT'S DEFINITIONS (#217, agreed 17 October 2026): every case the record
+# lists, each whole or an explicit fallback with its one-line reason, never a
+# partial unit. Each valid source here was parsed by a JavaScript parser when it
+# was written and its extents matched; the selector needs none.
+ITEM_EDIT = (
+    "function itemEdit(l){\n"
+    "  tryKeep();\n"
+    "  const f=jobById(l.job), d=l.lock?'disabled':'';\n"
+    "  /* An item whose formula was abolished is not broken: \"Anything not listed\" { */\n"
+    "  if(!f||f.del) return `<div class=\"edit\"><p class=\"hint warn\">No formula behind this one yet.</p>\n"
+    "      <button class=\"mini\" data-imove=\"${l.id}\" ${d}>Choose a formula…</button>\n"
+    "    </div>`;\n"
+    "  const mono=n=>Number(n).toLocaleString('en-GB',{maximumFractionDigits:2});\n"
+    "  const fk=FORKNEW[l.id];\n"
+    "  const banner=fk?`<div class=\"forkband\">\n"
+    "      <b>${esc((jobById(fk.from)||{}).name||'a formula since deleted')}</b> with ${fk.was-1} other\n"
+    "      item${fk.was===2?'':'s'}</div>`:'';\n"
+    "  rows.push(`<span class=\"cl\">${esc(fl.l)}${isRun(i)?'<em>the run</em>'\n"
+    "        :per!=null?`<em>counted work · ${mono(per)} min each</em>`:''}</span>`);\n"
+    "  return banner+rows.join('');\n"
+    "}\n")
+SCRIPT_CASES = (
+    ("the read Hemz-OS#159 could not be given: #itemEdit of a page, cut down", "the-sewing-menu-v2.html",
+     "<!doctype html><title>t</title>\n<p>function itemEdit(x) { markup, not code }</p>\n"
+     "<!-- <script>function itemEdit(){}</script> -->\n<script>\nfunction before(){ return 1; }\n" + ITEM_EDIT
+     + "function after(){ return 2; }\n</script>\n<script src=\"/tell-hemz.js\" defer></script>\n",
+     (("itemEdit", ITEM_EDIT), ("before", "function before(){ return 1; }\n"), ("after", "function after(){ return 2; }\n"))),
+    ("unindented nested functions", "x.js",
+     "function outer() {\nfunction inner() { return 1; }\n  return inner();\n}\nfunction after() {}\n",
+     (("outer", "function outer() {\nfunction inner() { return 1; }\n  return inner();\n}\n"),
+      ("inner", "function inner() { return 1; }\n"), ("after", "function after() {}\n"))),
+    ("a definition in a block comment, a template or markup is none", "x.html",
+     "<p>function NAME() { not code }</p>\n<script>\nfunction f() {\n  /* function NAME(x) {\n     } */\n"
+     "  return `\nfunction NAME(x) {\n  ${ {a:1}.a } }\n`;\n}\nfunction NAME() { return 'real'; }\n</script>\n",
+     (("NAME", "function NAME() { return 'real'; }\n"),
+      ("f", "function f() {\n  /* function NAME(x) {\n     } */\n  return `\nfunction NAME(x) {\n  ${ {a:1}.a } }\n`;\n}\n"))),
+    ("a page whose only definition of the name is in its markup", "x.html",
+     "<p>function NAME() { markup }</p>\n<script>\nfunction other() {}\n</script>\n", (("NAME", None),)),
+    ("a regex holding }, a default parameter's {}, strings holding braces", "x.js",
+     "function f(x) {\n  return /}/.test(x);\n}\nfunction g(o = {}) {\n  return o;\n}\n"
+     "function h() { return \"}\" + '{'; }\nfunction k() {}\n",
+     (("f", "function f(x) {\n  return /}/.test(x);\n}\n"), ("g", "function g(o = {}) {\n  return o;\n}\n"),
+      ("h", "function h() { return \"}\" + '{'; }\n"), ("k", "function k() {}\n"))),
+    ("the consultant's break: a regex after an if's condition", "x.js",
+     "function outer(x) {\n  if (x) /}a/.test(x);\n  if (x) /{a/.test(x);\n  return 7;\n}\nfunction after() { return 9; }\n",
+     (("outer", "function outer(x) {\n  if (x) /}a/.test(x);\n  if (x) /{a/.test(x);\n  return 7;\n}\n"),
+      ("after", "function after() { return 9; }\n"))),
+    ("the consultant's break: a regex after a for await's head", "x.js",
+     "async function outer(xs) {\n  for await (const x of xs) /}a/.test(x);\n  for await (const x of xs) /{a/.test(x);\n"
+     "  return 7;\n}\nfunction after() { return 9; }\n",
+     (("outer", "async function outer(xs) {\n  for await (const x of xs) /}a/.test(x);\n"
+       "  for await (const x of xs) /{a/.test(x);\n  return 7;\n}\n"), ("after", "function after() { return 9; }\n"))),
+    ("the consultant's break: a definition inside an initializer belongs to it", "x.js",
+     "const outer = function inner() {\n  return 1;\n};\nfunction after() { return 2; }\n"
+     "const late = function early() {\n  return 3;\n}\nfunction last() { return 4; }\n",
+     (("outer", "const outer = function inner() {\n  return 1;\n};\n"), ("inner", "function inner() {\n  return 1;\n}\n"),
+      ("late", "const late = function early() {\n  return 3;\n}\n"), ("last", "function last() { return 4; }\n"))),
+    ("a division after a call or a group, a regex after a while or for head", "x.js",
+     "function f(a) { return g(a) / 2 / h(a); }\nfunction k(a) { while (a) /}/.test(a); for (;;) /{/.test(a); "
+     "return (a) / 2; }\nfunction m() {}\n",
+     (("f", "function f(a) { return g(a) / 2 / h(a); }\n"),
+      ("k", "function k(a) { while (a) /}/.test(a); for (;;) /{/.test(a); return (a) / 2; }\n"),
+      ("m", "function m() {}\n"))),
+    ("declarations, with and without their semicolons", "x.js",
+     "const f = (a) => {\n  return a;\n};\nconst g = 1\nconst x = a\n  + b;\nclass C extends B {\n  m() { return 1; }\n}\n"
+     "for (let i = 0; i < 2; i++) {}\nfunction h() {}\n",
+     (("f", "const f = (a) => {\n  return a;\n};\n"), ("g", "const g = 1\n"), ("x", "const x = a\n  + b;\n"),
+      ("C", "class C extends B {\n  m() { return 1; }\n}\n"), ("i", "let i = 0\n"), ("h", "function h() {}\n"),
+      ("m", None))),
+    ("a / after } is unsure: the file falls back", "x.js",
+     "function f() { return {} / 2; }\nfunction g() {}\n", (("f", None), ("g", None))),
+    ("an unterminated function falls back", "x.js", "function f() {\n  return 1;\nfunction g() {}\n",
+     (("f", None), ("g", None))),
+    ("an unbalanced brace falls back", "x.js", "function f() { return 1; } }\nfunction g() {}\n",
+     (("f", None), ("g", None))),
+    ("an unterminated string, template or comment falls back", "x.js",
+     "function f() { return '}; }\nfunction g() { return `${1}; }\n/* function h() {}\n", (("f", None), ("g", None))),
+    ("a name defined twice falls back, a second declarator among them", "x.js",
+     "function f() { return 1; }\nfunction f() { return 2; }\nlet a = 1, vis = 2;\nfunction vis() {}\n",
+     (("f", None), ("vis", None), ("a", "let a = 1, vis = 2;\n"))),
+)
 
 
 def _check_context(path=None, quiet=False):
@@ -4731,6 +4824,15 @@ def _check_context(path=None, quiet=False):
                 fault("%s was not given as that unit alone" % want)
         if ctx.unit(gate, "review-gate.py", "no_such_thing") is not None:
             fault("a unit a file does not have was given as something")
+        for what, path, src, wants in SCRIPT_CASES:
+            for name, want in wants:
+                got, why = ctx.unit_and_why(src, path, name)
+                if got != want:
+                    fault("%s: %s#%s was given %s, not %s" % (what, path, name, "nothing" if got is None else
+                                                               "%d lines" % got.count("\n"),
+                                                               "nothing" if want is None else "itself whole"))
+                elif want is None and (not why or "\n" in why):
+                    fault("%s: %s#%s fell back without its one-line reason" % (what, path, name))
         items = ctx.touched_items(road, "diff --git a/roadmap.json b/roadmap.json\n@@ -9,1 +9,1 @@\n-a\n+b\n",
                                   "roadmap.json")
         if not items or '"two"' not in items or '"one"' in items:
@@ -4746,7 +4848,9 @@ def _check_context(path=None, quiet=False):
         print("ok: every read is a selection: a change is given its partners, a large one as its sections naming "
               "the change, the pages naming it and on a code or risky read the registry, and no page naming none "
               "of it; every other file is named with its size, a large file is given the sections it touches, a "
-              "risky change is given no file it does not touch or need, and a unit asked for is given alone")
+              "risky change is given no file it does not touch or need, and a unit asked for is given alone; a "
+              "script's definition is given whole or not at all, with why, in each of %d agreed cases"
+              % sum(len(c[3]) for c in SCRIPT_CASES))
     return bad
 
 
@@ -5374,6 +5478,16 @@ CONTEXT_LOOSENINGS = (
     ("a large partner given whole", '        elif text is None or len(text.encode("utf-8")) <= WHOLE:', "        elif True:"),
     ("the pages naming a change not given", "            give(f, text)\n    if cls", "            pass\n    if cls"),
     ("any unit given for the one asked", "if n is not None and (n == name", "if True or (n == name"),
+    ("a / after any ) read as a regex", 'if toks[-1][5] == "head":', "if True:"),
+    ("a / after } read as a division", 'raise Unsure("a / after } at line %d: a regex or a division" % at)',
+     "return False"),
+    ("a for await's head not known", 'if val == "await" and len(toks) > 1', "if False and len(toks) > 1"),
+    ("a name defined twice given", "    if len(found) != 1:", "    if not found:"),
+    ("a template walked as code", "            i = template(i + 1)\n", "            i += 1\n"),
+    ("a block comment read as code", '        if src.startswith("/*", i):', "        if False:"),
+    ("a page's markup read as script", 'if not path.endswith((".html", ".htm")):\n        return [(0, text)]',
+     "if True:\n        return [(0, text)]"),
+    ("a declaration run on past its line", "if ends and _ends_before(toks, j, line_of):", "if False:"),
 )
 
 

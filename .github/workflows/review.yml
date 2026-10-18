@@ -645,10 +645,10 @@ jobs:
               fi
               size=$(git cat-file -s "HEAD:$f")
               if [ -n "$unit" ]; then
-                if git show "HEAD:$f" | python3 "$RUNNER_TEMP/context.py" unit "$want" > "$RUNNER_TEMP/unit"; then
+                if git show "HEAD:$f" | python3 "$RUNNER_TEMP/context.py" unit "$want" > "$RUNNER_TEMP/unit" 2> "$RUNNER_TEMP/why"; then
                   size=$(wc -c < "$RUNNER_TEMP/unit")
                 else
-                  printf '\n===== %s: no such unit; %s whole =====\n' "$want" "$f" >> /tmp/prompt.txt
+                  printf '\n===== %s: no such unit; %s whole; %s =====\n' "$want" "$f" "$(head -n 1 "$RUNNER_TEMP/why" | cut -c 1-200)" >> /tmp/prompt.txt
                   unit="" want=$f
                 fi
               fi

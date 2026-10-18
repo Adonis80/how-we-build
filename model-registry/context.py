@@ -163,13 +163,443 @@ def _md_end(lines, i):
 OPENING = "opening"
 
 
+# ONE DEFINITION OF A SCRIPT (#217, agreed 17 October 2026): `page.html#itemEdit`
+# is that function whole, or nothing. Hemz-OS#159's read asked for a function of
+# a 998 KB page, the selector knew no names in it, and the read was signed
+# incomplete. A script is walked once, lexically: strings, templates and their
+# `${}`, comments, regexes and every bracket, so a definition is found in code
+# only, at any depth, with its true extent. On anything it is unsure of, a name
+# defined twice, or a form it does not know (a method, a property), it gives no
+# unit and says why in one line, and the file stands whole as before (#187).
+# A `/` after `)` is a regex only when that `)` closed an `if`, `while`, `for`,
+# `for await` or `with` head, division only when it closed anything else known,
+# and unsure otherwise; after `}` it is always unsure.
+SCRIPTS = (".js", ".mjs", ".html", ".htm")
+_WORD = re.compile(r"(?:[^\W\d]|\$)(?:\w|\$)*")
+_RESERVED = frozenset(
+    "break case catch class const continue debugger default delete do else enum export extends finally for "
+    "function if import in instanceof let new return static super switch this throw try typeof var void while "
+    "with yield await async of get set null true false".split())
+_VALUES = frozenset(("this", "super", "null", "true", "false", "import"))
+# A `/` after one of these words starts a regex; a `(` after one opens an expression.
+_BEFORE_REGEX = frozenset(("return", "typeof", "instanceof", "in", "new", "delete", "void", "throw", "case", "do",
+                           "else"))
+_HEADS = frozenset(("if", "while", "for", "with"))
+# A line break inside an initializer: after one of these words the line goes on.
+_GOES_ON = frozenset(("in", "instanceof", "typeof", "new", "void", "delete", "await"))
+_PUNCT = ("...", "?.", "=>", "++", "--")
+_CONTINUES = frozenset(". ?. , = + - * / % < > & | ^ ? : ;".split())
+
+
+class Unsure(Exception):
+    """The walk could not settle something; carries its one-line reason."""
+
+
+def _after_dot(toks, k):
+    return k > 0 and toks[k - 1][0] == "p" and toks[k - 1][1] in (".", "?.")
+
+
+def _paren_kind(toks):
+    """What a `(` opens, by the token before it: a control head, an expression, or unknown."""
+    if not toks:
+        return "expr"
+    kind, val = toks[-1][0], toks[-1][1]
+    if kind != "id" or _after_dot(toks, len(toks) - 1):
+        return "expr"
+    if val in _HEADS:
+        return "head"
+    if val == "await" and len(toks) > 1 and toks[-2][:2] == ("id", "for"):
+        return "head"
+    if val not in _RESERVED or val in _VALUES or val in _BEFORE_REGEX or val in ("await", "async", "yield", "of"):
+        return "expr"
+    return "unknown"
+
+
+def _slash_is_regex(toks, at):
+    """Does a `/` start a regex, given the tokens before it? Raises Unsure when that is not known."""
+    if not toks:
+        return True
+    kind, val = toks[-1][0], toks[-1][1]
+    if kind in ("lit", "num"):
+        return False
+    if kind == "id":
+        if _after_dot(toks, len(toks) - 1) or val not in _RESERVED or val in _VALUES:
+            return False
+        if val in _BEFORE_REGEX:
+            return True
+        raise Unsure("a / after the word %s at line %d" % (val, at))
+    if kind == "close":
+        if val == ")":
+            if toks[-1][5] == "head":
+                return True
+            if toks[-1][5] == "expr":
+                return False
+            raise Unsure("a / after a ) that closed neither a condition nor an expression, line %d" % at)
+        if val == "}":
+            raise Unsure("a / after } at line %d: a regex or a division" % at)
+        return False
+    if val in ("++", "--"):
+        raise Unsure("a / after %s at line %d" % (val, at))
+    return True
+
+
+def tokens(src, base=0, line_of=None):
+    """[(kind, value, start, end, newline before, paren kind)]: one script, walked once.
+
+    kind is id, num, lit (a string, a regex, or a template with no `${}`), p
+    (punctuation), open or close (`(`, `[`, `{`, a template's backtick, `${`).
+    Raises Unsure on anything it cannot settle, and when the brackets do not
+    return to none.
+    """
+    where = line_of
+    line_of = (lambda i: where(base + i)) if where else (lambda i: src.count("\n", 0, i) + 1)
+    toks, stack, i, n, nl = [], [], 0, len(src), False
+    if src.startswith("#!"):
+        i = src.find("\n") if "\n" in src else n
+
+    def emit(kind, val, a, b, pk=None):
+        nonlocal nl
+        toks.append((kind, val, base + a, base + b, nl, pk))
+        nl = False
+
+    def template(j):
+        """Walk a template's text from j: to its closing backtick, or into a `${`. Returns where code resumes."""
+        while j < n:
+            c = src[j]
+            if c == "\\":
+                j += 2
+                continue
+            if c == "`":
+                stack.pop()
+                emit("close", "`", j, j + 1)
+                return j + 1
+            if src.startswith("${", j):
+                stack.append(("${", None))
+                emit("open", "${", j, j + 2)
+                return j + 2
+            j += 1
+        raise Unsure("a template literal never closes, from line %d" % line_of(i))
+
+    while i < n:
+        c = src[i]
+        if c in " \t\r\n\f\v ﻿  ":
+            nl = nl or c in "\n\r  "
+            i += 1
+            continue
+        if src.startswith("//", i):
+            j = src.find("\n", i)
+            i = n if j < 0 else j
+            continue
+        if src.startswith("/*", i):
+            j = src.find("*/", i + 2)
+            if j < 0:
+                raise Unsure("a block comment never closes, from line %d" % line_of(i))
+            nl = nl or "\n" in src[i:j]
+            i = j + 2
+            continue
+        if src.startswith("<!--", i) or (src.startswith("-->", i) and (nl or not toks)):
+            raise Unsure("an HTML-style comment in a script at line %d" % line_of(i))
+        if c in "'\"":
+            j = i + 1
+            while j < n and src[j] != c:
+                if src[j] == "\\":
+                    j += 1
+                elif src[j] in "\n\r":
+                    raise Unsure("a string breaks its line at line %d" % line_of(i))
+                j += 1
+            if j >= n:
+                raise Unsure("a string never closes, from line %d" % line_of(i))
+            emit("lit", c, i, j + 1)
+            i = j + 1
+            continue
+        if c == "`":
+            stack.append(("`", None))
+            emit("open", "`", i, i + 1)
+            i = template(i + 1)
+            continue
+        if c in "([{":
+            pk = _paren_kind(toks) if c == "(" else None
+            stack.append((c, pk))
+            emit("open", c, i, i + 1, pk)
+            i += 1
+            continue
+        if c in ")]}":
+            want = {")": ("(",), "]": ("[",), "}": ("{", "${")}[c]
+            if not stack or stack[-1][0] not in want:
+                raise Unsure("a %s that closes nothing open at line %d" % (c, line_of(i)))
+            opener, pk = stack.pop()
+            emit("close", c, i, i + 1, pk)
+            i = template(i + 1) if opener == "${" else i + 1
+            continue
+        if c == "/":
+            if _slash_is_regex(toks, line_of(i)):
+                j, cls = i + 1, False
+                while j < n:
+                    d = src[j]
+                    if d == "\\":
+                        j += 2
+                        continue
+                    if d in "\n\r":
+                        raise Unsure("a regex breaks its line at line %d" % line_of(i))
+                    if cls:
+                        cls = d != "]"
+                    elif d == "[":
+                        cls = True
+                    elif d == "/":
+                        break
+                    j += 1
+                if j >= n:
+                    raise Unsure("a regex never closes, from line %d" % line_of(i))
+                j += 1
+                while j < n and (src[j].isalnum() or src[j] in "_$"):
+                    j += 1
+                emit("lit", "/", i, j)
+                i = j
+                continue
+            emit("p", "/", i, i + 1)
+            i += 1
+            continue
+        if c.isdigit() or (c == "." and i + 1 < n and src[i + 1].isdigit()):
+            j = i + 1
+            while j < n and (src[j].isalnum() or src[j] in "._"):
+                j += 1
+            emit("num", src[i:j], i, j)
+            i = j
+            continue
+        if c == "#" and i + 1 < n and _WORD.match(src, i + 1):
+            m = _WORD.match(src, i + 1)
+            emit("id", "#" + m.group(0), i, m.end())
+            i = m.end()
+            continue
+        m = _WORD.match(src, i)
+        if m:
+            emit("id", m.group(0), i, m.end())
+            i = m.end()
+            continue
+        if c == "\\":
+            raise Unsure("an escaped name at line %d" % line_of(i))
+        p = next((q for q in _PUNCT if src.startswith(q, i) and not (q == "?." and src[i + 2:i + 3].isdigit())), c)
+        emit("p", p, i, i + len(p))
+        i += len(p)
+    if stack:
+        raise Unsure("brackets never return to none: a %s stays open" % stack[-1][0])
+    return toks
+
+
+def _matches(toks):
+    """{index of an opening bracket: index of the one that closes it}."""
+    out, stack = {}, []
+    for k, t in enumerate(toks):
+        if t[0] == "open":
+            stack.append(k)
+        elif t[0] == "close":
+            out[stack.pop()] = k
+    return out
+
+
+def definitions(toks, match, line_of):
+    """[(name, first token, last token, or None and why when unsure)]: every definition, at any depth.
+
+    `function NAME(`, `async function NAME(`, `function* NAME(`; `class NAME`;
+    and each `NAME = ` a `const`, `let` or `var` declares, the declaration
+    whole being its unit. A method, a property or a destructuring is none.
+    """
+    out = []
+    for k, t in enumerate(toks):
+        if t[0] != "id" or _after_dot(toks, k):
+            continue
+        try:
+            if t[1] == "function":
+                j = k + 1
+                if j < len(toks) and toks[j][:2] == ("p", "*"):
+                    j += 1
+                if j + 1 < len(toks) and toks[j][0] == "id" and toks[j + 1][:2] == ("open", "("):
+                    name = toks[j][1]
+                    start = k - 1 if k and toks[k - 1][:2] == ("id", "async") and not t[4] else k
+                    body = match[j + 1] + 1
+                    if body >= len(toks) or toks[body][:2] != ("open", "{"):
+                        raise Unsure("function %s has no body where one belongs, line %d" % (name, line_of(t[2])))
+                    out.append((name, start, match[body], None))
+            elif t[1] == "class" and k + 1 < len(toks) and toks[k + 1][0] == "id" and toks[k + 1][1] != "extends":
+                name = toks[k + 1][1]
+                out.append((name, k, _class_end(toks, match, k + 2, name, line_of), None))
+            elif t[1] in ("const", "let", "var") and k + 1 < len(toks) and toks[k + 1][0] in ("id", "open"):
+                out.extend(_declared(toks, match, k, line_of))
+        except Unsure as why:
+            out.append((toks[k + 1][1] if t[1] == "class" else name, None, None, str(why)))
+    return out
+
+
+def _class_end(toks, match, k, name, line_of):
+    """The `}` closing a class's body, its heading being only names, dots and bracketed groups."""
+    start = k
+    while k < len(toks):
+        t = toks[k]
+        if t[:2] == ("open", "{"):
+            return match[k]
+        if t[0] == "open":
+            k = match[k] + 1
+        elif t[0] == "id" or t[:2] in (("p", "."), ("p", "?.")):
+            k += 1
+        else:
+            break
+    raise Unsure("class %s has a heading the selector does not read, line %d" % (name, line_of(toks[start - 1][2])))
+
+
+def _ender(toks, k):
+    """Is token k one an expression can end on? None when that is not known (`++`, `yield`, ...)."""
+    kind, val = toks[k][0], toks[k][1]
+    if kind in ("lit", "num", "close"):
+        return True
+    if kind == "id":
+        if _after_dot(toks, k) or val not in _RESERVED or val in _VALUES:
+            return True
+        return False if val in _GOES_ON else None
+    return None if val in ("++", "--") else False
+
+
+def _declared(toks, match, k, line_of):
+    """[(name, k, last token, None)] for each `NAME =` the declaration at token k makes.
+
+    Its names are every `NAME =` at its own level that opens it or follows one
+    of its commas. It ends at its `;` (before it, in a `for` heading), before a
+    `}` closing what holds it, or at a line break the language ends it on:
+    after a token an expression can end on, before one that cannot go on from
+    it. A line break neither settles makes it unsure, and every name it was
+    seen to make is given as unsure, never as a unit.
+    """
+    names, last, j, head = [], k, k + 1, k and toks[k - 1][:2] == ("open", "(") and toks[k - 1][5] == "head"
+    try:
+        while j < len(toks):
+            t = toks[j]
+            if (j == k + 1 or toks[j - 1][:2] == ("p", ",")) and t[0] == "id" and toks[j + 1:j + 2] \
+                    and toks[j + 1][:2] == ("p", "="):
+                names.append(t[1])
+            if t[4] and last != k:
+                ends = _ender(toks, last)
+                if ends is None:
+                    raise Unsure("a line break after %s in a declaration, line %d" % (toks[last][1], line_of(t[2])))
+                if ends and _ends_before(toks, j, line_of):
+                    break
+            if t[:2] == ("p", ";"):
+                last = last if head else j
+                break
+            if t[0] == "close":
+                if t[1] != "}":
+                    raise Unsure("a declaration ends at a %s, line %d" % (t[1], line_of(t[2])))
+                break
+            if t[0] == "open":
+                last = match[j]
+                j = last + 1
+                continue
+            last = j
+            j += 1
+    except Unsure as why:
+        # The names past where it was unsure are still its names: each `, NAME =`
+        # at its level, up to a `;` or what closes it, more than it makes if anything.
+        while j < len(toks) and toks[j][:2] != ("p", ";") and toks[j][0] != "close":
+            if toks[j - 1][:2] == ("p", ",") and toks[j][0] == "id" and toks[j + 1:j + 2] \
+                    and toks[j + 1][:2] == ("p", "="):
+                names.append(toks[j][1])
+            j = match[j] + 1 if toks[j][0] == "open" else j + 1
+        return [(n, None, None, str(why)) for n in names]
+    return [(n, k, last, None) for n in names]
+
+
+def _ends_before(toks, j, line_of):
+    """After a line break that follows a token an expression can end on, does token j begin a new statement?"""
+    kind, val = toks[j][0], toks[j][1]
+    if kind == "id" and not _after_dot(toks, j):
+        if val == "of":
+            raise Unsure("a line break before of in a declaration, line %d" % line_of(toks[j][2]))
+        return val not in ("in", "instanceof")
+    if kind in ("lit", "num") or (kind == "open" and val == "{"):
+        return True
+    if kind == "p":
+        if val in ("++", "--", "~") or (val == "!" and toks[j + 1:j + 2] and toks[j + 1][1] != "="):
+            return True
+        if val not in _CONTINUES and val != "!":
+            raise Unsure("a line break before %s in a declaration, line %d" % (val, line_of(toks[j][2])))
+    return False
+
+
+def scripts_of(text, path):
+    """[(offset, source)]: a file's JavaScript; for a page, the bodies of its inline scripts, never its markup."""
+    if not path.endswith((".html", ".htm")):
+        return [(0, text)]
+    out, pos = [], 0
+    opens = re.compile(r"<!--|<script\b([^>]*)>", re.I)
+    while True:
+        m = opens.search(text, pos)
+        if not m:
+            return out
+        if m.group(0) == "<!--":
+            j = text.find("-->", m.end())
+            if j < 0:
+                return out
+            pos = j + 3
+            continue
+        close = re.compile(r"</script\s*>", re.I).search(text, m.end())
+        if not close:
+            raise Unsure("a <script> never closes, from line %d" % (text.count("\n", 0, m.start()) + 1))
+        attrs = m.group(1)
+        kind = re.search(r"""\btype\s*=\s*["']?([^"'\s>]*)""", attrs, re.I)
+        if not re.search(r"\bsrc\s*=", attrs, re.I) and (not kind or kind.group(1).lower() in (
+                "", "module", "text/javascript", "application/javascript")):
+            out.append((m.end(), text[m.end():close.start()]))
+        pos = close.end()
+
+
+def script_unit(text, path, name):
+    """(one definition of a script, whole, and None) or (None, why in one line)."""
+    starts_at = [0] + [m.end() for m in re.finditer("\n", text)]
+
+    def line_of(i):
+        import bisect
+        return bisect.bisect_right(starts_at, i)
+    found = []
+    try:
+        for off, src in scripts_of(text, path):
+            toks = tokens(src, off, line_of)
+            found += [(toks, d) for d in definitions(toks, _matches(toks), line_of) if d[0] == name]
+    except Unsure as why:
+        return None, "unsure, so no unit: %s" % why
+    if len(found) != 1:
+        return None, ("%d definitions of that name: which one is meant is not known" % len(found) if found else
+                      "no definition of that name the selector knows (a function, a class, or a const, let or "
+                      "var given a value)")
+    toks, (_, a, b, why) = found[0]
+    if why:
+        return None, "unsure, so no unit: %s" % why
+    # Its own lines when it has them to itself; else its exact span.
+    s, e = toks[a][2], toks[b][3]
+    head, tail = text.rfind("\n", 0, s) + 1, text.find("\n", e)
+    tail = len(text) if tail < 0 else tail
+    if text[head:s].strip() in ("", "export", "export default") and text[e:tail].strip() in ("", ";"):
+        s, e = head, tail
+    return text[s:e] + "\n", None
+
+
 def unit(text, path, name):
-    """The unit of a file a reader asked for by name (`path#name`), whole, or None when it has none.
+    """The unit of a file a reader asked for by name (`path#name`), whole, or None when it has none."""
+    return unit_and_why(text, path, name)[0]
+
+
+def unit_and_why(text, path, name):
+    """(the unit asked for, whole, and None), or (None, why it has none, in one line).
 
     A heading, a step's name or a definition's; a numbered section of a page by
-    its number too (`PRODUCT.md#6` or `#§6`); and a roadmap's item by its id
-    (`roadmap.json#P48`), that item alone.
+    its number too (`PRODUCT.md#6` or `#§6`); a roadmap's item by its id
+    (`roadmap.json#P48`), that item alone; and a script's function, class or
+    declaration, in a `.js`, `.mjs` or a page's inline scripts (#217).
     """
+    if path.endswith(SCRIPTS) and name != OPENING:
+        return script_unit(text, path, name)
+    got = _unit(text, path, name)
+    return got, None if got is not None else "no unit by that name"
+
+
+def _unit(text, path, name):
     if os.path.basename(path) == "roadmap.json":
         try:
             import json
@@ -405,11 +835,16 @@ def part_main(path, diff_file):
 
 
 def unit_main(want):
-    """`context.py unit PATH#NAME < FILE`: the one unit asked for, whole, on stdout; exit 1 when the file has none."""
+    """`context.py unit PATH#NAME < FILE`: the one unit asked for, whole, on stdout; exit 1 when the file has none.
+
+    Why it has none goes to stderr in one line, for the reader's marker: words
+    and line numbers only, never a line of the file.
+    """
     path, _, name = want.partition("#")
     text = sys.stdin.read()
-    got = unit(text, path, name) if name else None
+    got, why = unit_and_why(text, path, name) if name else (None, "no unit named")
     if got is None:
+        print(why, file=sys.stderr)
         return 1
     sys.stdout.write(got)
     return 0
