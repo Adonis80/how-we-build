@@ -446,6 +446,14 @@ jobs:
               *) risky=yes ;;
             esac
           done < "$t/changed.txt"
+          # A PRODUCT'S MARKED SPANS (#218): a change the names leave ordinary
+          # is risky when a line it adds or deletes falls in a span the product
+          # marks `RISK: pricing — START` to `— END` (or its older `PRICING CORE`
+          # band), when it edits a marker, or when its markers cannot be read.
+          # product-reads/reads.py says the rule; any answer but ok, a failure
+          # to ask included, reads risky. review-gate.py runs this line on a
+          # cut-down Hemz-OS#159.
+          [ "$risky" = yes ] || python3 -I "$GITHUB_WORKSPACE/product-reads/reads.py" marked "$work" "origin/$MAIN" "$SHA" "$t/changed.txt" || risky=yes
           [ "$risky" = no ] || class=risky
           case "$class" in words|code) role=reviewer-main ;; *) role=reviewer-risky ;; esac
           echo "class=$class" >> "$GITHUB_OUTPUT"

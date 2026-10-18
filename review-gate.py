@@ -1641,6 +1641,10 @@ def machinery(paths):
 
 
 CLASS_RISKY = '[ "$risky" = no ] || class=risky'
+# A product's marked spans (#218): the product reader asks product-reads/reads.py,
+# after the names, and reads any answer but ok as risky. The rulebook marks nothing.
+CLASS_MARKS = ('[ "$risky" = yes ] || python3 -I "$GITHUB_WORKSPACE/product-reads/reads.py" marked "$work" '
+               '"origin/$MAIN" "$SHA" "$t/changed.txt" || risky=yes')
 CLASS_ROLE = ('case "$class" in words|code) role=%s ;; *) role=%s ;; esac'
               % (ORDINARY_ROLE, RISKY_ROLE))
 CLASS_OUT = 'echo "role=$role" >> "$GITHUB_OUTPUT"'
@@ -1959,7 +1963,9 @@ def class_says(block, cases):
     """
     body = "\n".join(re.sub(r"\$\{\{[^}]*\}\}", "x", l) for l in block)
     with tempfile.TemporaryDirectory() as d:
-        script = ['git() { cat "$CHANGED"; }', 'g() { cat "$CHANGED"; }']
+        # The names alone: a product's marks are asked of nothing here, and
+        # answered on a real repository by marks_says.
+        script = ['git() { cat "$CHANGED"; }', 'g() { cat "$CHANGED"; }', 'python3() { echo ok; }', "work=x"]
         outs = []
         for n, paths in enumerate(cases):
             changed, out = os.path.join(d, "changed%d" % n), os.path.join(d, "out%d" % n)
@@ -1977,7 +1983,8 @@ def class_says(block, cases):
             f.write("\n".join(script))
         try:
             p = subprocess.run(["bash", os.path.join(d, "cases.sh")],
-                               env=dict(os.environ, RUNNER_TEMP=d, t=d, MAIN="main", SHA="0" * 40),
+                               env=dict(os.environ, RUNNER_TEMP=d, t=d, MAIN="main", SHA="0" * 40,
+                                        GITHUB_WORKSPACE=os.getcwd()),
                                capture_output=True, text=True, timeout=120)
         except (OSError, subprocess.SubprocessError):
             return [None] * len(cases)
@@ -1991,6 +1998,48 @@ def class_says(block, cases):
             got = dict(l.split("=", 1) for l in lines if "=" in l)
             said.append((got["class"], got["role"]) if "class" in got and "role" in got else None)
     return said
+
+
+_MARKS_SAID = {}
+
+
+def marks_says(block):
+    """Once per block text: a loosening elsewhere leaves the block, and its answer, as they were."""
+    key = tuple(block)
+    if key not in _MARKS_SAID:
+        _MARKS_SAID[key] = _marks_says(block)
+    return _MARKS_SAID[key]
+
+
+def _marks_says(block):
+    """Run the product reader's class block on a real repository per reads.MARK_CASES: [(what, class or None)].
+
+    git is git, and reads.py the real one: a cut-down Hemz-OS#159 page whose
+    run-choice code is marked, changed each way the record names.
+    """
+    reads, out = _reads(), []
+    body = "\n".join(re.sub(r"\$\{\{[^}]*\}\}", "x", l) for l in block)
+    # Last, an unmarked change asked of a rulebook checkout with no reads.py:
+    # a failure to ask, which must read risky.
+    unmarked = next(c for c in reads.MARK_CASES if not c[2])
+    for what, head, _ in reads.MARK_CASES + (("a failure to ask", unmarked[1], True),):
+        with tempfile.TemporaryDirectory() as d:
+            work, t = os.path.join(d, "product"), os.path.join(d, "t")
+            os.makedirs(work)
+            os.makedirs(t)
+            try:
+                sha, _ = reads._mark_repo(work, head)
+                p = subprocess.run(["bash", "-c", 'set -euo pipefail\ng() { git -C "$work" "$@"; }\n%s\n' % body],
+                                   env=dict(os.environ, work=work, t=t, MAIN="main", SHA=sha,
+                                            GITHUB_OUTPUT=os.path.join(t, "out"),
+                                            GITHUB_WORKSPACE=t if what == "a failure to ask" else os.getcwd()),
+                                   capture_output=True, text=True, timeout=120)
+                said = dict(l.split("=", 1) for l in open(os.path.join(t, "out"), encoding="utf-8").read().split()
+                            if "=" in l) if p.returncode == 0 else {}
+            except (OSError, subprocess.SubprocessError):
+                said = {}
+            out.append((what, said.get("class")))
+    return out
 
 
 def class_faults(text, path):
@@ -2010,6 +2059,16 @@ def class_faults(text, path):
         for line in (CLASS_RISK_FIRST, CLASS_CODE, CLASS_RISKY, CLASS_ROLE):
             if line not in block:
                 lost.append("`%s`" % line)
+        if path == PRODUCT_WORKFLOW:
+            if CLASS_MARKS not in block or CLASS_RISKY not in block or \
+                    block.index(CLASS_MARKS) != block.index(CLASS_RISKY) - 1:
+                lost.append("the product's marked spans asked after the names, just before the class is set "
+                            "(`%s`)" % CLASS_MARKS)
+            for (what, got), (_, _, refused) in zip(marks_says(block), _reads().MARK_CASES + ((0, 0, True),)):
+                if got is None or (got == "risky") != refused:
+                    lost.append("%s read as %s (it was %s)" % (what, "risky" if refused else "ordinary", got))
+        elif any("reads.py marked" in l for l in block):
+            lost.append("no marked spans asked of the rulebook, which marks nothing")
         # The shape, not only the strings (#79's ninth read): an arm added for
         # an extension no case lists would pass every case and every loosening
         # above, so each `case` holds exactly its arms and nothing else.
@@ -2155,6 +2214,13 @@ CLASS_LOOSENINGS = (
     ("the class kept from the read", REVIEW_WORKFLOW, lambda t: t.replace("          " + REVIEW_TOLD[2] + "\n", "", 1)),
     # The six classes (#86): each arm taken out, reordered, or blinded to case.
     ("the gate read as ordinary", None, _without_arm(RISK_GATE)),
+    # A product's marked spans (#218): never asked, asked before the names, or
+    # a failure to ask read as nothing marked.
+    ("a product's marks never asked", PRODUCT_WORKFLOW, lambda t: t.replace("          " + CLASS_MARKS + "\n", "", 1)),
+    ("a product's marks asked of nothing", PRODUCT_WORKFLOW,
+     lambda t: t.replace(CLASS_MARKS, CLASS_MARKS.replace('"$t/changed.txt"', "/dev/null"), 1)),
+    ("a failure to ask read as nothing marked", PRODUCT_WORKFLOW,
+     lambda t: t.replace(CLASS_MARKS, CLASS_MARKS.replace(" || risky=yes", "; [ $? -ne 1 ] || risky=yes"), 1)),
     ("the CI folder read as ordinary", None, lambda t: t.replace(RISK_GATE, RISK_GATE.replace("|.github/*|*/.github/*", "", 1), 1)),
     ("agent settings read as ordinary", None, lambda t: t.replace(RISK_SIGN_IN, RISK_SIGN_IN.replace("|.claude/settings*|*/.claude/settings*", "", 1), 1)),
     ("the host's project link read as ordinary", None, lambda t: t.replace(RISK_RELEASE, RISK_RELEASE.replace("|.vercel/*|*/.vercel/*", "", 1), 1)),

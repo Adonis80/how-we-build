@@ -6,6 +6,7 @@
     reads.py ready COMMIT PARENT SHA               is that commit the ready mark?
     reads.py verify CHECKRUNS                      did the product's own check pass?
     reads.py state CHECKRUNS SHA APPID [--again]   has that commit been read?
+    reads.py marked REPO BASE HEAD CHANGED_NUL     does the change leave its marked spans alone?
     reads.py --selftest
 
 Each answers by its exit status: 0 go ahead, 1 refused with one line, 2 a
@@ -43,8 +44,12 @@ nothing and read nothing, so it is no read at all, and asking again needs no
 each re-ask needed the word).
 """
 import json
+import os
 import re
+import subprocess
 import sys
+import tempfile
+import types
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -226,6 +231,100 @@ def unread(answer, app_id, sha, now, again=False):
                       "again with `again`")
 
 
+# THE MARKED SPANS (#218, agreed 17 October 2026). Names alone missed a product's
+# pricing: Hemz-OS#159 changed what feeds a price in a page no name calls
+# pricing, and was read as ordinary code. A product marks what decides a price,
+# in the file itself, around the lines: `RISK: pricing — START` and
+# `RISK: pricing — END`, each on a line of its own, in a comment; Hemz OS's
+# older `PRICING CORE — START` / `— END` band counts the same. A change is risky
+# when a line it adds falls in a span of the head, or a line it deletes in a
+# span of the base (never the diff's context lines), a marker line being in
+# its own span, so adding, removing or editing one is a change in a span; or
+# when the markers of a file it touches cannot be read: a
+# `RISK:` line that is no such marker, a START inside an open span, an END
+# with no START of its kind, a START never ended, or a file git cannot give.
+# Only code is read for them (CODE): a page or a data file decides no price and
+# may quote the markers, as a roadmap item about marking would, and a quote
+# there would make every change to it risky. Lines are counted as git counts
+# them, on `\n` alone, and a file git calls binary is diffed as text, so a NUL
+# byte cannot hide a change (#238's first read). Never a downgrade: the names
+# stay the floor, and this only adds.
+MARK = re.compile(r"(RISK:[ \t]*pricing|PRICING CORE)[ \t]*[\u2014\u2013-]+[ \t]*(START|END)\b")
+CODE = (".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx", ".py", ".html", ".htm", ".css", ".scss")
+HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
+
+
+def spans(text):
+    """[(first line, last line)], counted from 1, both marker lines in: a file's marked spans.
+
+    Refused when its markers cannot be read.
+    """
+    out, at, kind = [], None, None
+    for n, line in enumerate(text.split("\n"), 1):
+        m = MARK.search(line)
+        if not m:
+            if "RISK:" in line:
+                raise Refused("a RISK: line that is no pricing START or END marker, line %d" % n)
+            continue
+        k = m.group(1)[:4]
+        if m.group(2) == "START":
+            if at is not None:
+                raise Refused("a marker START inside an open span, line %d" % n)
+            at, kind = n, k
+        else:
+            if at is None or kind != k:
+                raise Refused("a marker END with no START of its kind, line %d" % n)
+            out.append((at, n))
+            at = None
+    if at is not None:
+        raise Refused("a marker START never ended, line %d" % at)
+    return out
+
+
+def touches(diff, base, head):
+    """Refused when one file's zero-context diff touches a marked span of its base or head.
+
+    `diff` is `git diff -U0` of one file; `base` and `head` its text before and
+    after, empty where it did not exist.
+    """
+    inside = lambda n, s: any(a <= n <= b for a, b in s)
+    was, now = spans(base), spans(head)
+    for line in diff.split("\n"):
+        m = HUNK.match(line)
+        if m:
+            old, olds, new, news = int(m.group(1)), int(m.group(2) or 1), int(m.group(3)), int(m.group(4) or 1)
+            if any(inside(n, was) for n in range(old, old + olds)) or any(inside(n, now) for n in range(new, new + news)):
+                raise Refused("a line it changes is inside a marked span")
+
+
+def marked(repo, base, head, changed):
+    """`reads.py marked REPO BASE HEAD CHANGED_NUL`: ok when no file the change touches has a marked line changed.
+
+    Read as review-product.yml's diff is, from where BASE and HEAD meet to HEAD.
+    """
+    def git(*args):
+        return subprocess.run(["git", "--literal-pathspecs", "-C", repo, "-c", "core.quotePath=false"] + list(args),
+                              capture_output=True, check=True, timeout=120).stdout
+
+    def blob(rev, f):
+        if subprocess.run(["git", "-C", repo, "cat-file", "-e", "%s:%s" % (rev, f)], capture_output=True,
+                          timeout=60).returncode:
+            return ""
+        return git("show", "%s:%s" % (rev, f)).decode("utf-8", "replace")
+    since = git("merge-base", base, head).decode().strip()
+    with open(changed, "rb") as f:
+        files = [p.decode("utf-8") for p in f.read().split(b"\0") if p]
+    for f in files:
+        if not f.lower().endswith(CODE):
+            continue
+        diff = git("diff", "-U0", "--text", "--no-textconv", "--no-renames", "--no-color", "--no-ext-diff", since,
+                   head, "--", f)
+        diff = diff.decode("utf-8", "replace")
+        if "@@" not in diff:
+            continue
+        touches(diff, blob(since, f), blob(head, f))
+
+
 def _load(path):
     with open(path, encoding="utf-8") as f:
         return json.load(f)
@@ -247,6 +346,8 @@ def main(argv):
             ready(_load(argv[2]), _load(argv[3]), argv[4])
         elif argv[1:2] == ["verify"] and len(argv) == 4:
             verified(_load(argv[2]), argv[3])
+        elif argv[1:2] == ["marked"] and len(argv) == 6:
+            marked(*argv[2:6])
         elif argv[1:2] == ["state"] and len(argv) in (5, 6) and (len(argv) == 5 or argv[5] == "--again"):
             if not argv[4].isdigit():
                 raise ValueError("the App's id is a number")
@@ -257,7 +358,7 @@ def main(argv):
     except Refused as why:
         print("refused: %s" % why)
         return 1
-    except (OSError, ValueError) as why:
+    except (OSError, ValueError, subprocess.SubprocessError) as why:
         # The mistake is named by its kind, never quoted: a file's own words
         # could be a product's.
         print("could not be asked: %s" % type(why).__name__)
@@ -298,6 +399,132 @@ def _asks(fn, *args):
         return "ok"
     except Refused as why:
         return str(why)
+
+
+# A cut-down Hemz-OS#159: its page, the pricing core's band, and the run-choice
+# code and handlers #159 changed, marked as the agreed RISK: pricing span.
+MARK_PAGE = ("<style>\n.chip{color:#333}\n</style>\n<script>\n"
+             "/* ══════════ PRICING CORE — START ══════════\n   the price, from minutes */\n"
+             "function minutesFor(f){ return 1; }\n/* ══════════ PRICING CORE — END ══════════ */\n"
+             "function render(){ return 'x'; }\n"
+             "/* RISK: pricing — START: the run a formula's price travels along */\n"
+             "function seatRun(f){\n  if(f.lenIdx==null) f.lenIdx=0;\n}\n"
+             "function pickOp(f,id){ f.ops.push(id); seatRun(f); }\n/* RISK: pricing — END */\n</script>\n")
+# (what, the head's files as each change leaves them, None for gone; refused?)
+MARK_CASES = (
+    ("Hemz-OS#159's change, to the run a price travels along",
+     {"page.html": MARK_PAGE.replace("if(f.lenIdx==null) f.lenIdx=0;", "if(f.lenIdx==null) f.lenIdx=f.fields.length-1;")},
+     True),
+    ("a line deleted from a marked span", {"page.html": MARK_PAGE.replace("  if(f.lenIdx==null) f.lenIdx=0;\n", "")}, True),
+    ("a line added just inside a span's start",
+     {"page.html": MARK_PAGE.replace("travels along */\n", "travels along */\nconst RUN=1;\n")}, True),
+    ("a change inside the pricing core's band", {"page.html": MARK_PAGE.replace("return 1; }", "return 2; }")}, True),
+    ("a CSS change elsewhere in the same page", {"page.html": MARK_PAGE.replace("#333", "#444")}, False),
+    ("a change to unmarked code in the same page", {"page.html": MARK_PAGE.replace("'x'", "'y'")}, False),
+    ("a line added just outside a span's start",
+     {"page.html": MARK_PAGE.replace("/* RISK: pricing — START", "const NEAR=1;\n/* RISK: pricing — START")}, False),
+    ("the line after a span, never its context", {"page.html": MARK_PAGE.replace("</script>", "</script >")}, False),
+    ("a marker edited", {"page.html": MARK_PAGE.replace("/* RISK: pricing — END */", "/* RISK: pricing — END. */")},
+     True),
+    ("a marker removed", {"page.html": MARK_PAGE.replace("/* RISK: pricing — END */\n", "")}, True),
+    ("a marker added", {"page.html": MARK_PAGE.replace("function render(){ return 'x'; }\n",
+                                                       "/* RISK: pricing — START */\nfunction render(){ return 'x'; }\n"
+                                                       "/* RISK: pricing — END */\n")}, True),
+    ("the marked page deleted", {"page.html": None}, True),
+    ("the marked page renamed, unchanged", {"page.html": None, "the-page.html": MARK_PAGE}, True),
+    ("a page whose span never ends, changed elsewhere",
+     {"page.html": MARK_PAGE.replace("/* RISK: pricing — END */\n", "").replace("#333", "#444")}, True),
+    ("an unmarked file", {"other.js": "let b = 2;\n"}, False),
+    ("a new file with no markers", {"new.js": "let c = 3;\n"}, False),
+    ("a page that quotes the markers", {"notes.md": "Mark it from RISK: pricing — START to RISK: pricing — END.\n"},
+     False),
+    ("a roadmap item that quotes the markers",
+     {"roadmap.json": '{"items": [{"id": "D6", "plain": "Mark it RISK: pricing — START to RISK: pricing — END"}]}\n'},
+     False),
+    ("a form feed above a span, and a change at its top",
+     {"ff.js": "a();\f\fb();\n/* RISK: pricing — START */\nprice = 2;\nmore();\n/* RISK: pricing — END */\n"}, True),
+    ("a NUL byte added above a span, and a change inside it",
+     {"page.html": "\0" + MARK_PAGE.replace("if(f.lenIdx==null) f.lenIdx=0;", "if(f.lenIdx==null) f.lenIdx=1;")}, True),
+    ("a picture changed", {"logo.png": "\x89PNG\0\0RISK: pricing — START\0"}, False),
+)
+MARK_BASE = {"page.html": MARK_PAGE, "other.js": "let a = 1;\n", "logo.png": "\x89PNG\0\0",
+             "ff.js": "a();\f\fb();\n/* RISK: pricing — START */\nprice = 1;\nmore();\n/* RISK: pricing — END */\n"}
+# Each a file's text and whether its markers can be read.
+MARK_SHAPES = (
+    ("no markers", "a\nb\n", []),
+    ("one span", "RISK: pricing — START\nx\nRISK: pricing — END\n", [(1, 3)]),
+    ("the band and a span", "PRICING CORE — START\nx\nPRICING CORE — END\nRISK: pricing - START\ny\nRISK: pricing - END\n",
+     [(1, 3), (4, 6)]),
+    ("a line off the core is no marker", "PRICING CORE — START\n/* ── OFF THE PRICING CORE ── */\nPRICING CORE — END\n",
+     [(1, 3)]),
+    ("a RISK: line that is no marker", "RISK: pricing begins\n", None),
+    ("a START inside an open span", "RISK: pricing — START\nRISK: pricing — START\nRISK: pricing — END\n", None),
+    ("an END with no START", "RISK: pricing — END\n", None),
+    ("an END of the other kind", "PRICING CORE — START\nRISK: pricing — END\n", None),
+    ("a START never ended", "RISK: pricing — START\n", None),
+)
+
+
+# Each must turn some case above: applied to a copy of this file, its cases run.
+MARK_LOOSENINGS = (
+    ("a deleted line never read", "if any(inside(n, was) for n in range(old, old + olds)) or ", "if "),
+    ("an added line never read", " or any(inside(n, now) for n in range(new, new + news)):", ":"),
+    ("the pricing core's band not counted", "(RISK:[ \\t]*pricing|PRICING CORE)", "(RISK:[ \\t]*pricing)"),
+    ("a START never ended let through", 'raise Refused("a marker START never ended, line %d" % at)', "pass"),
+    ("the diff's context read as changed", '"-U0"', '"-U3"'),
+    ("lines counted as Python counts them", 'enumerate(text.split("\\n"), 1)', "enumerate(text.splitlines(), 1)"),
+    ("a binary diff left unread", '"--text", ', ""),
+    ("a data file read for marks", "        if not f.lower().endswith(CODE):\n            continue\n", ""),
+)
+
+
+def _mark_cases(mod, first=False):
+    """The marked spans' cases, run on `mod` (this module or a loosened copy): what each got wrong.
+
+    With `first`, it stops at the first: a loosened copy needs only one case to refuse it.
+    """
+    wrong = []
+    for what, text, expected in mod.MARK_SHAPES:
+        try:
+            got = mod.spans(text)
+        except mod.Refused:
+            got = None
+        if got != expected:
+            wrong.append("marks: %s: expected %r, got %r" % (what, expected, got))
+            if first:
+                return wrong
+    for what, head, refused in mod.MARK_CASES:
+        with tempfile.TemporaryDirectory() as d:
+            sha, changed = mod._mark_repo(d, head)
+            if (mod._asks(mod.marked, d, "origin/main", sha, changed) != "ok") != refused:
+                wrong.append("marked: %s: expected %s" % (what, "risky" if refused else "ordinary"))
+                if first:
+                    return wrong
+    return wrong
+
+
+def _mark_repo(d, head):
+    """A product's repository in d: MARK_BASE on main, `head` committed on top. Returns (head sha, changed file)."""
+    def git(*args):
+        return subprocess.run(["git", "-C", d, "-c", "user.name=t", "-c", "user.email=t@t"] + list(args),
+                              capture_output=True, text=True, check=True, timeout=60).stdout.strip()
+    git("init", "-q", "-b", "main")
+    for files in (MARK_BASE, head):
+        for f, text in files.items():
+            if text is None:
+                os.remove(os.path.join(d, f))
+            else:
+                with open(os.path.join(d, f), "w", encoding="utf-8") as fh:
+                    fh.write(text)
+        git("add", "-A")
+        git("commit", "-qm", "x")
+        if files is MARK_BASE:
+            git("update-ref", "refs/remotes/origin/main", "HEAD")
+    changed = os.path.join(d, ".changed")
+    with open(changed, "wb") as fh:
+        fh.write(subprocess.run(["git", "-C", d, "diff", "-z", "--name-only", "--no-renames", "origin/main...HEAD"],
+                                capture_output=True, check=True, timeout=60).stdout)
+    return git("rev-parse", "HEAD"), changed
 
 
 def _selftest():
@@ -427,7 +654,6 @@ def _selftest():
     # The command line: its exit statuses are what the workflows read.
     import contextlib
     import io
-    import tempfile
 
     def cli(*args):
         out = io.StringIO()
@@ -473,14 +699,40 @@ def _selftest():
         code, said = cli("ready", put("c2", secret), put("p2", _commit("x", sha="f" * 40, parents=())), HEAD)
         want("cli: a refusal quotes nothing", (code, "private" in said), (1, False))
 
+    # The marked spans (#218): each shape read or refused, each change replayed
+    # on a real repository, and the command line's three answers.
+    bad.extend(_mark_cases(sys.modules[__name__]))
+    with open(__file__, encoding="utf-8") as f:
+        source = f.read()
+    # The rules above the list of loosenings, which names their words too.
+    cut = source.index("# Each must turn some case above")
+    for what, old, new in MARK_LOOSENINGS:
+        if source[:cut].count(old) != 1:
+            bad.append("the loosening '%s' no longer applies; rewrite it against the file" % what)
+            continue
+        copy = types.ModuleType("loosened")
+        copy.__file__ = __file__
+        exec(compile(source[:cut].replace(old, new, 1) + source[cut:], __file__, "exec"), copy.__dict__)
+        if not _mark_cases(copy, first=True):
+            bad.append("with %s every marked-span case still passes: the guard for it is gone" % what)
+    for what, head, refused in MARK_CASES:
+        with tempfile.TemporaryDirectory() as d:
+            sha, changed = _mark_repo(d, head)
+            if what.startswith("Hemz-OS#159"):
+                want("cli: a marked change is a refusal", cli("marked", d, "origin/main", sha, changed)[0], 1)
+                want("cli: an unreadable change is a mistake", cli("marked", d, "origin/main", "f" * 40, changed)[0], 2)
+            if what.startswith("an unmarked file"):
+                want("cli: an unmarked change goes ahead", cli("marked", d, "origin/main", sha, changed)[0], 0)
+
     if bad:
         for b in bad:
             print("  reads selftest: %s" % b)
         print("reads selftest failed: %d case(s)" % len(bad))
         return 1
     print("ok: the product read's rules — the README's list read exactly (and the real one read), the "
-          "ready mark, the product's own check, and the three kinds of not read — refuse every case "
-          "put to them and quote nothing a product holds")
+          "ready mark, the product's own check, the three kinds of not read, and a change to a product's "
+          "marked spans (%d changes replayed, %d loosenings refused) — refuse every case put to them and quote "
+          "nothing a product holds" % (len(MARK_CASES), len(MARK_LOOSENINGS)))
     return 0
 
 
