@@ -5959,13 +5959,10 @@ case "$method $path" in
     [ "${FAKE_CANCEL:-ok}" = ok ] || { reply 400 '{}'; exit 0; }
     echo CANCELED > "$S/copy"; reply 200 '{"readyState":"CANCELED"}' ;;
   "GET https://api.vercel.com/v13/deployments/dpl_before")
-    # What the domain serves, made an hour, or six hours and a minute, ago, and
+    # What the domain serves, made six hours and a minute before the job, and
     # the preview it was copied from, unless a case says it is no copy.
     meta=',"meta":{"originalDeploymentId":"dpl_beforeorig"}'; [ "${FAKE_ORIG:-yes}" = yes ] || meta=""
-    case "${FAKE_LIVE:-none}" in
-      stale) reply 200 "{\"id\":\"dpl_before\",\"readyState\":\"READY\",\"createdAt\":$(( (STARTED - 21660) * 1000 ))$meta}" ;;
-      *) reply 200 "{\"id\":\"dpl_before\",\"readyState\":\"READY\",\"createdAt\":$(( (STARTED - 21660) * 1000 ))$meta}" ;;
-    esac ;;
+    reply 200 "{\"id\":\"dpl_before\",\"readyState\":\"READY\",\"createdAt\":$(( (STARTED - 21660) * 1000 ))$meta}" ;;
   "GET https://api.vercel.com/v6/deployments/dpl_before/files")
     # Its file tree, as the host lists it: each file's uid the SHA-1 of its bytes,
     # board.sha this board's fingerprint, another's, or none.
