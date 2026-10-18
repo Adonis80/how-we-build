@@ -2064,9 +2064,6 @@ def class_faults(text, path):
                     block.index(CLASS_MARKS) != block.index(CLASS_RISKY) - 1:
                 lost.append("the product's marked spans asked after the names, just before the class is set "
                             "(`%s`)" % CLASS_MARKS)
-            for (what, got), (_, _, refused) in zip(marks_says(block), _reads().MARK_CASES + ((0, 0, True),)):
-                if got is None or (got == "risky") != refused:
-                    lost.append("%s read as %s (it was %s)" % (what, "risky" if refused else "ordinary", got))
         elif any("reads.py marked" in l for l in block):
             lost.append("no marked spans asked of the rulebook, which marks nothing")
         # The shape, not only the strings (#79's ninth read): an arm added for
@@ -2088,6 +2085,14 @@ def class_faults(text, path):
                             % ("a change to %r read as %s at %s" % ((paths,) + need) if need
                                else "a list that could not be made stopping the step",
                                "%s at %s" % got if got else "not run to an answer"))
+        # The marked replays last, and only on a block nothing above refused:
+        # each is a real repository, and a block already refused needs no more
+        # (#238's read: the class loosenings ran 2 min 54 s before them, 7 min 57 s
+        # with them on every block).
+        if path == PRODUCT_WORKFLOW and not lost:
+            for (what, got), (_, _, refused) in zip(marks_says(block), _reads().MARK_CASES + ((0, 0, True),)):
+                if got is None or (got == "risky") != refused:
+                    lost.append("%s read as %s (it was %s)" % (what, "risky" if refused else "ordinary", got))
     if len([l for l in g.splitlines() if "role=" in l and "GITHUB_OUTPUT" in l]) != 1:
         lost.append("one line, and only one, handing the role on (`%s`)" % CLASS_OUT)
     if [l for l in g.splitlines() if "effort=" in l and "GITHUB_OUTPUT" in l]:
@@ -4770,6 +4775,10 @@ SCRIPT_CASES = (
      "const data = { kept: 'a value' };\nfunction data2() {}\nrow.data2 = 'a value';\n",
      (("m", None), ("p", None), ("q", None), ("r", None), ("s", None), ("t", None),
       ("kept", "function kept() {}\n"), ("data2", "function data2() {}\n"))),
+    ("a name handed on is still given; one rebound from itself is not (#237's read)", "x.js",
+     "function h() {}\nh = h || function () {};\nlet s2 = 1;\ns2 = s2 + 1;\nfunction g() {}\nexports.g = g\n"
+     "function k() {}\nconst all = { k, j: k };\nfunction j() {}\nconst more = { j: j };\n",
+     (("h", None), ("s2", None), ("g", "function g() {}\n"), ("j", "function j() {}\n"))),
     ("a name defined twice falls back, a second declarator among them", "x.js",
      "function f() { return 1; }\nfunction f() { return 2; }\nlet a = 1, vis = 2;\nfunction vis() {}\n",
      (("f", None), ("vis", None), ("a", "let a = 1, vis = 2;\n"))),
@@ -5562,6 +5571,7 @@ CONTEXT_LOOSENINGS = (
      "if True:\n        return [(0, text)]"),
     ("a declaration run on past its line", "if ends and _ends_before(toks, j, line_of):", "if False:"),
     ("a name also given as a method or property given anyway", "    if found and other:", "    if False:"),
+    ("a name rebound from itself taken as handed on", "and (after is None or after[4] or", "and (True or"),
 )
 
 
