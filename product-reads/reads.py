@@ -243,9 +243,14 @@ def unread(answer, app_id, sha, now, again=False):
 # when the markers of a file it touches cannot be read: a
 # `RISK:` line that is no such marker, a START inside an open span, an END
 # with no START of its kind, a START never ended, or a file git cannot give.
-# A page (`.md`) decides no price and may quote the markers, so it is not read
-# for them. Never a downgrade: the names stay the floor, and this only adds.
+# Only code is read for them (CODE): a page or a data file decides no price and
+# may quote the markers, as a roadmap item about marking would, and a quote
+# there would make every change to it risky. Lines are counted as git counts
+# them, on `\n` alone, and a file git calls binary is diffed as text, so a NUL
+# byte cannot hide a change (#238's first read). Never a downgrade: the names
+# stay the floor, and this only adds.
 MARK = re.compile(r"(RISK:[ \t]*pricing|PRICING CORE)[ \t]*[\u2014\u2013-]+[ \t]*(START|END)\b")
+CODE = (".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx", ".py", ".html", ".htm", ".css", ".scss")
 HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 
 
@@ -255,7 +260,7 @@ def spans(text):
     Refused when its markers cannot be read.
     """
     out, at, kind = [], None, None
-    for n, line in enumerate(text.splitlines(), 1):
+    for n, line in enumerate(text.split("\n"), 1):
         m = MARK.search(line)
         if not m:
             if "RISK:" in line:
@@ -284,7 +289,7 @@ def touches(diff, base, head):
     """
     inside = lambda n, s: any(a <= n <= b for a, b in s)
     was, now = spans(base), spans(head)
-    for line in diff.splitlines():
+    for line in diff.split("\n"):
         m = HUNK.match(line)
         if m:
             old, olds, new, news = int(m.group(1)), int(m.group(2) or 1), int(m.group(3)), int(m.group(4) or 1)
@@ -310,9 +315,10 @@ def marked(repo, base, head, changed):
     with open(changed, "rb") as f:
         files = [p.decode("utf-8") for p in f.read().split(b"\0") if p]
     for f in files:
-        if f.lower().endswith(".md"):
+        if not f.lower().endswith(CODE):
             continue
-        diff = git("diff", "-U0", "--no-renames", "--no-color", "--no-ext-diff", since, head, "--", f)
+        diff = git("diff", "-U0", "--text", "--no-textconv", "--no-renames", "--no-color", "--no-ext-diff", since,
+                   head, "--", f)
         diff = diff.decode("utf-8", "replace")
         if "@@" not in diff:
             continue
@@ -432,8 +438,17 @@ MARK_CASES = (
     ("a new file with no markers", {"new.js": "let c = 3;\n"}, False),
     ("a page that quotes the markers", {"notes.md": "Mark it from RISK: pricing — START to RISK: pricing — END.\n"},
      False),
+    ("a roadmap item that quotes the markers",
+     {"roadmap.json": '{"items": [{"id": "D6", "plain": "Mark it RISK: pricing — START to RISK: pricing — END"}]}\n'},
+     False),
+    ("a form feed above a span, and a change at its top",
+     {"ff.js": "a();\f\fb();\n/* RISK: pricing — START */\nprice = 2;\nmore();\n/* RISK: pricing — END */\n"}, True),
+    ("a NUL byte added above a span, and a change inside it",
+     {"page.html": "\0" + MARK_PAGE.replace("if(f.lenIdx==null) f.lenIdx=0;", "if(f.lenIdx==null) f.lenIdx=1;")}, True),
+    ("a picture changed", {"logo.png": "\x89PNG\0\0RISK: pricing — START\0"}, False),
 )
-MARK_BASE = {"page.html": MARK_PAGE, "other.js": "let a = 1;\n"}
+MARK_BASE = {"page.html": MARK_PAGE, "other.js": "let a = 1;\n", "logo.png": "\x89PNG\0\0",
+             "ff.js": "a();\f\fb();\n/* RISK: pricing — START */\nprice = 1;\nmore();\n/* RISK: pricing — END */\n"}
 # Each a file's text and whether its markers can be read.
 MARK_SHAPES = (
     ("no markers", "a\nb\n", []),
@@ -457,11 +472,17 @@ MARK_LOOSENINGS = (
     ("the pricing core's band not counted", "(RISK:[ \\t]*pricing|PRICING CORE)", "(RISK:[ \\t]*pricing)"),
     ("a START never ended let through", 'raise Refused("a marker START never ended, line %d" % at)', "pass"),
     ("the diff's context read as changed", '"-U0"', '"-U3"'),
+    ("lines counted as Python counts them", 'enumerate(text.split("\\n"), 1)', "enumerate(text.splitlines(), 1)"),
+    ("a binary diff left unread", '"--text", ', ""),
+    ("a data file read for marks", "        if not f.lower().endswith(CODE):\n            continue\n", ""),
 )
 
 
-def _mark_cases(mod):
-    """The marked spans' cases, run on `mod` (this module or a loosened copy): what each got wrong."""
+def _mark_cases(mod, first=False):
+    """The marked spans' cases, run on `mod` (this module or a loosened copy): what each got wrong.
+
+    With `first`, it stops at the first: a loosened copy needs only one case to refuse it.
+    """
     wrong = []
     for what, text, expected in mod.MARK_SHAPES:
         try:
@@ -470,11 +491,15 @@ def _mark_cases(mod):
             got = None
         if got != expected:
             wrong.append("marks: %s: expected %r, got %r" % (what, expected, got))
+            if first:
+                return wrong
     for what, head, refused in mod.MARK_CASES:
         with tempfile.TemporaryDirectory() as d:
             sha, changed = mod._mark_repo(d, head)
             if (mod._asks(mod.marked, d, "origin/main", sha, changed) != "ok") != refused:
                 wrong.append("marked: %s: expected %s" % (what, "risky" if refused else "ordinary"))
+                if first:
+                    return wrong
     return wrong
 
 
@@ -688,7 +713,7 @@ def _selftest():
         copy = types.ModuleType("loosened")
         copy.__file__ = __file__
         exec(compile(source[:cut].replace(old, new, 1) + source[cut:], __file__, "exec"), copy.__dict__)
-        if not _mark_cases(copy):
+        if not _mark_cases(copy, first=True):
             bad.append("with %s every marked-span case still passes: the guard for it is gone" % what)
     for what, head, refused in MARK_CASES:
         with tempfile.TemporaryDirectory() as d:
