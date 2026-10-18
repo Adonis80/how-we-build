@@ -264,20 +264,20 @@ def spans(text):
         m = MARK.search(line)
         if not m:
             if "RISK:" in line:
-                raise Refused("a RISK: line that is no pricing START or END marker, line %d" % n)
+                raise Refused("a RISK: line that is no pricing START or END marker")
             continue
         k = m.group(1)[:4]
         if m.group(2) == "START":
             if at is not None:
-                raise Refused("a marker START inside an open span, line %d" % n)
+                raise Refused("a marker START inside an open span")
             at, kind = n, k
         else:
             if at is None or kind != k:
-                raise Refused("a marker END with no START of its kind, line %d" % n)
+                raise Refused("a marker END with no START of its kind")
             out.append((at, n))
             at = None
     if at is not None:
-        raise Refused("a marker START never ended, line %d" % at)
+        raise Refused("a marker START never ended")
     return out
 
 
@@ -470,7 +470,7 @@ MARK_LOOSENINGS = (
     ("a deleted line never read", "if any(inside(n, was) for n in range(old, old + olds)) or ", "if "),
     ("an added line never read", " or any(inside(n, now) for n in range(new, new + news)):", ":"),
     ("the pricing core's band not counted", "(RISK:[ \\t]*pricing|PRICING CORE)", "(RISK:[ \\t]*pricing)"),
-    ("a START never ended let through", 'raise Refused("a marker START never ended, line %d" % at)', "pass"),
+    ("a START never ended let through", 'raise Refused("a marker START never ended")', "pass"),
     ("the diff's context read as changed", '"-U0"', '"-U3"'),
     ("lines counted as Python counts them", 'enumerate(text.split("\\n"), 1)', "enumerate(text.splitlines(), 1)"),
     ("a binary diff left unread", '"--text", ', ""),

@@ -531,9 +531,12 @@ def other_forms(toks, match, line_of):
         if t[0] != "id":
             continue
         nxt, prev = toks[k + 1], toks[k - 1] if k else None
-        # `exports.NAME = NAME;` and `{ NAME: NAME }` hand the definition on; they make no other.
+        # `exports.NAME = NAME;` and `{ NAME: NAME }` hand the definition on and make no other: the
+        # value is the name alone, ended by `;`, `,`, a closing bracket, a line break or the script's
+        # end. `NAME = NAME || …` or `NAME = NAME + 1` goes on, and is counted (#237's read).
+        after = toks[k + 3] if k + 3 < len(toks) else None
         if nxt[:2] in (("p", "="), ("p", ":")) and toks[k + 2:k + 3] and toks[k + 2][:2] == ("id", t[1]) \
-                and not (toks[k + 3:k + 4] and toks[k + 3][0] == "open" or toks[k + 3:k + 4] and toks[k + 3][1] in (".", "?.")):
+                and (after is None or after[4] or after[0] == "close" or after[:2] in (("p", ";"), ("p", ","))):
             continue
         given = toks[k + 2:k + 3] and (toks[k + 2][:2] in (("id", "function"), ("id", "async"), ("open", "("))
                                        or toks[k + 3:k + 4] and toks[k + 3][:2] == ("p", "=>"))
