@@ -435,7 +435,7 @@ jobs:
             case "${f,,}" in
               check.sh|*/check.sh|review-gate.py|*/review-gate.py|board/build.py|library/deploy.md|model-registry/*|*/model-registry/*|product-reads/*|*/product-reads/*|.github/*|*/.github/*) risky=yes ;;
               *.md) ;;
-              *pric*|*payment*|*billing*|*invoice*|*checkout*|*quote*) risky=yes ;;
+              *pric*|*payment*|*billing*|*invoice*|*checkout*|*quote*|*till*) risky=yes ;;
               *.sql|*migration*|*schema*|supabase/*|*/supabase/*|*backfill*|*purge*|*truncate*|*wipe*|*seed*) risky=yes ;;
               *auth*|*login*|*logout*|*session*|*password*|*permission*|.claude/settings*|*/.claude/settings*) risky=yes ;;
               *customer*|*personal*|*pii*|*gdpr*|*privacy*|*export*|*delet*|*erase*|*anonymi*) risky=yes ;;
