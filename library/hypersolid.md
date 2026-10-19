@@ -2,6 +2,8 @@
 
 Scope: every screen and every product's assistant, either stack. Open when: a screen is new or reworked, before code, or work touches a product's assistant or its actions.
 
+**Paused (his ruling, 19 October 2026, [#240](https://github.com/Adonis80/how-we-build/issues/240#issuecomment-6265019499)).** No new or reworked screen design in any product, and no visualizer rounds, until this page is reworked, agreed with the consultant and approved by him as before-and-after pictures. Hemz OS's round 3 is a held draft, not a pass. Work that is not about how screens look carries on, and a routine change keeping an agreed layout goes straight in. The rework removes this paragraph.
+
 His ruling, 2 October 2026: the one order for all visual front-end work. He approves by looking, never by reading a spec.
 
 1. **Style.** The Juku style is the distillation rule and spatial layer below, nothing else. He says how this product differs; adapt it a little, keep the core philosophy. Write the product's version into its `design/` constitution.
