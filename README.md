@@ -51,7 +51,8 @@ One page per topic, or a named few where a topic is large, opened when its trigg
 | Page | Open when |
 |---|---|
 | `library/session-changeover.md`: *Session changeover* | deciding whether to stay in a session or start a fresh one, and before leaving one |
-| `library/hypersolid.md`: *HyperSolid* | a screen is new or reworked, before code, or work touches a product's assistant or its actions |
+| `library/hypersolid.md`: *HyperSolid* | a screen is new or reworked, before code |
+| `library/voice-native.md`: *Voice Native* | work touches a product's assistant or its actions, or a screen's spoken path is mapped or built |
 | `library/two-stacks.md`: *The two stacks* | choosing the lead or its effort, starting, handing over or finishing work in either stack, or a job that needs hands |
 | `library/max-subagent.md`: *The max subagent* | a lead hands its max piece on, or a product sets up or checks its max subagent file |
 | `library/reviewer.md`: *The independent reviewer* | working out who reviews a change, what it is shown, or what a risky class of change is owed |
