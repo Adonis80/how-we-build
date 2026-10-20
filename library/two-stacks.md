@@ -1,8 +1,33 @@
 # The two stacks
 
-Scope: every product, in either stack. Open when: choosing the lead or its effort, starting, handing over or finishing work in either stack, or a job that needs hands.
+Scope: every product, in either stack. Open when: choosing the lead or its effort, starting, handing over or finishing work in either stack, deciding whether a change needs a code session or can be made from Cowork, or a job that needs hands.
 
 One lead owns a slice at a time. The pull request is the handover, and a replacement lead rebuilds what it needs from GitHub, never from a chat. At a clean checkpoint, *build* in the other stack transfers ownership — and only then: ownership moves when the pull request's latest entry is the outgoing lead's checkpoint. Otherwise the incoming lead leaves that pull request alone and takes the next item. Nothing is built to manage this: no switch file, no lock service, no registry, no orchestrator.
+
+**Code and words.** Anything that runs — code, tests, a database change, a deploy — is built in the lead's workshop, a session attached to the repo: a Claude code session, or a Codex cloud task. Only a workshop can prove it: the build, the tests, the Playwright journey on phone and desktop, the preview. Words — this rulebook, a product's `AGENTS.md`, `PRODUCT.md`, `NAMES.md`, `roadmap.json`, its screen specs, its README — may change from a Cowork session, through the Mac, by the same branch, pull request and review as everything else. Size is not the line: a one-line change to code still needs the workshop; a long change to words does not. One session reaches one product's repository — one key, one product — reads the rulebook, and writes down:
+
+```mermaid
+flowchart LR
+  RB["Rulebook · how-we-build<br/>public — every session reads it, no key"]
+  H["Hemz-OS · private"]
+  P["myst · private"]
+  F["phena · private"]
+  C1["Builder on Hemz-OS<br/>Claude code, or Codex cloud — code and words"]
+  C2["Builder on myst<br/>Claude code, or Codex cloud — code and words"]
+  C3["Builder on phena<br/>Claude code, or Codex cloud — code and words"]
+  W["Cowork session<br/>through the Mac — words only"]
+  RB -. reads .-> C1
+  RB -. reads .-> C2
+  RB -. reads .-> C3
+  RB -. reads .-> W
+  C1 -->|writes| H
+  C2 -->|writes| P
+  C3 -->|writes| F
+  W -->|writes words| H
+  W -->|writes words| P
+  W -->|writes words| F
+  W -->|writes words| RB
+```
 
 **A brief to a code session** names passages and the commit, carries patches on the branch rather than inline, and forecasts the files expected (a forecast, not a limit); a mandatory entry document is still read as its rule says. Its shape (decision 0015): a bootstrap, hard rules, tasks each with goal, files, change, acceptance and stop, and a definition of done; a report to the Chairman ends with a receipt: what was read, in KB, and the cost.
 

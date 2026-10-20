@@ -55,13 +55,11 @@ One page per topic, or a named few where a topic is large, opened when its trigg
 | `library/session-changeover.md`: *Session changeover* | deciding whether to stay in a session or start a fresh one, and before leaving one |
 | `library/hypersolid.md`: *HyperSolid* | a screen is new or reworked, before code |
 | `library/voice-native.md`: *Voice Native* | work touches a product's assistant or its actions, or a screen's spoken path is mapped or built |
-| `library/two-stacks.md`: *The two stacks* | choosing the lead or its effort, starting, handing over or finishing work in either stack, or a job that needs hands |
+| `library/two-stacks.md`: *The two stacks* | choosing the lead or its effort, starting, handing over or finishing work in either stack, deciding whether a change needs a code session or can be made from Cowork, or a job that needs hands |
 | `library/max-subagent.md`: *The max subagent* | a lead hands its max piece on, or a product sets up or checks its max subagent file |
 | `library/reviewer.md`: *The independent reviewer* | working out who reviews a change, asking for a read, judging whether a commit is cleared, writing a repository's Review guidelines, checking a product's gate, or changing the review machinery |
 | `library/reviewer-parking.md`: *The independent reviewer: parking* | about to park a slice, or the reviewer seems out |
-| `library/consultant.md`: *The consultant* | asking the consultant for a sweep, a bug hunt, a better procedure or a review of ideas, or answering its findings |
-| `library/consultant-debate.md`: *The consultant: the head-office debate* | a big idea is to be settled with the consultant before it reaches the Chairman, or the debate's seats, step-up or breaker are in question |
-| `library/consultant-instructions.md`: *The consultant: its standing instructions* | the consultant cannot be reached, or its standing instructions are set or changed |
+| `library/consultant.md`: *The consultant* | asking the consultant for anything, answering its findings, settling a big idea with it, or setting its standing instructions, or it cannot be reached |
 | `library/ideas-for-later.md`: *Ideas for later* | a session spots an improvement it will not build now, a roadmap read shows ideas due for review, a session closes, or a `proposal` issue is raised, ranked or debated |
 | `library/rulebook-files.md`: *What each file here is for* | asking what a root file or a decision issue is for, or why this repository is public |
 | `library/product-joins.md`: *How a product joins* | adding a product to the map, or setting up its repository |
@@ -73,7 +71,6 @@ One page per topic, or a named few where a topic is large, opened when its trigg
 | `library/board-proposals-card.md`: *The Roadmap: the proposals card* | changing the proposals card, or checking it against what he approved |
 | `library/deploy.md`: *The deploy, in shape* | building or changing a product's deploy |
 | `library/money.md`: *Money out waits for money in* | anything would cost money, or a product's hosting plan comes up |
-| `library/code-and-words.md`: *Code and words* | deciding whether a change needs a code session or can be made from Cowork |
 | `library/upgrade-log.md`: *The upgrade log* | proposing an upgrade, or the Chairman asks what changed |
 | `library/changing-the-rulebook.md`: *Changing the rulebook* | changing a rule, proposing, prioritising or merging a change to this repository, or a word budget fails |
 | `library/system-map.md`: *How Juku OS fits together* | explaining how Juku OS fits together, or finding which part owns what |

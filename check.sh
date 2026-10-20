@@ -115,7 +115,7 @@ lib_fail=0
 # board's page, now library/roadmap.md: his ruling, 17 October 2026). A frozen
 # record in juku-library/ keeps its text, so it may still link one, as history;
 # the page stays gone, and any other link to it fails below like any broken link.
-retired_pages="library/reviewer-one-vendor library/changing-the-rulebook-merge library/build-board library/carries-reviewer library/reviewer-asking library/reviewer-brief library/reviewer-verdict"
+retired_pages="library/reviewer-one-vendor library/changing-the-rulebook-merge library/build-board library/carries-reviewer library/reviewer-asking library/reviewer-brief library/reviewer-verdict library/project-template-product library/project-template-juku-os library/consultant-debate library/consultant-instructions library/code-and-words"
 for o in $retired_pages; do
   [ ! -e "$o.md" ] || { echo "FAIL: '$o.md' exists; it was retired and only frozen records may still name it."; lib_fail=1; }
 done
