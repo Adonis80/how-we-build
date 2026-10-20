@@ -11,17 +11,17 @@
 # 0013 says they must, and, in a pull request, a commit no reviewer
 # has read clean — unread, or read and left a blocking finding on — or a change to the review
 # machinery while the newest canary on main is red, or a change to what runs that adds
-# no line to library/upgrade-log.md. Nothing else. A read by anybody the
+# no line to library/upgrade-log.md, and, through product-reads/rules-check.py,
+# a rule page over its word budget or a rule change without its Replaces: line.
+# Nothing else. A read by anybody the
 # gate does not count is unread, not a shape of its own.
 # A third shape, "read clean by a reviewer the rulebook does not allow to
 # clear this change", was real while two vendors were on the register and is
 # gone with the second: see review-gate.py on CROSS_VENDOR. A header describing
 # a state the file can no longer reach is the drift this guard exists to catch,
 # so it is corrected here rather than left for the next reader to discover.
-# Sizes it reports and never refuses: the operating page, the screen law and
-# each library page are measured against a target and the number printed (his
-# ruling, 8 October 2026, decision 0017). A change is never failed for length
-# alone; it reconciles the rules it touches, which the cold review holds.
+# Word budgets, the Replaces: line and a product constitution's shape are
+# product-reads/rules-check.py's (his ruling, 20 October 2026: one in, one out), run below.
 set -euo pipefail
 cd "$(dirname "$0")"
 fail=0
@@ -34,14 +34,10 @@ part="${CHECK_PART:-whole}"
 case "$part" in whole|selftest|gate) ;; *) echo "FAIL: CHECK_PART is '$part'; it is selftest, gate or unset."; exit 1 ;; esac
 if [ "$part" != gate ]; then
 
-# 1. Sizes, reported. Counted with python, not `wc -w`, which answers
-# differently by locale, so a number means one thing wherever it is measured.
-words_of() { python3 -c 'import sys; print(len(open(sys.argv[1],encoding="utf-8").read().split()))' "$1"; }
-size_line() { # name, measured, target, unit
-  if [ "$2" -gt "$3" ]; then echo "size: $1 is $2 $4, $(( $2 - $3 )) over its $3 target — a reading, never a failure"
-  else echo "size: $1 is $2 $4 (target $3)"; fi
-}
-size_line HOW-WE-BUILD.md "$(words_of HOW-WE-BUILD.md)" 600 words
+# 1. The rules' own guard: word budgets (hard), the Replaces: line in a pull
+# request that changes a rule page, and its own selftest.
+python3 -I product-reads/rules-check.py --selftest || fail=1
+python3 -I product-reads/rules-check.py || { echo "FAIL: see product-reads/rules-check.py's reason above."; fail=1; }
 
 # 2. Only these files exist at the root (plus .git and .github).
 allowed=" AGENTS.md CHARTER.md HOW-WE-BUILD.md README.md RICH-DATA.md board check.sh juku-library library model-registry product-reads review-gate.py "
@@ -67,9 +63,9 @@ for f in $allowed; do
     # resolver, its OpenAI-compatible caller, and the reviewer's context
     # selector with its partner map (decision 0014), and nothing else.
     model-registry) [ -d "$f" ] && [ "$(ls -A model-registry | tr '\n' ' ')" = "ask.py context.py registry.json resolve.py " ] || { echo "FAIL: 'model-registry/' holds ask.py, context.py, registry.json and resolve.py, and nothing else."; fail=1; } ;;
-    # The product read's rules (decision 0013): the one module that says whether a
-    # read is asked for and paid, and nothing else. It is part of the review gate.
-    product-reads) [ -d "$f" ] && [ "$(LC_ALL=C ls -A product-reads | tr '\n' ' ')" = "ask.py kit reads.py setup.py " ] && [ "$(LC_ALL=C ls -A product-reads/kit | tr '\n' ' ')" = "AGENTS.starter.md gate.yml review-gate.py roadmap.starter.json verify.yml wake.yml " ] || { echo "FAIL: 'product-reads/' holds ask.py, reads.py, setup.py and kit/ (the starter kit's six files), and nothing else."; fail=1; } ;;
+    # The product read's rules (decision 0013), which say whether a read is asked
+    # for and paid, and the rules' own guard (decision 0021). Part of the review gate.
+    product-reads) [ -d "$f" ] && [ "$(LC_ALL=C ls -A product-reads | tr '\n' ' ')" = "ask.py kit reads.py rules-check.py setup.py " ] && [ "$(LC_ALL=C ls -A product-reads/kit | tr '\n' ' ')" = "AGENTS.starter.md gate.yml review-gate.py roadmap.starter.json verify.yml wake.yml " ] || { echo "FAIL: 'product-reads/' holds ask.py, reads.py, rules-check.py, setup.py and kit/ (the starter kit's six files), and nothing else."; fail=1; } ;;
     # The rulebook's own library (the Chairman's ruling of 2 October 2026): the
     # papers and frozen records committed verbatim for a build to read from
     # GitHub (#103's amendment): .md pages directly inside, no subfolder,
@@ -84,7 +80,7 @@ done
 # 2b. One front-end guide (his ruling, 8 October 2026: "we should be left with
 # only library/hypersolid.md"). It holds the screen law, carried once so every
 # product reads the same one; a product's own constitution holds only what is
-# true there and points at it. The law's size is reported, like every size. The guide's old pages
+# true there and points at it. The guide's old pages
 # stay gone: none exists outside juku-library/, whose records are history, and
 # nothing else names one. The names are spelled without ".md" so this file is
 # not a hit of its own.
@@ -102,22 +98,19 @@ else
   for h in "Distillation rule" "Spatial layer" "Screen law"; do
     grep -q -E "^## $h( |$)" "$guide" || { echo "FAIL: '$guide' has no '## $h' heading."; fail=1; }
   done
-  lawwords=$(python3 -c 'import re,sys; m=re.search(r"^## Screen law\n(.*?)(?=^## |\Z)", open(sys.argv[1],encoding="utf-8").read(), re.S|re.M); print(len(m.group(1).split()) if m else 0)' "$guide")
   echo "ok: $guide is the only front-end guide"
-  size_line "the screen law in $guide" "$lawwords" 450 words
 fi
 
 # 2c. The library: one page per topic, and beside a page only its screen's PNG, opened only when a task touches it (his
 # ruling of 23 September 2026, decision 0005, issue #75). The README is its
 # index, both ways: a page the README does not name is never opened, and a
 # name with no page sends a session nowhere. Each page is one topic, says whom
-# it binds and when to open it, and has its size reported against 4000 bytes,
-# the machine's proxy for the decision's 1,000 tokens. A link to a page from
+# it binds and when to open it (its words are budgeted by product-reads/rules-check.py).
+# A link to a page from
 # anywhere in this repository must resolve too, not only the README's: a list
 # of the files to search would be one more list to drift. With no page named there is no
 # library, and that passes: the check exists before the pages it holds.
 lib_fail=0
-lib_max=0
 # Library pages a cleanup merged or deleted (#174), or renamed (the build
 # board's page, now library/roadmap.md: his ruling, 17 October 2026). A frozen
 # record in juku-library/ keeps its text, so it may still link one, as history;
@@ -148,11 +141,6 @@ for f in "${pages[@]}"; do
   [[ "$f" =~ ^${page_re}$ ]] || { printf "FAIL: %q is not a page name the README can hold (letters, digits, '.', '_', '-', ending .md).\n" "$f"; lib_fail=1; continue; }
   grep -qxF "$f" <<< "$named" || { echo "FAIL: '$f' is not named in the README, so no session is sent to it."; lib_fail=1; }
   [ -f "$f" ] || { echo "FAIL: '$f' is not a file."; lib_fail=1; continue; }
-  b=$(wc -c < "$f" | tr -d ' ')
-  [ "$b" -le "$lib_max" ] || lib_max=$b
-  # HyperSolid is one page by his ruling of 8 October 2026, so its target is its own.
-  target=4000; [ "$f" != "$guide" ] || target=6500
-  [ "$b" -le "$target" ] || size_line "$f" "$b" "$target" bytes
   grep -q -E '^Scope: .+ Open when: .+' "$f" || { echo "FAIL: '$f' has no 'Scope: … Open when: …' line."; lib_fail=1; }
 done
 for f in $named; do
@@ -193,7 +181,6 @@ if [ "$lib_fail" -ne 0 ]; then
 elif [ "${#pages[@]}" -eq 0 ]; then
   echo "ok: no library pages yet, and nothing names or links one"
 else
-  echo "size: the largest library page is $lib_max bytes (target 4000; $guide 6500)"
   echo "ok: ${#pages[@]} library pages, each named by the README and scoped, every link to one resolves, and each index row opens the first page it names on that page's own words"
 fi
 
