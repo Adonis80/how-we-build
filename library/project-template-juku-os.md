@@ -37,8 +37,8 @@ Plain English, short, no jargon. End every reply with "continue to build here"
 or "ready to start fresh session", and the second always says where (Cowork, or
 code mode at https://claude.ai/code with the repositories named) and what to paste.
 
-For Claude only. At the start, check these instructions against
-library/project-instructions.md. A pull request from here goes through the Mac:
+For Claude only. At the start, check these instructions against the rulebook's
+library/project-template-juku-os.md as library/project-instructions.md says. A pull request from here goes through the Mac:
 the connected folder ~/Documents/Claude/Projects, key in
 .alma-secrets/github-token, read into a shell variable and never printed. Before
 changing a rule, read library/changing-the-rulebook.md. AGENTS.md is the
