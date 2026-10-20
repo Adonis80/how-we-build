@@ -31,7 +31,7 @@ A change made here reaches every product because each session reads this list at
 
 
 **Its handover lines** (in the pull request).
-- `Personal data or payments affected: yes/no — reason` (hiding, capturing, logging and deleting all count as yes).
+- `Personal data or payments affected: yes/no — reason` (what counts as yes: `library/reviewer.md`).
 - `evidence`: what this slice captures or deliberately does not, which decision it can improve, what cost or retention it adds; "None, because …" is valid. Anything the product learns from is kept with its origin (a statement, an observation or a derived result; who recorded it, when, under which notice), for a permitted purpose and period, provably deletable, any justified exception written down (`RICH-DATA.md`); the product's own test in the slice proves it.
 - After a read, one cost line from the read's spend line, by check-run link and commit: the totals over all attempts, cash and plan allowance apart and never added, the unresolved count; missing history marked partial or unknown, never claimed complete, never zero.
 - The pre-flight's effort (`library/reviewer.md`), unknown where not measured.

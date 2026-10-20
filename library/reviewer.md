@@ -20,10 +20,10 @@ Scope: every repository under this rulebook, in either stack. Open when: working
 
 **The machine is files.** `review-gate.py` (the register and wiring checks), `.github/workflows/` (the reviewer, the wake, the door, the product reviewer `review-product.yml`, the asker `ask-product-reads.yml`, the canary and monitor, the Roadmap's build), `product-reads/` (the product read's rules, setup script and starter kit) and `check.sh`, which runs them all. A change to the gate is judged by the gate it proposes, so its check prints a `note:` line and the reader weighs the diff, not the green. The App is on all his repositories, by his word of 3 October 2026, not checked from a session. Typing the identity code GitHub emails him is his; generating the key, sealing it into the `reviewer` environment and deleting it from disk are the session's.
 
-**A product's `## Review guidelines`**, at the end of its `AGENTS.md`, the tool being unable to follow a link; it and the starter kit's copy change only when this template does:
+**A product's `## Review guidelines`**, at the end of its `AGENTS.md`, the tool being unable to follow a link; the starter kit's copy matches it, and a product fills in only its own hazards and questions:
 
 ```
 ## Review guidelines
 Brief: the rulebook's library/reviewer.md. Address the CTO. Form your view from the diff, the tests, PRODUCT.md and roadmap.json before the pull request's account. Look for what is wrong, missing, duplicated, untested or wider than the slice, and never manufacture disagreement; say what you checked, what you did not, and how sure you are; mark each finding blocking or advisory. A read clears only the commit it read. Two rounds at most; a product question goes to him as "Decision needed: …". Plain English; never write a file. Hazards here: <the product's own>.
-Exam, on a change to AGENTS.md, design/ or NAMES.md: answer each question it affects from the pages as they will stand, naming the owning page; a wrong owner, two pages disagreeing, or none answering is blocking. <3–5 questions: which page owns this product's look, money, words, and its approved exceptions>.
+Exam, on a change to AGENTS.md, CLAUDE.md, NAMES.md, design/ or design-system.md: answer each question it affects from the pages as they will stand, naming the owning page; a wrong owner, two pages disagreeing, or none answering is blocking. <2–5 questions: which page owns this product's look, money, words, and its approved exceptions>.
 ```
