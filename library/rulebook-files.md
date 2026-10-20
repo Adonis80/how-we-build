@@ -1,17 +1,21 @@
 # What each file here is for
 
-Scope: this repository. Open when: asking what a root file or folder here is for.
+Scope: this repository. Open when: asking what a root file or a decision issue is for, or why this repository is public.
 
-- `HOW-WE-BUILD.md` — the operating page, read whole by every session. With the README, the reading path.
-- `README.md` — the map: products, where each plan lives, and the index of library pages.
-- `library/` — one page per topic, opened only when its index row fires. `check.sh` holds the shape: every page named in the index with a `Scope: … Open when: …` line matching its row, and every link to a page resolving. Beside a page only its approved picture, a PNG of the same name.
-- `CHARTER.md` — the reasoning behind the rules; opened by the section a page cites, never loaded to work.
-- `RICH-DATA.md` — the method for what a product learns from; read on its index row.
-- `AGENTS.md` — the reviewer's brief for changes here, ending with the exam; not for sessions.
-- `juku-library/` and the `decision` issues — the archive: papers and the consensus records two models reached, kept word for word, never edited, never read unless asked why a rule exists. Each product keeps its papers in its own `<product>-library/` the same way; that library's `design/<screen>/` folders are different: working inputs, the agreed sheet and builder note a builder reads for that screen (`library/hypersolid.md`).
-- `model-registry/` — the one place a model is named (`library/model-registry.md`).
-- `product-reads/` — the product read's rules, setup script and starter kit (`library/product-joins.md`), and `rules-check.py`, the rules' own guard (`library/changing-the-rulebook.md`).
-- `board/` — the Roadmap's gate and build (`library/roadmap.md`).
-- `check.sh`, `review-gate.py` — the checks (`library/reviewer.md`).
+The rulebook for every product Dhayan's AI studio builds. This repository says **how** we work. Each product's own repository says **what** we build.
 
-**Why it is public.** It holds no secrets, prices or customer data, only the way we work, and a public repository is the one thing every session in either stack can read with no setup. Product repositories stay private.
+**Three files matter.**
+
+- `HOW-WE-BUILD.md` — the operating page, short, its words budgeted with the README's by `product-reads/rules-check.py`. The first thing a working session loads, with *What every product carries* in the README.
+- `CHARTER.md` — the Systems Blueprint, the reasoning behind the page. Read once, never loaded into a working session.
+- `RICH-DATA.md` — the method for what a product learns from and how we know its AI got smarter. Read on its row in the README's index, and not otherwise.
+
+A fourth, `AGENTS.md`, is not for sessions at all: it carries the reviewer's brief for changes to this repository, because the reviewing tool loads only a file of that name.
+
+**And `library/`, indexed under *Where each topic lives* in the README.** It is where a topic goes when it leaves this README: one page per topic, or a named few where a topic is large, opened only when a task touches it, each named in the README's index with when to open it (his ruling, 23 September 2026, [decision 0005](https://github.com/Adonis80/how-we-build/issues/75): *"a lesson learned in one product reaches every product at once; the fault is loading, not sharing"*). `check.sh` holds the shape (the one thing beside a page: a screen's approved picture, a PNG named for its page): each page named in that index with a `Scope: … Open when: …` line, its words budgeted (`library/changing-the-rulebook.md`), each index row opening the first page it names on that page's own words, and every link to one resolving.
+
+**And the `decision` issues in this repository: why a rule is what it is, rather than the obvious alternative.** They hold the one thing he has ruled worth keeping from a conversation (his ruling, 22 September 2026, [decision 0003](https://github.com/Adonis80/how-we-build/issues/59): *"The only thing that we should be storing that is valuable is the architecture consensus that we reach with two intelligent AI models"*) — a consensus two capable models reached after genuinely disagreeing, each carrying the question, what was rejected, who was overruled on what evidence, and what is still unproved. **Read like `CHARTER.md`, not like the operating page:** when a rule is about to change or its reason is in question, and never loaded into a working session. Nothing executable depends on them: delete them all and only the reasoning is lost. A record is never edited to stay current; a later one supersedes it and the earlier stands as history.
+
+**And `model-registry/`, `product-reads/` and `juku-library/`.** The registry is the one place a model is named ([decision 0008](https://github.com/Adonis80/how-we-build/issues/103)): `library/model-registry.md`. `juku-library/` is the rulebook's own library (his ruling, 2 October 2026): papers only, directly inside it. It holds the paper a consensus was built on, committed verbatim, when a build must read it from GitHub, and — his ruling, 25 September 2026, first kept for decision 0009 — the frozen record a consensus ends on, the same words as its decision issue; where the agreement itself was reached is its decision issue, as decision 0008's amendment records for the 18 September paper. Each product keeps its own `<product>-library/` in its private repo, created with its first paper and never here, since a product's papers hold its prices and strategy; `NAMES.md` lists each library's name. It is read like the decision issues, never loaded into a working session. `product-reads/`: the product read's rules, setup script and starter kit, and `rules-check.py`, the rules' own guard (`library/changing-the-rulebook.md`). Not `library/`, the rule pages.
+
+**Why it is public.** It holds no secrets, prices or customer data — only the way we work — and a public repository is the one thing every session, in either stack, can read directly, with no extra setup. Product repositories stay private.

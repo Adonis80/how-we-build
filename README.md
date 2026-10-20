@@ -38,7 +38,7 @@ The list, and how a repository makes itself current: `library/carries-sessions.m
 | `library/max-subagent.md`: *The max subagent* | a lead hands its max piece on, or a product sets up or checks its max subagent file |
 | `library/reviewer.md`: *The independent reviewer* | working out who reviews a change, asking for a read, judging whether a commit is cleared, writing a repository's Review guidelines, checking a product's gate, or changing the review machinery |
 | `library/reviewer-parking.md`: *The independent reviewer: parking* | about to park a slice, or the reviewer seems out |
-| `library/model-registry.md`: *The model registry* | asking which model holds a role, or switching the model behind a role |
+| `library/model-registry.md`: *The model registry* | asking which model holds a role, what a read resolved to, or switching the model behind a role |
 | `library/consultant.md`: *The consultant* | asking the consultant for anything, settling a big idea with it, or setting its standing instructions |
 | `library/ideas-for-later.md`: *Ideas for later* | a session spots an improvement it will not build now, a roadmap read shows ideas due for review, a session closes, or a `proposal` issue is raised, ranked or debated |
 | `library/product-joins.md`: *How a product joins* | adding a product to the map, or setting up its repository |
@@ -48,7 +48,7 @@ The list, and how a repository makes itself current: `library/carries-sessions.m
 | `library/deploy.md`: *The deploy, in shape* | building or changing a product's deploy |
 | `library/money.md`: *Money out waits for money in* | anything would cost money, or a product's hosting plan comes up |
 | `library/changing-the-rulebook.md`: *Changing a rule* | changing, proposing or merging a rule, here or in a product's rule pages, or a word budget fails |
-| `library/rulebook-files.md`: *What each file here is for* | asking what a root file or folder here is for |
+| `library/rulebook-files.md`: *What each file here is for* | asking what a root file or a decision issue is for, or why this repository is public |
 | `library/upgrade-log.md`: *The upgrade log* | proposing an upgrade, or the Chairman asks what changed |
 | `library/system-map.md`: *How Juku OS fits together* | explaining how Juku OS fits together, or finding which part owns what |
 | `RICH-DATA.md` | a slice changes what a product learns from, shows about a person, or claims about its own accuracy |

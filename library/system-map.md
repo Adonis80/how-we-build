@@ -2,37 +2,48 @@
 
 Scope: the whole system. Open when: explaining how Juku OS fits together, or finding which part owns what.
 
-One picture of where things live and which check guards them. Each box's own file is the rule.
+One picture of every part and who owns which truth. It says where things live, never what they say: each box's own file is the rule.
 
 ```mermaid
 flowchart TB
-  CH(["Chairman<br/>money · permissions · product truth · looks by picture"])
-  subgraph READ["Read first, every session (word budget)"]
-    HWB["HOW-WE-BUILD.md<br/>who decides · which rule wins · the loop"]
-    RD["README.md<br/>map of products · library index"]
+  CH(["Chairman<br/>money · permissions · product truth · looks · irreversible"])
+  PJ["Projects<br/>instructions only, no files"]
+  CO["Consultant (other stack)<br/>reads live, writes nothing"]
+  subgraph RB["Rulebook · how-we-build · public"]
+    direction TB
+    HWB["HOW-WE-BUILD.md<br/>the loop, read first"]
+    RD["README.md<br/>map · carries list · library index"]
+    LIB["library/<br/>one page per topic, on its trigger"]
+    REG["model-registry/<br/>the only place a model is named"]
+    JL["juku-library/ + decision issues<br/>why each rule is what it is"]
   end
-  LIB["library/<br/>one page per topic, opened on its trigger<br/>HyperSolid owns every look"]
-  subgraph PROD["Each product repo (private)"]
+  subgraph PR["Each product repo · private"]
+    direction TB
     AG["AGENTS.md<br/>rules true only here"]
-    CON["design/CONSTITUTION.md<br/>tokens · units · money · domain law · dated picture approvals"]
-    PD["PRODUCT.md + roadmap.json<br/>what it does, what comes next"]
+    PD["PRODUCT.md + roadmap.json<br/>what we build, what comes next"]
+    PL["product library<br/>its own papers"]
   end
-  ARC["Archive: juku-library/ · decision issues · product papers<br/>never read unless asked why"]
-  MEM["Memory<br/>who he is, how he likes to be spoken to — never rules"]
-  subgraph CHECKS["Every change, before it merges"]
-    RC["product-reads/rules-check.py — free<br/>word budgets · Replaces: line · constitution shape"]
-    CK["check.sh — free<br/>files, links, secrets, gate"]
-    RV["Cold reviewer — one existing read<br/>judges the diff · sits the exam in its brief"]
-  end
-  CH -- "rules · approves by looking" --> PD
-  HWB --> RD --> LIB
+  PP["juku-os-papers · private<br/>papers of an idea not yet a product"]
+  RV["Independent reviewer"]
+  GT["check.sh + gate"]
+  BD["Roadmap"]
+  CH -- "rules, approves by looking" --> PJ
+  PJ -- "debates big ideas" --> CO
+  PJ -- "starts a session that reads" --> HWB
+  HWB -- "governs" --> RD
+  RD -- "opens on a trigger" --> LIB
   RD -- "maps" --> AG
-  AG --> CON
-  CON -. "values only" .-> LIB
-  RC --> CK --> RV
-  RV -- "green: merge" --> READ
-  RV -- "green: merge" --> PROD
-  READ -. "why" .-> ARC
+  AG -- "first line: reads" --> HWB
+  AG -- "governs" --> PD
+  REG -- "names the model for" --> RV
+  RV -- "signs a verdict on the current commit" --> GT
+  GT -- "gates the merge of" --> PD
+  GT -- "gates the merge of" --> RB
+  BD -- "reads the plans in" --> PD
+  BD -- "shows progress to" --> CH
+  PP -. "moves into on joining" .-> PL
 ```
 
-**Which rule wins** is written once, in `HOW-WE-BUILD.md`. **Who owns which truth**: how we build, this repository; what a product is and does, its own repository; which model does a job, `model-registry/registry.json`; why a rule is what it is, the archive. A Project holds instructions, never a copy of any of these.
+**Reading it.** A session starts in a Project, which sends it to `HOW-WE-BUILD.md`, then the README. The README's map sends it to one product repo; the library opens only on a trigger. Work leaves only as a pull request: the reviewer signs a verdict on the current commit and the gate consumes it. A consensus with the consultant never stands in for that verdict. The Roadmap reads each product's plan and shows it to the Chairman, who answers only what is his.
+
+**Who owns which truth.** How we build: this repository. What a product is and does next: its own repository. Which model does a job: `model-registry/registry.json`. Why a rule is what it is: the decision issues and `juku-library/`. Papers for an idea not yet a product: `juku-os-papers`. A Project holds instructions, never a copy of any of these.

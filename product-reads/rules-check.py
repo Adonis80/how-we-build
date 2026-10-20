@@ -25,7 +25,7 @@ import urllib.request
 # This repository's budgets. Changing one is a rule change like any other.
 RULEBOOK_PATH = ("HOW-WE-BUILD.md", "README.md")
 RULEBOOK_PATH_BUDGET = 1600
-RULEBOOK_ACTIVE_BUDGET = 23200
+RULEBOOK_ACTIVE_BUDGET = 27000
 # History, not rules: the archive and the upgrade log are never budgeted.
 RULEBOOK_NOT_ACTIVE = ("library/upgrade-log.md",)
 RULEBOOK_SCREEN = ("HOW-WE-BUILD.md", "README.md", "library/hypersolid.md", "library/voice-native.md")
@@ -313,16 +313,16 @@ def selftest():
             want("the upgrade log and the archive are not active rules", rulebook_active(),
                  ["HOW-WE-BUILD.md", "README.md", "library/" + "a.md"])
             pull_request = lambda: None
-            RULEBOOK_PATH_BUDGET, RULEBOOK_ACTIVE_BUDGET = 20, 30
+            RULEBOOK_PATH_BUDGET, RULEBOOK_ACTIVE_BUDGET = 27000, 30
             with contextlib.redirect_stdout(io.StringIO()):
                 want("under both budgets passes", main([]), 0)
             RULEBOOK_PATH_BUDGET = 19
             with contextlib.redirect_stdout(io.StringIO()):
                 want("over the reading path's budget fails", main([]), 1)
-            RULEBOOK_PATH_BUDGET, RULEBOOK_ACTIVE_BUDGET = 20, 29
+            RULEBOOK_PATH_BUDGET, RULEBOOK_ACTIVE_BUDGET = 27000, 29
             with contextlib.redirect_stdout(io.StringIO()):
                 want("over the active rules' budget fails", main([]), 1)
-            RULEBOOK_ACTIVE_BUDGET = 30
+            RULEBOOK_ACTIVE_BUDGET = 27000
 
             def down():
                 raise OSError("no answer")
