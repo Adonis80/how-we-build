@@ -8,7 +8,7 @@ A change made here reaches every product because each session reads this list at
 - `AGENTS.md`, first line `Rulebook: https://github.com/Adonis80/how-we-build — read HOW-WE-BUILD.md before anything else, then What every product carries in its README.`; below it only what is true for that product; ending `## Review guidelines` (`library/reviewer.md`). Under 500 words.
 - `design/CONSTITUTION.md`, for a product with screens, under 450 words, its headings exactly *Tokens*, *Units*, *Money*, *Domain law* and *Approved by picture* (each line dated). Everything else about looks is HyperSolid's.
 - `PRODUCT.md` (what it is and does; his decisions land here or in `roadmap.json`), `NAMES.md` (its own words), `README.md` (commands, and the route: an attached session works directly, any other goes through the Mac; the ten-second test tells which).
-- `<product>-library/`: agreed papers, and agreed screen designs in `design/<screen>/`; papers from `juku-os-papers` move in when the product joins, and `NAMES.md` gains the library's name. An archive: never read unless the task names it.
+- `<product>-library/`: agreed papers, and agreed screen designs in `design/<screen>/`; papers from `juku-os-papers` move in when the product joins, and `NAMES.md` gains the library's name. An archive: never read unless the task names it. This rulebook's own Roadmap has none: `juku-library/` is flat and public.
 - No copy of rulebook text; a pointer instead. The reviewer holds this, through the exam in its brief.
 
 **Its machinery.**

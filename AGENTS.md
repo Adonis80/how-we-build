@@ -15,7 +15,7 @@ On a change to `HOW-WE-BUILD.md`, `README.md`, `CHARTER.md` or a library page, a
 1. On a Hemz screen, does HyperSolid or Hemz's own pages decide the look? — HyperSolid (`HOW-WE-BUILD.md`, *Which rule wins*); Hemz supplies tokens, units, money and domain law, and dated picture approvals.
 2. A product's constitution says "no spatial layer" with no dated picture approval. Does it bind? — No; void (*Which rule wins*).
 3. Memory says one thing, the rulebook another. Which wins? — The rulebook; memory is never a rule.
-4. Two of his rulings in `PRODUCT.md` disagree. Which wins? — The later one.
+4. `PRODUCT.md` and `roadmap.json` disagree. Which wins? — `PRODUCT.md`; the copy is corrected (*Which rule wins*).
 5. Who decides a product's prices, figures and how it looks? — The Chairman (*Who decides*).
 6. Who decides a technical question, and may the session ask him? — The CTO; never ask him.
 7. Who merges a green pull request? — The session itself (loop step 7; `library/changing-the-rulebook.md` here).
