@@ -148,9 +148,9 @@ for f in $named; do
 done
 while IFS= read -r hit; do
   f=${hit##*:}
-  # A frozen record in juku-library/, or a line of the upgrade log, is history: it
-  # may still link a retired guide page (2b) or a retired library page (above),
-  # and both stay gone. Any other link from them must resolve like every link.
+  # A frozen record in juku-library/ may still link a retired guide page (2b)
+  # or a retired library page (above); a line of the upgrade log, a retired
+  # library page. Both are history; any other link from them must resolve.
   case "${hit%:*} $old_pages $retired_pages " in juku-library/*" ${f%.md} "*|library/upgrade-log.md*" ${f%.md} "*) continue ;; esac
   # The page is held to the name pattern; the file linking it is any path in
   # the repository, so it is printed escaped, as a page name the pattern

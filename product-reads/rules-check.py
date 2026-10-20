@@ -94,7 +94,7 @@ def constitution_faults(text):
         # continuation of one. An indented list item is an approval of its own
         # and never borrows its parent's date or picture.
         if section == "Approved by picture" and line.strip() and not line.strip().startswith("<!--"):
-            if line[:1].isspace() and approvals and not re.match(r"^\s*(-|\*|\d+\.)\s", line):
+            if line[:1].isspace() and approvals and not re.match(r"^\s*([-*+]|\d+[.)])\s", line):
                 approvals[-1] += " " + line.strip()
             elif line.strip().rstrip(".") != "None yet":
                 approvals.append(line.strip())
@@ -276,6 +276,8 @@ def selftest():
         "## Approved by picture\n\n- The plaque, 12 August 2026,\n  hemz-library/design/plaque/sheet.png\n"), [])
     want("an indented sub-item borrows nothing from its parent", len(constitution_faults(
         "## Approved by picture\n\n- The plaque, 12 August 2026, design/p.png\n  - and the tiles too\n")), 2)
+    want("a plus or a 1) sub-item borrows nothing either", len(constitution_faults(
+        "## Approved by picture\n\n- The plaque, 12 August 2026, design/p.png\n  + the tiles\n  1) the header\n")), 4)
     want("a rehearsal recording", constitution_faults("## Approved by picture\n\n- Sound, 12 October 2026, design/r.m4a\n"), [])
     want("no rule page changed", replaces_fault("", []), None)
     want("a rule page and no line", replaces_fault("Fixes things", ["HOW-WE-BUILD.md"]) is not None, True)
