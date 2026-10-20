@@ -81,7 +81,7 @@ One page per topic, or a named few where a topic is large, opened when its trigg
 | `library/money.md`: *Money out waits for money in* | anything would cost money, or a product's hosting plan comes up |
 | `library/code-and-words.md`: *Code and words* | deciding whether a change needs a code session or can be made from Cowork |
 | `library/upgrade-log.md`: *The upgrade log* | proposing an upgrade, or the Chairman asks what changed |
-| `library/changing-the-rulebook.md`: *Changing the rulebook* | changing a rule, proposing, prioritising or merging a change to this repository, or a page reads over its size target |
+| `library/changing-the-rulebook.md`: *Changing the rulebook* | changing a rule, proposing, prioritising or merging a change to this repository, or a word budget fails |
 | `library/system-map.md`: *How Juku OS fits together* | explaining how Juku OS fits together, or finding which part owns what |
 
 ## How a product joins
@@ -98,4 +98,4 @@ or fetch `https://raw.githubusercontent.com/Adonis80/how-we-build/main/HOW-WE-BU
 
 ## Changing the rulebook
 
-By pull request only; `main` is protected; the CTO settles and merges without the Chairman. A repair or an upgrade is never refused for length alone, and the text it makes dead leaves in the same change ([decision 0017](juku-library/DECISION-0017-SIZE-SIGNALS-AND-RECONCILIATION.md)); stale wording is removed in dependency-coherent batches ([decision 0016](juku-library/DECISION-0016-LOCALISED-REVIEWS.md), H), as standalone work only from first revenue on. The queue, the gate, the merge, size and reconciliation: `library/changing-the-rulebook.md`.
+By pull request only; `main` is protected; the CTO settles and merges without the Chairman. The text a change makes dead leaves in the same change, and the rules keep a word budget, one in, one out (`library/changing-the-rulebook.md`); stale wording is removed in dependency-coherent batches ([decision 0016](juku-library/DECISION-0016-LOCALISED-REVIEWS.md), H), as standalone work only from first revenue on. The queue, the gate, the merge, size and reconciliation: `library/changing-the-rulebook.md`.
