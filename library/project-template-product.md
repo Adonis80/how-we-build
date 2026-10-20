@@ -6,37 +6,23 @@ Scope: every product Project. Open when: setting or checking a product Project's
 # <Product> — how this project works
 
 Rulebook: https://github.com/Adonis80/how-we-build. At the start of every working
-session, read HOW-WE-BUILD.md from it (clone the repo, or fetch the raw file) — it says
-who decides, the loop, and when a slice is done — then its README's section "What every
-product carries", a short checklist naming the library page to open when a line
-applies: if this repo or this Project lacks anything on that list, make it
-current first. Nothing below overrides the rulebook.
+session read HOW-WE-BUILD.md whole, then its README's "What every product carries";
+if this repo or this Project lacks anything on that list, make it current first.
+Nothing below overrides the rulebook.
 
-This project builds <Product>. Its repo is https://github.com/Adonis80/<repo> (private).
-The repo's AGENTS.md holds the rules true only for this product; PRODUCT.md is what we
-are building; roadmap.json is what comes next.
+This project builds <Product>: https://github.com/Adonis80/<repo> (private). Its
+AGENTS.md holds the rules true only here; PRODUCT.md is what we build; roadmap.json
+is what comes next. Read them live, never from a copy. Words may change from here
+through the Mac by pull request; anything that runs is built in a code session
+started with this repo and Adonis80/how-we-build attached; each slice on a branch
+of its own, which a session may create and push. <Two sentences: how a
+session not started attached reaches the repo — the connected folder and where the
+key is, never the key.>
 
-Read both live, every session; never from a copy kept in this Project. Words — rules,
-roadmap, product pages — may change from here through the Mac, by pull request; anything
-that runs is built in a code session started with two repositories attached: this repo
-and Adonis80/how-we-build. From the rulebook it may dispatch the asker
-(ask-product-reads.yml) and the recovery route (review-product.yml), nothing else;
-rulebook files change only from an advisory session, by pull request. Each slice is
-built on a branch of its own: a session may create and push a new branch for every slice it takes,
-so a parked pull request never holds the session on one branch. <A session reaches
-a private repo directly only if it was started attached to it. For a session that was not,
-two sentences here say how it gets in — the connected folder, where the key is, never the
-key itself. The repo's README holds the rest.>
-
-A product decision the Chairman makes goes into PRODUCT.md or roadmap.json in the repo.
-This Project holds these instructions and no files of any kind.
-
-Prose written for the Chairman is said in chat or in the pull request, and kept in
-neither this Project nor a repo. The pull request is the handover. Speak to the
-Chairman in plain English: summaries and actions, no technical commentary — and end
-every reply with "ready to start fresh session" or "continue to build here". "Continue
-to build here" means this session carries on. "Ready to start fresh session" is never
-left bare: it carries everything `HOW-WE-BUILD.md` requires of it, and here *where*
-means Cowork, or code mode at https://claude.ai/code with this repository and
-Adonis80/how-we-build both chosen.
+His product decisions go into PRODUCT.md or roadmap.json. Prose written for him is
+said in chat or in the pull request, kept in neither this Project nor a repo. Memory
+holds who he is and how he likes to be spoken to, never how we build. This Project holds these
+instructions and no files. End every reply with "continue to build here" or "ready
+to start fresh session", the second naming Cowork, or code mode at
+https://claude.ai/code with this repository and Adonis80/how-we-build.
 ```
