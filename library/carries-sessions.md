@@ -9,7 +9,7 @@ A change made here reaches every product because each session reads this list at
 - `design/CONSTITUTION.md`, for a product with screens, under 450 words, its headings exactly *Tokens*, *Units*, *Money*, *Domain law* and *Approved by picture* (each line dated). Everything else about looks is HyperSolid's.
 - `PRODUCT.md` (what it is and does; his decisions land here or in `roadmap.json`), `NAMES.md` (its own words), `README.md` (commands, and the route: an attached session works directly, any other goes through the Mac; the ten-second test tells which).
 - `<product>-library/`: agreed papers, and agreed screen designs in `design/<screen>/`. An archive: never read unless the task names it.
-- No copy of rulebook text; a pointer instead. `rules-check.py` holds this (`library/changing-the-rulebook.md`).
+- No copy of rulebook text; a pointer instead. The reviewer holds this, through the exam in its brief.
 
 **Its machinery.**
 - The reviewer's gate from the starter kit, its own check named `verify`, and the ready mark (`library/product-joins.md`).
@@ -19,7 +19,7 @@ A change made here reaches every product because each session reads this list at
 - A Project whose instructions are its template, whole (`library/project-instructions.md`).
 
 **Its roadmap.**
-- `roadmap.json` fit for a one-word *build*: every `next` line current and self-sufficient, items in the order they will be taken (ready, then priority, then oldest), each with its level P1–P4 (`library/changing-the-rulebook.md`).
+- `roadmap.json` fit for a one-word *build*: every `next` line current and self-sufficient, items in the order they will be taken (ready, then priority, then oldest), each with its level P1–P4 (`library/changing-the-rulebook.md`). Words still waiting in an unmerged pull request are the one exception: the session that opened them says so.
 - The slice's item published on `main` (by a roadmap-only pull request) as `building` when it starts and with its status and blocker when it parks.
 - Money milestones: each revenue figure he gives, with what he is reminded of when it is reached; at least *revenue passes £1,000 a month: move the host to its paid plan*. The slice that first counts revenue shows it to him and checks the milestones each time it counts.
 - Ideas kept as `proposed` items (`library/ideas-for-later.md`).
@@ -34,3 +34,5 @@ A change made here reaches every product because each session reads this list at
 - `evidence`: what this slice captures or deliberately does not, which decision it can improve, what cost or retention it adds; "None, because …" is valid. Anything the product learns from is kept with its origin, for a permitted purpose and period, and is provably deletable (`RICH-DATA.md`).
 - After a read, one cost line from the read's spend line: cash and plan allowance apart, unknown stated as unknown.
 - At close or park: *Any material system improvement found?*, waste and savings included, with evidence and the smallest next action; "none" is valid.
+
+**Two experiments under judgement.** This efficiency duty, and the reviewer's pre-flight, are each judged at the first ideas review on or after 2 November 2026 (`library/ideas-for-later.md`) as a keep-or-revert test (`CHARTER.md` §13): kept only if the saving actually measured (tokens, cash or delivery time, never nominal prices) exceeds what measuring, extra reads and rework cost; the pre-flight's measures are four timings per pull request (ready → asked, the read, correction, verdict → merge), the defects reads caught, and the builder's pre-flight effort, from existing check runs, commits and handovers, unknown where not available.

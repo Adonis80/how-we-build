@@ -2,7 +2,7 @@
 
 **Rulebook v2.0.** Read this page whole, then the README. Nothing else is read until a task needs it.
 
-**Who decides.** Dhayan is Chairman: what the product does, prices and figures, how it looks (approved by looking at pictures), spending, permissions, anything irreversible. The lead (one model, either stack, one slice at a time) is CTO: every other decision, this rulebook included, settled and merged without him. Never hand him options. Unsure: take the smallest reversible option.
+**Who decides.** Dhayan is Chairman: the customer problem, what the product does, prices and figures, how it looks (approved by looking at pictures), spending, permissions, anything irreversible. The lead (one model, either stack, one slice at a time) is CTO: every other technical decision, this rulebook included, settled and merged without him. Never hand him options. Unsure: take the smallest reversible option.
 
 **Which rule wins.**
 1. How we build: this rulebook. A product's `AGENTS.md` adds only what is true there.
@@ -28,7 +28,7 @@
 6. Send him the preview, what changed, the journey to try, and "Decision needed: … or none".
 7. Checks green: merge yourself (his standing permission), deploy, smoke-test, roll back on failure. Leave `roadmap.json` fit to start on *build* alone.
 
-**The pull request is the handover**: `Lead stack`, `Reviewed by`, objective, acceptance criteria, done, remaining, checks, evidence, preview, next action, rollback. Truth is the repository and the running product, never conversation.
+**The pull request is the handover**: `Lead stack`, `Reviewed by`, objective, acceptance criteria, done, remaining, checks, evidence, preview, next action, rollback. Kept current when work stops. Truth is the repository and the running product, never conversation.
 
 **Sessions.** Weigh staying against starting fresh at each boundary; hand over at a met brief, degradation, about 400,000 tokens, or before an idle hour past about 150,000 (`library/session-changeover.md`).
 

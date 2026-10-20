@@ -21,6 +21,6 @@ Do that piece and nothing else. You may read the code and change the files the b
 Answer with what you did, what you checked, what you did not, and how sure you are.
 ```
 
-**What stops it running at max.** `CLAUDE_CODE_EFFORT_LEVEL`, wherever it is set, outranks the file's `effort`, so no product sets it. A managed `maxEffortLevel` caps it. `CLAUDE_CODE_SUBAGENT_MODEL_FORCE`, or a `model` the lead passes when it hands over, replaces its model. `CLAUDE_EFFORT`, which a cloud session's host sets from the session's own effort, does not cap it: shown below.
+**What stops it running at max.** `CLAUDE_CODE_EFFORT_LEVEL`, wherever it is set, outranks the file's `effort`, so no product sets it. A managed `maxEffortLevel` caps it. `CLAUDE_CODE_SUBAGENT_MODEL_FORCE`, or a `model` the lead passes when it hands over, replaces its model. `CLAUDE_EFFORT`, which a cloud session's host sets from the session's own effort, does not cap it, shown in a real session on 29 September 2026.
 
 **Checking a run.** The lead reads the subagent's transcript, `subagents/agent-*.jsonl` under the session's folder in `~/.claude/projects/`: each turn's `perTurnEffort` and `message.model`. It records on the pull request what ran and, if anything but max, why.

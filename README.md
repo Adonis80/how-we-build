@@ -6,14 +6,14 @@ The rulebook for every product Dhayan's AI studio builds: **how** we work. Each 
 
 ## Products under this rulebook
 
-A product is under this rulebook only if it is listed here. To read one: its `AGENTS.md` and `design/CONSTITUTION.md` whole; the `PRODUCT.md` passages the task needs; from `roadmap.json`, the order note, money milestones and open items.
+To read one: its `AGENTS.md` and `design/CONSTITUTION.md` whole; the `PRODUCT.md` passages the task needs; from `roadmap.json`, the order note, money milestones and open items.
 
 - **Myst** — `https://github.com/Adonis80/myst` (private). The App for Perfume Collectors: a Personal Nose that learns a person's taste, samples picked for them, and the value on collectors' shelves.
 - **Hemz OS** — `https://github.com/Adonis80/Hemz-OS` (private). The operating system for an alterations business, grown out of Alma's Alterations in Brighton.
 - **Phena** — `https://github.com/Adonis80/phena` (private). *Documenting the Phenomena*: first-person extraordinary experiences, near-death experiences first, explored through the River, at `phena.juku.pro`.
 - **Fixed** — `https://github.com/Adonis80/fixed` (private; its kit not yet merged). A fair-price marketplace for local trades, heating first, at `fixed.juku.pro`. A working name.
 
-Papers for an idea not yet a product live in private `Adonis80/juku-os-papers`; that registers nothing.
+A repository not listed here is not under this rulebook. Papers for an idea not yet a product live in private `Adonis80/juku-os-papers`; that registers nothing.
 
 ## Where each product's plan lives
 

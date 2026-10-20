@@ -78,7 +78,7 @@ done
 # 2b. One front-end guide (his ruling, 8 October 2026: "we should be left with
 # only library/hypersolid.md"). It holds the screen law, carried once so every
 # product reads the same one; a product's own constitution holds only what is
-# true there and points at it. The law's size is reported, like every size. The guide's old pages
+# true there and points at it. The guide's old pages
 # stay gone: none exists outside juku-library/, whose records are history, and
 # nothing else names one. The names are spelled without ".md" so this file is
 # not a hit of its own.
@@ -103,8 +103,8 @@ fi
 # ruling of 23 September 2026, decision 0005, issue #75). The README is its
 # index, both ways: a page the README does not name is never opened, and a
 # name with no page sends a session nowhere. Each page is one topic, says whom
-# it binds and when to open it, and has its size reported against 4000 bytes,
-# the machine's proxy for the decision's 1,000 tokens. A link to a page from
+# it binds and when to open it (its words are budgeted by rules-check.py).
+# A link to a page from
 # anywhere in this repository must resolve too, not only the README's: a list
 # of the files to search would be one more list to drift. With no page named there is no
 # library, and that passes: the check exists before the pages it holds.

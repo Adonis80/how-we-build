@@ -99,7 +99,7 @@ def replaces_fault(body, rule_pages_changed):
     if not m:
         return ("this pull request changes %s and carries no 'Replaces:' line: 'Replaces: <the text or page it "
                 "supersedes>; products: <pages updated, or none>', or 'Replaces: nothing — not a check because: "
-                "<why>'" % ", ".join(rule_pages_changed[:5]))
+                "<why>'" % ", ".join(repr(p) for p in rule_pages_changed[:5]))
     said = m.group(1).strip()
     if re.match(r"(?i)^nothing\b", said) and not re.search(r"(?i)not a check because:\s*\S", said):
         return "'Replaces: nothing' must say 'not a check because: <why>'"
@@ -201,7 +201,7 @@ def main(argv):
         body, files = pr
         why = replaces_fault(body, [f for f in files if is_rule_page(f, product)])
         if why:
-            print("FAIL: " + why)
+            print("FAIL: " + "".join(c for c in why if c.isprintable()))
             fail = 1
         else:
             print("ok: the Replaces: line is in order, or no rule page changed")
