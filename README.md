@@ -69,7 +69,7 @@ One page per topic, or a named few where a topic is large, opened when its trigg
 | `library/project-template-juku-os.md`: *The Juku OS Project's instructions* | setting or checking the Juku OS Project's instructions |
 | `library/project-instructions.md`: *What a Project holds, and who sets it* | a Project's instructions differ from their template, or text for the Chairman changes |
 | `library/model-registry.md`: *The model registry* | asking which model holds a role, what a read resolved to, or switching the model behind a role |
-| `library/carries-sessions.md`: *What every product carries: open work, stopping, the consultant, the roadmap* | starting or stopping a product session, or leaving its roadmap |
+| `library/carries-sessions.md`: *What every product carries: open work, stopping, the consultant, the roadmap* | starting or stopping a product session, leaving its roadmap, or setting what a product's checks run |
 | `library/carries-evidence.md`: *What every product carries: milestones, evidence, the product's pages* | a slice touches money milestones, evidence, the product's own pages, its README route or its design folder, or a handover reports a read's cost or the efficiency duty is weighed |
 | `library/roadmap.md`: *The Roadmap* | working on the Roadmap |
 | `library/board-proposals-card.md`: *The Roadmap: the proposals card* | changing the proposals card, or checking it against what he approved |
