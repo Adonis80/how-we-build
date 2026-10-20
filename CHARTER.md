@@ -4,7 +4,7 @@
 **Primary outcome:** Dhayan can move between interchangeable AI development stacks while GitHub preserves the work, and each stack can ship accepted software with minimal founder coordination.
 **Supersedes:** Earlier development-system blueprints, control planes, orchestration proposals, permanent model assignments and instruction stacks.
 
-`HOW-WE-BUILD.md` is the short operating rule. This Charter explains **why**. Product repositories define **what** each product is. Where they disagree, `HOW-WE-BUILD.md` governs how we build, a product's `AGENTS.md` governs what that product is, and this document governs why.
+`HOW-WE-BUILD.md` is the short operating rule. This Charter explains **why**. Product repositories define **what** each product is. Where they disagree, `HOW-WE-BUILD.md`'s *Which rule wins* settles it; this document governs only why.
 
 ## 1. Authority
 
@@ -122,7 +122,7 @@ When a rule, requirement or design changes:
 
 Git history is the archive. Temporary reasoning belongs in the pull request and disappears when the work closes.
 
-Small always-read files may have hard size limits because their context cost is constant: a product's `AGENTS.md` and its design constitution. The rulebook pages measured against a size target carry targets, never caps: a repair or an upgrade is never refused for length alone, and the text it makes dead leaves in the same change ([decision 0017](juku-library/DECISION-0017-SIZE-SIGNALS-AND-RECONCILIATION.md)). Large product documents should not receive arbitrary size caps; semantic duplication and stale text are the problem, not legitimate product complexity.
+Operating instructions and design rules carry hard word budgets, because every session pays for them: one in, one out, counted by machine (`library/changing-the-rulebook.md`). A product's requirements, roadmap and locked figures carry none; semantic duplication and stale text are the problem there, not legitimate product complexity.
 
 A new document is justified only when it owns durable information that cannot live clearly in an existing canonical owner.
 
@@ -215,6 +215,6 @@ The development system is scaffolding, not the product.
 
 If maintaining Juku OS begins consuming attention comparable to building the products, simplify it. The strongest system is the smallest one that reliably lets interchangeable agents ship correct software and lets Dhayan remain focused on product judgement.
 
-## 16. Rich data (September 2026)
+## 16. Rich data
 
-On 17 September 2026 the Chairman set two standing goals: Juku OS builds world-class software and always looks to identify and capture rich data for training and improving AIs over time; and every product is optimised for collecting rich data that raises the intelligence of that product's own AI in its domain. He defined rich as granularity, not coverage. That ruling meets the gate in §13. The method that follows from it was tested against an outside consultant over four rounds and closed on 18 September 2026; the honest-measurement half (sealed predictions, protected outcomes, a stated baseline) and the data-shape half (records kept as permitted and never edited, understanding recomputed from them, the product's own acts recorded as evidence) both live in `RICH-DATA.md`, which a session reads only when its slice changes what a product learns from, shows about a person, or claims about its own accuracy. Nothing in it is a machine gate; each product proves its own behaviour in its own tests. Three decisions stayed the Chairman's: Hemz retention beyond the documentation clearing, commercial reuse of staff expertise, and reuse of Myst contributions.
+Every product is built to capture rich, granular evidence that raises its own AI's intelligence in its domain, and to measure that honestly. The method is `RICH-DATA.md`, read only when a slice changes what a product learns from, shows about a person, or claims about its own accuracy. Three decisions stay the Chairman's: Hemz retention beyond the documentation clearing, commercial reuse of staff expertise, and reuse of Myst contributions.

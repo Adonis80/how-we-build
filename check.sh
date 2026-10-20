@@ -18,10 +18,8 @@
 # gone with the second: see review-gate.py on CROSS_VENDOR. A header describing
 # a state the file can no longer reach is the drift this guard exists to catch,
 # so it is corrected here rather than left for the next reader to discover.
-# Sizes it reports and never refuses: the operating page, the screen law and
-# each library page are measured against a target and the number printed (his
-# ruling, 8 October 2026, decision 0017). A change is never failed for length
-# alone; it reconciles the rules it touches, which the cold review holds.
+# Word budgets, the Replaces: line and a product constitution's shape are
+# rules-check.py's (his ruling, 20 October 2026: one in, one out), run below.
 set -euo pipefail
 cd "$(dirname "$0")"
 fail=0
@@ -34,17 +32,13 @@ part="${CHECK_PART:-whole}"
 case "$part" in whole|selftest|gate) ;; *) echo "FAIL: CHECK_PART is '$part'; it is selftest, gate or unset."; exit 1 ;; esac
 if [ "$part" != gate ]; then
 
-# 1. Sizes, reported. Counted with python, not `wc -w`, which answers
-# differently by locale, so a number means one thing wherever it is measured.
-words_of() { python3 -c 'import sys; print(len(open(sys.argv[1],encoding="utf-8").read().split()))' "$1"; }
-size_line() { # name, measured, target, unit
-  if [ "$2" -gt "$3" ]; then echo "size: $1 is $2 $4, $(( $2 - $3 )) over its $3 target — a reading, never a failure"
-  else echo "size: $1 is $2 $4 (target $3)"; fi
-}
-size_line HOW-WE-BUILD.md "$(words_of HOW-WE-BUILD.md)" 600 words
+# 1. The rules' own guard: word budgets (hard), the Replaces: line in a pull
+# request that changes a rule page, and its own selftest.
+python3 -I rules-check.py --selftest || fail=1
+python3 -I rules-check.py || { echo "FAIL: see rules-check.py's reason above."; fail=1; }
 
 # 2. Only these files exist at the root (plus .git and .github).
-allowed=" AGENTS.md CHARTER.md HOW-WE-BUILD.md README.md RICH-DATA.md board check.sh juku-library library model-registry product-reads review-gate.py "
+allowed=" AGENTS.md CHARTER.md HOW-WE-BUILD.md README.md RICH-DATA.md board check.sh juku-library library model-registry product-reads review-gate.py rules-check.py "
 while IFS= read -r f; do
   case "$f" in .git|.github) continue ;; esac
   case "$allowed" in
@@ -102,9 +96,7 @@ else
   for h in "Distillation rule" "Spatial layer" "Screen law"; do
     grep -q -E "^## $h( |$)" "$guide" || { echo "FAIL: '$guide' has no '## $h' heading."; fail=1; }
   done
-  lawwords=$(python3 -c 'import re,sys; m=re.search(r"^## Screen law\n(.*?)(?=^## |\Z)", open(sys.argv[1],encoding="utf-8").read(), re.S|re.M); print(len(m.group(1).split()) if m else 0)' "$guide")
   echo "ok: $guide is the only front-end guide"
-  size_line "the screen law in $guide" "$lawwords" 450 words
 fi
 
 # 2c. The library: one page per topic, and beside a page only its screen's PNG, opened only when a task touches it (his
@@ -117,12 +109,11 @@ fi
 # of the files to search would be one more list to drift. With no page named there is no
 # library, and that passes: the check exists before the pages it holds.
 lib_fail=0
-lib_max=0
 # Library pages a cleanup merged or deleted (#174), or renamed (the build
 # board's page, now library/roadmap.md: his ruling, 17 October 2026). A frozen
 # record in juku-library/ keeps its text, so it may still link one, as history;
 # the page stays gone, and any other link to it fails below like any broken link.
-retired_pages="library/reviewer-one-vendor library/changing-the-rulebook-merge library/build-board"
+retired_pages="library/reviewer-one-vendor library/changing-the-rulebook-merge library/build-board library/carries-evidence library/carries-reviewer library/code-and-words library/consultant-debate library/consultant-instructions library/project-template-juku-os library/project-template-product library/reviewer-asking library/reviewer-brief library/reviewer-verdict"
 for o in $retired_pages; do
   [ ! -e "$o.md" ] || { echo "FAIL: '$o.md' exists; it was retired and only frozen records may still name it."; lib_fail=1; }
 done
@@ -148,11 +139,6 @@ for f in "${pages[@]}"; do
   [[ "$f" =~ ^${page_re}$ ]] || { printf "FAIL: %q is not a page name the README can hold (letters, digits, '.', '_', '-', ending .md).\n" "$f"; lib_fail=1; continue; }
   grep -qxF "$f" <<< "$named" || { echo "FAIL: '$f' is not named in the README, so no session is sent to it."; lib_fail=1; }
   [ -f "$f" ] || { echo "FAIL: '$f' is not a file."; lib_fail=1; continue; }
-  b=$(wc -c < "$f" | tr -d ' ')
-  [ "$b" -le "$lib_max" ] || lib_max=$b
-  # HyperSolid is one page by his ruling of 8 October 2026, so its target is its own.
-  target=4000; [ "$f" != "$guide" ] || target=6500
-  [ "$b" -le "$target" ] || size_line "$f" "$b" "$target" bytes
   grep -q -E '^Scope: .+ Open when: .+' "$f" || { echo "FAIL: '$f' has no 'Scope: … Open when: …' line."; lib_fail=1; }
 done
 for f in $named; do
@@ -160,9 +146,9 @@ for f in $named; do
 done
 while IFS= read -r hit; do
   f=${hit##*:}
-  # A frozen record in juku-library/ may still link a retired guide page (2b)
-  # or a retired library page (above): it is history, and both stay gone.
-  case "${hit%:*} $old_pages $retired_pages " in juku-library/*" ${f%.md} "*) continue ;; esac
+  # juku-library/ is the archive and the upgrade log is history: either may link a
+  # page since retired (his ruling, 20 October 2026), so neither is link-checked.
+  case "${hit%:*}" in juku-library/*|library/upgrade-log.md) continue ;; esac
   # The page is held to the name pattern; the file linking it is any path in
   # the repository, so it is printed escaped, as a page name the pattern
   # refuses is above: a control character in a path reaches a public log.
@@ -193,7 +179,6 @@ if [ "$lib_fail" -ne 0 ]; then
 elif [ "${#pages[@]}" -eq 0 ]; then
   echo "ok: no library pages yet, and nothing names or links one"
 else
-  echo "size: the largest library page is $lib_max bytes (target 4000; $guide 6500)"
   echo "ok: ${#pages[@]} library pages, each named by the README and scoped, every link to one resolves, and each index row opens the first page it names on that page's own words"
 fi
 
