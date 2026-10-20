@@ -1,6 +1,6 @@
 # The two stacks
 
-Scope: every product, in either stack. Open when: choosing the lead or its effort, starting, handing over or finishing work in either stack, deciding whether a change needs a code session or can be made from Cowork, or a job that needs hands.
+Scope: every session, a product's or this rulebook's, in either stack. Open when: choosing the lead or its effort, starting, handing over or finishing work in either stack, deciding whether a change needs a code session or can be made from Cowork, or a job that needs hands.
 
 One lead owns a slice at a time. The pull request is the handover, and a replacement lead rebuilds what it needs from GitHub, never from a chat. At a clean checkpoint, *build* in the other stack transfers ownership — and only then: ownership moves when the pull request's latest entry is the outgoing lead's checkpoint. Otherwise the incoming lead leaves that pull request alone and takes the next item. Nothing is built to manage this: no switch file, no lock service, no registry, no orchestrator.
 

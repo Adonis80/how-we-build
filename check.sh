@@ -40,12 +40,13 @@ python3 -I product-reads/rules-check.py --selftest || fail=1
 python3 -I product-reads/rules-check.py || { echo "FAIL: see product-reads/rules-check.py's reason above."; fail=1; }
 
 # 2. Only these files exist at the root (plus .git and .github).
+list_fail=0
 allowed=" AGENTS.md CHARTER.md HOW-WE-BUILD.md README.md RICH-DATA.md board check.sh juku-library library model-registry product-reads review-gate.py "
 while IFS= read -r f; do
   case "$f" in .git|.github) continue ;; esac
   case "$allowed" in
     *" $f "*) ;;
-    *) echo "FAIL: '$f' is not on the file list ($allowed)."; fail=1 ;;
+    *) echo "FAIL: '$f' is not on the file list ($allowed)."; list_fail=1 ;;
   esac
 done < <(ls -A)
 # Both ways: an unexpected file fails, and so
@@ -55,27 +56,28 @@ done < <(ls -A)
 for f in $allowed; do
   case "$f" in
     # The Roadmap (decision 0007): its gate's three files and the build that renders it, and nothing else. No roadmap data lives here.
-    board) { [ -d "$f" ] && [ "$(ls -A board | tr '\n' ' ')" = "build.py middleware.js robots.txt vercel.json " ]; } || { echo "FAIL: 'board/' holds only build.py, middleware.js, robots.txt and vercel.json."; fail=1; } ;;
+    board) { [ -d "$f" ] && [ "$(ls -A board | tr '\n' ' ')" = "build.py middleware.js robots.txt vercel.json " ]; } || { echo "FAIL: 'board/' holds only build.py, middleware.js, robots.txt and vercel.json."; list_fail=1; } ;;
     # Git keeps no empty directory, so an absent library is the empty one, and
     # the README's index holds it to the list both ways instead (2c).
-    library) [ ! -e "$f" ] || [ -d "$f" ] || { echo "FAIL: '$f' is not a directory."; fail=1; } ;;
+    library) [ ! -e "$f" ] || [ -d "$f" ] || { echo "FAIL: '$f' is not a directory."; list_fail=1; } ;;
     # The model registry (decision 0008): the one file that names models, its
     # resolver, its OpenAI-compatible caller, and the reviewer's context
     # selector with its partner map (decision 0014), and nothing else.
-    model-registry) [ -d "$f" ] && [ "$(ls -A model-registry | tr '\n' ' ')" = "ask.py context.py registry.json resolve.py " ] || { echo "FAIL: 'model-registry/' holds ask.py, context.py, registry.json and resolve.py, and nothing else."; fail=1; } ;;
+    model-registry) [ -d "$f" ] && [ "$(ls -A model-registry | tr '\n' ' ')" = "ask.py context.py registry.json resolve.py " ] || { echo "FAIL: 'model-registry/' holds ask.py, context.py, registry.json and resolve.py, and nothing else."; list_fail=1; } ;;
     # The product read's rules (decision 0013), which say whether a read is asked
     # for and paid, and the rules' own guard (decision 0021). Part of the review gate.
-    product-reads) [ -d "$f" ] && [ "$(LC_ALL=C ls -A product-reads | tr '\n' ' ')" = "ask.py kit reads.py rules-check.py setup.py " ] && [ "$(LC_ALL=C ls -A product-reads/kit | tr '\n' ' ')" = "AGENTS.starter.md gate.yml review-gate.py roadmap.starter.json verify.yml wake.yml " ] || { echo "FAIL: 'product-reads/' holds ask.py, reads.py, rules-check.py, setup.py and kit/ (the starter kit's six files), and nothing else."; fail=1; } ;;
+    product-reads) [ -d "$f" ] && [ "$(LC_ALL=C ls -A product-reads | tr '\n' ' ')" = "ask.py kit reads.py rules-check.py setup.py " ] && [ "$(LC_ALL=C ls -A product-reads/kit | tr '\n' ' ')" = "AGENTS.starter.md gate.yml review-gate.py roadmap.starter.json verify.yml wake.yml " ] || { echo "FAIL: 'product-reads/' holds ask.py, reads.py, rules-check.py, setup.py and kit/ (the starter kit's six files), and nothing else."; list_fail=1; } ;;
     # The rulebook's own library (the Chairman's ruling of 2 October 2026): the
     # papers and frozen records committed verbatim for a build to read from
     # GitHub (#103's amendment): .md pages directly inside, no subfolder,
     # nothing executable. A product keeps its own <product>-library/ in its
     # own private repo, never here.
-    juku-library) [ ! -e "$f" ] || { [ -d "$f" ] && [ -z "$(find juku-library -type f ! -name '*.md')" ] && [ -z "$(find juku-library -mindepth 1 -type d)" ]; } || { echo "FAIL: 'juku-library/' holds only .md pages, directly inside it, with no subfolder."; fail=1; } ;;
-    *) [ -f "$f" ] || { echo "FAIL: '$f' is missing, or is not a file; the root list is a fixed set."; fail=1; } ;;
+    juku-library) [ ! -e "$f" ] || { [ -d "$f" ] && [ -z "$(find juku-library -type f ! -name '*.md')" ] && [ -z "$(find juku-library -mindepth 1 -type d)" ]; } || { echo "FAIL: 'juku-library/' holds only .md pages, directly inside it, with no subfolder."; list_fail=1; } ;;
+    *) [ -f "$f" ] || { echo "FAIL: '$f' is missing, or is not a file; the root list is a fixed set."; list_fail=1; } ;;
   esac
 done
-[ "$fail" -eq 0 ] && echo "ok: file list unchanged"
+[ "$list_fail" -eq 0 ] && echo "ok: file list unchanged"
+[ "$list_fail" -eq 0 ] || fail=1
 
 # 2b. One front-end guide (his ruling, 8 October 2026: "we should be left with
 # only library/hypersolid.md"). It holds the screen law, carried once so every
@@ -115,7 +117,7 @@ lib_fail=0
 # board's page, now library/roadmap.md: his ruling, 17 October 2026). A frozen
 # record in juku-library/ keeps its text, so it may still link one, as history;
 # the page stays gone, and any other link to it fails below like any broken link.
-retired_pages="library/reviewer-one-vendor library/changing-the-rulebook-merge library/build-board library/carries-reviewer library/reviewer-asking library/reviewer-brief library/reviewer-verdict library/project-template-product library/project-template-juku-os library/consultant-debate library/consultant-instructions library/code-and-words"
+retired_pages="library/reviewer-one-vendor library/changing-the-rulebook-merge library/build-board library/carries-reviewer library/reviewer-asking library/reviewer-brief library/reviewer-verdict library/project-template-product library/project-template-juku-os library/consultant-debate library/consultant-instructions library/code-and-words library/carries-evidence"
 for o in $retired_pages; do
   [ ! -e "$o.md" ] || { echo "FAIL: '$o.md' exists; it was retired and only frozen records may still name it."; lib_fail=1; }
 done

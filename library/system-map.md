@@ -12,7 +12,7 @@ flowchart TB
   subgraph RB["Rulebook · how-we-build · public"]
     direction TB
     HWB["HOW-WE-BUILD.md<br/>the loop, read first"]
-    RD["README.md<br/>map · carries list · library index"]
+    RD["README.md<br/>map · library index"]
     LIB["library/<br/>one page per topic, on its trigger"]
     REG["model-registry/<br/>the only place a model is named"]
     JL["juku-library/ + decision issues<br/>why each rule is what it is"]
