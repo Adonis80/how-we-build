@@ -24,8 +24,8 @@ import urllib.request
 
 # This repository's budgets. Changing one is a rule change like any other.
 RULEBOOK_PATH = ("HOW-WE-BUILD.md", "README.md")
-RULEBOOK_PATH_BUDGET = 2800
-RULEBOOK_ACTIVE_BUDGET = 34000
+RULEBOOK_PATH_BUDGET = 1550
+RULEBOOK_ACTIVE_BUDGET = 22300
 # History, not rules: the archive and the upgrade log are never budgeted.
 RULEBOOK_NOT_ACTIVE = ("library/upgrade-log.md",)
 RULEBOOK_SCREEN = ("HOW-WE-BUILD.md", "README.md", "library/hypersolid.md", "library/voice-native.md")
@@ -90,7 +90,7 @@ def constitution_faults(text):
             bad.append("sub-heading '%s': the constitution has only its five headings" % line.lstrip("#").strip())
         if section is None and not line.startswith("# "):
             before.append(line)
-        if section == "Approved by picture" and re.match(r"^\s*(-|\*|\d+\.)\s", line):
+        if section == "Approved by picture" and line.strip() and line.strip() != "None yet.":
             if not DATE.search(line):
                 bad.append("an approval with no date: %s" % line.strip()[:80])
             if not PICTURE.search(line):
@@ -260,6 +260,9 @@ def selftest():
     want("a deeper sub-heading", len(constitution_faults("## Money\n\n#### Style\n")), 1)
     want("a long preamble", len(constitution_faults("# C\n\n" + "word " * 90 + "\n\n## Tokens\n")), 1)
     want("an over-long constitution", len(constitution_faults("## Domain law\n\n" + "word " * 460)), 1)
+    want("a paragraph of undated exceptions",
+         len(constitution_faults("## Approved by picture\n\nThe old look stays, as agreed.\n")) > 0, True)
+    want("none yet", constitution_faults("## Approved by picture\n\nNone yet.\n"), [])
     want("a rehearsal recording", constitution_faults("## Approved by picture\n\n- Sound, 12 October 2026, design/r.m4a\n"), [])
     want("no rule page changed", replaces_fault("", []), None)
     want("a rule page and no line", replaces_fault("Fixes things", ["HOW-WE-BUILD.md"]) is not None, True)
