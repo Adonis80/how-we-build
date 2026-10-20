@@ -38,6 +38,7 @@ INTRO_WORDS = 80
 HEADINGS = ("Tokens", "Units", "Money", "Domain law", "Approved by picture")
 DATE = re.compile(r"\b(\d{1,2} (January|February|March|April|May|June|July|August|September|October|November|December) 20\d\d|20\d\d-\d\d-\d\d)\b")
 PICTURE = re.compile(r"(https?://\S+|[\w./-]+\.(png|jpe?g|webp|gif|svg|pdf|mp4|mov|webm|m4a|mp3|wav))", re.I)
+TEMPLATE_HOLES = ("<the text or page it supersedes>", "<product pages updated, or none>", "<pages updated|none>", "<why>")
 REPLACES = re.compile(r"^\s*Replaces:\s*(.+)$", re.M | re.I)
 
 
@@ -109,7 +110,7 @@ def replaces_fault(body, rule_pages_changed):
                 "supersedes>; products: <pages updated, or none>', or 'Replaces: nothing — not a check because: "
                 "<why>'" % ", ".join(repr(p) for p in rule_pages_changed[:5]))
     said = m.group(1).strip()
-    if "<" in said and ">" in said:
+    if any(t in said for t in TEMPLATE_HOLES):
         return "the 'Replaces:' line still holds the template's <placeholders>"
     if re.match(r"(?i)^nothing\b", said) and not re.search(r"(?i)not a check because:\s*\S", said):
         return "'Replaces: nothing' must say 'not a check because: <why>'"
@@ -183,7 +184,8 @@ def is_rule_page(path, product):
         return any(fnmatch.fnmatch(path, g) for g in PRODUCT_RULE_GLOBS)
     if path in RULEBOOK_NOT_ACTIVE:
         return False
-    return path in ("HOW-WE-BUILD.md", "README.md", "CHARTER.md", "RICH-DATA.md", "AGENTS.md") or (
+    return path in ("HOW-WE-BUILD.md", "README.md", "CHARTER.md", "RICH-DATA.md", "AGENTS.md",
+                    "product-reads/rules-check.py") or (
         path.startswith("library/") and path.endswith(".md"))
 
 
@@ -210,6 +212,9 @@ def main(argv):
         print(line)
         fail |= line.startswith("FAIL")
     print("size: the screen path here is %d words (%s)" % (sum(words(f) for f in screen), ", ".join(screen)))
+    if active:
+        big = max(active, key=words)
+        print("size: the largest active page is %s, %d words" % (big, words(big)))
     if product and os.path.isfile("design/CONSTITUTION.md"):
         with open("design/CONSTITUTION.md", encoding="utf-8") as f:
             faults = constitution_faults(f.read())
@@ -270,6 +275,9 @@ def selftest():
     want("a library page is", is_rule_page("library/reviewer.md", False), True)
     want("a product's design page is", is_rule_page("design/HEMZ-VOICE.md", True), True)
     want("a product's PRODUCT.md is not", is_rule_page("PRODUCT.md", True), False)
+    want("the budgets' own file is", is_rule_page("product-reads/rules-check.py", False), True)
+    want("a filled line naming <product>-library", replaces_fault(
+        "Replaces: the old `<product>-library` rule; products: none", ["AGENTS.md"]), None)
     want("over budget", budget("x", [__file__], 1)[1].startswith("FAIL"), True)
     # The wiring: main() on a made-up rulebook, over budget and under; the upgrade log
     # and the archive never counted; a GitHub that does not answer fails the run.

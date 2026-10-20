@@ -98,4 +98,4 @@ or fetch `https://raw.githubusercontent.com/Adonis80/how-we-build/main/HOW-WE-BU
 
 ## Changing the rulebook
 
-By pull request only; `main` is protected; the CTO settles and merges without the Chairman. The text a change makes dead leaves in the same change, and the rules keep a word budget, one in, one out (`library/changing-the-rulebook.md`); stale wording is removed in dependency-coherent batches ([decision 0016](juku-library/DECISION-0016-LOCALISED-REVIEWS.md), H), as standalone work only from first revenue on. The queue, the gate, the merge, size and reconciliation: `library/changing-the-rulebook.md`.
+By pull request only; `main` is protected; the CTO settles and merges without the Chairman. The text a change makes dead leaves in the same change, and the rules keep a word budget, one in, one out (`library/changing-the-rulebook.md`); stale wording is removed in dependency-coherent batches, as standalone work too (his ruling of 20 October 2026, [decision 0021](juku-library/DECISION-0021-RULEBOOK-AUDIT.md)). The queue, the gate, the merge, size and reconciliation: `library/changing-the-rulebook.md`.
