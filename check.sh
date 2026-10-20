@@ -115,7 +115,7 @@ lib_fail=0
 # board's page, now library/roadmap.md: his ruling, 17 October 2026). A frozen
 # record in juku-library/ keeps its text, so it may still link one, as history;
 # the page stays gone, and any other link to it fails below like any broken link.
-retired_pages="library/reviewer-one-vendor library/changing-the-rulebook-merge library/build-board"
+retired_pages="library/reviewer-one-vendor library/changing-the-rulebook-merge library/build-board library/carries-reviewer library/reviewer-asking library/reviewer-brief library/reviewer-verdict"
 for o in $retired_pages; do
   [ ! -e "$o.md" ] || { echo "FAIL: '$o.md' exists; it was retired and only frozen records may still name it."; lib_fail=1; }
 done
@@ -149,8 +149,9 @@ done
 while IFS= read -r hit; do
   f=${hit##*:}
   # A frozen record in juku-library/ may still link a retired guide page (2b)
-  # or a retired library page (above): it is history, and both stay gone.
-  case "${hit%:*} $old_pages $retired_pages " in juku-library/*" ${f%.md} "*) continue ;; esac
+  # or a retired library page (above); a line of the upgrade log, a retired
+  # library page. Both are history; any other link from them must resolve.
+  case "${hit%:*} $old_pages $retired_pages " in juku-library/*" ${f%.md} "*|library/upgrade-log.md*" ${f%.md} "*) continue ;; esac
   # The page is held to the name pattern; the file linking it is any path in
   # the repository, so it is printed escaped, as a page name the pattern
   # refuses is above: a control character in a path reaches a public log.

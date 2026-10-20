@@ -35,9 +35,9 @@ A Project's instructions are its template, whole: `library/project-template-prod
 
 How a change reaches every product: it is made here once and then lands everywhere — a change to how we build not by anyone remembering, but because every session is sent to this list at its start (by the first line of its `AGENTS.md`, and by its Project's instructions) and a repo that lacks something on it makes itself current in its next pull request. One line each, as of 29 September 2026; the why of each lives in the pull request that added it.
 
-- Free checks and a self-review before any paid read, and on every change the line `Personal data or payments affected: yes/no — reason` ([decision 0010](juku-library/DECISION-0010-REVIEW-SPEND-AND-PLAN-MAP.md), 29 September 2026). Detail: `library/reviewer-asking.md`.
-- `AGENTS.md` ending with `## Review guidelines`, under 500 words; a check green only when the reviewer has read the current commit; the reviewer `review-gate.py` names. Detail: `library/carries-reviewer.md`.
-- Product reads asked from here through `review-product.yml`, of one commit only, the ready mark a builder adds after its own review, with the product's own check named exactly `verify` passed on it (`library/product-joins.md`), and a model switched in one edit (met: `model-registry/`). Detail: `library/carries-reviewer.md`.
+- Free checks and a self-review before any paid read, and on every change the line `Personal data or payments affected: yes/no — reason` ([decision 0010](juku-library/DECISION-0010-REVIEW-SPEND-AND-PLAN-MAP.md), 29 September 2026). Detail: `library/reviewer.md`.
+- `AGENTS.md` ending with `## Review guidelines`, under 500 words; a check green only when the reviewer has read the current commit; the reviewer `review-gate.py` names. Detail: `library/reviewer.md`.
+- Product reads asked from here through `review-product.yml`, of one commit only, the ready mark a builder adds after its own review, with the product's own check named exactly `verify` passed on it (`library/product-joins.md`), and a model switched in one edit (met: `model-registry/`). Detail: `library/reviewer.md`.
 - Open pull requests moved on before new work; a session that cannot move says so once and stops hard, with the clock tools denied; a consultant that cannot be reached never holds up a slice; a `roadmap.json` fit for a one-word *build*. Detail: `library/carries-sessions.md`.
 - `.claude/agents/max-subagent.md`, the max subagent, exactly as its page gives it (his ruling, 28 September 2026). Detail: `library/max-subagent.md`.
 - Money milestones in `roadmap.json`; evidence recorded with its origin; the handover's `evidence` field; `PRODUCT.md` and `NAMES.md`; a README route section; a Project set to its template; a `design/` folder for a product with a user interface. Detail: `library/carries-evidence.md`.
@@ -57,11 +57,8 @@ One page per topic, or a named few where a topic is large, opened when its trigg
 | `library/voice-native.md`: *Voice Native* | work touches a product's assistant or its actions, or a screen's spoken path is mapped or built |
 | `library/two-stacks.md`: *The two stacks* | choosing the lead or its effort, starting, handing over or finishing work in either stack, or a job that needs hands |
 | `library/max-subagent.md`: *The max subagent* | a lead hands its max piece on, or a product sets up or checks its max subagent file |
-| `library/reviewer.md`: *The independent reviewer* | working out who reviews a change, what it is shown, or what a risky class of change is owed |
-| `library/reviewer-verdict.md`: *The independent reviewer: what a read is, and the machine* | judging whether a commit is cleared, how a verdict is signed and why no comment counts, changing the review machinery, or putting the reviewer App on a repository |
-| `library/reviewer-asking.md`: *The independent reviewer: asking, and what it spends* | asking for a read, deciding whether to ask again, or setting what a product's checks run |
+| `library/reviewer.md`: *The independent reviewer* | working out who reviews a change, asking for a read, judging whether a commit is cleared, writing a repository's Review guidelines, checking a product's gate, or changing the review machinery |
 | `library/reviewer-parking.md`: *The independent reviewer: parking* | about to park a slice, or the reviewer seems out |
-| `library/reviewer-brief.md`: *The independent reviewer: the brief* | writing a repository's AGENTS.md or its Review guidelines, or a rule lands mid-session |
 | `library/consultant.md`: *The consultant* | asking the consultant for a sweep, a bug hunt, a better procedure or a review of ideas, or answering its findings |
 | `library/consultant-debate.md`: *The consultant: the head-office debate* | a big idea is to be settled with the consultant before it reaches the Chairman, or the debate's seats, step-up or breaker are in question |
 | `library/consultant-instructions.md`: *The consultant: its standing instructions* | the consultant cannot be reached, or its standing instructions are set or changed |
@@ -71,9 +68,8 @@ One page per topic, or a named few where a topic is large, opened when its trigg
 | `library/project-template-product.md`: *Project instructions template* | setting or checking a product Project's instructions |
 | `library/project-template-juku-os.md`: *The Juku OS Project's instructions* | setting or checking the Juku OS Project's instructions |
 | `library/project-instructions.md`: *What a Project holds, and who sets it* | a Project's instructions differ from their template, or text for the Chairman changes |
-| `library/carries-reviewer.md`: *What every product carries: the reviewer, the product read and the model switch* | checking a product's gate, its reviewer or its review guidelines, asking for a product read from here, or switching the model behind a role |
 | `library/model-registry.md`: *The model registry* | asking which model holds a role, what a read resolved to, or switching the model behind a role |
-| `library/carries-sessions.md`: *What every product carries: open work, stopping, the consultant, the roadmap* | starting or stopping a product session, or leaving its roadmap |
+| `library/carries-sessions.md`: *What every product carries: open work, stopping, the consultant, the roadmap* | starting or stopping a product session, leaving its roadmap, or setting what a product's checks run |
 | `library/carries-evidence.md`: *What every product carries: milestones, evidence, the product's pages* | a slice touches money milestones, evidence, the product's own pages, its README route or its design folder, or a handover reports a read's cost or the efficiency duty is weighed |
 | `library/roadmap.md`: *The Roadmap* | working on the Roadmap |
 | `library/board-proposals-card.md`: *The Roadmap: the proposals card* | changing the proposals card, or checking it against what he approved |

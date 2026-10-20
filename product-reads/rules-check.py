@@ -76,7 +76,7 @@ def budget(name, files, limit):
 
 def constitution_faults(text):
     """What is wrong with a design/CONSTITUTION.md, as a list of reasons."""
-    bad, section, before = [], None, []
+    bad, section, before, approvals = [], None, [], []
     if len(text.split()) > CONSTITUTION_WORDS:
         bad.append("it is %d words; the cap is %d" % (len(text.split()), CONSTITUTION_WORDS))
     for line in text.splitlines():
@@ -90,11 +90,19 @@ def constitution_faults(text):
             bad.append("sub-heading '%s': the constitution has only its five headings" % line.lstrip("#").strip())
         if section is None and not line.startswith("# "):
             before.append(line)
-        if section == "Approved by picture" and re.match(r"^\s*(-|\*|\d+\.)\s", line):
-            if not DATE.search(line):
-                bad.append("an approval with no date: %s" % line.strip()[:80])
-            if not PICTURE.search(line):
-                bad.append("an approval naming no picture (a path or link): %s" % line.strip()[:80])
+        # Every line under the last heading is an approval, or the indented
+        # continuation of one. An indented list item is an approval of its own
+        # and never borrows its parent's date or picture.
+        if section == "Approved by picture" and line.strip() and not line.strip().startswith("<!--"):
+            if line[:1].isspace() and approvals and not re.match(r"^\s*([-*+]|\d+[.)])\s", line):
+                approvals[-1] += " " + line.strip()
+            elif line.strip().rstrip(".") != "None yet":
+                approvals.append(line.strip())
+    for item in approvals:
+        if not DATE.search(item):
+            bad.append("an approval with no date: %s" % item[:80])
+        if not PICTURE.search(item):
+            bad.append("an approval naming no picture (a path or link): %s" % item[:80])
     if len(" ".join(before).split()) > INTRO_WORDS:
         bad.append("more than %d words before its first heading: rules go under the five headings" % INTRO_WORDS)
     return bad
@@ -260,6 +268,16 @@ def selftest():
     want("a deeper sub-heading", len(constitution_faults("## Money\n\n#### Style\n")), 1)
     want("a long preamble", len(constitution_faults("# C\n\n" + "word " * 90 + "\n\n## Tokens\n")), 1)
     want("an over-long constitution", len(constitution_faults("## Domain law\n\n" + "word " * 460)), 1)
+    want("a paragraph of undated exceptions",
+         len(constitution_faults("## Approved by picture\n\nThe old look stays, as agreed.\n")) > 0, True)
+    want("none yet", constitution_faults("## Approved by picture\n\nNone yet.\n"), [])
+    want("none yet, no stop", constitution_faults("## Approved by picture\n\nNone yet\n"), [])
+    want("an item wrapped onto a second line", constitution_faults(
+        "## Approved by picture\n\n- The plaque, 12 August 2026,\n  hemz-library/design/plaque/sheet.png\n"), [])
+    want("an indented sub-item borrows nothing from its parent", len(constitution_faults(
+        "## Approved by picture\n\n- The plaque, 12 August 2026, design/p.png\n  - and the tiles too\n")), 2)
+    want("a plus or a 1) sub-item borrows nothing either", len(constitution_faults(
+        "## Approved by picture\n\n- The plaque, 12 August 2026, design/p.png\n  + the tiles\n  1) the header\n")), 4)
     want("a rehearsal recording", constitution_faults("## Approved by picture\n\n- Sound, 12 October 2026, design/r.m4a\n"), [])
     want("no rule page changed", replaces_fault("", []), None)
     want("a rule page and no line", replaces_fault("Fixes things", ["HOW-WE-BUILD.md"]) is not None, True)
