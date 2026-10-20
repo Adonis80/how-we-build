@@ -6,9 +6,9 @@ The rulebook for every product Dhayan's AI studio builds. This repository says *
 
 **Three files matter.**
 
-- `HOW-WE-BUILD.md` — the operating page, short, its words budgeted with the README's by `product-reads/rules-check.py`. The first thing a working session loads, with *What every product carries* in the README.
+- `HOW-WE-BUILD.md` — the operating page, short, its words budgeted with the README's by `product-reads/rules-check.py`. The first thing a working session loads, then the README.
 - `CHARTER.md` — the Systems Blueprint, the reasoning behind the page. Read once, never loaded into a working session.
-- `RICH-DATA.md` — the method for what a product learns from and how we know its AI got smarter. Read on the trigger in *What every product carries*, and not otherwise.
+- `RICH-DATA.md` — the method for what a product learns from and how we know its AI got smarter. Read on its row in the README's index, and not otherwise.
 
 A fourth, `AGENTS.md`, is not for sessions at all: it carries the reviewer's brief for changes to this repository, because the reviewing tool loads only a file of that name.
 

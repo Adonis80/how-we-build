@@ -1,6 +1,6 @@
 # The consultant
 
-Scope: every product, in either stack. Open when: asking the consultant for anything, answering its findings, settling a big idea with it, or setting its standing instructions, or it cannot be reached.
+Scope: every product and this rulebook, in either stack. Open when: asking the consultant for anything, answering its findings, settling a big idea with it, or setting its standing instructions, or it cannot be reached.
 
 **Who.** The consultant (Astra) is the chat surface of the stack that is not leading: ChatGPT while Claude leads, a Claude chat session while OpenAI leads. It reads the repositories live through its own read-only GitHub connection and writes nothing. On the OpenAI side its strongest model is reachable only from cloud work mode, so that is where it is asked.
 
