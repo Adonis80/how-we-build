@@ -4,7 +4,7 @@
 **Primary outcome:** Dhayan can move between interchangeable AI development stacks while GitHub preserves the work, and each stack can ship accepted software with minimal founder coordination.
 **Supersedes:** Earlier development-system blueprints, control planes, orchestration proposals, permanent model assignments and instruction stacks.
 
-`HOW-WE-BUILD.md` is the short operating rule. This Charter explains **why**. Product repositories define **what** each product is. Where they disagree, `HOW-WE-BUILD.md` governs how we build, a product's `AGENTS.md` governs what that product is, and this document governs why.
+`HOW-WE-BUILD.md` is the short operating rule. This Charter explains **why**. Product repositories define **what** each product is. Where they disagree, `HOW-WE-BUILD.md`'s *Which rule wins* settles it; this document governs only why.
 
 ## 1. Authority
 
