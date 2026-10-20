@@ -109,6 +109,8 @@ def replaces_fault(body, rule_pages_changed):
                 "supersedes>; products: <pages updated, or none>', or 'Replaces: nothing — not a check because: "
                 "<why>'" % ", ".join(repr(p) for p in rule_pages_changed[:5]))
     said = m.group(1).strip()
+    if "<" in said and ">" in said:
+        return "the 'Replaces:' line still holds the template's <placeholders>"
     if re.match(r"(?i)^nothing\b", said) and not re.search(r"(?i)not a check because:\s*\S", said):
         return "'Replaces: nothing' must say 'not a check because: <why>'"
     if not re.match(r"(?i)^nothing\b", said) and not re.search(r"(?i)\bproducts:\s*\S", said):
@@ -116,11 +118,20 @@ def replaces_fault(body, rule_pages_changed):
     return None
 
 
+class _Stay(urllib.request.HTTPRedirectHandler):
+    """No redirect is followed, so the token never travels to another host."""
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+_OPEN = urllib.request.build_opener(_Stay)
+
+
 def _get(url, token):
     req = urllib.request.Request(url, headers={"Authorization": "Bearer " + token,
                                                "Accept": "application/vnd.github+json",
                                                "User-Agent": "juku-rules-check"})
-    with urllib.request.urlopen(req, timeout=30) as r:
+    with _OPEN.open(req, timeout=30) as r:
         return json.loads(r.read().decode("utf-8"))
 
 
@@ -153,6 +164,9 @@ def pull_request():
             print("note: this branch has no open pull request yet, so the Replaces: line waits for its next run")
             return None
         pr = found[0]
+    # The body as it stands now, not as the event that started this run saw it:
+    # a re-run keeps its first event, and the line may have been fixed since.
+    pr = _get("https://api.github.com/repos/%s/pulls/%d" % (repo, pr["number"]), token)
     files, page = [], 1
     while True:
         got = _get("https://api.github.com/repos/%s/pulls/%d/files?per_page=100&page=%d" % (
@@ -246,6 +260,8 @@ def selftest():
     want("nothing, with a reason",
          replaces_fault("Replaces: nothing — not a check because: it is a judgement", ["AGENTS.md"]), None)
     want("nothing, without a reason", replaces_fault("Replaces: nothing", ["AGENTS.md"]) is not None, True)
+    want("the template pasted as it is", replaces_fault(
+        "Replaces: <the text or page it supersedes>; products: <product pages updated, or none>", ["AGENTS.md"]) is not None, True)
     want("the upgrade log is not a rule page", is_rule_page("library/upgrade-log.md", False), False)
     want("a library page is", is_rule_page("library/reviewer.md", False), True)
     want("a product's design page is", is_rule_page("design/HEMZ-VOICE.md", True), True)
