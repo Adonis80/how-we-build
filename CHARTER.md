@@ -48,77 +48,29 @@ Useful ideas retained from the older work: fresh sessions are disposable; determ
 
 ## 4. Minimum architecture
 
-The active development system is:
-
-```text
-Dhayan
-  product intent / acceptance
-        |
-        v
-one active CTO stack
-  OpenAI or Anthropic
-        |
-        v
-product repository + PR
-  durable state and handover
-        |
-        v
-builder + deterministic checks
-        |
-        v
-preview / acceptance
-        |
-        v
-protected merge -> deploy -> smoke -> rollback if needed
-```
+Dhayan gives intent and acceptance; one active CTO stack (OpenAI or Anthropic) works in the product repository, whose pull request is the durable state and handover; deterministic checks and a preview prove it; a protected merge deploys, smokes and rolls back if needed.
 
 `Adonis80/how-we-build` contains only global development rules and shared design method. Each product has its own private repository. Products do not depend on one another for project truth.
 
-Do not introduce a general orchestrator, memory database, model registry, scheduler, context compiler, policy engine or autonomous-company layer merely because several providers or products exist. A registry naming which model fills each role is the one exception, and it is his (his ruling, 22 September 2026: switching a model must be easy): no larger than [decision 0004](https://github.com/Adonis80/how-we-build/issues/60) names — role, adapter and exact model id, for roles something consumes.
+Do not introduce a general orchestrator, memory database, scheduler, context compiler, policy engine or autonomous-company layer merely because several providers or products exist. A registry naming which model fills each role is the one exception, and it is his (22 September 2026: switching a model must be easy): role, adapter and exact model id, for roles something consumes.
 
 ## 5. Interchangeable providers
 
-OpenAI and Anthropic are **adapters**, not separate development systems.
-
-The shared contract is GitHub: current product truth, open PRs, branch state, checks and the roadmap. Provider-specific setup exists only where the products genuinely differ in how they reach and execute that contract.
-
-OpenAI development uses Codex; cloud execution is the default, with local execution only when the task genuinely needs the Mac. ChatGPT is the advisory/thinking surface.
-
-Anthropic development uses Claude/Cowork/Code through the best current route to the same repository.
-
-Only one provider owns a slice at a time. At a clean checkpoint, opening the other provider and sending `build` transfers ownership. The outgoing provider does not prepare a prose explanation for the incoming provider; it prepares the PR and repository.
-
-Which model leads is the Chairman's, and changes as the models do; because the rules are written by role, that swap costs nothing — the lead is a role no machine here runs. A model a machine runs, such as the reviewer, is another matter: `library/model-registry.md` says who holds each role today. What each stack can actually do, and how its workspace is configured, lives in `README.md` and the library pages its index names, which change faster than this Charter.
-
-A new provider in future earns one adapter. It does not justify another roadmap, state store, handover format or copy of the global rules.
+OpenAI and Anthropic are **adapters**, not separate development systems. The shared contract is GitHub: current product truth, open PRs, branch state, checks and the roadmap. Only one provider owns a slice at a time, and the PR, not a prose explanation, carries it across. Which model leads is the Chairman's; because the rules are written by role, that swap costs nothing. How each stack works today lives in `library/two-stacks.md`, which changes faster than this Charter. A new provider earns one adapter, never another roadmap, state store, handover format or copy of the rules.
 
 ## 6. Canonical truth and context
 
-Normal execution starts from:
+Normal execution starts from the reading path the README names, then the product's own pages, source, tests, live runtime and open pull requests.
 
-- `HOW-WE-BUILD.md`;
-- the product's `AGENTS.md`;
-- the relevant current sections of `PRODUCT.md`;
-- `roadmap.json`;
-- the product README when setup/test/deploy commands are needed;
-- source, tests and live runtime;
-- relevant open pull requests.
+Memory, old chats, copied files, standalone handovers and superseded specifications are not sources of truth.
 
-Provider memory, old chats, old model explanations, copied project files, standalone handovers, restart notes and superseded specifications are not sources of truth.
-
-A fresh session reads progressively and stops when it knows enough. Large product documents are searched for the subject being changed; they are not reread in full by default.
+A fresh session reads progressively and stops when it knows enough; large product documents are searched, not reread whole.
 
 ## 7. Documentation must resist accumulation
 
 Canonical files describe **current truth, not the history of truth**.
 
-When a rule, requirement or design changes:
-
-1. find the existing owner of the subject;
-2. understand the current relevant wording;
-3. replace, consolidate or delete what is superseded;
-4. search active files and code for conflicting copies;
-5. update executable tests where applicable.
+When a rule, requirement or design changes, its one owner changes and what it supersedes is deleted (`library/changing-the-rulebook.md`).
 
 Git history is the archive. Temporary reasoning belongs in the pull request and disappears when the work closes.
 
@@ -128,19 +80,11 @@ A new document is justified only when it owns durable information that cannot li
 
 ## 8. The unit of work
 
-The unit is one accepted **vertical slice**: a bounded user-visible outcome with observable acceptance criteria, or a necessary cross-cutting change inseparable from that outcome.
-
-A screen is not automatically a slice. A slice can touch several screens. The boundary follows behaviour and proof.
-
-`build` is intentionally a complete instruction. The repository and open PRs must contain enough current state that a fresh session can determine what should happen next without Dhayan reconstructing technical context.
+The slice (`HOW-WE-BUILD.md`) follows behaviour and proof, not screens, and may be a cross-cutting change inseparable from its outcome. `build` is a complete instruction because the repository and open PRs carry enough state that Dhayan never reconstructs technical context.
 
 ## 9. Proof before completion
 
-A slice is not complete because an agent says so.
-
-Use deterministic evidence appropriate to the product: install/build, type/lint checks, unit/domain/integration tests, the actual browser or application journey, relevant mobile and desktop states, preview deployment, production smoke and rollback capability.
-
-Business invariants such as pricing, permissions or transformations should be executable tests wherever practical.
+A slice is not complete because an agent says so: the evidence is deterministic (build, checks, tests, the real journey on phone and desktop, a preview, a production smoke and a rollback). Business invariants such as pricing, permissions or transformations are executable tests wherever practical.
 
 **One path for business logic.** Pricing, rates, permissions, calculations and other protected rules have one canonical implementation. Interfaces import it; they never carry their own figures. For pricing the minimum is: staff and customer surfaces import the same function and the same rate source; contract tests prove matching totals, rate propagation and VAT exactly once; and tests prove a customer sees only locked lines, with no internal working exposed. Critical journeys are covered by a real browser suite — Playwright, where the product has one — not by a screenshot.
 
@@ -158,19 +102,7 @@ This makes sessions disposable and provider switching cheap.
 
 ## 11. Failure and recovery
 
-Handle failure in this order:
-
-1. reproduce;
-2. inspect current evidence;
-3. repair or delete the faulty cause;
-4. add the smallest regression test;
-5. shrink the slice if needed;
-6. change method after two materially identical failures;
-7. restore the last safe state if completion is no longer credible.
-
-Do not answer an isolated failure by inventing a new agent, document or rule.
-
-When no allowed action can move the slice, checkpoint and stop. Do not poll, sleep, schedule wakeups or burn tokens reporting that nothing changed.
+The order is `HOW-WE-BUILD.md`'s (*When something goes wrong*); the reason is that an isolated failure answered with a new agent, document or rule is how earlier systems grew. When completion is no longer credible, restore the last safe state. When no allowed action can move the slice, checkpoint and stop: polling, sleeping or reporting that nothing changed burns tokens for nothing.
 
 ## 12. Permissions, internet and secrets
 
@@ -215,6 +147,6 @@ The development system is scaffolding, not the product.
 
 If maintaining Juku OS begins consuming attention comparable to building the products, simplify it. The strongest system is the smallest one that reliably lets interchangeable agents ship correct software and lets Dhayan remain focused on product judgement.
 
-## 16. Rich data (September 2026)
+## 16. Rich data
 
-On 17 September 2026 the Chairman set two standing goals: Juku OS builds world-class software and always looks to identify and capture rich data for training and improving AIs over time; and every product is optimised for collecting rich data that raises the intelligence of that product's own AI in its domain. He defined rich as granularity, not coverage. That ruling meets the gate in §13. The method that follows from it was tested against an outside consultant over four rounds and closed on 18 September 2026; the honest-measurement half (sealed predictions, protected outcomes, a stated baseline) and the data-shape half (records kept as permitted and never edited, understanding recomputed from them, the product's own acts recorded as evidence) both live in `RICH-DATA.md`, which a session reads only when its slice changes what a product learns from, shows about a person, or claims about its own accuracy. Nothing in it is a machine gate; each product proves its own behaviour in its own tests. Three decisions stayed the Chairman's: Hemz retention beyond the documentation clearing, commercial reuse of staff expertise, and reuse of Myst contributions.
+His two standing goals: Juku OS builds world-class software and always looks to identify and capture rich data for training and improving AIs over time; and every product is built to collect the rich, granular evidence that raises its own AI's intelligence in its domain, measured honestly. The method is `RICH-DATA.md`, read only when a slice changes what a product learns from, shows about a person, or claims about its own accuracy; nothing in it is a machine gate. Three decisions stay the Chairman's: Hemz retention beyond the documentation clearing, commercial reuse of staff expertise, and reuse of Myst contributions.

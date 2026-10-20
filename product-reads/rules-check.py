@@ -24,8 +24,8 @@ import urllib.request
 
 # This repository's budgets. Changing one is a rule change like any other.
 RULEBOOK_PATH = ("HOW-WE-BUILD.md", "README.md")
-RULEBOOK_PATH_BUDGET = 2800
-RULEBOOK_ACTIVE_BUDGET = 34000
+RULEBOOK_PATH_BUDGET = 1600
+RULEBOOK_ACTIVE_BUDGET = 23100
 # History, not rules: the archive and the upgrade log are never budgeted.
 RULEBOOK_NOT_ACTIVE = ("library/upgrade-log.md",)
 RULEBOOK_SCREEN = ("HOW-WE-BUILD.md", "README.md", "library/hypersolid.md", "library/voice-native.md")
