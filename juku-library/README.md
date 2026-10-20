@@ -1,6 +1,6 @@
 # juku-library: the index
 
-The papers that lead to the rules, kept word for word. Where an agreement itself was reached is its decision issue; a row links it where its paper names one. Open a paper when a rule is about to change or its reason is in question. Never load one into a working session.
+The papers that lead to the rules, kept word for word. Where an agreement itself was reached is its decision issue; a row links it where its paper names one. Open a paper only when asked why a rule exists. Never load one into a working session.
 
 A later paper supersedes an earlier one, and the earlier stands as history. Papers are never edited, so their status lives here, not in them.
 

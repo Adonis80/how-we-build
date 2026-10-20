@@ -4,7 +4,7 @@ Scope: every product and session. Open when: anything would cost money, or a pro
 
 **No session proposes a paid plan, tool or service while a product earns nothing.** A feature that needs one is built on the free route or parked with the cost named. Where a paid lock would have enforced a rule, the checks and the review enforce it instead.
 
-**Before putting a cost to him, read what he has already decided**: `PRODUCT.md` and `roadmap.json`. Where a roadmap gate line and `PRODUCT.md` disagree, his later answer wins and is written into `PRODUCT.md` in the same pull request. An answer he gives inside a product is not on the record until it is in the repository.
+**Before putting a cost to him, read what he has already decided**: `PRODUCT.md` and `roadmap.json`. Where a roadmap gate line and `PRODUCT.md` disagree, `PRODUCT.md` wins and the copy is corrected (`HOW-WE-BUILD.md`, *Which rule wins*); a newer answer of his is written into `PRODUCT.md` first. An answer he gives inside a product is not on the record until it is in the repository.
 
 **The host's plan.** No product is a real business until its revenue passes £1,000 a month. Until then it stays on the host's free plan and deploys as normal; the free plan's terms reserve it for non-commercial use, and that call is his. The paid plan is his to buy when a product's milestone fires; no session buys it.
 
