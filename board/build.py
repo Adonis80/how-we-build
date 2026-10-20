@@ -63,10 +63,11 @@ except Exception:  # no tz database: say UTC rather than guess
     LONDON = None
 
 RULEBOOK = "Juku OS"
-ROWS = (RULEBOOK, "Hemz OS", "Myst", "Phena")          # §1: four rows, this order
+ROWS = (RULEBOOK, "Hemz OS", "Myst", "Phena", "Fixed")  # §1: five rows, this order
 # THE PRODUCTS: the README's map, and nothing else; review-gate.py holds this list to the
 # map both ways, and its names to ROWS.
-PRODUCTS = (("Adonis80/Hemz-OS", "Hemz OS"), ("Adonis80/myst", "Myst"), ("Adonis80/phena", "Phena"))
+PRODUCTS = (("Adonis80/Hemz-OS", "Hemz OS"), ("Adonis80/myst", "Myst"), ("Adonis80/phena", "Phena"),
+            ("Adonis80/fixed", "Fixed"))
 AGREED = ("done", "building", "next", "agreed")        # §2: the denominator
 DECISION = "Decision needed:"                          # §3: the only test
 MERGED_SHOWN = 10                                      # §7
@@ -990,7 +991,8 @@ def _selftest():
                                        "money_milestones": {"items": [{"id": "M1", "when": "Revenue passes one thousand a month.",
                                                                        "reached_on": None}]}}},
                           {"name": "Myst", "last_edited": "2026-09-21T22:00:00Z", "roadmap": road},
-                          {"name": "Phena", "last_edited": "2026-09-24T23:00:00Z", "roadmap": {"items": []}}],
+                          {"name": "Phena", "last_edited": "2026-09-24T23:00:00Z", "roadmap": {"items": []}},
+                          {"name": "Fixed", "last_edited": "2026-10-19T20:00:00Z", "roadmap": {"items": []}}],
              "rulebook": {"open": [pr(111, ok + "\nUNSELECTED BODY TEXT", review=[("completed", "success")]),
                                    dict(pr(112, ok), url="javascript:alert(1)")],
                           "merged": [dict(pr(100 + i, ""), merged_at="2026-09-%02dT10:00:00Z" % (10 + i))
@@ -1053,10 +1055,10 @@ def _selftest():
     hold("<dt>Agreed</dt><dd>the Chairman · 7 September 2026</dd>" in page or LONDON is None,
          "§4: `decided_on` is labelled agreed on, as an absolute date")
     hold([page.index('<h2 class="pname">%s</h2>' % r) for r in ROWS] ==
-         sorted(page.index('<h2 class="pname">%s</h2>' % r) for r in ROWS), "§1: four projects, Juku OS first")
-    hold(page.count('<section class="page"') == 4 and 'href="#p-1" aria-label="On to Hemz OS"' in page and
+         sorted(page.index('<h2 class="pname">%s</h2>' % r) for r in ROWS), "§1: five projects, Juku OS first")
+    hold(page.count('<section class="page"') == 5 and 'href="#p-1" aria-label="On to Hemz OS"' in page and
          '<span class="step off" aria-hidden="true">‹</span>' in page and "{NAV}" not in page,
-         "the Roadmap is four project pages, each stepping to its neighbours by a link that needs no script")
+         "the Roadmap is five project pages, each stepping to its neighbours by a link that needs no script")
     # THE PROPOSALS CARD (his approval, 15 October 2026, #222's Option D): the rulebook's open
     # `proposal` issues and every product's `proposed` items in one queue above the pages.
     edit = lambda rd: {"name": rd[0], "last_edited": "2026-09-25T17:00:00Z", "roadmap": {"items": rd[1]}}
@@ -1071,7 +1073,8 @@ def _selftest():
     q2 = render(dict(reads, rulebook=rb, proposals=issues, products=[
         edit(("Phena", [it("P1", "proposed", title="Phena idea", plain="Captured 2026-09-24; why.")])),
         edit(("Myst", road["items"])),
-        edit(("Hemz OS", [it("H1", "proposed", title="Hemz idea"), it("H3", "building")]))]))
+        edit(("Hemz OS", [it("H1", "proposed", title="Hemz idea"), it("H3", "building")])),
+        edit(("Fixed", []))]))
     card = q2[q2.index('<section class="pq"'):q2.index('<nav class="tabs"')]
     hold(card.index(html.escape(evil)) < card.index("Hemz idea") and card.index(html.escape(evil)) < card.index("Phena idea") and
          card.index("Phena idea") < card.index("Item X4"), "the card: every product's ideas after every issue, oldest first")
@@ -1113,11 +1116,11 @@ def _selftest():
     hold('pq-gl st-none' in render(dict(reads, proposals={"unread": True})) and
          "No debate due" in proposals_card([iss(500, "Priority: P4 — observe.")], [], {}, datetime(2026, 9, 26, tzinfo=timezone.utc)),
          "a tile says when its source was not read, and when no debate is due")
-    empty = render(dict(reads, proposals=[], products=[edit(("Hemz OS", [])), edit(("Myst", [])), edit(("Phena", []))]))
+    empty = render(dict(reads, proposals=[], products=[edit(("Hemz OS", [])), edit(("Myst", [])), edit(("Phena", [])), edit(("Fixed", []))]))
     hold("Nothing waiting" in empty and 'class="e"' in empty and "Debate due" not in empty, "the card: empty, a grey bar and Nothing waiting")
     hold("could not be read when this page opened" in render(dict(reads, proposals={"unread": True})),
          "the card: proposals that could not be read are said")
-    hold(q2.count('<section class="page"') == 4 and "0 of 1 agreed done · 1 suggested" in q2 and
+    hold(q2.count('<section class="page"') == 5 and "0 of 1 agreed done · 1 suggested" in q2 and
          "3 of 9 agreed done · 1 suggested" in q2 and "<script" not in card,
          "the card adds no page, changes no count, and needs no script")
     hold(readiness(pr(14, "**Priority:** p1. **Ready:** yes."))[2] == "P1", "a lower-case priority reads, and sorts, as its level")
@@ -1236,7 +1239,7 @@ def _selftest():
     half = render(read_live(env, get))
     myst = half[half.index('<h2 class="pname">Myst</h2>'):half.index('<h2 class="pname">Phena</h2>')]
     hold("Its roadmap could not be read when this page opened" in myst and "Item R1" not in myst and
-         half.count("Item R1") == 4, "a product that cannot be read is said on its page; the others still show")
+         half.count("Item R1") == 6, "a product that cannot be read is said on its page; the others still show")
     get, calls = fake(fail=(SPEND_URL, "/pulls", "/issues"))
     down = read_live(env, get)
     hold(down["spend"] == {"unread": True} and down["rulebook"] == {"unread": True} and down["proposals"] == {"unread": True} and
@@ -1265,7 +1268,7 @@ def _selftest():
     for b in bad:
         print("  roadmap: " + b)
     if not bad:
-        print("ok: the Roadmap renders decision 0007 from its reads — §1's four rows, §2's denominator, §3's "
+        print("ok: the Roadmap renders decision 0007 from its reads — §1's five rows, §2's denominator, §3's "
               "prefix, §5's snapshot, %d cases of §7's readiness states, the queue's order and §8's contract — "
               "and refuses a roadmap it cannot read, naming the key and never the value; and its live read asks "
               "each source with GETs alone, its own key to its own host, keeps the page a minute, and says what it could not read"

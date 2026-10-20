@@ -13,6 +13,7 @@ The whole map: what exists, where it lives, and one line on what it is for. It i
 - **Myst** — `https://github.com/Adonis80/myst` (private; Juku Perfume, `juku-perfume`, until 16 September 2026). The App for Perfume Collectors, a fragrance intelligence and exchange platform: a Personal Nose that learns a person's taste, samples picked for them, and the value sitting on collectors' shelves.
 - **Hemz OS** — `https://github.com/Adonis80/Hemz-OS` (private). The operating system for an alterations business, grown out of Alma's Alterations in Brighton.
 - **Phena** — `https://github.com/Adonis80/phena` (private; joined 24 September 2026). Phena App, *Documenting the Phenomena*: a living corpus of first-person extraordinary experiences, near-death experiences first, explored through the River. A Juku product at `phena.juku.pro`.
+- **Fixed** — `https://github.com/Adonis80/fixed` (private; on the map since 19 October 2026, its kit not yet merged). A fair-price marketplace for local trades, heating first: a customer's photos and answers give an all-in estimate, and the installer's written fixed quote locks the price. "Fixed" is a working name. A Juku product at `fixed.juku.pro`.
 
 A repository not listed here is not under this rulebook. Papers for an idea that is not yet a product live in private `Adonis80/juku-os-papers`, one folder per idea, and move into the product's own `<product>-library/` when it joins; hosting papers there registers nothing.
 
@@ -24,6 +25,7 @@ One line per product: where its plan is, and how it reaches the Roadmap ([decisi
 - **Hemz OS** — [`roadmap.json`](https://github.com/Adonis80/Hemz-OS/blob/main/roadmap.json) on `main`. On the Roadmap: its page, from that file's items and money milestones.
 - **Myst** — [`roadmap.json`](https://github.com/Adonis80/myst/blob/main/roadmap.json) on `main`. On the Roadmap: its page, from that file's items.
 - **Phena** — [`roadmap.json`](https://github.com/Adonis80/phena/blob/main/roadmap.json) on `main`. On the Roadmap: its page, from that file's items and money milestones.
+- **Fixed** — [`roadmap.json`](https://github.com/Adonis80/fixed/blob/main/roadmap.json) on `main`. On the Roadmap: its page, from that file's items and money milestones.
 
 A product joins this map in the pull request that adds it to *Products under this rulebook*. How the Roadmap is built: `library/roadmap.md`.
 
