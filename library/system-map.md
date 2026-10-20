@@ -17,7 +17,7 @@ flowchart TB
     CON["design/CONSTITUTION.md<br/>tokens · units · money · domain law · dated picture approvals"]
     PD["PRODUCT.md + roadmap.json<br/>what it does, what comes next"]
   end
-  ARC["Archive: juku-library/ · decision issues · product libraries<br/>never read unless asked why"]
+  ARC["Archive: juku-library/ · decision issues · product papers<br/>never read unless asked why"]
   MEM["Memory<br/>who he is, how he likes to be spoken to — never rules"]
   subgraph CHECKS["Every change, before it merges"]
     RC["product-reads/rules-check.py — free<br/>word budgets · Replaces: line · constitution shape"]

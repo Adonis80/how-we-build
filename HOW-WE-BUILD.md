@@ -4,10 +4,10 @@
 
 **Who decides.** Dhayan is Chairman: the customer problem, what the product does, prices and figures, how it looks (approved by looking at pictures), spending, permissions, anything irreversible. The lead (one model, either stack, one slice at a time) is CTO: every other technical decision, this rulebook included, settled and merged without him. Never hand him options. Unsure: take the smallest reversible option.
 
-**Which rule wins.**
+**Which rule wins** (his ruling, decision 0021).
 1. How we build: this rulebook. A product's `AGENTS.md` adds only what is true there.
 2. How a screen looks: `library/hypersolid.md` alone. A product's `design/CONSTITUTION.md` holds only its tokens, units, money and domain law, and the exceptions he approved by picture, each dated. Any other looks line in a product is void.
-3. What a product does: its `PRODUCT.md` and `roadmap.json`. His later ruling beats his earlier one.
+3. What a product does: its `PRODUCT.md`, with `roadmap.json` for order and gates. His later ruling beats his earlier one, and lands in `PRODUCT.md` in the same pull request that finds it.
 4. Memory, old chats and handovers are never rules. Memory holds who he is and how he likes to be spoken to; how we build lives here.
 5. Two texts that disagree are a defect: the loser is deleted in the next change that touches it.
 

@@ -8,7 +8,7 @@ Scope: this repository. Open when: asking what a root file or folder here is for
 - `CHARTER.md` — the reasoning behind the rules; opened by the section a page cites, never loaded to work.
 - `RICH-DATA.md` — the method for what a product learns from; read on its index row.
 - `AGENTS.md` — the reviewer's brief for changes here, ending with the exam; not for sessions.
-- `juku-library/` and the `decision` issues — the archive: papers and the consensus records two models reached, kept word for word, never edited, never read unless asked why a rule exists. Each product keeps its own `<product>-library/` the same way.
+- `juku-library/` and the `decision` issues — the archive: papers and the consensus records two models reached, kept word for word, never edited, never read unless asked why a rule exists. Each product keeps its papers in its own `<product>-library/` the same way; that library's `design/<screen>/` folders are different: working inputs, the agreed sheet and builder note a builder reads for that screen (`library/hypersolid.md`).
 - `model-registry/` — the one place a model is named (`library/model-registry.md`).
 - `product-reads/` — the product read's rules, setup script and starter kit (`library/product-joins.md`), and `rules-check.py`, the rules' own guard (`library/changing-the-rulebook.md`).
 - `board/` — the Roadmap's gate and build (`library/roadmap.md`).

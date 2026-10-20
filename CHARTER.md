@@ -149,4 +149,4 @@ If maintaining Juku OS begins consuming attention comparable to building the pro
 
 ## 16. Rich data
 
-Every product is built to capture rich, granular evidence that raises its own AI's intelligence in its domain, and to measure that honestly. The method is `RICH-DATA.md`, read only when a slice changes what a product learns from, shows about a person, or claims about its own accuracy. Three decisions stay the Chairman's: Hemz retention beyond the documentation clearing, commercial reuse of staff expertise, and reuse of Myst contributions.
+His two standing goals: Juku OS builds world-class software and always looks to identify and capture rich data for training and improving AIs over time; and every product is built to collect the rich, granular evidence that raises its own AI's intelligence in its domain, measured honestly. The method is `RICH-DATA.md`, read only when a slice changes what a product learns from, shows about a person, or claims about its own accuracy; nothing in it is a machine gate. Three decisions stay the Chairman's: Hemz retention beyond the documentation clearing, commercial reuse of staff expertise, and reuse of Myst contributions.

@@ -1,6 +1,6 @@
 # Ideas for later
 
-Scope: every product session, and the consultant. Open when: a session spots an improvement it will not build now, a session closes, or a `proposal` issue is raised, ranked or debated.
+Scope: every product session, and the consultant. Open when: a session spots an improvement it will not build now, a roadmap read shows ideas due for review, a session closes, or a `proposal` issue is raised, ranked or debated.
 
 **Where.** A product idea is a `proposed` item in that product's `roadmap.json`: the CTO's suggestion, not agreed until he says. An idea about the rulebook, or about a rule, check, template or tool more than one product already shares, is an issue here labelled `proposal`, written generally with no product text; a mixed idea splits. Until its issue exists the idea stays in the roadmap with `next` `pending transfer`; then one `retired` line, `lifted to the rulebook, #N`, replaces it.
 

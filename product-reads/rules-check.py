@@ -76,7 +76,7 @@ def budget(name, files, limit):
 
 def constitution_faults(text):
     """What is wrong with a design/CONSTITUTION.md, as a list of reasons."""
-    bad, section, before = [], None, []
+    bad, section, before, approvals = [], None, [], []
     if len(text.split()) > CONSTITUTION_WORDS:
         bad.append("it is %d words; the cap is %d" % (len(text.split()), CONSTITUTION_WORDS))
     for line in text.splitlines():
@@ -90,11 +90,16 @@ def constitution_faults(text):
             bad.append("sub-heading '%s': the constitution has only its five headings" % line.lstrip("#").strip())
         if section is None and not line.startswith("# "):
             before.append(line)
-        if section == "Approved by picture" and line.strip() and line.strip() != "None yet.":
-            if not DATE.search(line):
-                bad.append("an approval with no date: %s" % line.strip()[:80])
-            if not PICTURE.search(line):
-                bad.append("an approval naming no picture (a path or link): %s" % line.strip()[:80])
+        if section == "Approved by picture" and line.strip() and not line.strip().startswith("<!--"):
+            if line[:1].isspace() and approvals:
+                approvals[-1] += " " + line.strip()
+            elif line.strip().rstrip(".") != "None yet":
+                approvals.append(line.strip())
+    for item in approvals:
+        if not DATE.search(item):
+            bad.append("an approval with no date: %s" % item[:80])
+        if not PICTURE.search(item):
+            bad.append("an approval naming no picture (a path or link): %s" % item[:80])
     if len(" ".join(before).split()) > INTRO_WORDS:
         bad.append("more than %d words before its first heading: rules go under the five headings" % INTRO_WORDS)
     return bad
@@ -263,6 +268,9 @@ def selftest():
     want("a paragraph of undated exceptions",
          len(constitution_faults("## Approved by picture\n\nThe old look stays, as agreed.\n")) > 0, True)
     want("none yet", constitution_faults("## Approved by picture\n\nNone yet.\n"), [])
+    want("none yet, no stop", constitution_faults("## Approved by picture\n\nNone yet\n"), [])
+    want("an item wrapped onto a second line", constitution_faults(
+        "## Approved by picture\n\n- The plaque, 12 August 2026,\n  hemz-library/design/plaque/sheet.png\n"), [])
     want("a rehearsal recording", constitution_faults("## Approved by picture\n\n- Sound, 12 October 2026, design/r.m4a\n"), [])
     want("no rule page changed", replaces_fault("", []), None)
     want("a rule page and no line", replaces_fault("Fixes things", ["HOW-WE-BUILD.md"]) is not None, True)

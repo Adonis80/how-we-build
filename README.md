@@ -40,7 +40,7 @@ The list, and how a repository makes itself current: `library/carries-sessions.m
 | `library/reviewer-parking.md`: *The independent reviewer: parking* | about to park a slice, or the reviewer seems out |
 | `library/model-registry.md`: *The model registry* | asking which model holds a role, or switching the model behind a role |
 | `library/consultant.md`: *The consultant* | asking the consultant for anything, settling a big idea with it, or setting its standing instructions |
-| `library/ideas-for-later.md`: *Ideas for later* | a session spots an improvement it will not build now, a session closes, or a `proposal` issue is raised, ranked or debated |
+| `library/ideas-for-later.md`: *Ideas for later* | a session spots an improvement it will not build now, a roadmap read shows ideas due for review, a session closes, or a `proposal` issue is raised, ranked or debated |
 | `library/product-joins.md`: *How a product joins* | adding a product to the map, or setting up its repository |
 | `library/project-instructions.md`: *Project instructions* | setting or checking any Project's instructions |
 | `library/roadmap.md`: *The Roadmap* | working on the Roadmap |
