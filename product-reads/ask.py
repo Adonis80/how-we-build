@@ -13,8 +13,10 @@ It lists the product's open pull requests and picks out each whose head is the
 builder's ready mark, whose own `verify` passed on it, and which has never been
 read. Those are the very three things review-product.yml checks again before it
 pays for a read, and they are asked of the same rules in reads.py, so the asker
-cannot ask for what the reviewer would refuse. Anything else is left: a draft, a
-fork, work still moving, a check that has not passed, a commit already read or
+cannot ask for what the reviewer would refuse. A draft is asked for like any
+other: the ready mark is the builder's last step and says ready by itself (the
+Chairman's word of 21 October 2026; Hemz-OS#174 sat two hours unread as a draft
+with its mark green). Anything else is left: a work still moving, a check that has not passed, a commit already read or
 being read, and a read that began and never finished, which nothing retries by
 itself: a builder looks, and asks with `again`. Without --dispatch it only says
 what it would ask, which is how it is tried before anything runs by itself.
@@ -90,6 +92,11 @@ def ready_to_read(call, repo, sha, app_id, now):
     return None
 
 
+# A ready mark whose product check is still running: the asker looks again in a minute.
+PENDING = "is still running on this commit"
+PENDING_LEFT = "a ready mark whose check is still running"
+
+
 def candidates(call, repo, app_id, now):
     """([(pull request, head commit)] to ask for, how many were left and why in brief, what went unanswered)."""
     chosen, left, trouble = [], {}, []
@@ -99,9 +106,7 @@ def candidates(call, repo, app_id, now):
         if not isinstance(number, int) or not isinstance(sha, str):
             left["a pull request in a shape the asker does not read"] = left.get("a pull request in a shape the asker does not read", 0) + 1
             continue
-        if pr.get("draft") is not False:
-            why = "a draft"
-        elif (head.get("repo") or {}).get("full_name") != repo:
+        if (head.get("repo") or {}).get("full_name") != repo:
             why = "a fork's pull request"
         else:
             try:
@@ -112,7 +117,8 @@ def candidates(call, repo, app_id, now):
         if why is None:
             chosen.append((number, sha))
         else:
-            left[why.split(";")[0].split(",")[0]] = left.get(why.split(";")[0].split(",")[0], 0) + 1
+            key = PENDING_LEFT if PENDING in why else why.split(";")[0].split(",")[0]
+            left[key] = left.get(key, 0) + 1
     return chosen, left, trouble
 
 
@@ -135,11 +141,24 @@ def dispatch(call, repo, number, sha):
         raise reads.Refused("GitHub answered %s to the dispatch for %s#%s" % (status, repo, number))
 
 
+def note_pending(left, where=None):
+    """THE QUICK LOOK (D, 21 October 2026: the reviewer starts on the event). A ready mark whose
+    product check is still running leaves a note in the run's temporary folder, and the asker's
+    loop looks again a minute later rather than ten. Nothing else is in the note."""
+    waiting = left.get(PENDING_LEFT, 0)
+    where = where if where is not None else os.environ.get("RUNNER_TEMP")
+    if waiting and where:
+        with open(os.path.join(where, "ask-pending"), "a", encoding="utf-8") as f:
+            f.write("%d\n" % waiting)
+    return waiting
+
+
 def run(call, send, repo, app_id, now, do_dispatch, say=print):
     """Ask for what is ready and not asked about before; return how many. Raises Trouble, after
     asking what it safely could, if any question went unanswered."""
     reads.listed(open(os.path.join(HERE, "..", "README.md"), encoding="utf-8").read(), repo)
     chosen, left, trouble = candidates(call, repo, app_id, now)
+    note_pending(left)
     asked = set()
     if chosen:
         try:
@@ -172,6 +191,9 @@ def _selftest():
     import contextlib
     import io
     import re
+    import tempfile
+    # The quick-look note goes to a folder of the selftest's own, never a real run's.
+    os.environ["RUNNER_TEMP"] = tempfile.mkdtemp()
     bad = []
     now = reads.NOW
     app, repo = reads.APP, "Adonis80/Hemz-OS"
@@ -246,8 +268,9 @@ def _selftest():
          [{"ref": "main", "inputs": {"repo": repo, "pr": "1", "sha": "%040x" % 1}}])
     want("and never asks for `again`", "again" in str(api.dispatched), False)
 
+    n, api, said = go([make(2, draft=True)], dispatch_=True)
+    want("a draft carrying its ready mark is asked for, as any other", [d["inputs"]["pr"] for d in api.dispatched], ["2"])
     left_alone = (
-        ("a draft", make(2, draft=True)),
         ("a fork's pull request", make(3, fork="Evil/x")),
         ("a head that is no ready mark", make(4, commit={"message": "just a fix"})),
         ("files changed under the mark", make(5, commit={"tree": "t9"})),
@@ -263,9 +286,22 @@ def _selftest():
     for what, pr in left_alone:
         n, api, said = go([pr], dispatch_=True)
         want("%s is left alone" % what, (n, api.dispatched), (0, []))
-    n, api, said = go([make(20, draft=True), make(21), make(22, verify=[]), make(23)], dispatch_=True)
+    n, api, said = go([make(20, fork="Evil/x"), make(21), make(22, verify=[]), make(23, draft=True)], dispatch_=True)
     want("only the ready ones among several", [d["inputs"]["pr"] for d in api.dispatched], ["21", "23"])
-    want("the log counts what it left, by reason", "2 to ask, 2 left" in said and "a draft" in said, True)
+    want("the log counts what it left, by reason", "2 to ask, 2 left" in said and "fork" in said, True)
+    # THE QUICK LOOK: a ready mark whose check is still running leaves a note, and nothing else does.
+    note = os.path.join(os.environ["RUNNER_TEMP"], "ask-pending")
+    for what, prs, noted in (
+            ("a mark still in its checks", [make(50, verify=[reads._run(name=reads.VERIFY, sha="%040x" % 50, status="in_progress", conclusion=None)])], "1\n"),
+            ("a mark whose check failed", [make(51, verify=[reads._run(name=reads.VERIFY, sha="%040x" % 51, conclusion="failure")])], None),
+            ("a head that is no mark, its check running", [make(52, commit={"message": "just a fix"},
+              verify=[reads._run(name=reads.VERIFY, sha="%040x" % 52, status="in_progress", conclusion=None)])], None),
+            ("a mark ready to read", [make(53)], None)):
+        if os.path.exists(note):
+            os.remove(note)
+        go(prs, dispatch_=True)
+        got = open(note, encoding="utf-8").read() if os.path.exists(note) else None
+        want("the quick-look note for %s" % what, got, noted)
     # A second round: the first mark was read and left findings, on another commit, and a fix and a
     # new mark followed. The new mark is asked for; nothing about earlier commits stands in its way.
     n, api, said = go([make(40, read=[reads._run(sha="e" * 40, conclusion="failure")])], dispatch_=True)
@@ -389,7 +425,7 @@ def _selftest():
         print("ask selftest failed: %d case(s)" % len(bad))
         return 1
     print("ok: the asker asks, once and exactly, only for a commit that is the ready mark with its own "
-          "check passed and no read begun, leaves a draft, a fork, a read begun or lost, never asks "
+          "check passed and no read begun, asks for a draft carrying its mark, leaves a fork, a read begun or lost, notes a mark still in its checks for a quick look, never asks "
           "about a commit twice or retries a read that went wrong across seven timed runs, and fails "
           "the run when GitHub will not answer")
     return 0

@@ -5575,6 +5575,187 @@ CONTEXT_LOOSENINGS = (
 )
 
 
+# ---------------------------------------------------------------------------
+# ONLY WHAT CHANGED SINCE THE LAST READ (C, the Chairman's word of 21 October 2026:
+# re-read only what changed; read it whole whenever the fix touches pricing or
+# money). review-product.yml's block is taken out of the gather step as it stands
+# and run on a real git history and a fake GitHub: it may hand the reader the
+# difference alone in the one case where every condition holds, and the whole
+# change in every case that is not exactly that one.
+SINCE_START = '          range="origin/$MAIN...$SHA"\n'
+SINCE_END = '          rm -f "$t/was.md" "$t/since-changed.txt"\n'
+SINCE_APP = 4242
+SINCE_CURL = r"""#!/bin/sh
+for a; do u=$a; done
+p=${u#https://api.github.com/repos/o/r/}
+f="$FAKE/$(printf '%s' "$p" | tr '/?=&' '____')"
+[ -f "$f" ] || exit 22
+cat "$f"
+"""
+
+
+def since_block(text):
+    """The re-read block of review-product.yml, dedented, or None."""
+    a, b = text.find(SINCE_START), text.find(SINCE_END)
+    if a < 0 or b < a or text.count(SINCE_START) != 1 or "${{" in text[a:b]:
+        return None
+    return "\n".join(l[10:] for l in text[a:b + len(SINCE_END)].splitlines()) + "\n"
+
+
+def _since_case(block, case):
+    """(range, earlier-read text or None, log) for one case, or a string saying it could not run."""
+    what, files, opts = case
+    with tempfile.TemporaryDirectory() as d:
+        work, fake, binned, tmp = (os.path.join(d, n) for n in ("product", "fake", "bin", "tmp"))
+        for x in (work, fake, binned, tmp):
+            os.makedirs(x)
+        with open(os.path.join(binned, "curl"), "w", encoding="utf-8") as f:
+            f.write(SINCE_CURL)
+        os.chmod(os.path.join(binned, "curl"), 0o755)
+        env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+        env.update({"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
+                    "GIT_COMMITTER_EMAIL": "t@t", "GIT_CONFIG_NOSYSTEM": "1", "HOME": d})
+
+        def git(*a):
+            return subprocess.run(["git", "-C", work] + list(a), env=env, capture_output=True, text=True,
+                                  check=True).stdout.strip()
+
+        def commit(changes, msg):
+            for path, body in changes.items():
+                full = os.path.join(work, path)
+                os.makedirs(os.path.dirname(full) or work, exist_ok=True)
+                with open(full, "w", encoding="utf-8") as f:
+                    f.write(body)
+                git("add", path)
+            git("commit", "-q", "--allow-empty", "-m", msg)
+            return git("rev-parse", "HEAD")
+
+        git("init", "-q", "-b", "main")
+        commit({"app.js": "one\n// RISK: pricing — START\nprice\n// RISK: pricing — END\n", "notes.js": "a\n"}, "base")
+        git("checkout", "-q", "-b", "pr")
+        first = commit({"notes.js": "a\nb\n"}, "the work")
+        old = commit({}, "Review-Ready: yes")
+        if opts.get("main_in"):
+            git("checkout", "-q", "main")
+            commit({"other.js": "x\n"}, "main moved")
+            git("checkout", "-q", "pr")
+            git("merge", "-q", "--no-edit", "main")
+        if opts.get("rewrite"):
+            git("reset", "-q", "--hard", first + "~1")
+            commit({"notes.js": "a\nc\n"}, "the work, rewritten")
+        new = commit(files, "the fix")
+        new = commit({}, "Review-Ready: yes")
+        git("update-ref", "refs/remotes/origin/main", "main")
+        shas = git("rev-list", "--reverse", "main..pr").split() if not opts.get("rewrite") else [old] + git("rev-list", "--reverse", "main..pr").split()
+        listed = opts.get("commits", [{"sha": s} for s in shas])
+        if opts.get("pad"):
+            # A full page: the real commits last, where the newest are, so only the guard says whole.
+            listed = [{"sha": "0" * 40}] * (100 - len(shas)) + [{"sha": s} for s in shas]
+
+        def put(path, body):
+            with open(os.path.join(fake, re.sub(r"[/?=&]", "_", path)), "w", encoding="utf-8") as f:
+                f.write(json.dumps(body))
+        if listed is not None:
+            put("pulls/7/commits?per_page=100", listed)
+        verdict = opts.get("verdict", {"app": {"id": SINCE_APP}, "status": "completed", "conclusion": "failure",
+                                       "completed_at": "2030-01-01T00:00:00Z",
+                                       "output": {"title": "Blocking findings", "summary": "the earlier words"}})
+        for s in shas:
+            put("commits/%s/check-runs?check_name=juku-reviewer&app_id=%d&filter=all&per_page=100" % (s, SINCE_APP),
+                {"check_runs": [verdict] if s == old else []})
+        script = ("set -euo pipefail\nt=%s\nwork=%s\ng() { git -C \"$work\" \"$@\"; }\n" % (tmp, work)) + block
+        e = dict(env, PATH=binned + os.pathsep + env.get("PATH", ""), FAKE=fake, TOKEN="not-a-token", REPO="o/r",
+                 PR="7", SHA=new, MAIN="main", GITHUB_WORKSPACE=os.getcwd(),
+                 REVIEWER_APP_ID=opts.get("app_id", str(SINCE_APP)))
+        try:
+            p = subprocess.run(["bash", "-c", script + 'printf "RANGE=%s\\n" "$range"\n'], env=e,
+                               capture_output=True, text=True, timeout=120)
+        except (OSError, subprocess.SubprocessError) as exc:
+            return "could not be run (%s)" % exc
+        if p.returncode != 0:
+            return "exited %d: %s" % (p.returncode, (p.stdout + p.stderr)[-300:])
+        rng = (re.findall(r"^RANGE=(.*)$", p.stdout, re.M) or [""])[-1]
+        since = os.path.join(tmp, "since.txt")
+        said = open(since, encoding="utf-8").read() if os.path.exists(since) else None
+        return ("delta" if rng == "%s..%s" % (old, new) else "whole" if rng == "origin/main...%s" % new else rng), said, p.stdout
+
+
+SINCE_CASES = (
+    ("a fix to ordinary code, nothing else moved", {"notes.js": "a\nb\nfixed\n"}, {}, "delta"),
+    ("a fix to a file named for prices", {"pricing.js": "x\n"}, {}, "whole"),
+    ("a fix to the till", {"the-till.html": "x\n"}, {}, "whole"),
+    ("a fix to a file named for money", {"lib/refunds.py": "x\n"}, {}, "whole"),
+    ("a fix inside a marked pricing span", {"app.js": "one\n// RISK: pricing — START\nprice2\n// RISK: pricing — END\n"}, {}, "whole"),
+    ("main brought in since the read", {"notes.js": "a\nb\nfixed\n"}, {"main_in": True}, "whole"),
+    ("the read's commit no longer beneath, rewritten", {"notes.js": "a\nc\nd\n"}, {"rewrite": True}, "whole"),
+    ("no verdict before: the read before ended neutral", {"notes.js": "a\nb\nfixed\n"},
+     {"verdict": {"app": {"id": SINCE_APP}, "status": "completed", "conclusion": "neutral", "output": {}}}, "whole"),
+    ("a verdict signed by another app", {"notes.js": "a\nb\nfixed\n"},
+     {"verdict": {"app": {"id": 1}, "status": "completed", "conclusion": "success", "output": {"summary": "x"}}}, "whole"),
+    ("the commits unread", {"notes.js": "a\nb\nfixed\n"}, {"commits": None}, "whole"),
+    ("a hundred commits, more than one page", {"notes.js": "a\nb\nfixed\n"}, {"pad": True}, "whole"),
+    ("no App id", {"notes.js": "a\nb\nfixed\n"}, {"app_id": ""}, "whole"),
+)
+SINCE_LOOSENINGS = (
+    ("prices by name left to the difference", lambda t: t.replace("*pric*|*payment*|*billing*|*invoice*|*checkout*|*quote*|*till*|*money*|*refund*|*milestone*) why=", "*nothing-at-all*) why=", 1)),
+    ("the marked spans never asked", lambda t: t.replace('[ -n "$why" ] || python3 -I "$GITHUB_WORKSPACE/product-reads/reads.py" marked', 'true || python3 -I "$GITHUB_WORKSPACE/product-reads/reads.py" marked', 1)),
+    ("main brought in let through", lambda t: t.replace('[ "$(g merge-base "origin/$MAIN" "$old")" = "$(g merge-base "origin/$MAIN" "$SHA")" ] ||', "true ||", 1)),
+    ("a rewritten history let through", lambda t: t.replace('g merge-base --is-ancestor "$old" "$SHA" ||', "true ||", 1)),
+    ("any verdict taken", lambda t: t.replace('and (.conclusion == "success" or .conclusion == "failure"))', ")", 1)),
+    ("another app's verdict taken", lambda t: t.replace("select(.app.id == $app and", "select(", 1)),
+    ("a long list read as whole", lambda t: t.replace('&& [ "$(jq \'length\' "$t/commits.json")" -lt 100 ]', "", 1)),
+)
+
+
+def _check_since(text=None, quiet=False):
+    """The re-read block, run on every case and against every loosening."""
+    say = (lambda *a: None) if quiet else print
+    try:
+        text = _read(PRODUCT_WORKFLOW) if text is None else text
+    except OSError as e:
+        say("  since: %s" % e)
+        return 1
+    block = since_block(text)
+    if block is None:
+        say("  since: cannot take the re-read block out of %s whole" % PRODUCT_WORKFLOW)
+        return 1
+    bad = 0
+
+    def run_all(blk):
+        wrong = []
+        for what, files, opts, want in SINCE_CASES:
+            got = _since_case(blk, (what, files, opts))
+            if isinstance(got, str):
+                wrong.append("%s: the block %s" % (what, got))
+                continue
+            rng, said, _ = got
+            if rng != want:
+                wrong.append("%s: read %s, where it must read %s" % (what, rng, want))
+            elif want == "delta" and (not said or "the earlier words" not in said):
+                wrong.append("%s: the earlier read's words were not handed on" % what)
+            elif want == "whole" and said is not None:
+                wrong.append("%s: an earlier read handed on to a whole read" % what)
+        return wrong
+
+    for w in run_all(block):
+        say("  since: %s" % w)
+        bad += 1
+    if not bad:
+        for what, loosen in SINCE_LOOSENINGS:
+            loose = loosen(text)
+            if loose == text:
+                say("  since: the loosening '%s' no longer applies to the real file" % what)
+                bad += 1
+            elif not run_all(since_block(loose) or ""):
+                say("  since: with %s every case still passes — the guard for it is gone" % what)
+                bad += 1
+    if not bad:
+        say("ok: a re-read is given only what changed in %d case(s) of %d, and the whole change in every other; "
+            "%d loosening(s) refused" % (sum(1 for c in SINCE_CASES if c[3] == "delta"), len(SINCE_CASES),
+                                         len(SINCE_LOOSENINGS)))
+    return bad
+
+
 def _check_context_loosenings():
     try:
         source = _read(CONTEXT)
@@ -5636,8 +5817,6 @@ def _product_asks(reads):
         % reads.REPO.pattern,
         '[[ "$AGAIN" =~ ^(true|false)$ ]] || { echo "::error::again is true or false"; exit 1; }',
         '%s product "$REPO" README.md' % check,
-        '[ "$draft" = "false" ] || { echo "::error::$REPO pull request $PR is a draft; a draft is '
-        'not asked for a read"; exit 1; }',
         'api() { curl -fsS -H "Authorization: token $TOKEN" -H "Accept: application/vnd.github+json" '
         '"https://api.github.com/repos/$REPO/$1"; }',
         'api "commits/$SHA" > "$t/commit.json"',
@@ -5854,6 +6033,11 @@ def _check_product_wiring(review=None, product=None, readme=None, quiet=False):
     for line in _product_asks(reads):
         if lines.count(line) != 1:
             fault("must say `%s` exactly once, which a read is refused without (decision 0013)" % line)
+    # D (21 October 2026): a ready-marked draft is read like any other, so the reviewer
+    # never asks whether the pull request is a draft.
+    span = _step_span(product, "The commit asked for is the head")
+    if not span or ".draft" in product[span[0]:span[1]]:
+        fault("asks whether the pull request is a draft: a ready mark on a draft is read like any other (D)")
     for name, line in PRODUCT_ENV:
         span = _step_span(product, name)
         if not span or line not in [l.strip() for l in product[span[0]:span[1]].splitlines()]:
@@ -5957,8 +6141,9 @@ PRODUCT_LOOSENINGS = (
     ("the shape of the product never checked", lambda t: re.sub(r'^( +)\[\[ "\$REPO" =~ [^\n]*\n', r'\1true\n', t, count=1, flags=re.M)),
     ("the checkout after the token", lambda t: t.replace("      - uses: actions/checkout@v4\n        with:\n          persist-credentials: false\n\n", "", 1).replace("      - name: Gather what the reviewer reads\n", "      - uses: actions/checkout@v4\n        with:\n          persist-credentials: false\n\n      - name: Gather what the reviewer reads\n", 1)),
     ("a credential left in the checkout", lambda t: t.replace("persist-credentials: false", "persist-credentials: true", 1)),
-    # The commit itself: not a draft, the ready mark, its own check, not yet read.
-    ("a draft let through", lambda t: t.replace('[ "$draft" = "false" ] ||', 'true ||', 1)),
+    # The commit itself: the ready mark, its own check, not yet read (a draft is read like any
+    # other since D, 21 October 2026: the mark says ready).
+    ("a draft refused again", lambda t: t.replace('          rm -f "$pr"\n', '          [ "$(jq -r .draft "$pr")" = false ] || exit 1\n          rm -f "$pr"\n', 1)),
     ("the ready mark never checked", lambda t: t.replace("product-reads/reads.py ready", "true", 1)),
     ("the product's own check never checked", lambda t: t.replace("product-reads/reads.py verify", "true", 1)),
     ("its own check asked for by another name", lambda t: t.replace("check_name=verify", "check_name=check", 1)),
@@ -7025,8 +7210,8 @@ def _preflight_cases(reads):
         ("a product the README does not list", L, [], {"REPO": "Adonis80/not-a-product"}, False),
         ("a listed product named in other letters", L, [], {"REPO": "Adonis80/hemz-os"}, False),
         ("a pull request that is open and not a draft", H, pr(), {}, True),
-        ("a draft", H, pr(draft=True), {}, False),
-        ("a pull request with no draft field", H, pr(draft=None), {}, False),
+        ("a draft, read like any other since its mark says ready", H, pr(draft=True), {}, True),
+        ("a pull request with no draft field", H, pr(draft=None), {}, True),
         ("a closed pull request", H, pr(state="closed"), {}, False),
         ("a head that moved", H, pr(head={"sha": "f" * 40, "repo": {"full_name": "Adonis80/zed"}}), {}, False),
         ("a fork's head", H, pr(head={"sha": head, "repo": {"full_name": "Evil/zed"}}), {}, False),
@@ -7094,8 +7279,6 @@ def _check_preflight_run(product=None, quiet=False):
 
 # Each reintroduces a fault the cases above must see, in the shell itself.
 PREFLIGHT_LOOSENINGS = (
-    ("a draft read by `// empty`", lambda t: t.replace(".draft | tostring", ".draft // empty", 1)),
-    ("a draft let through", lambda t: t.replace('[ "$draft" = "false" ] ||', 'true ||', 1)),
     ("a moved head let through", lambda t: t.replace('[ "$head" = "$SHA" ]', "true", 1)),
     ("a fork let through", lambda t: t.replace('[ "$from" = "$REPO" ]', "true", 1)),
     ("the ready mark never asked", lambda t: t.replace("product-reads/reads.py ready", "true", 1)),
@@ -7204,7 +7387,12 @@ ASK_HOLDS = (
     (ASK_LOOKS_ENV, "a timed run and a relay looking 32 times and a person's run once"),
     ('[[ "$looks" =~ ^[1-9][0-9]?$ ]] && [ "$looks" -le 32 ] || { echo "::error::looks is 1 to 32"; exit 1; }',
      "the looks bounded, 1 to 32, inside the job's limit"),
-    ("            sleep 600\n", "ten minutes between looks, never less"),
+    ("            sleep 600\n", "ten minutes between looks, unless a mark is still in its checks"),
+    # THE QUICK LOOK (D, 21 October 2026): a minute, only after a look that saw a ready mark
+    # still in its checks, twenty a run at most, and the note read afresh at every look.
+    ('            if [ -s "$RUNNER_TEMP/ask-pending" ] && [ "$quick" -lt 20 ]; then\n',
+     "a quick look only after a mark still in its checks, twenty a run at most"),
+    ('          : > "$RUNNER_TEMP/ask-pending"\n', "the quick-look note read afresh at every look"),
     ("    timeout-minutes: 340\n", "a job limit that holds 32 looks ten minutes apart"),
     # THE RELAY (#202): the names the runs wear are the names the shell counts by.
     (ASK_RUN_NAME, "each run named for its mode, timed, dry run, relay or asking"),
@@ -7345,6 +7533,9 @@ ASK_LOOSENINGS = (
     ("a second permissions block", lambda t: t.replace("    timeout-minutes: 340\n", "    timeout-minutes: 340\n    permissions: write-all\n", 1)),
     ("a person's run that keeps looking", lambda t: t.replace("&& '32' || '1' }}", "&& '32' || '32' }}", 1)),
     ("looks a minute apart", lambda t: t.replace("            sleep 600\n", "            sleep 60\n", 1)),
+    ("quick looks without end", lambda t: t.replace('[ "$quick" -lt 20 ]', "true", 1)),
+    ("a quick look with no mark waiting", lambda t: t.replace('[ -s "$RUNNER_TEMP/ask-pending" ] && ', "", 1)),
+    ("the quick-look note never cleared", lambda t: t.replace('          : > "$RUNNER_TEMP/ask-pending"\n', "", 1)),
     ("looks without end", lambda t: t.replace(' && [ "$looks" -le 32 ] ||', " ||", 1)),
     ("another group", lambda t: t.replace("&& 'ask-product-reads' ||", "&& 'ask' ||", 1)),
     ("a dry run in the asking group", lambda t: t.replace("|| 'ask-product-reads-dry' }}", "|| 'ask-product-reads' }}", 1)),
@@ -7493,48 +7684,9 @@ KIT_WAKE_IF = "if: github.event.check_run.app.id == %d && github.event.check_run
 KIT_WAKE_ENV = ("GH_TOKEN: ${{ github.token }}", "SHA: ${{ github.event.check_run.head_sha }}",
                 "REPO: ${{ github.repository }}")
 KIT_GATE_RUN = 'python3 review-gate.py "$REPO" "$HEAD_SHA" "$GH_TOKEN"'
-# A READY MARK ON A DRAFT IS SAID OUT LOUD (#202): the product's own verify fails on it,
-# saying why, and runs again when the pull request leaves draft, on the same commit.
+# A READY MARK ON A DRAFT IS READ (D, 21 October 2026), so the kit's verify fails no draft.
 KIT_VERIFY_TYPES = "    types: [opened, synchronize, reopened, ready_for_review]\n"
 KIT_DRAFT_STEP = "A ready mark is not left on a draft"
-KIT_DRAFT_ENV = ("DRAFT: ${{ github.event.pull_request.draft }}", "HEAD_SHA: ${{ github.event.pull_request.head.sha }}",
-                 "REPO: ${{ github.repository }}", "GH_TOKEN: ${{ github.token }}")
-STUB_DRAFT_GH = """#!/usr/bin/env bash
-echo "GH $*" >> "$DRAFT_LOG"
-[ "$*" = "api repos/Adonis80/p/commits/$(printf 'c%.0s' $(seq 40)) --jq .commit.message" ] || exit 97
-[ -z "${DRAFT_GH_FAILS:-}" ] || exit 1
-printf '%s\\n' "$DRAFT_MESSAGE"
-"""
-KIT_MARK = "Ready for review\n\nReview-Ready: yes\nReview-Parent: %s\n" % ("b" * 40)
-KIT_DRAFT_CASES = (
-    ("a ready mark on a draft", {"DRAFT": "true", "DRAFT_MESSAGE": KIT_MARK}, 1, True),
-    ("a ready mark written with Windows line ends on a draft", {"DRAFT": "true", "DRAFT_MESSAGE": KIT_MARK.replace("\n", "\r\n")}, 1, True),
-    ("a draft whose head is no mark", {"DRAFT": "true", "DRAFT_MESSAGE": "just a fix\n"}, 0, True),
-    ("a draft whose mark is not alone on its line", {"DRAFT": "true", "DRAFT_MESSAGE": "Review-Ready: yes, nearly\n"}, 0, True),
-    ("a ready mark out of draft", {"DRAFT": "false", "DRAFT_MESSAGE": KIT_MARK}, 0, False),
-    ("a draft whose commit GitHub would not give", {"DRAFT": "true", "DRAFT_MESSAGE": KIT_MARK, "DRAFT_GH_FAILS": "1"}, 1, True),
-)
-
-
-def _run_draft_step(script, env):
-    """(exit status, what it printed, whether it asked GitHub) for verify.yml's draft step."""
-    with tempfile.TemporaryDirectory() as d:
-        binned, log = os.path.join(d, "bin"), os.path.join(d, "log")
-        os.mkdir(binned)
-        with open(os.path.join(binned, "gh"), "w", encoding="utf-8") as f:
-            f.write(STUB_DRAFT_GH)
-        os.chmod(os.path.join(binned, "gh"), 0o755)
-        e = dict(os.environ, PATH=binned + os.pathsep + os.environ.get("PATH", ""), DRAFT_LOG=log,
-                 REPO="Adonis80/p", HEAD_SHA="c" * 40, GH_TOKEN="product-token")
-        e.pop("DRAFT_GH_FAILS", None)
-        e.update(env)
-        try:
-            p = subprocess.run(["bash", "-c", script], cwd=d, env=e, capture_output=True, text=True, timeout=60)
-        except (OSError, subprocess.SubprocessError) as exc:
-            return None, str(exc), False
-        return p.returncode, p.stdout + p.stderr, os.path.exists(log)
-
-
 def _kit_files():
     return dict((n, _read(KIT_DIR + n)) for n in KIT_NAMES)
 
@@ -7701,24 +7853,13 @@ def _check_kit(kit=None, wake=None, quiet=False, deep=True):
     if "run: python3 review-gate.py --selftest" not in verify:
         fault("verify.yml must run the kit gate's own selftest")
     if KIT_VERIFY_TYPES not in verify:
-        fault("verify.yml must run on a pull request opened, pushed to, reopened or taken out of draft (`%s`): "
-              "leaving draft is what gives a ready mark a fresh `verify` on the same commit (#202)" % KIT_VERIFY_TYPES.strip())
+        fault("verify.yml must run on a pull request opened, pushed to, reopened or taken out of draft (`%s`)"
+              % KIT_VERIFY_TYPES.strip())
     if re.findall(r"^permissions:\n((?:  .*\n)+)", verify, re.M) != ["  contents: read\n"] or verify.count("permissions:") != 1:
         fault("verify.yml may read contents and nothing else")
-    for line in KIT_DRAFT_ENV:
-        if [l.strip() for l in verify.splitlines()].count(line) != 1:
-            fault("verify.yml must hand its draft step `%s`" % line)
-    draft = _step_script(verify, KIT_DRAFT_STEP)
-    if draft is None:
-        fault("verify.yml has no `%s` step this build can run" % KIT_DRAFT_STEP)
-    elif deep:
-        for what, env, want, asks in KIT_DRAFT_CASES:
-            code, printed, asked = _run_draft_step(draft, env)
-            if code != want or asked != asks:
-                fault("verify.yml's draft step, on %s, came out %s and %s GitHub, and must come out %s and %s it"
-                      % (what, code, "asked" if asked else "did not ask", want, "ask" if asks else "not ask"))
-            elif want and "draft" not in printed and not env.get("DRAFT_GH_FAILS"):
-                fault("verify.yml's draft step, on %s, fails without saying the pull request is a draft" % what)
+    # D (21 October 2026): a ready mark on a draft is read, so nothing fails it.
+    if KIT_DRAFT_STEP in verify or "github.event.pull_request.draft" in verify:
+        fault("verify.yml fails or reads a draft: a ready mark on a draft is read like any other (D)")
     script = _agents_step(verify)
     starter = kit["AGENTS.starter.md"]
     if script is None:
@@ -7789,11 +7930,7 @@ KIT_LOOSENINGS = (
     ("the word cap not held", "verify.yml", lambda t: t.replace("if len(text.split()) >= 500:", "if False:", 1)),
     ("a verify that runs on a push", "verify.yml", lambda t: t.replace("on:\n  pull_request:", "on:\n  push:\n  pull_request:", 1)),
     ("a verify not run when a draft is made ready", "verify.yml", lambda t: t.replace(", ready_for_review]", "]", 1)),
-    ("a ready mark on a draft let through", "verify.yml", lambda t: t.replace("grep -qx 'Review-Ready: yes'", "grep -qx 'Review-Ready: no'", 1)),
-    ("the draft step skipped", "verify.yml", lambda t: t.replace('[ "$DRAFT" = "true" ] || exit 0', "exit 0", 1)),
-    ("a commit GitHub would not give read as no mark", "verify.yml", lambda t: t.replace("--jq .commit.message)", "--jq .commit.message) || message=\"\"", 1)),
-    ("the merge commit read for the mark", "verify.yml", lambda t: t.replace("HEAD_SHA: ${{ github.event.pull_request.head.sha }}", "HEAD_SHA: ${{ github.sha }}", 1)),
-    ("the draft state taken from nowhere", "verify.yml", lambda t: t.replace("DRAFT: ${{ github.event.pull_request.draft }}", "DRAFT: false", 1)),
+    ("a ready mark on a draft failed again", "verify.yml", lambda t: t.replace("      - name: The gate still means what the rulebook's does\n", "      - name: A ready mark is not left on a draft\n        run: exit 1\n      - name: The gate still means what the rulebook's does\n", 1)),
     ("a verify token that writes", "verify.yml", lambda t: t.replace("permissions:\n  contents: read\n", "permissions:\n  contents: write\n", 1)),
     ("a starter that breaks its own check", "AGENTS.starter.md", lambda t: t.replace("Rulebook:", "See:", 1)),
     ("a starter with no review guidelines", "AGENTS.starter.md", lambda t: t.replace("## Review guidelines", "## Notes", 1)),
@@ -7893,6 +8030,7 @@ case "$*" in
   *ask.py*)
     repo=$(printf '%s' "$*" | sed -E 's/.*ask\\.py ([^ ]+).*/\\1/')
     printf 'ASKED %s | KEY=%s ID=%s TOKEN=%s APPID=%s FLAGS=%s\\n' "$repo" "${APP_KEY:-unset}" "${APP_ID:-unset}" "${PRODUCT_TOKEN:-unset}" "${REVIEWER_APP_ID:-unset}" "$(printf '%s' "$*" | grep -o -- '--dispatch' || true)" >> "$ASK_LOG"
+    case " ${ASK_PENDING:-} " in *" $repo "*) echo 1 >> "$RUNNER_TEMP/ask-pending" ;; esac
     case " $ASK_FAILS " in *" $repo "*) exit 1 ;; *" $repo=3 "*) exit 3 ;; esac
     exit 0 ;;
   *) exec "$REAL_PY" "$@" ;;
@@ -8130,6 +8268,20 @@ def _check_ask_run(ask=None, quiet=False):
             fault("%s: the log does not say `%s`" % (what, said))
         if env.get("DISPATCH") != "true" and "GH " in kept:
             fault("%s: a dry run asked GitHub about runs or starts, and it never yields or relays" % what)
+    # THE QUICK LOOK (D, 21 October 2026): a mark still in its checks brings the next look a
+    # minute later; twenty a run at most, then ten minutes again; no note, ten minutes.
+    for what, env, slept_want in (
+            ("a mark still in its checks, so the next looks come a minute apart",
+             {"LOOKS": "3", "DISPATCH": "true", "ASK_PENDING": repos[0]}, ["SLEPT 60"] * 2),
+            ("twenty quick looks a run, then ten minutes again",
+             {"LOOKS": "23", "DISPATCH": "true", "ASK_PENDING": repos[1]}, ["SLEPT 60"] * 20 + ["SLEPT 600"] * 2),
+            ("a dry run seeing a mark still in its checks looks once, and never quickly",
+             {"ASK_PENDING": repos[0]}, []),
+            ("no mark waiting, so ten minutes", {"LOOKS": "3", "DISPATCH": "true"}, ["SLEPT 600"] * 2)):
+        code, printed, kept = _run_ask(script, {}, "", ASK_README, env)
+        slept = [l for l in kept.splitlines() if l.startswith("SLEPT ")]
+        if code != 0 or slept != slept_want:
+            fault("%s: came out %s and slept %s, where it must come out green and sleep %s" % (what, code, slept, slept_want))
     code, printed, kept = _run_ask(script, {}, "", ASK_BROKEN_README, {})
     if "could not be read" not in printed:
         fault("a README list that cannot be read goes unexplained in the log")
@@ -9300,7 +9452,7 @@ SELFTEST_PARTS = (
                      "_check_review_loosenings", "_check_registry", "_check_selftest_plan", "_check_conversation",
                      "_check_caller", "_check_context", "_check_brief", "_check_canary", "_check_alert",
                      "_check_expressions", "_check_rulebook_pages", "_check_context_loosenings",
-                     "_check_pick_loosenings", "_check_link_loosenings"),
+                     "_check_pick_loosenings", "_check_link_loosenings", "_check_since"),
      # The selector is run on the real tree, so the core reads every page, paper and script.
      ("*.md", "library/*.md", "juku-library/*.md", "model-registry/ask.py", "model-registry/context.py",
       "model-registry/registry.json", "model-registry/resolve.py", "product-reads/ask.py", "product-reads/reads.py",
