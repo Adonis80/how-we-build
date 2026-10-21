@@ -7889,8 +7889,8 @@ def _check_kit(kit=None, wake=None, quiet=False, deep=True):
         say("ok: the starter kit's gate gives the rulebook's verdict on %d cases and says how to mark a "
             "commit ready; its wake is the rulebook's wake with two changes and fails loudly in each of "
             "%d places it is made to; its workflows have the shape the wake, the ready check and the "
-            "setup script assume, and its verify fails out loud on a ready mark left on a draft and runs again "
-            "when the draft is made ready; its AGENTS.md passes its own check, and its roadmap is one the Roadmap reads"
+            "setup script assume, and its verify fails no draft, a ready mark on one being read like any other; "
+            "its AGENTS.md passes its own check, and its roadmap is one the Roadmap reads"
             % (len(_kit_runs(head)), len([c for c in SWALLOW_CASES if "SWALLOW_HEAD" not in c[1]])))
     return bad
 
