@@ -16,7 +16,7 @@ pays for a read, and they are asked of the same rules in reads.py, so the asker
 cannot ask for what the reviewer would refuse. A draft is asked for like any
 other: the ready mark is the builder's last step and says ready by itself (the
 Chairman's word of 21 October 2026; Hemz-OS#174 sat two hours unread as a draft
-with its mark green). Anything else is left: a work still moving, a check that has not passed, a commit already read or
+with its mark green). Anything else is left: a fork, work still moving, a check that has not passed, a commit already read or
 being read, and a read that began and never finished, which nothing retries by
 itself: a builder looks, and asks with `again`. Without --dispatch it only says
 what it would ask, which is how it is tried before anything runs by itself.
