@@ -14,4 +14,4 @@ Scope: every repository under this rulebook, in either stack. Open when: asking 
 
 **A product's code goes to the registry's provider** (his ruling, 6 October 2026: *"remove this rule where Anthropic is the only provider that is allowed the products private code"*). `review-product.yml` reads through the same roles and caller as this repository (first run [Adonis80/Hemz-OS#74](https://github.com/Adonis80/Hemz-OS/pull/74), run 37511951196), and `ask.py` sends nothing that does not ask providers to promise not to store or train on it: a promise, not proof.
 
-Re-reading only what changed is built for product reads (21 October 2026, `library/reviewer.md`). **Not built yet** (decision 0008's later steps): the weekly model check that proposes a registry pull request, and the main coder on an open-weight model.
+Re-reading only what changed is built for product reads (21 October 2026, `library/reviewer.md`; not yet shown on a cited run). **Not built yet** (decision 0008's later steps): the weekly model check that proposes a registry pull request, and the main coder on an open-weight model.

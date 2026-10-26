@@ -5662,7 +5662,7 @@ def _since_case(block, case):
                                        "output": {"title": "Blocking findings", "summary": SINCE_SAID}})
         for s in shas:
             put("commits/%s/check-runs?check_name=juku-reviewer&app_id=%d&filter=all&per_page=100" % (s, SINCE_APP),
-                {"check_runs": [verdict] if s == old else []})
+                {"check_runs": opts.get("verdicts", [verdict]) if s == old else []})
         script = ("set -euo pipefail\nt=%s\nwork=%s\ng() { git -C \"$work\" \"$@\"; }\n" % (tmp, work)) + block
         e = dict(env, PATH=binned + os.pathsep + env.get("PATH", ""), FAKE=fake, TOKEN="not-a-token", REPO="o/r",
                  PR="7", SHA=new, MAIN="main", GITHUB_WORKSPACE=os.getcwd(),
@@ -5708,6 +5708,10 @@ SINCE_CASES = (
      {"verdict": _since_verdict("Incomplete read: needed x.js.\n\n" + SINCE_SAID)}, "whole"),
     ("the read before was another role's, the change now risky", {"notes.js": "a\nb\nfixed\n"},
      {"role": "reviewer-risky"}, "whole"),
+    ("a failure and a later success on the read's commit: the failure's words handed on", {"notes.js": "a\nb\nfixed\n"},
+     {"verdicts": [_since_verdict(SINCE_SAID),
+                   dict(_since_verdict("a later clean read\n\n---\nSpend: class code, role reviewer-main, model m"),
+                        conclusion="success", completed_at="2030-01-02T00:00:00Z")]}, "delta"),
     ("the read before names no role", {"notes.js": "a\nb\nfixed\n"},
      {"verdict": _since_verdict("the earlier words")}, "whole"),
     ("the read before names this role only in its words, not its last spend line", {"notes.js": "a\nb\nfixed\n"},
@@ -5724,6 +5728,7 @@ SINCE_LOOSENINGS = (
     ("a long list read as whole", lambda t: t.replace('&& [ "$(jq \'length\' "$t/commits.json")" -lt 100 ]', "", 1)),
     ("an incomplete read taken as a read", lambda t: t.replace("if grep -qi '^incomplete read: ' \"$t/was.md\"; then", "if false; then", 1)),
     ("another role's read taken", lambda t: t.replace('|| why="the earlier read was not by $role"', "|| true", 1)),
+    ("the newest verdict taken over a failure", lambda t: t.replace('sort_by(.conclusion == "failure", .completed_at)', "sort_by(.completed_at)", 1)),
     ("any spend line taken, not the last", lambda t: t.replace("grep '^Spend: ' \"$t/was.md\" | tail -n 1 | grep -q", "grep -q", 1)),
 )
 

@@ -464,7 +464,8 @@ jobs:
           # 2026: re-read only what changed, and read it whole whenever the fix touches
           # pricing or money). A pull request read before is read again for the difference
           # alone when every one of these holds, and whole, as always, when any does not:
-          #   - the newest verdict, success or failure, the App signed on an earlier commit
+          #   - the newest verdict, success or failure (a failure first, as the gate counts
+          #     worst first), the App signed on an earlier commit
           #     of this pull request is found, its words read, from a list of under 100;
           #   - that commit is an ancestor of this one, with the same merge base with main,
           #     so main was not brought in between and the difference is the builder's alone;
@@ -486,7 +487,7 @@ jobs:
               [[ "$c" =~ ^[0-9a-f]{40}$ ]] && [ "$c" != "$SHA" ] || continue
               sapi "commits/$c/check-runs?check_name=juku-reviewer&app_id=$REVIEWER_APP_ID&filter=all&per_page=100" > "$t/was.json" || break
               jq -r --argjson app "$REVIEWER_APP_ID" '[.check_runs[]? | select(.app.id == $app and .status == "completed"
-                and (.conclusion == "success" or .conclusion == "failure"))] | sort_by(.completed_at) | last
+                and (.conclusion == "success" or .conclusion == "failure"))] | sort_by(.conclusion == "failure", .completed_at) | last
                 | if . == null then empty else "verdict: \(.conclusion)\n\(.output.title // "")\n\n\(.output.summary // "")" end' \
                 "$t/was.json" > "$t/was.md" 2>/dev/null || : > "$t/was.md"
               if [ -s "$t/was.md" ]; then old="$c"; break; fi
