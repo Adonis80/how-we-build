@@ -5657,7 +5657,7 @@ def _since_case(block, case):
                 f.write(json.dumps(body))
         if listed is not None:
             put("pulls/7/commits?per_page=100", listed)
-        verdict = opts.get("verdict", {"app": {"id": SINCE_APP}, "status": "completed", "conclusion": "failure",
+        verdict = _since_incomplete() if opts.get("verdict") == "incomplete" else opts.get("verdict", {"app": {"id": SINCE_APP}, "status": "completed", "conclusion": "failure",
                                        "completed_at": "2030-01-01T00:00:00Z",
                                        "output": {"title": "Blocking findings", "summary": SINCE_SAID}})
         for s in shas:
@@ -5689,6 +5689,30 @@ def _since_verdict(summary):
             "completed_at": "2030-01-01T00:00:00Z", "output": {"title": "Blocking findings", "summary": summary}}
 
 
+def _since_incomplete():
+    """An incomplete read's verdict as it is really signed: the caller's own `incomplete` rewrite of a
+    needs-context answer, its review then its findings then the spend line, as Sign the verdict writes them."""
+    spec = importlib.util.spec_from_file_location("ask", CALLER)
+    ask = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ask)
+    with tempfile.TemporaryDirectory() as d:
+        out = os.path.join(d, "out.json")
+        with open(out, "w", encoding="utf-8") as f:
+            json.dump({"result": json.dumps({"verdict": "needs-context", "needs": ["x.js"],
+                                             "review": "the earlier words", "findings": []})}, f)
+        kept = os.environ.pop("GITHUB_STEP_SUMMARY", None)
+        try:
+            ask.incomplete_file(out)
+        finally:
+            if kept is not None:
+                os.environ["GITHUB_STEP_SUMMARY"] = kept
+        with open(out, encoding="utf-8") as f:
+            got = json.loads(json.load(f)["result"])
+    found = "\n".join("- **%s**: %s" % (x["severity"], x["text"]) for x in got["findings"])
+    return _since_verdict("%s\n\n---\n*The findings the verdict was derived from:*\n%s\n\n---\n%s"
+                          % (got["review"], found, SINCE_SAID.split("---\n", 1)[1]))
+
+
 SINCE_CASES = (
     ("a fix to ordinary code, nothing else moved", {"notes.js": "a\nb\nfixed\n"}, {}, "delta"),
     ("a fix to a file named for prices", {"pricing.js": "x\n"}, {}, "whole"),
@@ -5705,7 +5729,7 @@ SINCE_CASES = (
     ("a hundred commits, more than one page", {"notes.js": "a\nb\nfixed\n"}, {"pad": True}, "whole"),
     ("no App id", {"notes.js": "a\nb\nfixed\n"}, {"app_id": ""}, "whole"),
     ("the read before was incomplete", {"notes.js": "a\nb\nfixed\n"},
-     {"verdict": _since_verdict("Incomplete read: needed x.js.\n\n" + SINCE_SAID)}, "whole"),
+     {"verdict": "incomplete"}, "whole"),
     ("the read before was another role's, the change now risky", {"notes.js": "a\nb\nfixed\n"},
      {"role": "reviewer-risky"}, "whole"),
     ("a failure and a later success on the read's commit: the failure's words handed on", {"notes.js": "a\nb\nfixed\n"},
@@ -9478,13 +9502,15 @@ SELFTEST_PARTS = (
                      "_check_review_loosenings", "_check_registry", "_check_selftest_plan", "_check_conversation",
                      "_check_caller", "_check_context", "_check_brief", "_check_canary", "_check_alert",
                      "_check_expressions", "_check_rulebook_pages", "_check_context_loosenings",
-                     "_check_pick_loosenings", "_check_link_loosenings", "_check_since"),
+                     "_check_pick_loosenings", "_check_link_loosenings"),
      # The selector is run on the real tree, so the core reads every page, paper and script.
      ("*.md", "library/*.md", "juku-library/*.md", "model-registry/ask.py", "model-registry/context.py",
       "model-registry/registry.json", "model-registry/resolve.py", "product-reads/ask.py", "product-reads/reads.py",
       "product-reads/setup.py", "product-reads/kit/*", "board/build.py", "check.sh", "review-gate.py",
       ".github/workflows/*")),
-    ("product", ("_check_product_loosenings",),
+    # The re-read block reads only these files, and runs some 200 git repositories, so
+    # it is measured here rather than in the core every pull request runs.
+    ("product", ("_check_product_loosenings", "_check_since"),
      (".github/workflows/review-product.yml", ".github/workflows/review.yml", "README.md",
       "model-registry/ask.py", "model-registry/resolve.py", "product-reads/reads.py")),
     ("preflight", ("_check_preflight_loosenings",),
