@@ -470,7 +470,9 @@ jobs:
           #     so main was not brought in between and the difference is the builder's alone;
           #   - nothing the difference touches is pricing or money: no file named for prices,
           #     payments, billing, invoices, checkout, quotes, the till, money, refunds or
-          #     milestones, and no line a product marks `RISK: pricing` (reads.py marked).
+          #     milestones, and no line a product marks `RISK: pricing` (reads.py marked);
+          #   - that verdict was a whole read, not one signed "incomplete read", and its
+          #     spend line names this read's role, so no other role's read stands in.
           # The class and the reviewer stay the whole change's. The earlier verdict goes to
           # the reader as data, and it says of each earlier blocking finding whether the
           # difference fixes it. Nothing here is printed but commits and counts.
@@ -494,7 +496,12 @@ jobs:
           why="no earlier verdict on this pull request"
           if [ -n "$old" ]; then
             why=""
-            g cat-file -e "$old^{commit}" 2>/dev/null || why="the earlier read's commit is not in the fetched history"
+            # A read signed "incomplete read" never read the whole change, and a read by
+            # another role is not this role's: either way this read takes the whole.
+            if grep -qi '^incomplete read: ' "$t/was.md"; then why="the earlier read was incomplete"; fi
+            [ -n "$why" ] || grep '^Spend: ' "$t/was.md" | tail -n 1 | grep -q "^Spend: class [^,]*, role $role, " \
+              || why="the earlier read was not by $role"
+            [ -n "$why" ] || g cat-file -e "$old^{commit}" 2>/dev/null || why="the earlier read's commit is not in the fetched history"
             [ -n "$why" ] || g merge-base --is-ancestor "$old" "$SHA" || why="the earlier read's commit is not beneath this one"
             [ -n "$why" ] || [ "$(g merge-base "origin/$MAIN" "$old")" = "$(g merge-base "origin/$MAIN" "$SHA")" ] || why="main was brought in since the earlier read"
             if [ -z "$why" ]; then

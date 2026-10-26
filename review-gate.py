@@ -5659,14 +5659,14 @@ def _since_case(block, case):
             put("pulls/7/commits?per_page=100", listed)
         verdict = opts.get("verdict", {"app": {"id": SINCE_APP}, "status": "completed", "conclusion": "failure",
                                        "completed_at": "2030-01-01T00:00:00Z",
-                                       "output": {"title": "Blocking findings", "summary": "the earlier words"}})
+                                       "output": {"title": "Blocking findings", "summary": SINCE_SAID}})
         for s in shas:
             put("commits/%s/check-runs?check_name=juku-reviewer&app_id=%d&filter=all&per_page=100" % (s, SINCE_APP),
                 {"check_runs": [verdict] if s == old else []})
         script = ("set -euo pipefail\nt=%s\nwork=%s\ng() { git -C \"$work\" \"$@\"; }\n" % (tmp, work)) + block
         e = dict(env, PATH=binned + os.pathsep + env.get("PATH", ""), FAKE=fake, TOKEN="not-a-token", REPO="o/r",
                  PR="7", SHA=new, MAIN="main", GITHUB_WORKSPACE=os.getcwd(),
-                 REVIEWER_APP_ID=opts.get("app_id", str(SINCE_APP)))
+                 REVIEWER_APP_ID=opts.get("app_id", str(SINCE_APP)), role=opts.get("role", "reviewer-main"))
         try:
             p = subprocess.run(["bash", "-c", script + 'printf "RANGE=%s\\n" "$range"\n'], env=e,
                                capture_output=True, text=True, timeout=120)
@@ -5680,6 +5680,15 @@ def _since_case(block, case):
         return ("delta" if rng == "%s..%s" % (old, new) else "whole" if rng == "origin/main...%s" % new else rng), said, p.stdout
 
 
+# An earlier verdict as review-product.yml signs one: the review, then its spend line.
+SINCE_SAID = "the earlier words\n\n---\nSpend: class code, role reviewer-main, model m, effort max"
+
+
+def _since_verdict(summary):
+    return {"app": {"id": SINCE_APP}, "status": "completed", "conclusion": "failure",
+            "completed_at": "2030-01-01T00:00:00Z", "output": {"title": "Blocking findings", "summary": summary}}
+
+
 SINCE_CASES = (
     ("a fix to ordinary code, nothing else moved", {"notes.js": "a\nb\nfixed\n"}, {}, "delta"),
     ("a fix to a file named for prices", {"pricing.js": "x\n"}, {}, "whole"),
@@ -5689,12 +5698,21 @@ SINCE_CASES = (
     ("main brought in since the read", {"notes.js": "a\nb\nfixed\n"}, {"main_in": True}, "whole"),
     ("the read's commit no longer beneath, rewritten", {"notes.js": "a\nc\nd\n"}, {"rewrite": True}, "whole"),
     ("no verdict before: the read before ended neutral", {"notes.js": "a\nb\nfixed\n"},
-     {"verdict": {"app": {"id": SINCE_APP}, "status": "completed", "conclusion": "neutral", "output": {}}}, "whole"),
+     {"verdict": {"app": {"id": SINCE_APP}, "status": "completed", "conclusion": "neutral", "output": {"summary": SINCE_SAID}}}, "whole"),
     ("a verdict signed by another app", {"notes.js": "a\nb\nfixed\n"},
-     {"verdict": {"app": {"id": 1}, "status": "completed", "conclusion": "success", "output": {"summary": "x"}}}, "whole"),
+     {"verdict": {"app": {"id": 1}, "status": "completed", "conclusion": "success", "output": {"summary": SINCE_SAID}}}, "whole"),
     ("the commits unread", {"notes.js": "a\nb\nfixed\n"}, {"commits": None}, "whole"),
     ("a hundred commits, more than one page", {"notes.js": "a\nb\nfixed\n"}, {"pad": True}, "whole"),
     ("no App id", {"notes.js": "a\nb\nfixed\n"}, {"app_id": ""}, "whole"),
+    ("the read before was incomplete", {"notes.js": "a\nb\nfixed\n"},
+     {"verdict": _since_verdict("Incomplete read: needed x.js.\n\n" + SINCE_SAID)}, "whole"),
+    ("the read before was another role's, the change now risky", {"notes.js": "a\nb\nfixed\n"},
+     {"role": "reviewer-risky"}, "whole"),
+    ("the read before names no role", {"notes.js": "a\nb\nfixed\n"},
+     {"verdict": _since_verdict("the earlier words")}, "whole"),
+    ("the read before names this role only in its words, not its last spend line", {"notes.js": "a\nb\nfixed\n"},
+     {"verdict": _since_verdict("Spend: class code, role reviewer-main, model m\n\n---\n"
+                                "Spend: class risky, role reviewer-risky, model m")}, "whole"),
 )
 SINCE_LOOSENINGS = (
     ("prices by name left to the difference", lambda t: t.replace("*pric*|*payment*|*billing*|*invoice*|*checkout*|*quote*|*till*|*money*|*refund*|*milestone*) why=", "*nothing-at-all*) why=", 1)),
@@ -5704,6 +5722,9 @@ SINCE_LOOSENINGS = (
     ("any verdict taken", lambda t: t.replace('and (.conclusion == "success" or .conclusion == "failure"))', ")", 1)),
     ("another app's verdict taken", lambda t: t.replace("select(.app.id == $app and", "select(", 1)),
     ("a long list read as whole", lambda t: t.replace('&& [ "$(jq \'length\' "$t/commits.json")" -lt 100 ]', "", 1)),
+    ("an incomplete read taken as a read", lambda t: t.replace("if grep -qi '^incomplete read: ' \"$t/was.md\"; then", "if false; then", 1)),
+    ("another role's read taken", lambda t: t.replace('|| why="the earlier read was not by $role"', "|| true", 1)),
+    ("any spend line taken, not the last", lambda t: t.replace("grep '^Spend: ' \"$t/was.md\" | tail -n 1 | grep -q", "grep -q", 1)),
 )
 
 
