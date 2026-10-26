@@ -5,9 +5,9 @@ name: verify
 # things true of any product, and the product adds its tests and builds here as
 # it grows: this file is the product's own after the first install.
 #
-# A READY MARK ON A DRAFT IS SAID OUT LOUD (#202): the asker leaves a draft, so a
-# mark pushed to one would wait in silence. Here it fails, saying why; taking the
-# pull request out of draft runs this again on the same commit, which then passes.
+# A READY MARK ON A DRAFT IS READ (D, the Chairman's word of 21 October 2026): the
+# mark is the builder's last step and says ready by itself, so the asker reads a
+# draft like any other, and nothing here stands in its way.
 
 on:
   pull_request:
@@ -23,20 +23,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: A ready mark is not left on a draft
-        env:
-          DRAFT: ${{ github.event.pull_request.draft }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          REPO: ${{ github.repository }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          [ "$DRAFT" = "true" ] || exit 0
-          message=$(gh api "repos/$REPO/commits/$HEAD_SHA" --jq .commit.message)
-          if printf '%s\n' "$message" | tr -d '\r' | grep -qx 'Review-Ready: yes'; then
-            echo "::error::This pull request is a draft, so its ready mark is never read. Take it out of draft: verify runs again on the same commit, and the read is asked once it passes."
-            exit 1
-          fi
       - name: The gate still means what the rulebook's does
         run: python3 review-gate.py --selftest
       - name: AGENTS.md carries what every product carries
