@@ -861,7 +861,8 @@ jobs:
             echo
             if [ -s "$t/since.txt" ]; then
               echo "THIS IS A RE-READ OF ONLY WHAT CHANGED SINCE THE LAST READ. Every earlier commit of this"
-              echo "change was read before; the newest read's verdict is inside <earlier-read> below. The <diff>"
+              echo "change was read before; the earlier read's verdict, a blocking one first as the gate counts,"
+              echo "is inside <earlier-read> below. The <diff>"
               echo "holds only what the builder changed since that read, with main not brought in, no file named"
               echo "for pricing or money and no span marked RISK: pricing touched (those are always read whole)."
               echo "Names and marks can miss: if the difference changes how a price or an amount of money is"
