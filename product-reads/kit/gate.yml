@@ -15,6 +15,9 @@ name: gate
 
 on:
   pull_request_target:
+    # Into main alone: a pull request opened against another branch would run
+    # that branch's gate, and a retarget fires only `edited`, never run here.
+    branches: [main]
     types: [opened, synchronize, reopened]
 
 permissions:
