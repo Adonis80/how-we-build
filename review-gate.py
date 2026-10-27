@@ -7083,7 +7083,7 @@ BOARD_LOOSENINGS = (
     ("a preview passing over the ceiling", lambda t: t.replace('[ "$TARGET" != production ] || gated "$DOMAIN" pin', 'gated "$DOMAIN" pin', 1)),
     ("the Roadmap's own deployments taken for another project's", lambda t: t.replace('.name != "juku-build-board") then', '.name == "juku-build-board") then', 1)),
     # His ruling, 17 October 2026: old previews deleted once served, and nothing kept deleted.
-    ("no old preview deleted after a live copy", lambda t: t.replace('the PIN screen alone to a stranger"\n              tidy || true\n', 'the PIN screen alone to a stranger"\n', 1)),
+    ("no old preview deleted after a live copy", lambda t: t.replace('it shows the live site until the next preview"; fi\n              fi\n              tidy || true\n', 'it shows the live site until the next preview"; fi\n              fi\n', 1)),
     ("no old preview deleted on an unchanged Roadmap", lambda t: t.replace('Nothing is deployed."\n              tidy || true\n', 'Nothing is deployed."\n', 1)),
     ("old previews deleted before the domain is confirmed", lambda t: t.replace("          phase=promoted\n", "          phase=promoted\n          tidy || true\n", 1)),
     ("the two hours in flight not kept", lambda t: t.replace("local fresh=$(( ($(date +%s) - 7200) * 1000 ))", "local fresh=$(( $(date +%s) * 1000 ))", 1)),
