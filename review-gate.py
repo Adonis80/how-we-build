@@ -5757,6 +5757,43 @@ SINCE_LOOSENINGS = (
 )
 
 
+SINCE_MARK = re.compile(r'^[^\n#]*spend="\$spend; read only what changed since .*$', re.M)
+
+
+def _since_marked(text):
+    """What is wrong with the delta read's mark on its spend line, run on a read of each kind: [] when
+    a delta read's spend line ends with the commit it read since and a whole read's carries nothing."""
+    lines = SINCE_MARK.findall(text)
+    if len(lines) != 1:
+        return ["the spend line's delta mark is not there once (%d found)" % len(lines)]
+    wrong = []
+    for what, since, want in (("a delta read", "earlier read: %s\n\nthe earlier words\n" % ("e" * 40),
+                               "X; read only what changed since %s" % ("e" * 40)),
+                              ("a whole read", None, "X")):
+        with tempfile.TemporaryDirectory() as t:
+            if since is not None:
+                with open(os.path.join(t, "since.txt"), "w", encoding="utf-8") as f:
+                    f.write(since)
+            try:
+                p = subprocess.run(["bash", "-c", 'set -euo pipefail\nspend=X\n%s\nprintf "%%s" "$spend"\n'
+                                    % lines[0].strip()], env=dict(os.environ, t=t), capture_output=True,
+                                   text=True, timeout=30)
+            except (OSError, subprocess.SubprocessError) as exc:
+                wrong.append("%s: the mark could not be run (%s)" % (what, exc))
+                continue
+            if p.returncode != 0 or p.stdout != want:
+                wrong.append("%s: the spend line reads %r, where it must read %r" % (what, p.stdout, want))
+    return wrong
+
+
+# The mark is outside the gather block, so these are judged by _since_marked as well.
+SINCE_MARK_LOOSENINGS = (
+    ("a delta read's verdict left unmarked", lambda t: SINCE_MARK.sub("", t, 1)),
+    ("a whole read marked as a delta", lambda t: t.replace('[ ! -s "$t/since.txt" ] || spend="$spend; read only',
+                                                         'spend="$spend; read only', 1)),
+)
+
+
 def _check_since(text=None, quiet=False):
     """The re-read block, run on every case and against every loosening."""
     say = (lambda *a: None) if quiet else print
@@ -5787,22 +5824,23 @@ def _check_since(text=None, quiet=False):
                 wrong.append("%s: an earlier read handed on to a whole read" % what)
         return wrong
 
-    for w in run_all(block):
+    for w in run_all(block) + _since_marked(text):
         say("  since: %s" % w)
         bad += 1
     if not bad:
-        for what, loosen in SINCE_LOOSENINGS:
+        for what, loosen in SINCE_LOOSENINGS + SINCE_MARK_LOOSENINGS:
             loose = loosen(text)
             if loose == text:
                 say("  since: the loosening '%s' no longer applies to the real file" % what)
                 bad += 1
-            elif not run_all(since_block(loose) or ""):
+            elif not run_all(since_block(loose) or "") and not _since_marked(loose):
                 say("  since: with %s every case still passes — the guard for it is gone" % what)
                 bad += 1
     if not bad:
         say("ok: a re-read is given only what changed in %d case(s) of %d, and the whole change in every other; "
-            "%d loosening(s) refused" % (sum(1 for c in SINCE_CASES if c[3] == "delta"), len(SINCE_CASES),
-                                         len(SINCE_LOOSENINGS)))
+            "%d loosening(s) refused; a delta read's verdict is marked and a whole read's is not" % (
+                sum(1 for c in SINCE_CASES if c[3] == "delta"), len(SINCE_CASES),
+                len(SINCE_LOOSENINGS) + len(SINCE_MARK_LOOSENINGS)))
     return bad
 
 
