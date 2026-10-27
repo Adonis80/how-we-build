@@ -7963,9 +7963,17 @@ def _check_kit(kit=None, wake=None, quiet=False, deep=True):
 
     # 3. The gate workflow.
     gate = kit["gate.yml"]
-    if triggers(gate) != ["pull_request"] or "    types: [opened, synchronize, reopened]\n" not in gate:
-        fault("gate.yml must run on a pull request opened, pushed to or reopened, and no other event: "
-              "an edit changes nothing the gate answers on, and each run is a billed minute in a private repository")
+    if triggers(gate) != ["pull_request_target"] or "    types: [opened, synchronize, reopened]\n" not in gate:
+        fault("gate.yml must run from main, on `pull_request_target`, when a pull request is opened, pushed to "
+              "or reopened, and no other event: on `pull_request` a branch's own copy runs and can pass itself "
+              "(#265), an edit changes nothing the gate answers on, and each run is a billed minute")
+    # From main means main's tree too: the trigger is safe only while this job runs
+    # nothing the pull request wrote. One checkout, of the default ref; one command;
+    # the head named once, as the commit the script asks about.
+    if re.search(r"^\s+ref:", gate, re.M) or "head_ref" in gate or gate.count("pull_request.head") != 1 \
+            or gate.count("uses:") != 1 or gate.count("run:") != 1:
+        fault("gate.yml must check out main's tree and run nothing else: no `ref:`, no second step, and the "
+              "pull request's head named once, as HEAD_SHA")
     if re.findall(r"^permissions:\n((?:  .*\n)+)", gate, re.M) != ["  contents: read\n  checks: read\n"] \
             or gate.count("permissions:") != 1:
         fault("gate.yml may read contents and checks and nothing else")
@@ -8055,7 +8063,13 @@ KIT_LOOSENINGS = (
     ("the commit from the wrong place", "wake.yml", lambda t: t.replace('sha="$SHA"', 'sha="$GITHUB_SHA"', 1)),
     ("a pull request's number looked up", "wake.yml", lambda t: t.replace('sha="$SHA"', 'sha=$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)', 1)),
     ("the commit not handed to the shell", "wake.yml", lambda t: t.replace("          SHA: ${{ github.event.check_run.head_sha }}\n", "", 1)),
-    ("the gate run on a push", "gate.yml", lambda t: t.replace("on:\n  pull_request:", "on:\n  push:\n  pull_request:", 1)),
+    ("the gate run on a push", "gate.yml", lambda t: t.replace("on:\n  pull_request_target:", "on:\n  push:\n  pull_request_target:", 1)),
+    ("the branch's own gate run", "gate.yml", lambda t: t.replace("  pull_request_target:\n", "  pull_request:\n", 1)),
+    ("the gate run from main and the branch both", "gate.yml", lambda t: t.replace("on:\n  pull_request_target:", "on:\n  pull_request:\n  pull_request_target:", 1)),
+    ("the pull request's head checked out", "gate.yml", lambda t: t.replace("persist-credentials: false", "persist-credentials: false\n          ref: ${{ github.event.pull_request.head.sha }}", 1)),
+    ("the pull request's branch checked out", "gate.yml", lambda t: t.replace("persist-credentials: false", "persist-credentials: false\n          ref: ${{ github.head_ref }}", 1)),
+    ("the head fetched in a step", "gate.yml", lambda t: t.replace("      - run: python3", "      - run: git fetch origin \"$HEAD_SHA\" && git checkout FETCH_HEAD\n      - run: python3", 1)),
+    ("a second action", "gate.yml", lambda t: t.replace("      - run: python3", "      - uses: actions/setup-python@v5\n      - run: python3", 1)),
     ("another event types", "gate.yml", lambda t: t.replace("[opened, synchronize, reopened]", "[opened]", 1)),
     ("a run on every edit", "gate.yml", lambda t: t.replace("[opened, synchronize, reopened]", "[opened, synchronize, reopened, edited]", 1)),
     ("a token that writes", "gate.yml", lambda t: t.replace("  checks: read\n", "  checks: write\n", 1)),

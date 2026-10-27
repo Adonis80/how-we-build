@@ -4,9 +4,17 @@ name: gate
 # verdict is a check run signed by its App; review-gate.py reads that and nothing
 # else. A push turns this red until a read lands on the new commit, and wake.yml
 # asks it again when one does. Copied from the rulebook's kit and changed there.
+#
+# FROM MAIN. `pull_request_target` runs main's copy of this file, and the checkout
+# below takes main's tree, so main's review-gate.py answers. On `pull_request` a
+# branch's own copies ran, and a branch could turn its own gate green with no
+# read (Adonis80/fixed#1; how-we-build#265). The trigger is safe here because
+# this job never checks out or runs anything the pull request wrote, and holds no
+# secret and nothing that writes: it asks GitHub about one commit and exits.
+# The rulebook's review-gate.py refuses a kit that checks out the head.
 
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, synchronize, reopened]
 
 permissions:
@@ -17,6 +25,7 @@ jobs:
   gate:
     runs-on: ubuntu-latest
     steps:
+      # main's tree, never the pull request's: no `ref:`.
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
