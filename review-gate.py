@@ -7963,10 +7963,12 @@ def _check_kit(kit=None, wake=None, quiet=False, deep=True):
 
     # 3. The gate workflow.
     gate = kit["gate.yml"]
-    if triggers(gate) != ["pull_request_target"] or "    types: [opened, synchronize, reopened]\n" not in gate:
+    if triggers(gate) != ["pull_request_target"] or "    types: [opened, synchronize, reopened]\n" not in gate \
+            or "    branches: [main]\n" not in gate or gate.count("branches") != 1:
         fault("gate.yml must run from main, on `pull_request_target`, when a pull request is opened, pushed to "
-              "or reopened, and no other event: on `pull_request` a branch's own copy runs and can pass itself "
-              "(#265), an edit changes nothing the gate answers on, and each run is a billed minute")
+              "or reopened, into main alone, and no other event: on `pull_request` a branch's own copy runs and can "
+              "pass itself (#265), into another branch that branch's copy runs and a retarget keeps its green "
+              "(#279), an edit changes nothing the gate answers on, and each run is a billed minute")
     # From main means main's tree too: the trigger is safe only while this job runs
     # nothing the pull request wrote. One checkout, of the default ref; one command;
     # the head named once, as the commit the script asks about.
@@ -8064,6 +8066,8 @@ KIT_LOOSENINGS = (
     ("a pull request's number looked up", "wake.yml", lambda t: t.replace('sha="$SHA"', 'sha=$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)', 1)),
     ("the commit not handed to the shell", "wake.yml", lambda t: t.replace("          SHA: ${{ github.event.check_run.head_sha }}\n", "", 1)),
     ("the gate run on a push", "gate.yml", lambda t: t.replace("on:\n  pull_request_target:", "on:\n  push:\n  pull_request_target:", 1)),
+    ("a pull request into any branch", "gate.yml", lambda t: t.replace("    branches: [main]\n", "", 1)),
+    ("a pull request into another branch too", "gate.yml", lambda t: t.replace("    branches: [main]\n", "    branches: [main, develop]\n", 1)),
     ("the branch's own gate run", "gate.yml", lambda t: t.replace("  pull_request_target:\n", "  pull_request:\n", 1)),
     ("the gate run from main and the branch both", "gate.yml", lambda t: t.replace("on:\n  pull_request_target:", "on:\n  pull_request:\n  pull_request_target:", 1)),
     ("the pull request's head checked out", "gate.yml", lambda t: t.replace("persist-credentials: false", "persist-credentials: false\n          ref: ${{ github.event.pull_request.head.sha }}", 1)),
