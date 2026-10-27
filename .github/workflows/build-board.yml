@@ -226,6 +226,7 @@ jobs:
             kept "what $DOMAIN serves" "$(serving)" || return 0
             kept "what $NEXT serves" "$(v "https://api.vercel.com/v13/deployments/$NEXT?$q" 2>/dev/null | jq -r '.id // empty' 2>/dev/null || true)" || return 0
             [ -z "${id:-}" ] || kept "the preview just copied" "$id" || return 0
+            [ -z "${waiting:-}" ] || kept "the preview waiting at $NEXT" "$waiting" || return 0
             for k in $keep; do
               # A kept deployment that cannot be read deletes nothing: what it
               # was copied from is a keep too (#227's first read). This step
@@ -473,6 +474,15 @@ jobs:
             # The smoked preview takes the fixed name; the host moves it off the last.
             # The name is smoked as a stranger like the preview's own host before it
             # is handed over; the Roadmap shown there deletes the preview (#136's read, 3).
+            # THE FIXED NAME ON THE PROJECT (his ruling, 26 October 2026): the run
+            # adds it, so he sets only its DNS record. The host refuses the alias
+            # to a name the project does not hold (run 39059448651: HTTP 400).
+            on=$(v "https://api.vercel.com/v9/projects/$PROJECT/domains/$NEXT?$q" -o /dev/null -w '%{http_code}') || on=000
+            if [ "$on" = 404 ]; then
+              on=$(v -X POST "https://api.vercel.com/v10/projects/$PROJECT/domains?$q" -d "{\"name\":\"$NEXT\"}" -o /dev/null -w '%{http_code}') || on=000
+              if [[ "$on" =~ ^2 ]]; then echo "added to the project: $NEXT"
+              else echo "::warning::$NEXT could not be added to the project (HTTP $on)"; fi
+            fi
             code=$(v -X POST "https://api.vercel.com/v2/deployments/$id/aliases?$q" -d "{\"alias\":\"$NEXT\"}" -o /dev/null -w '%{http_code}') || code=000
             if [[ "$code" =~ ^2 ]]; then
               g=1
@@ -493,6 +503,13 @@ jobs:
           # 422), so the smoked preview is copied to production, as the host's
           # own CLI promotes one: its files, not a rebuild of main (library/deploy.md).
           # Armed before the call: a copy asked for may still land.
+          # THE PREVIEW WAITING AT THE FIXED NAME (his ruling, 26 October 2026):
+          # a production copy takes every name on the project, the fixed one too
+          # (run 39346863779), so a preview it showed is read now and given back
+          # once the copy is live. A production deployment there is not.
+          waiting=$(v "https://api.vercel.com/v13/deployments/$NEXT?$q" 2>/dev/null \
+            | jq -r 'select(.target != "production") | .id // empty' 2>/dev/null || true)
+          [[ "$waiting" =~ ^dpl_[A-Za-z0-9]+$ ]] || waiting=""
           phase=promoted
           made=$(v -X POST "https://api.vercel.com/v13/deployments?$q" \
             -d "{\"deploymentId\":\"$id\",\"name\":\"juku-build-board\",\"target\":\"production\",\"meta\":{\"action\":\"promote\"}}" || true)
@@ -510,6 +527,11 @@ jobs:
             if [ "$g" -eq 0 ] && serves "$copy"; then
               ok=yes
               echo "live: $copy, the copy of $id, on $DOMAIN, the PIN screen alone to a stranger"
+              if [ -n "$waiting" ]; then
+                code=$(v -X POST "https://api.vercel.com/v2/deployments/$waiting/aliases?$q" -d "{\"alias\":\"$NEXT\"}" -o /dev/null -w '%{http_code}') || code=000
+                if [[ "$code" =~ ^2 ]]; then echo "the fixed address given back to the preview waiting there: $waiting"
+                else echo "::warning::the fixed address could not be given back to $waiting (HTTP $code); it shows the live site until the next preview"; fi
+              fi
               tidy || true
               exit 0
             fi

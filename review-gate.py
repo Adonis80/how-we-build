@@ -6515,7 +6515,30 @@ case "$method $path" in
     [ "$TARGET" = preview ] || refuse "the fixed preview name given to a production run"
     [ "$(cat "$S/new")" = READY ] || refuse "the fixed preview name given before the smoke"
     [ "${FAKE_ALIAS:-ok}" = ok ] || { reply 403 '{}'; exit 0; }
+    # As run 39059448651 found it: a name the project does not hold is refused.
+    if [ "${FAKE_PROJDOMAIN:-ok}" = missing ] && [ ! -f "$S/added" ]; then reply 400 '{}'; exit 0; fi
     echo yes > "$S/aliased"; reply 200 '{}' ;;
+  # The fixed name on the project (his ruling, 26 October 2026): read, and added
+  # when missing, on a preview run alone (FAKE_PROJDOMAIN=missing: not yet held).
+  "GET https://api.vercel.com/v9/projects/$PROJECT/domains/$NEXT")
+    [ "$TARGET" = preview ] || refuse "the project's names read on a production run"
+    case "${FAKE_PROJDOMAIN:-ok}" in
+      missing) if [ -f "$S/added" ]; then reply 200 "{\"name\":\"$NEXT\"}"; else reply 404 '{"error":{"code":"not_found"}}'; fi ;;
+      unread) reply 500 '{}' ;;
+      *) reply 200 "{\"name\":\"$NEXT\"}" ;;
+    esac ;;
+  "POST https://api.vercel.com/v10/projects/$PROJECT/domains")
+    [ "$TARGET" = preview ] || refuse "a name added to the project on a production run"
+    [ "$data" = "{\"name\":\"$NEXT\"}" ] || refuse "a name other than the fixed one added to the project: $data"
+    [ "${FAKE_ADD:-ok}" = ok ] || { reply 403 '{"error":{"code":"forbidden"}}'; exit 0; }
+    echo yes > "$S/added"; reply 200 "{\"name\":\"$NEXT\",\"verified\":true}" ;;
+  # The preview waiting at the fixed name, given it back once the copy is live.
+  "POST https://api.vercel.com/v2/deployments/dpl_named/aliases")
+    [ "$TARGET" = production ] || refuse "a waiting preview given back on a preview run"
+    [ "$serving" = dpl_copy ] || refuse "the fixed name given back before the copy was live"
+    [ "$data" = "{\"alias\":\"$NEXT\"}" ] || refuse "a waiting preview given a name other than the fixed one: $data"
+    [ "${FAKE_GIVEBACK:-ok}" = ok ] || { reply 403 '{}'; exit 0; }
+    echo yes > "$S/given"; reply 200 '{}' ;;
   "GET https://$NEXT/"|"GET https://$NEXT/index.html"|"GET https://$NEXT/api/build")
     [ "$auth" = no ] || refuse "a stranger's request carrying a key"
     [ -f "$S/aliased" ] || refuse "the fixed preview name asked before it was given"
@@ -6543,10 +6566,14 @@ case "$method $path" in
       board) reply 200 "$board" ;;
       none) reply 000 '' ;;
     esac ;;
-  # What the fixed name serves, asked of the host by name (FAKE_NAMED=no: not found).
+  # What the fixed name serves, asked of the host by name (FAKE_NAMED=no: not
+  # found; production: the live site, no preview waiting). A production copy
+  # takes it with the domain, as run 39346863779 found, until it is given back.
   "GET https://api.vercel.com/v13/deployments/$NEXT")
-    [ "${FAKE_NAMED:-ok}" = ok ] || { reply 404 '{"error":{"code":"not_found"}}'; exit 0; }
-    reply 200 '{"id":"dpl_named"}' ;;
+    [ "${FAKE_NAMED:-ok}" != no ] || { reply 404 '{"error":{"code":"not_found"}}'; exit 0; }
+    if [ "$serving" = dpl_copy ] && [ ! -f "$S/given" ]; then reply 200 '{"id":"dpl_copy","target":"production"}'; exit 0; fi
+    [ "${FAKE_NAMED:-ok}" != production ] || { reply 200 '{"id":"dpl_before","target":"production"}'; exit 0; }
+    reply 200 '{"id":"dpl_named","target":null}' ;;
   # The fixed name's deployment, read for what it was copied from (FAKE_NAMEDREAD=no: unread).
   "GET https://api.vercel.com/v13/deployments/dpl_named")
     [ "${FAKE_NAMEDREAD:-ok}" = ok ] || { reply 500 '{}'; exit 0; }
@@ -6618,6 +6645,21 @@ BOARD_DEPLOY_CASES = (
      "dpl_before", "CANCELED", "cancelled: dpl_new", "fixed address"),
     ("a preview whose fixed name is refused", {"TARGET": "preview", "LIVE": "no", "FAKE_ALIAS": "no"}, 0,
      "dpl_before", "READY", "the fixed preview address was refused", "promote"),
+    # His ruling, 26 October 2026: the run puts the fixed name on the project itself,
+    # and a merge gives it back to the preview that was waiting there.
+    ("a preview whose fixed name the project does not hold: the run adds it",
+     {"TARGET": "preview", "LIVE": "no", "FAKE_PROJDOMAIN": "missing"}, 0, "dpl_before", "READY",
+     "added to the project: next.roadmap.juku.pro", "promote"),
+    ("a fixed name the project will not take", {"TARGET": "preview", "LIVE": "no", "FAKE_PROJDOMAIN": "missing",
+     "FAKE_ADD": "no"}, 0, "dpl_before", "READY", "next.roadmap.juku.pro could not be added to the project", "promote"),
+    ("a preview whose project's names cannot be read", {"TARGET": "preview", "LIVE": "no", "FAKE_PROJDOMAIN": "unread"},
+     0, "dpl_before", "READY", "preview ready at the fixed address", "added to the project"),
+    ("a merge gives the fixed address back to the preview waiting there", {}, 0, "dpl_copy", "READY",
+     "the fixed address given back to the preview waiting there: dpl_named", None),
+    ("the fixed address cannot be given back", {"FAKE_GIVEBACK": "no"}, 0, "dpl_copy", "READY",
+     "the fixed address could not be given back to dpl_named", None),
+    ("the fixed address showed the live site before the merge", {"FAKE_NAMED": "production"}, 0, "dpl_copy", "READY",
+     "live: dpl_copy, the copy of dpl_new", "given back", BOARD_TIDY_OLD + ["dpl_named"]),
     ("an automatic run before his look", {"GITHUB_EVENT_NAME": "push", "LIVE": "no"}, 0,
      "dpl_before", "none", "rendered, not deployed", "deployment:"),
     # #117's fourth read, 2: a production dispatch waits for his look too.
@@ -6831,7 +6873,10 @@ def _board_deploy_case(script, job, case):
         if sorted(gone) != sorted(want_gone):
             faults.append("on '%s' deleted %s as old previews, not %s" % (what, sorted(gone) or "none",
                                                                           sorted(want_gone) or "none"))
-        must_keep = [k for k in BOARD_TIDY_KEPT if not (k == "dpl_beforeorig" and env.get("FAKE_ORIG") == "no")]
+        # A preview nothing serves is only old: the rollback target's source when it is no
+        # copy, and the fixed name's when the name showed the live site instead.
+        must_keep = [k for k in BOARD_TIDY_KEPT if not (k == "dpl_beforeorig" and env.get("FAKE_ORIG") == "no")
+                     and not (k == "dpl_named" and env.get("FAKE_NAMED") == "production")]
         if any(k in must_keep for k in gone):
             faults.append("on '%s' deleted %s, which it must keep" % (what, [k for k in gone if k in must_keep]))
         listed = log.split("\ndeleted: ", 1)[0]
@@ -6969,6 +7014,12 @@ BOARD_LOOSENINGS = (
     ("a failed preview kept", lambda t: t.replace('v -X DELETE "https://api.vercel.com/v13/deployments/$id?$q"', 'v "https://api.vercel.com/v13/deployments/$id?$q"', 1)),
     ("the preview named before its smoke", lambda t: t.replace("          g=1\n", '          echo "preview: https://$host"\n          g=1\n', 1)),
     # 3: a time limit on every request and a deadline on every wait.
+    # His ruling, 26 October 2026: the fixed name put on the project by the run, and
+    # given back after a merge to the preview waiting there, kept and never a production one.
+    ("the fixed name never put on the project", lambda t: t.replace('if [ "$on" = 404 ]; then', "if false; then", 1)),
+    ("the waiting preview never given back", lambda t: t.replace('if [ -n "$waiting" ]; then', "if false; then", 1)),
+    ("the waiting preview not kept from the old previews", lambda t: t.replace('            [ -z "${waiting:-}" ] || kept "the preview waiting at $NEXT" "$waiting" || return 0\n', "", 1)),
+    ("a production deployment given back as if waiting", lambda t: t.replace("""select(.target != "production") | """, "", 1)),
     ("a host request with no time limit", lambda t: t.replace("v() { curl -sS --max-time 20 ", "v() { curl -sS ", 1)),
     ("a wait with no deadline", lambda t: t.replace('while [ "$(date +%s)" -lt "$by" ]; do\n            state=', "while true; do\n            state=", 1)),
     ("waits that leave no time to roll back", lambda t: t.replace("          limit=9\n", "          limit=14\n", 1)),
@@ -7032,7 +7083,7 @@ BOARD_LOOSENINGS = (
     ("a preview passing over the ceiling", lambda t: t.replace('[ "$TARGET" != production ] || gated "$DOMAIN" pin', 'gated "$DOMAIN" pin', 1)),
     ("the Roadmap's own deployments taken for another project's", lambda t: t.replace('.name != "juku-build-board") then', '.name == "juku-build-board") then', 1)),
     # His ruling, 17 October 2026: old previews deleted once served, and nothing kept deleted.
-    ("no old preview deleted after a live copy", lambda t: t.replace('the PIN screen alone to a stranger"\n              tidy || true\n', 'the PIN screen alone to a stranger"\n', 1)),
+    ("no old preview deleted after a live copy", lambda t: t.replace('it shows the live site until the next preview"; fi\n              fi\n              tidy || true\n', 'it shows the live site until the next preview"; fi\n              fi\n', 1)),
     ("no old preview deleted on an unchanged Roadmap", lambda t: t.replace('Nothing is deployed."\n              tidy || true\n', 'Nothing is deployed."\n', 1)),
     ("old previews deleted before the domain is confirmed", lambda t: t.replace("          phase=promoted\n", "          phase=promoted\n          tidy || true\n", 1)),
     ("the two hours in flight not kept", lambda t: t.replace("local fresh=$(( ($(date +%s) - 7200) * 1000 ))", "local fresh=$(( $(date +%s) * 1000 ))", 1)),
