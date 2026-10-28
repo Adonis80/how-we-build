@@ -1584,7 +1584,12 @@ CLASS_CODE = ("AGENTS.md|*/AGENTS.md|HOW-WE-BUILD.md|CHARTER.md|RICH-DATA.md|lib
 CLASS_ARMS = (CLASS_CODE, "*.md) ;;", "*) class=code ;;")
 RISK_CASE = 'case "${f,,}" in'
 # The six classes, as the arms that name them, in the order they are tried.
-RISK_GATE = ("check.sh|*/check.sh|review-gate.py|*/review-gate.py|board/build.py|library/deploy.md|"
+# A repository's AGENTS.md is the review gate by name (#218, 24 October 2026):
+# it carries the brief its reviewer reads and the live-data and deploy rules a
+# read is judged by, and a change to it was read as ordinary twice
+# (Adonis80/Hemz-OS#190's third read, #194's first). A class it already is,
+# not a seventh (decision 0019).
+RISK_GATE = ("check.sh|*/check.sh|review-gate.py|*/review-gate.py|board/build.py|library/deploy.md|agents.md|*/agents.md|"
              "model-registry/*|*/model-registry/*|product-reads/*|*/product-reads/*|.github/*|*/.github/*) risky=yes ;;")
 RISK_PRICING = "*pric*|*payment*|*billing*|*invoice*|*checkout*|*quote*|*till*) risky=yes ;;"
 RISK_DATA = ("*.sql|*migration*|*schema*|supabase/*|*/supabase/*|*backfill*|*purge*|*truncate*|"
@@ -1837,7 +1842,7 @@ CLASS_CASES = (
     (["design/SPEC.md"], "code"),
     (["docs/HOW-WE-BUILD.md", "docs/CHARTER.md"], "words"),
     (["a page with spaces.md"], "words"),
-    (["AGENTS.md"], "code"),
+    (["AGENTS.md"], "risky"),
     (["HOW-WE-BUILD.md"], "code"),
     (["README.md", "CHARTER.md"], "code"),
     (["README.md", "docs/deploy-notes.md"], "words"),
@@ -1847,7 +1852,8 @@ CLASS_CASES = (
     (["design/CONSTITUTION.md", "README.md"], "code"),
     (["PRODUCT.md"], "code"),
     (["NAMES.md", "docs/guide.md"], "words"),
-    (["docs/AGENTS.md"], "code"),
+    (["docs/AGENTS.md"], "risky"),
+    (["docs/AGENTS-NOTES.md"], "words"),
     (["README.md", "check.sh"], "risky"),
     (["review-gate.py"], "risky"),
     (["board/build.py"], "risky"),
@@ -2241,6 +2247,7 @@ CLASS_LOOSENINGS = (
     ("an unknown kind never tried", None, _without_arm(RISK_UNKNOWN)),
     ("a certificate's kind called ordinary", None, lambda t: t.replace(RISK_ORDINARY, RISK_ORDINARY.replace("*.woff2)", "*.woff2|*.pem)", 1), 1)),
     ("the registry read as ordinary", None, lambda t: t.replace(RISK_GATE, RISK_GATE.replace("model-registry/*|*/model-registry/*|", "", 1), 1)),
+    ("a repository's brief read as ordinary", None, lambda t: t.replace(RISK_GATE, RISK_GATE.replace("agents.md|*/agents.md|", "", 1), 1)),
     ("the deploy page read as words", None, lambda t: t.replace(RISK_GATE, RISK_GATE.replace("library/deploy.md|", "", 1), 1)),
     ("the product read's rules read as ordinary", None, lambda t: t.replace(RISK_GATE, RISK_GATE.replace("product-reads/*|*/product-reads/*|", "", 1), 1)),
     ("an endpoint read as ordinary", None, lambda t: t.replace(RISK_BOUNDARY, RISK_BOUNDARY.replace("api/*|*/api/*|", "", 1), 1)),
