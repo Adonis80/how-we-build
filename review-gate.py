@@ -155,6 +155,10 @@ def fanned(jobs):
 
 
 def _fanned_probe(n):
+    # A probe that answered at once let one worker take all 24 on a loaded
+    # machine (2 runs in 200 here, 28 Oct), so the check went red on no fault;
+    # a short wait leaves each job long enough for an idle worker to take the next.
+    time.sleep(0.05)
     return n * n, os.getpid()
 
 
