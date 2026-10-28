@@ -32,4 +32,4 @@ The brief is *The independent reviewer*: `library/reviewer.md` and the pages the
 17. What does "build" mean? — Take the top ready item; never a question (`HOW-WE-BUILD.md`).
 18. Where do a product's words change, and where does code? — Words from Cowork through the Mac by pull request; code in a code session attached to the repository (`library/two-stacks.md`).
 19. Which file names a model? — `model-registry/registry.json` alone (`library/model-registry.md`).
-20. A design brief tells the visualizer the layout. Allowed? — No; it gets the map, never the paint (`library/hypersolid.md`, step 3).
+20. A design brief or correction plans the layout, or skips `brief-check.py`. Allowed? — No; the goal, never the plan (`library/hypersolid.md`, step 3).
