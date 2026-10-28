@@ -51,7 +51,7 @@ PLAN_WORDS = [
     "square-cornered", "uppercase", "hairline", "hairlines", "shadow", "gradient", "glass",
     "glassy", "font size", "type scale", "px", "padding", "margin",
     # later steps' content
-    "spoken path", "frame", "frames", "state matrix", "states:", "parity",
+    "spoken path", "frame", "frames", "state matrix", "states", "parity",
 ]
 # Allowed only in the frames ask: it names frames, and the spoken path is drawn there (step 4).
 FRAMES_OK = {"frame", "frames", "spoken path"}
@@ -74,6 +74,8 @@ def plan_hits(text, allow=()):
             continue
         if re.search(r"(?<![a-z0-9])" + re.escape(w) + r"(?![a-z0-9])", t):
             hits.append(w)
+    if "px" not in hits and re.search(r"\d\s*px(?![a-z])", t):
+        hits.append("px")
     return hits
 
 
@@ -82,6 +84,8 @@ def check_brief(text):
     body = text.replace(VERBATIM, "")
     if VERBATIM not in text:
         faults.append("the closing line is not there word for word")
+    elif text.split(VERBATIM, 1)[1].strip():
+        faults.append("text after the closing line; the closing line ends the brief")
     pos = [body.find(s) for s in SLOTS]
     for s, p in zip(SLOTS, pos):
         if p < 0:
@@ -109,7 +113,7 @@ def check_brief(text):
         items = [x for x in unquoted(slot(name)).split(";") if x.strip()]
         if len(items) > cap:
             faults.append(f'"{name}" has {len(items)} items; at most {cap}, separated by ";"')
-    hits = plan_hits(counted)
+    hits = plan_hits(body)
     if hits:
         faults.append("plan, not goal (quote it if it is his own words): " + ", ".join(hits))
     if look and not re.search(r"#[0-9A-Fa-f]{6}", look):
@@ -122,8 +126,8 @@ def check_correction(text):
     n = words(text)
     if n > CORRECTION_WORDS:
         faults.append(f"{n} words; a correction is at most {CORRECTION_WORDS}")
-    if len([s for s in re.split(r"[.!?](?:\s|$)", text.strip()) if s.strip()]) > 2:
-        faults.append("a correction is one sentence, two at most")
+    if len([s for s in re.split(r"[.!?](?:\s|$)", text.strip()) if s.strip()]) > 1:
+        faults.append("a correction is one sentence")
     hits = plan_hits(text)
     if hits:
         faults.append("paint, not a pointer back to the live picture or the missing fact: " + ", ".join(hits))
@@ -172,6 +176,11 @@ def selftest():
         ("frames", "Add:\n1. The rate in a gold card above the chart", False),
         ("frames", "Add:\n1. Spoken path, proposed: say the rate, hear it back", True),
         ("brief", GOOD_BRIEF.replace("the next thing to give", "the spoken path"), False),
+        ("brief", GOOD_BRIEF.replace("Look: keep", "Look: a grid of cards; keep"), False),
+        ("brief", GOOD_BRIEF + " Put the rate in a card above the list.", False),
+        ("brief", GOOD_BRIEF.replace("the next thing to give", "the next thing at 390px"), False),
+        ("brief", GOOD_BRIEF.replace("the next thing to give", "its states"), False),
+        ("correction", "Closer to the live picture. The owner prefers it.", False),
     ]
     bad = 0
     for kind, text, ok in cases:
