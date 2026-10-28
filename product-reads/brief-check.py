@@ -23,9 +23,10 @@ VERBATIM = ("This is a professional operational workspace; clarity and confidenc
             "figures and rules, never earlier chats; ordinary wording may be proposed, but show a "
             "missing fact as unknown and never invent a name, concept or figure.")
 
-# The brief's slots, in order. "Look:" carries the tokens and is not counted.
+# The brief's slots, in order. "Look:" carries the tokens, counted on its own.
 SLOTS = ["Who:", "The job:", "What matters most:", "Real content:", "Rules:", "Look:"]
 BRIEF_WORDS = 150      # every slot but Look and the verbatim line
+LOOK_WORDS = 80        # Look alone: the tokens and their meanings, never more content (#284's second read)
 MOST_ITEMS = 3         # "What matters most": at most three, separated by ";"
 RULE_ITEMS = 3         # "Rules": at most three, separated by ";"
 CORRECTION_WORDS = 40
@@ -53,8 +54,8 @@ PLAN_WORDS = [
     # later steps' content
     "spoken path", "frame", "frames", "state matrix", "states", "parity",
 ]
-# Allowed only in the frames ask: it names frames, and the spoken path is drawn there (step 4).
-FRAMES_OK = {"frame", "frames", "spoken path"}
+# Allowed only in the frames ask: it names frames, and the states and the spoken path are drawn there (step 4).
+FRAMES_OK = {"frame", "frames", "states", "spoken path"}
 
 
 def unquoted(text):
@@ -100,6 +101,8 @@ def check_brief(text):
     n = words(counted)
     if n > BRIEF_WORDS:
         faults.append(f"{n} words before Look; at most {BRIEF_WORDS}")
+    if words(look) > LOOK_WORDS:
+        faults.append(f"{words(look)} words in Look; at most {LOOK_WORDS}, the tokens and their meanings")
 
     def slot(name):
         i = body.find(name)
@@ -181,6 +184,15 @@ def selftest():
         ("brief", GOOD_BRIEF.replace("the next thing to give", "the next thing at 390px"), False),
         ("brief", GOOD_BRIEF.replace("the next thing to give", "its states"), False),
         ("correction", "Closer to the live picture. The owner prefers it.", False),
+        # Look is counted on its own, so content cannot move past it (#284's second read).
+        ("brief", GOOD_BRIEF.replace("Look: keep", "Look: " + "word " * 80 + "keep"), False),
+        # The quote rule, both ways: a word quoted is exempt from the list, never from the count.
+        ("brief", GOOD_BRIEF.replace("hourly rate £98.83", 'hourly rate £98.83, paid by "card"'), True),
+        ("brief", GOOD_BRIEF.replace("hourly rate £98.83", "hourly rate £98.83, paid by card"), False),
+        ("brief", GOOD_BRIEF.replace("hourly rate £98.83", "hourly rate £98.83, paid by \u201ccard\u201d"), True),
+        ("brief", GOOD_BRIEF.replace("Real content: hourly rate £98.83.", 'Real content: "' + "word " * 160 + '"'), False),
+        # The frames ask draws states (step 4), as the desktop frame asks.
+        ("frames", "One more frame, after the others:\n1. The opening moment on a 1280-wide desktop: same things, same order, same states", True),
     ]
     bad = 0
     for kind, text, ok in cases:
