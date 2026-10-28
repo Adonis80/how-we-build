@@ -102,6 +102,8 @@ import shlex
 import shutil
 import ssl
 import concurrent.futures
+import functools
+import multiprocessing
 import subprocess
 import sys
 import tempfile
@@ -116,6 +118,64 @@ import urllib.request
 # The selftest imports model-registry/'s scripts; a cache written beside them
 # would be a file no list names.
 sys.dont_write_bytecode = True
+
+# THE LOOSENED COPIES, ACROSS THE MACHINE'S CORES (#235, fix 1). Each loosening
+# is checked on its own copy of the text, and the check reads nothing another
+# copy writes, so the copies run side by side and their answers come back in
+# their order: the same cases, held the same way, in a fraction of the time. The
+# asker's, the Roadmap's and the reviewers' loosenings were most of a whole
+# run's hour (28 October 2026). One core, or SELFTEST_SERIAL set, runs them one
+# at a time; a job inside a job never fans again.
+_FANNED = None
+_IN_FAN = False
+
+
+def _fanned_one(i):
+    global _IN_FAN
+    _IN_FAN = True
+    return _FANNED[i]()
+
+
+def fanned(jobs):
+    """[job() for job in jobs], in order, across the machine's cores."""
+    global _FANNED
+    jobs = list(jobs)
+    workers = min(len(jobs), os.cpu_count() or 1)
+    if workers <= 1 or _IN_FAN or os.environ.get("SELFTEST_SERIAL"):
+        return [job() for job in jobs]
+    sys.stdout.flush()
+    sys.stderr.flush()
+    _FANNED = jobs
+    try:
+        with concurrent.futures.ProcessPoolExecutor(
+                workers, mp_context=multiprocessing.get_context("fork")) as pool:
+            return list(pool.map(_fanned_one, range(len(jobs))))
+    finally:
+        _FANNED = None
+
+
+def _fanned_probe(n):
+    # A probe that answered at once let one worker take all 24 on a loaded
+    # machine (2 runs in 200 here, 28 Oct), so the check went red on no fault;
+    # a short wait leaves each job long enough for an idle worker to take the next.
+    time.sleep(0.05)
+    return n * n, os.getpid()
+
+
+def _check_fanned():
+    """The fan answers in its jobs' order, from more than one process where there are cores for it."""
+    got = fanned([functools.partial(_fanned_probe, n) for n in range(24)])
+    bad = 0
+    if [a for a, _ in got] != [n * n for n in range(24)]:
+        print("  wiring: fanned() answers out of its jobs' order, so a loosening could be read by another's answer")
+        bad += 1
+    if (os.cpu_count() or 1) > 1 and not os.environ.get("SELFTEST_SERIAL") and len({p for _, p in got}) < 2:
+        print("  wiring: fanned() ran every job in one process on a machine with %d cores" % os.cpu_count())
+        bad += 1
+    if not bad:
+        print("ok: the loosened copies are checked across %d core(s), each answer read back in its own place"
+              % (os.cpu_count() or 1))
+    return bad
 
 # ---------------------------------------------------------------------------
 # Who reviews, and as what. The Chairman changes any of these in one line.
@@ -1497,13 +1557,14 @@ def _check_read_loosenings():
             return 1
         if read_faults(text):
             return 1  # the wiring checks say what; a loosened copy proves nothing here
-        for what, loosen in READ_LOOSENINGS:
-            changed = loosen(text)
+        changes = [(what, loosen(text)) for what, loosen in READ_LOOSENINGS]
+        said = iter(fanned([functools.partial(read_faults, c) for _, c in changes if c != text]))
+        for what, changed in changes:
             if changed == text:
                 print("  wiring: the loosening '%s' no longer applies to %s — rewrite it against "
                       "the file as it stands, or it proves nothing" % (what, path))
                 bad += 1
-            elif not read_faults(changed):
+            elif not next(said):
                 print("  wiring: %s with %s passes the read hold — the guard for it is gone"
                       % (path, what))
                 bad += 1
@@ -2276,15 +2337,14 @@ def _check_class_loosenings():
             return 1
         if class_faults(text, path):
             return 1  # the wiring checks say what; a loosened copy proves nothing here
-        for what, only, loosen in CLASS_LOOSENINGS:
-            if only not in (None, path):
-                continue
-            changed = loosen(text)
+        changes = [(what, loosen(text)) for what, only, loosen in CLASS_LOOSENINGS if only in (None, path)]
+        said = iter(fanned([functools.partial(class_faults, c, path) for _, c in changes if c != text]))
+        for what, changed in changes:
             if changed == text:
                 print("  wiring: the loosening '%s' no longer applies to %s — rewrite it against "
                       "the file as it stands, or it proves nothing" % (what, path))
                 bad += 1
-            elif not class_faults(changed, path):
+            elif not next(said):
                 print("  wiring: %s with %s passes the class hold — the guard for it is gone"
                       % (path, what))
                 bad += 1
@@ -2703,15 +2763,14 @@ def _check_route_loosenings():
                   "it has lost %s" % (path, "; ".join(lost)))
             bad += 1
             continue
-        for what, only, loosen in ROUTE_LOOSENINGS:
-            if only not in (None, path):
-                continue
-            changed = loosen(text)
+        changes = [(what, loosen(text)) for what, only, loosen in ROUTE_LOOSENINGS if only in (None, path)]
+        said = iter(fanned([functools.partial(route_faults, c, path) for _, c in changes if c != text]))
+        for what, changed in changes:
             if changed == text:
                 print("  wiring: the loosening '%s' no longer applies to %s — rewrite it against "
                       "the file as it stands, or it proves nothing" % (what, path))
                 bad += 1
-            elif not route_faults(changed, path):
+            elif not next(said):
                 print("  wiring: %s with %s passes the route hold — the guard for it is gone"
                       % (path, what))
                 bad += 1
@@ -4325,13 +4384,14 @@ def _check_attempt_loosenings():
             print("  wiring: %s must keep one record per attempt; it has lost %s" % (path, "; ".join(lost)))
             bad += 1
             continue
-        for what, loosen in ATTEMPT_LOOSENINGS:
-            changed = loosen(text)
+        changes = [(what, loosen(text)) for what, loosen in ATTEMPT_LOOSENINGS]
+        said = iter(fanned([functools.partial(attempts_faults, c, path) for _, c in changes if c != text]))
+        for what, changed in changes:
             if changed == text:
                 print("  wiring: the loosening '%s' no longer applies to %s — rewrite it against the file as it "
                       "stands, or it proves nothing" % (what, path))
                 bad += 1
-            elif not attempts_faults(changed, path):
+            elif not next(said):
                 print("  wiring: %s with %s passes the attempt hold — the guard for it is gone" % (path, what))
                 bad += 1
     if not bad:
@@ -4664,13 +4724,15 @@ def _check_more_loosenings():
             print("  wiring: %s must add only what a short read named, once; it has lost %s" % (path, "; ".join(lost)))
             bad += 1
             continue
-        for what, loosen in MORE_LOOSENINGS + (MORE_PRODUCT_LOOSENINGS if path == PRODUCT_WORKFLOW else ()):
-            changed = loosen(text)
+        changes = [(what, loosen(text)) for what, loosen in
+                   MORE_LOOSENINGS + (MORE_PRODUCT_LOOSENINGS if path == PRODUCT_WORKFLOW else ())]
+        said = iter(fanned([functools.partial(more_faults, c, path) for _, c in changes if c != text]))
+        for what, changed in changes:
             if changed == text:
                 print("  wiring: the loosening '%s' no longer applies to %s — rewrite it against the file as it "
                       "stands, or it proves nothing" % (what, path))
                 bad += 1
-            elif not more_faults(changed, path):
+            elif not next(said):
                 print("  wiring: %s with %s passes the re-read hold — the guard for it is gone" % (path, what))
                 bad += 1
     if not bad:
@@ -7166,13 +7228,14 @@ def _check_board_loosenings():
     bad = _check_board_wiring(board=text)
     if bad:
         return bad
-    for what, loosen in BOARD_LOOSENINGS:
-        changed = loosen(text)
+    changes = [(what, loosen(text)) for what, loosen in BOARD_LOOSENINGS]
+    said = iter(fanned([functools.partial(_check_board_wiring, board=c, quiet=True) for _, c in changes if c != text]))
+    for what, changed in changes:
         if changed == text:
             print("  wiring: the loosening '%s' no longer applies to %s — rewrite it against the "
                   "file as it stands, or it proves nothing" % (what, BOARD_WORKFLOW))
             bad += 1
-        elif not _check_board_wiring(board=changed, quiet=True):
+        elif not next(said):
             print("  wiring: %s with %s passes the Roadmap's hold — the guard for it is gone"
                   % (BOARD_WORKFLOW, what))
             bad += 1
@@ -7181,13 +7244,14 @@ def _check_board_loosenings():
     except OSError as e:
         print("  wiring: %s" % e)
         return bad + 1
-    for what, loosen in BUILD_LOOSENINGS:
-        changed = loosen(build)
+    changes = [(what, loosen(build)) for what, loosen in BUILD_LOOSENINGS]
+    said = iter(fanned([functools.partial(_check_board_wiring, build=c, quiet=True) for _, c in changes if c != build]))
+    for what, changed in changes:
         if changed == build:
             print("  wiring: the loosening '%s' no longer applies to board/build.py — rewrite it against the "
                   "file as it stands, or it proves nothing" % what)
             bad += 1
-        elif not _check_board_wiring(build=changed, quiet=True):
+        elif not next(said):
             print("  wiring: board/build.py with %s passes the Roadmap's hold — the guard for it is gone" % what)
             bad += 1
     if not bad:
@@ -8512,13 +8576,14 @@ def _check_ask_run_loosenings():
         print("  wiring: %s" % e)
         return 1
     bad = 0
-    for what, loosen in ASK_RUN_LOOSENINGS:
-        changed = loosen(ask)
+    changes = [(what, loosen(ask)) for what, loosen in ASK_RUN_LOOSENINGS]
+    said = iter(fanned([functools.partial(_check_ask_run, ask=c, quiet=True) for _, c in changes if c != ask]))
+    for what, changed in changes:
         if changed == ask:
             print("  wiring: the loosening '%s' no longer applies to %s — rewrite it against the "
                   "file as it stands, or it proves nothing" % (what, ASK_WORKFLOW))
             bad += 1
-        elif _check_ask_run(ask=changed, quiet=True) == 0:
+        elif next(said) == 0:
             print("  wiring: %s with %s passes the run of its own shell — the case for it is gone" % (ASK_WORKFLOW, what))
             bad += 1
     if not bad:
@@ -9616,7 +9681,7 @@ SELFTEST_PARTS = (
                      "_check_review_loosenings", "_check_registry", "_check_selftest_plan", "_check_conversation",
                      "_check_caller", "_check_context", "_check_brief", "_check_canary", "_check_alert",
                      "_check_expressions", "_check_rulebook_pages", "_check_context_loosenings",
-                     "_check_pick_loosenings", "_check_link_loosenings"),
+                     "_check_pick_loosenings", "_check_link_loosenings", "_check_fanned"),
      # The selector is run on the real tree, so the core reads every page, paper and script.
      ("*.md", "library/*.md", "juku-library/*.md", "model-registry/ask.py", "model-registry/context.py",
       "model-registry/registry.json", "model-registry/resolve.py", "product-reads/ask.py", "product-reads/reads.py",
