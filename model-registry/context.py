@@ -728,15 +728,15 @@ def naming(text, path, touched):
 # seven library pages whole, 33 KB, for a sentence or two each. A passage is a
 # paragraph with the list, table or indented lines that follow it, and a fenced
 # block whole; it is given whole or not at all, never cut to fit a size. Its
-# page's opening (the title and the scope line under it) and the heading each
-# passage sits under come with it. The rest of the page is the reader's to ask
+# page's opening (the title and the scope line under it) and every heading a
+# passage sits under, one a level, come with it. The rest of the page is the reader's to ask
 # for, the page whole, by its path.
 PASSAGES = "%s, its passages naming the change's files only (of %d bytes; the page whole may be asked for as %s)"
 _FOLLOWS = re.compile(r"\s+\S|\s*(?:[-*+]|\d+[.)])\s|\s*\|")
 
 
 def passages(text, touched):
-    """A page's passages that name a touched file, with its opening and their headings, as one text.
+    """A page's passages that name a touched file, with its opening and every heading above them, as one text.
 
     None when the page names no touched file, or when those passages are the
     whole page, which is then given whole as before.
@@ -776,9 +776,14 @@ def passages(text, touched):
     keep = set(range(body[0] + 1))
     for k in named:
         keep.add(k)
-        above = [h for h in heads if h < k]
-        if above:
-            keep.add(above[-1])
+        # Every heading it sits under, one a level (#291's first read): a
+        # passage under a `###` keeps its `##` too, which can change what it governs.
+        level = None
+        for h in reversed([h for h in heads if h < k]):
+            depth = len(re.match(r"#+", lines[blocks[h][0]]).group(0))
+            if level is None or depth < level:
+                keep.add(h)
+                level = depth
     if len(keep) == len(blocks):
         return None
     # Two kept blocks with only blank lines between them are next to each other, never a gap.

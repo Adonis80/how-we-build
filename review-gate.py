@@ -4968,6 +4968,18 @@ def _check_context(path=None, quiet=False):
         if "of %d bytes" % len(policy.encode("utf-8")) not in mark or "asked for as policy.md" not in mark \
                 or "policy.md" in left_out:
             fault("a page given as its passages does not say its size and how to ask for it whole (%r)" % mark)
+        # Every heading above a passage, one a level (#291's first read): under a
+        # `###`, its `##` parent comes too, never a sibling or a deeper heading.
+        nested = ("# Title\n\nScope: x.\n\n## Parent\n\n**P.** nothing.\n\n### Sibling\n\n**S.** nothing.\n\n"
+                  "### Child\n\n#### Deeper\n\n**D.** nothing.\n\n### Holder\n\n**H.** a.md is held here.\n\n"
+                  "## After\n\n**A.** nothing.\n")
+        part = ctx.passages(nested, ["a.md"]) or ""
+        for has in ("## Parent", "### Holder", "**H.**"):
+            if has not in part:
+                fault("a passage under a nested heading was not given %r" % has)
+        for hasnt in ("### Sibling", "### Child", "#### Deeper", "## After"):
+            if hasnt in part:
+                fault("a passage under a nested heading was given %r, which it does not sit under" % hasnt)
         # A touched file past the limit is given the sections it touches.
         big = "# Big\n\n" + "".join("## Part %d\n\n%s\n" % (i, "words " * 2000) for i in range(8))
         picked = ctx.select("words", ["HOW-WE-BUILD.md", "big.md"], ["big.md"],
@@ -5655,7 +5667,9 @@ CONTEXT_LOOSENINGS = (
     ("a list cut from the paragraph it follows", "            cur = blocks.pop()", "            pass"),
     ("a fenced block split at its blank lines", "            fence = mark.group(1)", "            pass"),
     ("a page's opening dropped from its passages", "    keep = set(range(body[0] + 1))", "    keep = set()"),
-    ("a passage's heading dropped", "            keep.add(above[-1])", "            pass"),
+    ("a passage's headings dropped", "                keep.add(h)\n", "                pass\n"),
+    ("a passage given only its nearest heading", "            if level is None or depth < level:",
+     "            if level is None:"),
     ("any unit given for the one asked", "if n is not None and (n == name", "if True or (n == name"),
     ("a / after any ) read as a regex", 'if toks[-1][5] == "head":', "if True:"),
     ("a / after } read as a division", 'raise Unsure("a / after } at line %d: a regex or a division" % at)',
