@@ -4952,14 +4952,14 @@ def _check_context(path=None, quiet=False):
         # the page's other passages left out, its size and how to ask said.
         policy = ("# Title\n\nScope: x. Open when: y.\n\n**Unrelated.** says nothing.\n\n## Section\n\n"
                   "**Policy.** a.md must keep its rule. Two things:\n\n- one\n- two\n\n| t | u |\n|---|---|\n"
-                  "| a | b |\n\n**Other.** not here.\n\n```\ncode naming a.md\n\nmore code after a blank\n```\n\n"
+                  "| a | b |\n\n**Other.** not here.\n\n**Opens.** the code:\n\n```\ncode naming a.md\n\nmore code after a blank\n```\n\n"
                   "**Last.** fine.\n")
         got, marks, left_out, texts = made_up("words", {"HOW-WE-BUILD.md": "page\n", "a.md": "page\n",
                                                         "policy.md": policy}, ["a.md"],
                                                "diff --git a/a.md b/a.md\n@@ -1,1 +1,1 @@\n-page\n+a page\n")
         part = "".join(t for m, t in texts.items() if m.startswith("policy.md"))
         mark = "".join(m for m in marks if m.startswith("policy.md"))
-        for has in ("Scope: x.", "## Section", "**Policy.**", "- two", "| a | b |", "more code after a blank"):
+        for has in ("Scope: x.", "## Section", "**Policy.**", "- two", "| a | b |", "**Opens.**", "more code after a blank"):
             if has not in part:
                 fault("a page naming a changed file was not given %r with its passage naming it" % has)
         for hasnt in ("**Unrelated.**", "**Other.**", "**Last.**"):
@@ -4968,6 +4968,33 @@ def _check_context(path=None, quiet=False):
         if "of %d bytes" % len(policy.encode("utf-8")) not in mark or "asked for as policy.md" not in mark \
                 or "policy.md" in left_out:
             fault("a page given as its passages does not say its size and how to ask for it whole (%r)" % mark)
+        # Every heading above a passage, one a level (#291's first read): under a
+        # `###`, its `##` parent comes too, never a sibling or a deeper heading.
+        nested = ("# Title\n\nScope: x.\n\n## Parent\n\n**P.** nothing.\n\n### Sibling\n\n**S.** nothing.\n\n"
+                  "### Child\n\n#### Deeper\n\n**D.** nothing.\n\n### Holder\n\n**H.** a.md is held here.\n\n"
+                  "## After\n\n**A.** nothing.\n")
+        part = ctx.passages(nested, ["a.md"]) or ""
+        for has in ("## Parent", "### Holder", "**H.**"):
+            if has not in part:
+                fault("a passage under a nested heading was not given %r" % has)
+        for hasnt in ("### Sibling", "### Child", "#### Deeper", "## After"):
+            if hasnt in part:
+                fault("a passage under a nested heading was given %r, which it does not sit under" % hasnt)
+        # #291's second read: a passage naming a file by its bare name is kept, and
+        # a fenced block comes with the paragraph that opens it, either way round.
+        wake = ".github/workflows/wake.yml"
+        kit = ("# T\n\nScope: x.\n\n**Full.** %s wakes the gate.\n\n**Kit.** its copy matches it:\n\n"
+               "```\nuses: %s\n```\n\n**Bare.** wake.yml runs it.\n\n**Lead.** the template:\n\n```\nnothing\n```\n\n"
+               "**Other.** nothing.\n" % (wake, wake))
+        got, marks, left_out, texts = made_up("code", {"HOW-WE-BUILD.md": "page\n", wake: "on: x\n", "kit.md": kit},
+                                               [wake], "diff --git a/%s b/%s\n@@ -1,1 +1,1 @@\n-a\n+b\n" % (wake, wake))
+        part = "".join(t for m, t in texts.items() if m.startswith("kit.md"))
+        for has in ("**Full.**", "**Kit.**", "uses: ", "**Bare.**"):
+            if has not in part:
+                fault("a page naming a changed file was not given %r" % has)
+        for hasnt in ("**Lead.**", "**Other.**"):
+            if hasnt in part:
+                fault("a page naming a changed file was given %r, naming none of it" % hasnt)
         # A touched file past the limit is given the sections it touches.
         big = "# Big\n\n" + "".join("## Part %d\n\n%s\n" % (i, "words " * 2000) for i in range(8))
         picked = ctx.select("words", ["HOW-WE-BUILD.md", "big.md"], ["big.md"],
@@ -5651,11 +5678,16 @@ CONTEXT_LOOSENINGS = (
     ("a large partner given whole", '        elif text is None or len(text.encode("utf-8")) <= WHOLE:', "        elif True:"),
     ("the pages naming a change not given", '                give(f, text)\n            else:\n                give_part(f, "passages"',
      '                pass\n            else:\n                (f, "passages"'),
-    ("a page naming a change given whole", "            found = passages(text, touched)", "            found = None"),
+    ("a page naming a change given whole", "            found = passages(text, names)", "            found = None"),
     ("a list cut from the paragraph it follows", "            cur = blocks.pop()", "            pass"),
     ("a fenced block split at its blank lines", "            fence = mark.group(1)", "            pass"),
     ("a page's opening dropped from its passages", "    keep = set(range(body[0] + 1))", "    keep = set()"),
-    ("a passage's heading dropped", "            keep.add(above[-1])", "            pass"),
+    ("a passage's headings dropped", "                keep.add(h)\n", "                pass\n"),
+    ("a passage matched by its full path alone", "            found = passages(text, names)",
+     "            found = passages(text, touched)"),
+    ("a fenced block cut from the paragraph that opens it", "|\\s*\\||\\s*(?:```|~~~)\")", "|\\s*\\|\")"),
+    ("a passage given only its nearest heading", "            if level is None or depth < level:",
+     "            if level is None:"),
     ("any unit given for the one asked", "if n is not None and (n == name", "if True or (n == name"),
     ("a / after any ) read as a regex", 'if toks[-1][5] == "head":', "if True:"),
     ("a / after } read as a division", 'raise Unsure("a / after } at line %d: a regex or a division" % at)',

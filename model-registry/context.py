@@ -726,17 +726,17 @@ def naming(text, path, touched):
 # A PAGE THAT NAMES A TOUCHED FILE (#235, fix 3, agreed 18 October 2026) is
 # given its passages that name one, never the page whole: #230's read carried
 # seven library pages whole, 33 KB, for a sentence or two each. A passage is a
-# paragraph with the list, table or indented lines that follow it, and a fenced
-# block whole; it is given whole or not at all, never cut to fit a size. Its
-# page's opening (the title and the scope line under it) and the heading each
-# passage sits under come with it. The rest of the page is the reader's to ask
+# paragraph with the list, table, fenced block or indented lines that follow it,
+# a fenced block always whole, matched by a touched file's path or bare name; it is given whole or not at all, never cut to fit a size. Its
+# page's opening (the title and the scope line under it) and every heading a
+# passage sits under, one a level, come with it. The rest of the page is the reader's to ask
 # for, the page whole, by its path.
 PASSAGES = "%s, its passages naming the change's files only (of %d bytes; the page whole may be asked for as %s)"
-_FOLLOWS = re.compile(r"\s+\S|\s*(?:[-*+]|\d+[.)])\s|\s*\|")
+_FOLLOWS = re.compile(r"\s+\S|\s*(?:[-*+]|\d+[.)])\s|\s*\||\s*(?:```|~~~)")
 
 
 def passages(text, touched):
-    """A page's passages that name a touched file, with its opening and their headings, as one text.
+    """A page's passages that name a touched file, with its opening and every heading above them, as one text.
 
     None when the page names no touched file, or when those passages are the
     whole page, which is then given whole as before.
@@ -761,7 +761,7 @@ def passages(text, touched):
             cur = []
             continue
         if not cur and blocks and not re.match(r"#+\s", lines[blocks[-1][-1]]) and _FOLLOWS.match(line):
-            # A list, table or indented line after a blank belongs to the paragraph above it.
+            # A list, table, fenced block or indented line after a blank belongs to the paragraph above it.
             cur = blocks.pop()
         cur.append(i)
         if mark:
@@ -776,9 +776,14 @@ def passages(text, touched):
     keep = set(range(body[0] + 1))
     for k in named:
         keep.add(k)
-        above = [h for h in heads if h < k]
-        if above:
-            keep.add(above[-1])
+        # Every heading it sits under, one a level (#291's first read): a
+        # passage under a `###` keeps its `##` too, which can change what it governs.
+        level = None
+        for h in reversed([h for h in heads if h < k]):
+            depth = len(re.match(r"#+", lines[blocks[h][0]]).group(0))
+            if level is None or depth < level:
+                keep.add(h)
+                level = depth
     if len(keep) == len(blocks):
         return None
     # Two kept blocks with only blank lines between them are next to each other, never a gap.
@@ -895,7 +900,7 @@ def select(cls, tree, changed, diff, read=_read):
                 if any(t in sec for t in touched):
                     give_part(f, "#" + h, '%s, its section "%s" only' % (f, h), sec)
         else:
-            found = passages(text, touched)
+            found = passages(text, names)
             if found is None:
                 give(f, text)
             else:
