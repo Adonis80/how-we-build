@@ -725,7 +725,7 @@ def naming(text, path, touched):
 
 # A PAGE THAT NAMES A TOUCHED FILE (#235, fix 3, agreed 18 October 2026) is
 # given its passages that name one, never the page whole: #230's read carried
-# seven library pages whole, 38 KB, for one sentence each. A passage is a
+# seven library pages whole, 33 KB, for a sentence or two each. A passage is a
 # paragraph with the list, table or indented lines that follow it, and a fenced
 # block whole; it is given whole or not at all, never cut to fit a size. Its
 # page's opening (the title and the scope line under it) and the heading each
@@ -783,10 +783,8 @@ def passages(text, touched):
         return None
     # Two kept blocks with only blank lines between them are next to each other, never a gap.
     kept = sorted(i for k in keep for i in blocks[k])
-    for a, b in zip(kept, kept[1:]):
-        if b > a + 1 and not "".join(lines[a + 1:b]).strip():
-            kept.extend(range(a + 1, b))
-    return _joined(lines, set(kept))
+    blank = [i for a, b in zip(kept, kept[1:]) if not "".join(lines[a + 1:b]).strip() for i in range(a + 1, b)]
+    return _joined(lines, set(kept + blank))
 
 
 def changed_lines(diff, path):
