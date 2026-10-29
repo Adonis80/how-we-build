@@ -8,17 +8,17 @@ The rulebook for every product Dhayan's AI studio builds: **how** we work. Each 
 
 To read one (decision 0015): its `AGENTS.md` whole; from `PRODUCT.md`, its purpose, the rules it holds across every slice and the passages the task needs, with what they reference; from `roadmap.json`, how its order is set (its `_what_this_is` and order note), money milestones, open items with their `next` lines, the `retired` notes when an ideas review is due, and a `done` item only when its evidence is needed.
 
-- **Myst** — `https://github.com/Adonis80/myst` (private). The App for Perfume Collectors: a Personal Nose that learns a person's taste, samples picked for them, and the value on collectors' shelves.
+- **Myst** — `https://github.com/Adonis80/myst` (private; paused 28 Oct 2026, his word). The App for Perfume Collectors: a Personal Nose that learns a person's taste, samples picked for them, and the value on collectors' shelves.
 - **Hemz OS** — `https://github.com/Adonis80/Hemz-OS` (private). The operating system for an alterations business, grown out of Alma's Alterations in Brighton.
-- **Phena** — `https://github.com/Adonis80/phena` (private). *Documenting the Phenomena*: first-person extraordinary experiences, near-death experiences first, explored through the River, at `phena.juku.pro`.
-- **Fixed** — `https://github.com/Adonis80/fixed` (private; its kit not yet merged). A fair-price marketplace for local trades, heating first, at `fixed.juku.pro`. A working name.
+- **Phena** — `https://github.com/Adonis80/phena` (private; paused 28 Oct 2026, his word). *Documenting the Phenomena*: first-person extraordinary experiences, near-death experiences first, explored through the River, at `phena.juku.pro`.
+- **Fixed** — `https://github.com/Adonis80/fixed` (private; its kit not yet merged; paused 28 Oct 2026, his word). A fair-price marketplace for local trades, heating first, at `fixed.juku.pro`. A working name.
 
-A repository not listed here is not under this rulebook. Papers for an idea not yet a product live in private `Adonis80/juku-os-papers`; that registers nothing.
+No session starts work on a paused product. A repository not listed here is not under this rulebook. Papers for an idea not yet a product live in private `Adonis80/juku-os-papers`; that registers nothing.
 
 ## Where each product's plan lives
 
 - **Juku OS** (this rulebook) — its open pull requests, ready first, then priority, then oldest, then its agreed `proposal` issues.
-- **Hemz OS, Myst, Phena, Fixed** — each one's `roadmap.json` on `main`: [Hemz OS](https://github.com/Adonis80/Hemz-OS/blob/main/roadmap.json), [Myst](https://github.com/Adonis80/myst/blob/main/roadmap.json), [Phena](https://github.com/Adonis80/phena/blob/main/roadmap.json), [Fixed](https://github.com/Adonis80/fixed/blob/main/roadmap.json).
+- **Each product** — its `roadmap.json` on `main`: [Hemz OS](https://github.com/Adonis80/Hemz-OS/blob/main/roadmap.json), [Myst](https://github.com/Adonis80/myst/blob/main/roadmap.json), [Phena](https://github.com/Adonis80/phena/blob/main/roadmap.json), [Fixed](https://github.com/Adonis80/fixed/blob/main/roadmap.json).
 
 The Roadmap at roadmap.juku.pro shows them all (`library/roadmap.md`).
 
