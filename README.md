@@ -13,7 +13,7 @@ To read one (decision 0015): its `AGENTS.md` whole; from `PRODUCT.md`, its purpo
 - **Phena** — `https://github.com/Adonis80/phena` (private; paused 28 Oct 2026, his word). *Documenting the Phenomena*: first-person extraordinary experiences, near-death experiences first, explored through the River, at `phena.juku.pro`.
 - **Fixed** — `https://github.com/Adonis80/fixed` (private; its kit not yet merged; paused 28 Oct 2026, his word). A fair-price marketplace for local trades, heating first, at `fixed.juku.pro`. A working name.
 
-No session starts work on a paused product. A repository not listed here is not under this rulebook. Papers for an idea not yet a product live in private `Adonis80/juku-os-papers`; that registers nothing.
+A repository not listed here is not under this rulebook. Papers for an idea not yet a product live in private `Adonis80/juku-os-papers`; that registers nothing. No session starts work on a paused product.
 
 ## Where each product's plan lives
 
