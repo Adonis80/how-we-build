@@ -413,8 +413,8 @@ jobs:
             echo "</diff>"
             echo
             echo "This change is read as $CLASS at effort $EFFORT with a selection of the repository:"
-            echo "HOW-WE-BUILD.md, the README's index, each file it touches, their partners, every"
-            echo "page naming one, and on a code or risky read the registry. Every other file is named below"
+            echo "HOW-WE-BUILD.md, the README's index, each file it touches, their partners, the passages"
+            echo "of every page naming one, and on a code or risky read the registry. Every other file is named below"
             echo "with its size and left out. If judging it needs a left-out file, or one unit of a file"
             echo "(path#heading, path#function or path#step name), give a finding of"
             echo "severity needs-context naming it, and you will be read once more with it."
