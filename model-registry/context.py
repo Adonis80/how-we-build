@@ -13,7 +13,8 @@ carries the registry. Each read is given
 HOW-WE-BUILD.md; the README's *Where each topic lives* table; each file the
 change touches, whole, or past WHOLE bytes the sections its hunks fall in; the
 partners PARTNERS names, both ways, a large one as the sections that name a
-touched file; every page that names a touched file by its path; and, on a
+touched file; every page that names a touched file by its path, as its
+passages that name one (#235, fix 3); and, on a
 `code` or `risky` read, the registry. Everything else is named with its size
 and left out, so a reader that needed it says so (`needs-context`), naming a
 file or one unit of one (`path#heading`, `path#function`, `path#step name`),
@@ -722,6 +723,72 @@ def naming(text, path, touched):
     return (_joined(lines, keep) if keep else None), names
 
 
+# A PAGE THAT NAMES A TOUCHED FILE (#235, fix 3, agreed 18 October 2026) is
+# given its passages that name one, never the page whole: #230's read carried
+# seven library pages whole, 38 KB, for one sentence each. A passage is a
+# paragraph with the list, table or indented lines that follow it, and a fenced
+# block whole; it is given whole or not at all, never cut to fit a size. Its
+# page's opening (the title and the scope line under it) and the heading each
+# passage sits under come with it. The rest of the page is the reader's to ask
+# for, the page whole, by its path.
+PASSAGES = "%s, its passages naming the change's files only (of %d bytes; the page whole may be asked for as %s)"
+_FOLLOWS = re.compile(r"\s+\S|\s*(?:[-*+]|\d+[.)])\s|\s*\|")
+
+
+def passages(text, touched):
+    """A page's passages that name a touched file, with its opening and their headings, as one text.
+
+    None when the page names no touched file, or when those passages are the
+    whole page, which is then given whole as before.
+    """
+    lines = text.splitlines(keepends=True)
+    blocks, cur, fence = [], [], None
+    for i, line in enumerate(lines):
+        mark = re.match(r"\s*(```|~~~)", line)
+        if fence:
+            cur.append(i)
+            fence = None if mark and mark.group(1) == fence else fence
+            continue
+        if not line.strip():
+            if cur:
+                blocks.append(cur)
+            cur = []
+            continue
+        if re.match(r"#+\s", line):
+            if cur:
+                blocks.append(cur)
+            blocks.append([i])
+            cur = []
+            continue
+        if not cur and blocks and not re.match(r"#+\s", lines[blocks[-1][-1]]) and _FOLLOWS.match(line):
+            # A list, table or indented line after a blank belongs to the paragraph above it.
+            cur = blocks.pop()
+        cur.append(i)
+        if mark:
+            fence = mark.group(1)
+    if cur:
+        blocks.append(cur)
+    heads = [k for k, b in enumerate(blocks) if re.match(r"#+\s", lines[b[0]])]
+    body = [k for k in range(len(blocks)) if k not in heads]
+    named = [k for k in body if any(t in "".join(lines[i] for i in blocks[k]) for t in touched)]
+    if not named:
+        return None
+    keep = set(range(body[0] + 1))
+    for k in named:
+        keep.add(k)
+        above = [h for h in heads if h < k]
+        if above:
+            keep.add(above[-1])
+    if len(keep) == len(blocks):
+        return None
+    # Two kept blocks with only blank lines between them are next to each other, never a gap.
+    kept = sorted(i for k in keep for i in blocks[k])
+    for a, b in zip(kept, kept[1:]):
+        if b > a + 1 and not "".join(lines[a + 1:b]).strip():
+            kept.extend(range(a + 1, b))
+    return _joined(lines, set(kept))
+
+
 def changed_lines(diff, path):
     """The lines a diff adds or removes in `path`, as one text."""
     out, on = [], False
@@ -830,7 +897,11 @@ def select(cls, tree, changed, diff, read=_read):
                 if any(t in sec for t in touched):
                     give_part(f, "#" + h, '%s, its section "%s" only' % (f, h), sec)
         else:
-            give(f, text)
+            found = passages(text, touched)
+            if found is None:
+                give(f, text)
+            else:
+                give_part(f, "passages", PASSAGES % (f, len(text.encode("utf-8")), f), found)
     if cls != "words":
         give(REGISTRY, read(REGISTRY))
     given = whole | {n for n, _ in parts}

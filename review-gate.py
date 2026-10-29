@@ -1737,7 +1737,7 @@ RISK_TOLD = ('if [ "$CLASS" != risky ]; then',
              'name joins the rule."')
 # review.yml's pages (decisions 0014 and 0018): every change, risky or not, is
 # given model-registry/context.py's selection — HOW-WE-BUILD.md, the README's
-# index, each touched file, its partners both ways, every page naming one, and
+# index, each touched file, its partners both ways, the passages naming one, and
 # on a code or risky read the registry; no read is given every file. What is left out is named with its size, and the reviewer is told
 # so and how to ask for it: without those, a read short of a file is silent
 # about it. The selector is main's, and the block is run, not read, on a
@@ -4748,7 +4748,7 @@ def _check_more_loosenings():
 
 # THE SELECTION, ON THE REAL TREE (decisions 0014 and 0018). The selector is run
 # on this repository as it stands, with a one-line change: a README-only change
-# and a one-line code change are given their partners and the pages naming them,
+# and a one-line code change are given their partners and the passages naming them,
 # and a one-line change to check.sh, risky, is given its partners too, the
 # gate's sections naming it by name, and the registry, and nothing else whole.
 # No read is given every file (his ruling, 9 October 2026: "Yes, I want the full
@@ -4946,6 +4946,28 @@ def _check_context(path=None, quiet=False):
             fault("a change to a.md is given %s, not the operating page, a.md and the page naming it" % sorted(got))
         if not any(t is None and m.startswith("stray.md: ") for m, t, b in picked):
             fault("a page naming no changed file is not named as left out")
+        # A PAGE NAMING A CHANGED FILE IS ITS PASSAGES NAMING IT (#235, fix 3): each
+        # whole, with its list, table and fenced lines, the page's opening and the
+        # heading above it, even when the change's own lines name nothing of it;
+        # the page's other passages left out, its size and how to ask said.
+        policy = ("# Title\n\nScope: x. Open when: y.\n\n**Unrelated.** says nothing.\n\n## Section\n\n"
+                  "**Policy.** a.md must keep its rule. Two things:\n\n- one\n- two\n\n| t | u |\n|---|---|\n"
+                  "| a | b |\n\n**Other.** not here.\n\n```\ncode naming a.md\n\nmore code after a blank\n```\n\n"
+                  "**Last.** fine.\n")
+        got, marks, left_out, texts = made_up("words", {"HOW-WE-BUILD.md": "page\n", "a.md": "page\n",
+                                                        "policy.md": policy}, ["a.md"],
+                                               "diff --git a/a.md b/a.md\n@@ -1,1 +1,1 @@\n-page\n+a page\n")
+        part = "".join(t for m, t in texts.items() if m.startswith("policy.md"))
+        mark = "".join(m for m in marks if m.startswith("policy.md"))
+        for has in ("Scope: x.", "## Section", "**Policy.**", "- two", "| a | b |", "more code after a blank"):
+            if has not in part:
+                fault("a page naming a changed file was not given %r with its passage naming it" % has)
+        for hasnt in ("**Unrelated.**", "**Other.**", "**Last.**"):
+            if hasnt in part:
+                fault("a page naming a changed file was given %r, a passage naming nothing changed" % hasnt)
+        if "of %d bytes" % len(policy.encode("utf-8")) not in mark or "asked for as policy.md" not in mark \
+                or "policy.md" in left_out:
+            fault("a page given as its passages does not say its size and how to ask for it whole (%r)" % mark)
         # A touched file past the limit is given the sections it touches.
         big = "# Big\n\n" + "".join("## Part %d\n\n%s\n" % (i, "words " * 2000) for i in range(8))
         picked = ctx.select("words", ["HOW-WE-BUILD.md", "big.md"], ["big.md"],
@@ -4997,7 +5019,7 @@ def _check_context(path=None, quiet=False):
                 if size > target else ""))
     if not bad and not quiet:
         print("ok: every read is a selection: a change is given its partners, a large one as its sections naming "
-              "the change, the pages naming it and on a code or risky read the registry, and no page naming none "
+              "the change, the passages naming it and on a code or risky read the registry, and no page naming none "
               "of it; every other file is named with its size, a large file is given the sections it touches, a "
               "risky change is given no file it does not touch or need, and a unit asked for is given alone; a "
               "script's definition is given whole or not at all, with why, in each of %d agreed cases"
@@ -5627,7 +5649,13 @@ CONTEXT_LOOSENINGS = (
     ("a partner never brought back", "            out.extend(matched)", "            pass"),
     ("a large file given whole", '        if len(text.encode("utf-8")) <= WHOLE:', "        if True:"),
     ("a large partner given whole", '        elif text is None or len(text.encode("utf-8")) <= WHOLE:', "        elif True:"),
-    ("the pages naming a change not given", "            give(f, text)\n    if cls", "            pass\n    if cls"),
+    ("the pages naming a change not given", '                give(f, text)\n            else:\n                give_part(f, "passages"',
+     '                pass\n            else:\n                (f, "passages"'),
+    ("a page naming a change given whole", "            found = passages(text, touched)", "            found = None"),
+    ("a list cut from the paragraph it follows", "            cur = blocks.pop()", "            pass"),
+    ("a fenced block split at its blank lines", "            fence = mark.group(1)", "            pass"),
+    ("a page's opening dropped from its passages", "    keep = set(range(body[0] + 1))", "    keep = set()"),
+    ("a passage's heading dropped", "            keep.add(above[-1])", "            pass"),
     ("any unit given for the one asked", "if n is not None and (n == name", "if True or (n == name"),
     ("a / after any ) read as a regex", 'if toks[-1][5] == "head":', "if True:"),
     ("a / after } read as a division", 'raise Unsure("a / after } at line %d: a regex or a division" % at)',
