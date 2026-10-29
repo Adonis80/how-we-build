@@ -4,8 +4,6 @@
 
 Read this page only when your slice changes what a product learns from, shows about a person, or claims about its own accuracy. Ordinary slices do not load it. It is the method every product follows; each product's own `PRODUCT.md` says how the method applies there. Agreed with Astra over four rounds, September 2026. Nothing on this page is an automated check: the proof lives in each product's tests, in the slice that changes the behaviour.
 
----
-
 ## 1. The goal
 
 The Chairman's ruling, 17 September 2026:
@@ -15,8 +13,6 @@ The Chairman's ruling, 17 September 2026:
 > Each project is optimised for collecting rich data, that can be used for increasing the intelligence of the project native AI. so the project AI becomes more and more intelligent in that domain over time.
 
 **Rich means granularity, not coverage.** Existing databases in every domain collect one-dimensional verdicts on finished things: a rating for a perfume, a price for an alteration. We collect a far finer understanding of each individual: which qualities, in which combinations, under which conditions, at which point in time, and how sure we may be.
-
----
 
 ## 2. The principle
 
@@ -32,13 +28,9 @@ Three sentences the whole page rests on:
 
 And the loop that makes an AI cleverer (the product does fit numbers from evidence; only the language model is never fine-tuned on people's data): it commits to a call before the outcome exists; reality answers; it finds out how wrong it was; the belief updates and the diary grows. A prediction never written down beforehand can never be scored afterwards, at any price.
 
----
-
 ## 3. Start at the destination
 
 Before deciding what to capture, write one paragraph: **the richest evidence this domain could hold at scale.** Then work backwards to what to capture from each person, and in which order. The order is the design rule below. The dialogue with a person may range as wide as the declared purpose allows. The limits are the declared purpose, the never-infer list (§8) and the design rule (§4): necessary, explainable, authorised, and asked in the order most likely to change a decision. Within that purpose there is no artificial cap on how much the AI may come to understand about a person.
-
----
 
 ## 4. What rich evidence is
 
@@ -58,8 +50,6 @@ Seven properties, roughly in order of power.
 
 **The design rule.** Ask for information likely to change a useful decision. Do not ask again for what is already reliably available for that permitted purpose. Do not introduce observation merely to avoid asking. Capture only what is necessary, explainable to the person, and authorised. Temporarily withholding a prediction under the evaluation rules (§7) is not concealment of the processing itself.
 
----
-
 ## 5. How it is captured
 
 **A conversation that makes claims and gets corrected**, with these rules:
@@ -78,8 +68,6 @@ Seven properties, roughly in order of power.
 **The product's own acts are evidence.** Record the act the product can establish: selected, dispatched, displayed, or another already-observed state; never "seen" without evidence. For every offer: the set, the order, the role (§7), the policy version (which version of the picking rule was in force) and the catalogue version, by stable reference. Claims are recorded as approved structured claims with their displayed values or template versions, never as copies of conversation. Where an item was drawn at random, record the chance it had, with the eligible pool and the draw rule that define that chance. Explicit skip, explicit rejection and no recorded response stay distinct, and none supplies an unspoken reason. Unverifiable exposure is unknown, not unexposed. A product act is context, selection accounting or a frozen prediction; it is never a preference label, and the product's own prediction is never evidence that it was right.
 
 **Hemz OS.** Timings come from taps that already do work in the workflow, marked tapped live or entered after. A single-operation job measures only its recorded interval, which may include setup, waiting and interruption; the closed distinction between elapsed time and active work stands. If counter transactions during a job are already captured and permitted, they may supply a labelled proxy for interruption in retrospective analysis; they prove nothing about who stopped or for how long, are never subtracted from elapsed time, and never feed a prediction made before the job. Otherwise the field is omitted; no new monitoring workflow.
-
----
 
 ## 6. How it is stored
 
@@ -109,8 +97,6 @@ Seven properties, roughly in order of power.
 
 **Variables grow by a gate.** Adding or changing a variable is a policy change. Freeze its definition, the incumbent it is compared with, the outcome, the decision rule and the evaluation window before looking at fresh protected outcomes. One candidate at a time; inconclusive means not yet; a consulted evaluation set is never fresh again; admission evidence is reported as such. Three tests beyond the score: a person can perceive it; the product can say it in a sentence; it is not on the never-infer list (§8). A new thing the product would learn *about people* is put to the Chairman as one plain sentence, agreed or not yet. Removal for safety, privacy, invalid data or withdrawn permission is immediate and never waits to win on accuracy; removal for performance follows the same gate; removal invalidates dependent outputs.
 
----
-
 ## 7. The exam: how we know it got smarter
 
 **Every prediction is sealed before the outcome exists**: the call, the range the product stated (with its target, coverage level and method version), the policy version, the variable-set version and the permitted inputs it used. It is never overwritten or relinked. How often ratings land inside the stated ranges is reported together with how wide those ranges were, so vagueness earns nothing; a qualitative label is not a probability. An outcome the product never predicted is still welcome as evidence; it simply stays outside the exam.
@@ -129,13 +115,9 @@ Seven properties, roughly in order of power.
 
 **Hemz OS.** The estimate, the rule and version behind it, and the context known at that moment are stored before work begins, separate from later scope changes. The actual duration is stored with its measurement basis. Rework is three-state (reported / none reported within the observation window / observation incomplete) and never invented. The estimate is visible to the operator because the shop runs on it, so anchoring (a shown number pulling the recorded answer towards it) is a standing limitation recorded beside the figures. The operator can tell the original estimate from the measured actual and see whether the comparison is valid; missing timing stays missing; an empty comparison never shows a reassuring zero. What Hemz learns is prediction (how long will this mix take, here), never attribution of time to a part or a person. Who did the work stays in access-controlled job documentation under its existing clearing rule and is never copied into estimation evidence or ranked. The first slice uses only currently permitted records, retains no trend, and says so; support per operation-by-fabric combination is measured from that window, and its size is presently unknown. Learning across cleared history and any month-on-month proof wait on the Chairman's retention decision; cross-shop learning waits on the separate authority for staff expertise. A retained error summary could one day support a trend; it would not preserve the evidence needed to refit a better model.
 
----
-
 ## 8. What must never be learned
 
 Each product keeps a fixed never-infer list, and only approved fields and values enter the learning record, claim records and model-derived fields alike. Prohibited attributes are neither retained, derived nor approached through proxies. Skin is recorded only as self-described perfume behaviour. Hemz measurements stay in the job documentation that clears and never become evidence. Sensitive content a person volunteers in conversation follows that conversation's assessed handling rules; excluding it from the evidence store does not make its transient processing disappear, and no new purpose is granted by that exclusion. Extraction is validated against the approved fields using the reply already being made.
-
----
 
 ## 9. Legal prerequisites, named and not solved
 
@@ -147,8 +129,6 @@ These are the controller's responsibilities, taken with legal advice. Technical 
 - In Hemz, for processing done solely on a shop's documented instructions, the shop decides why the data is used (it is the controller) and we act only on its instructions (we are its processor); that is a legal assessment, not settled here, and learning for our own improvement purpose needs its own role and legal-ground assessment, even within one shop. Any accounting or legal retention the shop must keep stays segregated and never becomes learning evidence. Staff receive clear written information before any timing begins: purpose, access, use and retention. Notice or agreement is not by itself a legal ground for monitoring.
 - Myst's 18+ intention needs a proportionate assessment of whether children are likely to use it and what follows; a declaration alone does not settle it.
 - Removing a name does not make a record anonymous. With two or three workers, aggregation guarantees nothing. Any retained summary in Hemz is treated as staff personal data unless shown otherwise, and any retained job line is minimised personal data for a stated purpose and period, never "anonymised".
-
----
 
 ## 10. What every product page carries
 
@@ -162,13 +142,9 @@ These are the controller's responsibilities, taken with legal advice. Technical 
 
 Every pull request handover states what evidence the slice captures or deliberately does not capture, which decision it can improve, what cost or retention obligation it adds, and under which notice. "None, because ..." is a valid answer.
 
----
-
 ## 11. What this is not
 
 No universal capture service, shared runtime or developer-facing index over our own repositories. No population modelling before there is a population. No fine-tuning, no loading of videos or podcasts as evidence, no special defence against deliberately corrupted input, no new paid service, outside data source, scheduled job or extra model call to populate the loop. No automated repricing, staff-performance surface or causal claim from observational timing. A field is not a capability: accurate exposure capture, versioned mappings, constrained extraction, protected-data exclusion and cache-and-deletion enforcement need implementation and a passing test, not a column. Do not claim a capability exists because its schema has a column.
-
----
 
 ## 12. The drawing
 

@@ -18,10 +18,10 @@ it stands on screen), never from the word count. Exit 0 passes; 1 names each fau
 import re
 import sys
 
-VERBATIM = ("This is a professional operational workspace; clarity and confidence matter more "
-            "than decoration. Choose the visual composition yourself. Use only this brief's names, "
-            "figures and rules, never earlier chats; ordinary wording may be proposed, but show a "
-            "missing fact as unknown and never invent a name, concept or figure.")
+VERBATIM = ("The task clear first, then the most spectacular, beautiful, creative design it allows, "
+            "with depth and motion where they help. Choose the visual composition yourself. Use only "
+            "this brief's names, figures and rules, never earlier chats; ordinary wording may be "
+            "proposed, but show a missing fact as unknown and never invent a name, concept or figure.")
 
 # The brief's slots, in order. "Look:" carries the tokens, counted on its own.
 SLOTS = ["Who:", "The job:", "What matters most:", "Real content:", "Rules:", "Look:"]
