@@ -1,33 +1,32 @@
 # The two stacks
 
-Scope: every session, a product's or this rulebook's, in either stack. Open when: choosing the lead or its effort, starting, handing over or finishing work in either stack, deciding whether a change needs a code session or can be made from Cowork, or a job that needs hands.
+Scope: every session, a product's or this rulebook's, in either stack. Open when: choosing the lead or its effort, starting, handing over or finishing work in either stack, deciding whether a job needs code mode, or a job that needs hands.
 
 One lead owns a slice at a time. The pull request is the handover, and a replacement lead rebuilds what it needs from GitHub, never from a chat. At a clean checkpoint, *build* in the other stack transfers ownership — and only then: ownership moves when the pull request's latest entry is the outgoing lead's checkpoint. Otherwise the incoming lead leaves that pull request alone and takes the next item. Nothing is built to manage this: no switch file, no lock service, no registry, no orchestrator.
 
-**Code and words.** Anything that runs — code, tests, a database change, a deploy — is built in the lead's workshop, a session attached to the repo: a Claude code session, or a Codex cloud task. Only a workshop can prove it: the build, the tests, the Playwright journey on phone and desktop, the preview. Words — this rulebook, a product's `AGENTS.md`, `PRODUCT.md`, `NAMES.md`, `roadmap.json`, its screen specs, its README — may change from a Cowork session, through the Mac, by the same branch, pull request and review as everything else. Size is not the line: a one-line change to code still needs the workshop; a long change to words does not. One session reaches one product's repository — one key, one product — reads the rulebook, and writes down:
+**Cowork first** (his ruling, 1 November 2026, quoted whole on [#295](https://github.com/Adonis80/how-we-build/pull/295): *"Cowork handles everything and it contains all of the permissions to build. And only when there is something that Cowork cannot do that code mode can, only then will we go to code mode."*). When Claude leads, a Cowork session is the workshop for code and words alike: it attaches the repository to itself (the Mac's key is the fallback), builds on a branch, and proves it — the build, the tests, the Playwright journey on phone and desktop, the preview — by the same pull request and review as everything else. Code mode at `claude.ai/code` is used only for a job Cowork cannot do, named with why on the pull request. Size is not the line; what Cowork can do is. One session reaches one product's repository — one product — reads the rulebook, and writes down:
 
 ```mermaid
 flowchart LR
-  RB["Rulebook · how-we-build<br/>public — every session reads it, no key"]
+  RB["Rulebook · how-we-build<br/>public"]
   H["Hemz-OS · private"]
   P["myst · private"]
   F["phena · private"]
-  C1["Builder on Hemz-OS<br/>Claude code, or Codex cloud — code and words"]
-  C2["Builder on myst<br/>Claude code, or Codex cloud — code and words"]
-  C3["Builder on phena<br/>Claude code, or Codex cloud — code and words"]
-  W["Cowork session<br/>through the Mac — words only"]
-  RB -. reads .-> C1
-  RB -. reads .-> C2
-  RB -. reads .-> C3
+  W["Claude leads: Cowork session<br/>code and words"]
+  X["OpenAI leads: Codex cloud task<br/>code and words"]
+  K["Code mode<br/>only what Cowork cannot do"]
   RB -. reads .-> W
-  C1 -->|writes| H
-  C2 -->|writes| P
-  C3 -->|writes| F
-  W -->|writes words| H
-  W -->|writes words| P
-  W -->|writes words| F
-  W -->|writes words| RB
+  RB -. reads .-> X
+  W -->|writes| H
+  W -->|writes| P
+  W -->|writes| F
+  W -->|writes| RB
+  X -->|writes| H
+  X -->|writes| P
+  X -->|writes| F
+  K -.->|writes| H
 ```
+
 
 **A brief to a code session** names passages and the commit, carries patches on the branch rather than inline, and forecasts the files expected (a forecast, not a limit); a mandatory entry document is still read as its rule says. Its shape (decision 0015): a bootstrap, hard rules, tasks each with goal, files, change, acceptance and stop, and a definition of done; a report to the Chairman ends with a receipt: what was read, in KB, and the cost.
 
@@ -41,6 +40,6 @@ flowchart LR
 
 **The Chairman's ruling, 11 September 2026.** While a Claude model is the strongest available to him, it leads, and the OpenAI path stays configured to build; who reviews is the registry's (*The independent reviewer*). The rules are written by role, so the swap costs nothing the day that changes.
 
-**Anthropic.** Building happens in a code session started attached to the repository, and a product's with this rulebook attached beside it (*Session changeover*). A Cowork or chat session advises, and may change words through the Mac by pull request. The hard stop is enforced by the product's `.claude/settings.json`. **Its hands are Claude's own, used from a Cowork session: the Chrome extension, computer use on the Mac, and the Claude app's built-in browser** — for a console, a dashboard, a setting no pipeline can reach (his rulings of 14 and 17 September 2026). Claude's own pages at `claude.ai` go to the built-in browser, since the extension refuses them. A code session started at `claude.ai/code` has none of these hands. It puts the job in CI; where CI cannot do it, it writes the job on its pull request under **Hands needed:** with every choice already made, and tells him only where to take it: a Cowork session in the product's Project, and the word *build* — the only word he types to start work, in either stack and in Cowork or code mode, because the reply names the room and the session works out the job. That session reads the open pull requests for the line, sees whether the job in front of it is hands or code, does the work, and says so on the pull request — what was done, never a secret — so the next code session on *build* carries the slice on rather than asking again. **Such a job keeps an open pull request until it is done** (his ruling, 19 September 2026), and the slice carrying it does not merge out from under it: either the pull request waits, or the job moves to one that stays open before the merge. Only what is still open moves: the mover first reads that pull request's later comments and the job's own link, and a job marked done, or replaced by a newer note, stays behind as spent (his ruling, 27 October 2026). Such a job is found only by reading the open pull requests, so an open one left on a merged pull request is a job *build* will never find, which is the same as handing him the job. He types *build*. Anything that needs more than that is a fault in the line, not an instruction for him. Neither is a second lead; advising is not owning.
+**Anthropic.** Building happens in a Cowork session in the product's Project, the product's repository and this rulebook attached (*Session changeover*); a chat session advises. The product's `.claude/` files load once its repository is in the session (seen 1 November 2026: Hemz-OS's max subagent appeared in a Cowork session). The hard stop binds there too: its `.claude/settings.json` enforces it where that file is applied, and where that is unproved the session holds it by this rule, never calling a clock tool. **Its hands are Claude's own, in that same session: the Chrome extension, computer use on the Mac, and the Claude app's built-in browser** — for a console, a dashboard, a setting no pipeline can reach (his rulings of 14 and 17 September 2026). Claude's own pages at `claude.ai` go to the built-in browser, since the extension refuses them. A code session started at `claude.ai/code` has none of these hands. One that is used puts the job in CI; where CI cannot do it, it writes the job on its pull request under **Hands needed:** with every choice already made, and tells him only where to take it: a Cowork session in the product's Project, and the word *build* — the only word he types to start work, in either stack and in Cowork or code mode, because the reply names the room and the session works out the job. That session reads the open pull requests for the line, sees whether the job in front of it is hands or code, does the work, and says so on the pull request — what was done, never a secret — so the next session on *build* carries the slice on rather than asking again. **Such a job keeps an open pull request until it is done** (his ruling, 19 September 2026), and the slice carrying it does not merge out from under it: either the pull request waits, or the job moves to one that stays open before the merge. Only what is still open moves: the mover first reads that pull request's later comments and the job's own link, and a job marked done, or replaced by a newer note, stays behind as spent (his ruling, 27 October 2026). Such a job is found only by reading the open pull requests, so an open one left on a merged pull request is a job *build* will never find, which is the same as handing him the job. He types *build*. Anything that needs more than that is a fault in the line, not an instruction for him. Neither is a second lead; advising is not owning.
 
 **OpenAI.** Codex is the development surface — cloud by default, local only when the work needs the Mac — and ChatGPT is the advisory surface, reading GitHub and writing nothing. The Chairman's finding of 11 September 2026: the strongest OpenAI model is reachable only from ChatGPT's cloud work mode, and the ChatGPT desktop app cannot work in a repository at all. So an OpenAI-led build runs as a Codex cloud task. A Codex cloud environment is built from the repository's own toolchain, not from a template: the setup script installs what the lockfiles name and clones this rulebook to `~/.juku/how-we-build`; the maintenance script refreshes that clone and fails closed, so a cached environment never starts on stale rules; agent internet stays off unless the repository genuinely needs it, and then as a named allowlist — its package registry and GitHub — restricted to GET, HEAD and OPTIONS, because the broad preset has a published prompt-injection route out; and no secret is added until a product proves it needs one. One line in the product's `AGENTS.md` points a lead working offline at the local rulebook. Schedules, automations and polling are forbidden in the build loop, as the hard stop forbids them on the other side. **It has no hands**: ChatGPT writes nothing and Codex has no browser, so an OpenAI-led slice puts a manual action in CI, and where it cannot, checkpoints and transfers by the route above rather than borrowing another stack's. Nothing reaches the Chairman instead.
