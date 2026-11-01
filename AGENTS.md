@@ -30,6 +30,6 @@ The brief is *The independent reviewer*: `library/reviewer.md` and the pages the
 15. What reaches the Chairman, and how? — Money, permissions, product truth or a picture, self-contained (*Asking the Chairman*).
 16. What ends every reply to him? — "continue to build here" or "ready to start fresh session" with where and what to type (*Asking the Chairman*).
 17. What does "build" mean? — Take the top ready item; never a question (`HOW-WE-BUILD.md`).
-18. Where do a product's words change, and where does code? — Words from Cowork through the Mac by pull request; code in a code session attached to the repository (`library/two-stacks.md`).
+18. Where do a product's words change, and where does code? — Both in a Cowork session, by pull request; code mode only for a job Cowork cannot do (`library/two-stacks.md`).
 19. Which file names a model? — `model-registry/registry.json` alone (`library/model-registry.md`).
 20. A design brief or correction plans the layout, or skips `brief-check.py`. Allowed? — No; the goal, never the plan (`library/hypersolid.md`, step 3).

@@ -34,7 +34,7 @@ The list, and how a repository makes itself current: `library/carries-sessions.m
 | `library/voice-native.md`: *Voice Native* | work touches a product's assistant or its actions, or a screen's spoken path is mapped or built |
 | `library/carries-sessions.md`: *What every product carries* | starting or stopping a product session, setting up or checking a product's repository or what its checks run, or a slice touches money milestones, evidence or the product's own pages |
 | `library/session-changeover.md`: *Session changeover* | deciding whether to stay in a session or start a fresh one, and before leaving one |
-| `library/two-stacks.md`: *The two stacks* | choosing the lead or its effort, starting, handing over or finishing work in either stack, deciding whether a change needs a code session or can be made from Cowork, or a job that needs hands |
+| `library/two-stacks.md`: *The two stacks* | choosing the lead or its effort, starting, handing over or finishing work in either stack, deciding whether a job needs code mode, or a job that needs hands |
 | `library/max-subagent.md`: *The max subagent* | a lead hands its max piece on, or a product sets up or checks its max subagent file |
 | `library/reviewer.md`: *The independent reviewer* | working out who reviews a change, asking for a read, judging whether a commit is cleared, writing a repository's Review guidelines, checking a product's gate, or changing the review machinery |
 | `library/reviewer-parking.md`: *The independent reviewer: parking* | about to park a slice, or the reviewer seems out |
