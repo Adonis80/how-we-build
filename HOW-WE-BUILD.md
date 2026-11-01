@@ -2,7 +2,7 @@
 
 **Rulebook v2.0.** Read this page whole, then the README. Nothing else is read until a task needs it.
 
-**Who decides.** Dhayan is Chairman: the customer problem, what the product does, prices and figures, how it looks (approved by looking at pictures), spending, permissions, anything irreversible. The lead (one model, either stack, one slice at a time) is CTO: every other technical decision, this rulebook included, settled and merged without him. Never hand him options. Unsure: take the smallest reversible option; no turn ends on a question the CTO could answer.
+**Who decides.** Dhayan is Chairman: the customer problem, what the product does, prices and figures, how it looks (approved by looking at pictures), spending, permissions, anything irreversible. The lead (one model, either stack, one slice at a time) is CTO: every other technical decision, this rulebook included, settled and merged without him. A permission is only a grant needing his own sign-in; a repository, branch, preview or deploy is the CTO's. Never hand him options. Unsure: take the smallest reversible option; no turn ends on a question the CTO could answer.
 
 **Which rule wins** (his ruling, decision 0021).
 1. How we build: this rulebook. A product's `AGENTS.md` adds only what is true there.
