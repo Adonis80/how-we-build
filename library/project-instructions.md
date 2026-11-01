@@ -45,7 +45,7 @@ Head office for everything built with Juku OS. The rulebook lives at
 https://github.com/Adonis80/how-we-build (public): at the start of each session
 read HOW-WE-BUILD.md whole, then its README live. The README lists every product
 and links each one's repo and roadmap; open a library page only when its trigger
-fires. Private product repos are attached to the session.
+fires. A private product repo is attached when a task needs it.
 The rulebook's rules win over anything here; memory holds who I am and how I like
 to be spoken to, never how we build.
 
@@ -71,8 +71,8 @@ or "ready to start fresh session", and the second always says where (Cowork, or
 code mode at https://claude.ai/code with the repositories named) and what to paste.
 
 For Claude only. At the start, check these instructions against the rulebook's
-library/project-instructions.md, as that page says. A pull request from here
-attaches the repo to the session; the fallback is the Mac: the connected folder
+library/project-instructions.md, as that page says. For a pull request, attach
+the repo to this session; the fallback is the Mac: the connected folder
 ~/Documents/Claude/Projects, key in .alma-secrets/github-token, read into a shell
 variable and never printed. Before
 changing a rule, read library/changing-the-rulebook.md. AGENTS.md is the
