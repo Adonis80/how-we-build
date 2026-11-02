@@ -352,7 +352,7 @@ jobs:
             python3 -I product-reads/reads.py state "$t/read.json" "$SHA" "$REVIEWER_APP_ID"
           fi
           rm -f "$t"/commit.json "$t"/parent.json "$t"/checks.json "$t"/verify.json "$t"/read.json
-          echo "$SHA is the ready mark, its own check passed, and it is free to be read"
+          echo "$SHA is the ready mark, its own checks let a read start, and it is free to be read"
 
       - name: Say it is reading
         id: open

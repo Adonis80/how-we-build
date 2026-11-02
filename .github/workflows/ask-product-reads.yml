@@ -52,7 +52,8 @@ name: Ask for product reads
 # looks, then every ten minutes again, for LOOKS ten-minute spells in all (32: about five
 # hours ten of waiting, inside the job's limit); a minute instead while a ready mark's check is
 # still running, for as long as it runs (his word, 2 November 2026: "implement Ideas 1 and 2"),
-# each quick look spending a minute of the same five hours ten, so a run never lasts longer, and
+# each quick look a minute of the same five hours ten, counted on the clock, looks included, so a
+# run ends by then and its last look inside the job's limit, and
 # a check running past an hour earns ten minutes again (product-reads/reads.py). A newer run
 # waiting its turn, a tick or a person's, takes over at its next look. One tick in five hours keeps the
 # ten-minute clock; a person's run looks once. On a public repository the
@@ -142,8 +143,13 @@ jobs:
           looks=${LOOKS:-1}
           [[ "$looks" =~ ^[1-9][0-9]?$ ]] && [ "$looks" -le 32 ] || { echo "::error::looks is 1 to 32"; exit 1; }
           look=0
-          # The minutes a run may wait between its looks: LOOKS - 1 ten-minute spells.
-          budget=$(( (looks - 1) * 10 ))
+          # The seconds a run may last, its looks included: LOOKS - 1 ten-minute spells.
+          # What it has used is the longer of the clock since it began and the sleeps it
+          # took, so a slow look is counted, and a sleep that returns early is not taken
+          # for time that passed (#299's read, blocking).
+          budget=$(( (looks - 1) * 600 ))
+          slept=0
+          begun=$SECONDS
           spent=0
           # Each look is the whole of what follows, at this indentation so its lines
           # stay the ones review-gate.py holds. A RED LOOK IS REMEMBERED, NEVER THE END
@@ -170,10 +176,10 @@ jobs:
             # look comes a minute later rather than ten, so a read starts about a minute
             # after the check passes. As long as the check runs (2 November 2026), each a
             # minute of the run's budget; the last wait is cut to what the budget has left.
-            if [ -s "$RUNNER_TEMP/ask-pending" ]; then nap=1; else nap=10; fi
+            if [ -s "$RUNNER_TEMP/ask-pending" ]; then nap=60; else nap=600; fi
             [ "$nap" -le $((budget - spent)) ] || nap=$((budget - spent))
-            spent=$((spent + nap))
-            sleep $((nap * 60))
+            slept=$((slept + nap))
+            sleep "$nap"
             # A newer asking run waiting its turn takes over, so a person's run never waits
             # behind this one. A list that does not come is no newer run: look again.
             if [ "$DISPATCH" = "true" ]; then
@@ -181,7 +187,7 @@ jobs:
               if [[ "$pending" =~ ^[1-9][0-9]*$ ]]; then echo "a newer run is waiting, and takes over"; yielded=1; break; fi
             fi
           fi
-          echo "look $look, $spent of $budget minutes waited"
+          echo "look $look, $spent of $budget seconds used"
           : > "$RUNNER_TEMP/ask-pending"
           # The App's JWT lives nine minutes, so each look signs its own.
           printf '%s\n' "$APP_KEY" > "$key"
@@ -235,6 +241,8 @@ jobs:
           # One product's trouble does not stop the others being looked at, nor the
           # next look; and it does not go unsaid: the job is red at the end.
           [ "$failed" -eq 0 ] || { red=1; echo "::error::look $look was red; looking on"; }
+          elapsed=$((SECONDS - begun))
+          spent=$(( elapsed > slept ? elapsed : slept ))
           done
           # THE RELAY (#202): after its last look an asking run starts its one successor,
           # unless an asking run already waits to carry the clock on. Only the relay's own

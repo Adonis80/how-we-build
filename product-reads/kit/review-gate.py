@@ -22,7 +22,9 @@ AND ITS TESTS PASSED (his word, 2 November 2026: "implement Ideas 1 and 2"). A r
 may start alongside the tests, once a product's quick `checks` pass, so a clean read
 no longer means `verify` has finished. The gate opens only when `verify`, run by
 GitHub Actions on this very commit, has passed as well: nothing merges with failing
-tests. The latest `verify` by when it started decides, so a re-run that passed after
+tests, so long as `verify` is the product's own: a branch can edit that job, and
+the reviewer's read of the diff, not this file, is what stops it. The latest
+`verify` by when it started decides, so a re-run that passed after
 a flaky failure counts, and one still going or failed after a pass does not. The
 wake re-runs this gate when `verify` finishes, as it does when a read lands.
 """

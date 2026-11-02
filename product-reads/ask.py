@@ -10,7 +10,7 @@ repository's own token, which reads the runs asked for already and, with
 --dispatch, may start a workflow here.
 
 It lists the product's open pull requests and picks out each whose head is the
-builder's ready mark, whose own `verify` passed on it, and which has never been
+builder's ready mark, whose own checks let a read start (product-reads/reads.py), and which has never been
 read. Those are the very three things review-product.yml checks again before it
 pays for a read, and they are asked of the same rules in reads.py, so the asker
 cannot ask for what the reviewer would refuse. A draft is asked for like any

@@ -37,9 +37,12 @@ A READ ALONGSIDE THE TESTS (his word, 2 November 2026: "implement Ideas 1 and
 not after its full `verify`: the read and the slow suites run side by side. A
 product with no `checks` job (the starter kit's) still waits for `verify`, and
 a `verify` that has already failed stops the read, since nothing could merge.
-What makes this safe is the product's own gate, never this file: it opens only
-on a commit whose `verify` passed as well as a clean read (product-reads/kit/
-review-gate.py), so a read begun early never lets failing tests merge.
+What makes this safe is the product's own gate, never this file, and this file
+cannot see it: a product with a `checks` job is read early only because its gate
+opens on a commit whose `verify` passed as well as a clean read (the kit's
+review-gate.py; Hemz OS's own, from its pull request of 2 November 2026). A
+product that adds a `checks` job takes that gate first. A read begun early whose
+`verify` then fails still spent its round.
 
 THREE KINDS OF "NOT READ". A commit with a verdict on it has been read. One whose
 check run is still opening or reading is being read. One whose run ended
@@ -203,7 +206,7 @@ def verified(answer, sha, now=None):
     """Refused unless the product's own checks let a read start on `sha`.
 
     The quick `checks` passing is enough, or `verify` passing where a product has
-    no `checks`; a `verify` that has finished any other way refuses. The latest run
+    no `checks`; a `checks` or a `verify` that has finished any other way refuses. The latest run
     of each name by when it started decides, so a re-run that is still going or
     has failed is not hidden behind an older green one. A check still running is
     refused in the words the asker's quick look watches for, unless it started
@@ -211,13 +214,13 @@ def verified(answer, sha, now=None):
     """
     runs = _runs(answer)
     full, quick = _latest(runs, VERIFY, sha), _latest(runs, QUICK, sha)
+    if quick is not None and quick.get("status") == "completed" and quick.get("conclusion") != "success":
+        raise Refused("the product's own check, %s, did not pass on this commit" % QUICK)
     if full is not None and full.get("status") == "completed":
         if full.get("conclusion") != "success":
             raise Refused("the product's own check, %s, did not pass on this commit" % VERIFY)
         return
     if quick is not None and quick.get("status") == "completed":
-        if quick.get("conclusion") != "success":
-            raise Refused("the product's own check, %s, did not pass on this commit" % QUICK)
         return
     going = quick if quick is not None else full
     if going is None:
@@ -658,6 +661,7 @@ def _selftest():
     refuses("checks cancelled", verified, {"check_runs": [q(ago=9, conclusion="cancelled")]}, HEAD)
     refuses("checks on another commit", verified, {"check_runs": [q(sha="c" * 40, ago=9)]}, HEAD)
     refuses("checks re-run and failing after a pass", verified, {"check_runs": [q(ago=20), q(ago=2, conclusion="failure")]}, HEAD)
+    refuses("checks failed, verify passed", verified, {"check_runs": [q(ago=30, conclusion="failure"), v(ago=9)]}, HEAD)
     for what, runs in (("checks still running", [q(ago=3, **going)]), ("checks still running beside verify", [q(ago=3, **going), v(ago=2, **going)]),
                        ("verify still running with no checks", [v(ago=3, **going)]), ("checks queued", [q(ago=3, status="queued", conclusion=None)])):
         try:
