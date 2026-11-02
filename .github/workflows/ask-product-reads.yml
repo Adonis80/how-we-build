@@ -49,10 +49,12 @@ name: Ask for product reads
 # 37704348679), 3 to 7 hours apart, and none from 09:25 to 17:08 UTC on 9
 # October, minute 7 in place since 15:58. GitHub runs a schedule when it can
 # and drops what it cannot, and no cron line changes that. So a tick that lands keeps the ruling itself: it
-# looks, then every ten minutes again, LOOKS times in all (32, about five
-# hours, inside the job's limit; a minute instead while a ready mark's check is
-# still running, at most 20 of them, so a run lasts about 2 h 20 min at least), and a newer run waiting its turn, a tick or
-# a person's, takes over at its next look. One tick in five hours keeps the
+# looks, then every ten minutes again, for LOOKS ten-minute spells in all (32: about five
+# hours ten of waiting, inside the job's limit); a minute instead while a ready mark's check is
+# still running, for as long as it runs (his word, 2 November 2026: "implement Ideas 1 and 2"),
+# each quick look spending a minute of the same five hours ten, so a run never lasts longer, and
+# a check running past an hour earns ten minutes again (product-reads/reads.py). A newer run
+# waiting its turn, a tick or a person's, takes over at its next look. One tick in five hours keeps the
 # ten-minute clock; a person's run looks once. On a public repository the
 # runner's minutes cost nothing. Still the one schedule, and nothing else.
 #
@@ -63,8 +65,8 @@ name: Ask for product reads
 # its turn: GitHub keeps one waiting run in the group, and whichever survives
 # relays in its turn. A dry run asks nothing, waits in a group of its own, and
 # never yields or relays. Only the relay's own starts count, by their own input
-# and their own run name, against a cap of 12 a UTC day (about 5 are needed, about 11 if every run
-# spends its 20 quick looks),
+# and their own run name, against a cap of 12 a UTC day (about 5 are needed: quick looks
+# spend the run's own minutes, never more),
 # counted afresh from GitHub's whole list just before each start, cancelled
 # ones included; a tick or a person's start neither counts nor resets it. A
 # count that cannot be read, a cap reached, or a start refused is a red run
@@ -140,6 +142,9 @@ jobs:
           looks=${LOOKS:-1}
           [[ "$looks" =~ ^[1-9][0-9]?$ ]] && [ "$looks" -le 32 ] || { echo "::error::looks is 1 to 32"; exit 1; }
           look=0
+          # The minutes a run may wait between its looks: LOOKS - 1 ten-minute spells.
+          budget=$(( (looks - 1) * 10 ))
+          spent=0
           # Each look is the whole of what follows, at this indentation so its lines
           # stay the ones review-gate.py holds. A RED LOOK IS REMEMBERED, NEVER THE END
           # (12 October 2026, run 38229766003): the tick died at its 20th look because one
@@ -155,8 +160,7 @@ jobs:
           waiting() { timeout 30 gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ask-product-reads.yml/runs?per_page=20" \
             --jq "[.workflow_runs[] | select(.id != $GITHUB_RUN_ID and .head_branch == \"main\" and (.display_title | test(\"^Ask for product reads: (timed|asking|relay)\$\")) and (.status == \"queued\" or .status == \"pending\" or .status == \"waiting\" or .status == \"requested\"))] | length"; }
           yielded=0
-          quick=0
-          while [ "$look" -lt "$looks" ]; do
+          while [ "$look" -eq 0 ] || [ "$spent" -lt "$budget" ]; do
           look=$((look + 1))
           if [ "$look" -gt 1 ]; then
             # THE QUICK LOOK (D, the Chairman's word of 21 October 2026: the reviewer
@@ -164,13 +168,12 @@ jobs:
             # (decision 0013), so the event is watched for: when the last look saw a ready
             # mark whose product check was still running, ask.py left a note, and the next
             # look comes a minute later rather than ten, so a read starts about a minute
-            # after the check passes. Twenty quick looks a run at most, inside the 32.
-            if [ -s "$RUNNER_TEMP/ask-pending" ] && [ "$quick" -lt 20 ]; then
-              quick=$((quick + 1))
-              sleep 60
-            else
-            sleep 600
-            fi
+            # after the check passes. As long as the check runs (2 November 2026), each a
+            # minute of the run's budget; the last wait is cut to what the budget has left.
+            if [ -s "$RUNNER_TEMP/ask-pending" ]; then nap=1; else nap=10; fi
+            [ "$nap" -le $((budget - spent)) ] || nap=$((budget - spent))
+            spent=$((spent + nap))
+            sleep $((nap * 60))
             # A newer asking run waiting its turn takes over, so a person's run never waits
             # behind this one. A list that does not come is no newer run: look again.
             if [ "$DISPATCH" = "true" ]; then
@@ -178,7 +181,7 @@ jobs:
               if [[ "$pending" =~ ^[1-9][0-9]*$ ]]; then echo "a newer run is waiting, and takes over"; yielded=1; break; fi
             fi
           fi
-          echo "look $look of $looks"
+          echo "look $look, $spent of $budget minutes waited"
           : > "$RUNNER_TEMP/ask-pending"
           # The App's JWT lives nine minutes, so each look signs its own.
           printf '%s\n' "$APP_KEY" > "$key"

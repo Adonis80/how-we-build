@@ -1,11 +1,17 @@
 name: wake
 
-# One thing: when the reviewer's verdict lands on a commit, ask this commit's
-# gate again. A verdict lands without touching the head, so nothing re-runs the
+# One thing: when the reviewer's verdict lands on a commit, or that commit's
+# `verify` finishes green, ask this commit's gate again. A verdict lands without touching the head, so nothing re-runs the
 # check that is sitting red on it, and a green read would need a hand to be seen.
 # The reviewer runs from the rulebook and cannot start a workflow here, so this
 # one listens for the reviewer's own check run, by its App and by its name, and
 # re-runs the gate on that commit.
+#
+# AND WHEN ITS TESTS PASS (his word, 2 November 2026: "implement Ideas 1 and 2").
+# A read may now land before `verify` finishes, and the gate waits for both, so
+# the wake also listens for the verify workflow finishing green. A check run made
+# by GitHub Actions starts no workflow, so this is `workflow_run`, which runs from
+# main; the shell below is unchanged, handed the commit the run was for.
 #
 # Copied from the rulebook's wake.yml (Adonis80/how-we-build) by its setup script,
 # with two changes, and no others: the commit comes from the check run, where the
@@ -20,6 +26,9 @@ name: wake
 on:
   check_run:
     types: [completed]
+  workflow_run:
+    workflows: [verify]
+    types: [completed]
 
 permissions:
   actions: write
@@ -27,14 +36,15 @@ permissions:
 jobs:
   wake:
     # The reviewer's own check run, and nobody else's: its App's id and its name.
-    if: github.event.check_run.app.id == 5000405 && github.event.check_run.name == 'juku-reviewer'
+    # Or the verify workflow finishing green on a commit.
+    if: (github.event.check_run.app.id == 5000405 && github.event.check_run.name == 'juku-reviewer') || (github.event.workflow_run.name == 'verify' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: re-run this commit's gate
         env:
           GH_TOKEN: ${{ github.token }}
-          SHA: ${{ github.event.check_run.head_sha }}
+          SHA: ${{ github.event.check_run.head_sha || github.event.workflow_run.head_sha }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
