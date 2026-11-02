@@ -33,3 +33,4 @@ The brief is *The independent reviewer*: `library/reviewer.md` and the pages the
 18. Where do a product's words change, and where does code? — Both in a Cowork session, by pull request; code mode only for a job Cowork cannot do (`library/two-stacks.md`).
 19. Which file names a model? — `model-registry/registry.json` alone (`library/model-registry.md`).
 20. A design brief or correction plans the layout, or skips `brief-check.py`. Allowed? — No; the goal, never the plan (`library/hypersolid.md`, step 3).
+21. A slice merged. Who writes its roadmap bookkeeping, and when? — The next `building` publication or any earlier roadmap edit, from its `Advisories` and `Ideas:` lines; a merge with nothing ready after it, itself (`library/carries-sessions.md`).
