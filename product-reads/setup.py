@@ -243,8 +243,8 @@ def run(call, name, sha, apply, say=print, pause=2, replace_gate=False, display=
             "title": "Juku kit: the reviewer's gate, and the product's own check",
             "head": BRANCH, "base": "main",
             "body": "Installs the starter kit from %s at %s: a gate that is green only on a "
-                    "commit the independent reviewer read clean, the wake that re-runs it when a "
-                    "verdict lands, `verify`, and a starter AGENTS.md and roadmap.json where "
+                    "commit the independent reviewer read clean and whose `verify` passed, the wake "
+                    "that re-runs it when a verdict lands or `verify` passes, `verify`, and a starter AGENTS.md and roadmap.json where "
                     "there were none. Nothing here is merged by the script that opened it." % (RULEBOOK, sha)})
         _need(status, "opening the pull request", (201,))
         writes += 1

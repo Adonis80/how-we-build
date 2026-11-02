@@ -10,7 +10,7 @@ repository's own token, which reads the runs asked for already and, with
 --dispatch, may start a workflow here.
 
 It lists the product's open pull requests and picks out each whose head is the
-builder's ready mark, whose own `verify` passed on it, and which has never been
+builder's ready mark, whose own checks let a read start (product-reads/reads.py), and which has never been
 read. Those are the very three things review-product.yml checks again before it
 pays for a read, and they are asked of the same rules in reads.py, so the asker
 cannot ask for what the reviewer would refuse. A draft is asked for like any
@@ -80,7 +80,10 @@ def ready_to_read(call, repo, sha, app_id, now):
         parents = commit.get("parents") or []
         parent = get("commits/%s" % parents[0]["sha"]) if len(parents) == 1 else {}
         reads.ready(commit, parent, sha)
-        reads.verified(get("commits/%s/check-runs?check_name=%s&filter=all&per_page=100" % (sha, reads.VERIFY)), sha)
+        # The quick `checks` and the full `verify`, asked apart and judged together: a read
+        # starts alongside the tests (his word, 2 November 2026).
+        reads.verified([r for name in (reads.QUICK, reads.VERIFY) for r in reads._runs(
+            get("commits/%s/check-runs?check_name=%s&filter=all&per_page=100" % (sha, name)))], sha, now)
         reads.unread(get("commits/%s/check-runs?check_name=%s&app_id=%s&filter=all&per_page=100"
                          % (sha, reads.REVIEWER_CHECK, app_id)), app_id, sha, now)
     except reads.Malformed as why:
@@ -248,6 +251,7 @@ def _selftest():
                       "head": {"sha": sha, "repo": {"full_name": kw.get("fork", repo)}}},
               "commit": reads._commit(marked["message"], sha=sha, tree=marked["tree"]),
               reads.VERIFY: kw.get("verify", [reads._run(name=reads.VERIFY, sha=sha, ago=9)]),
+              reads.QUICK: kw.get("checks", []),
               reads.REVIEWER_CHECK: kw.get("read", [])}
         return pr
 
@@ -296,12 +300,22 @@ def _selftest():
             ("a mark whose check failed", [make(51, verify=[reads._run(name=reads.VERIFY, sha="%040x" % 51, conclusion="failure")])], None),
             ("a head that is no mark, its check running", [make(52, commit={"message": "just a fix"},
               verify=[reads._run(name=reads.VERIFY, sha="%040x" % 52, status="in_progress", conclusion=None)])], None),
-            ("a mark ready to read", [make(53)], None)):
+            ("a mark ready to read", [make(53)], None),
+            ("a mark whose quick checks are still running", [make(54, verify=[], checks=[reads._run(name=reads.QUICK, sha="%040x" % 54, status="in_progress", conclusion=None, ago=3)])], "1\n"),
+            ("a mark whose checks passed, its verify still running", [make(55, checks=[reads._run(name=reads.QUICK, sha="%040x" % 55, ago=9)],
+              verify=[reads._run(name=reads.VERIFY, sha="%040x" % 55, status="in_progress", conclusion=None, ago=8)])], None),
+            ("a mark whose check has run past the hour", [make(56, verify=[reads._run(name=reads.VERIFY, sha="%040x" % 56, status="in_progress", conclusion=None, ago=61)])], None)):
         if os.path.exists(note):
             os.remove(note)
         go(prs, dispatch_=True)
         got = open(note, encoding="utf-8").read() if os.path.exists(note) else None
         want("the quick-look note for %s" % what, got, noted)
+    # A read alongside the tests (2 November 2026): checks passed and verify still going is asked.
+    n, api, _ = go([make(57, checks=[reads._run(name=reads.QUICK, sha="%040x" % 57, ago=9)],
+                         verify=[reads._run(name=reads.VERIFY, sha="%040x" % 57, status="in_progress", conclusion=None, ago=8)]),
+                    make(58, checks=[reads._run(name=reads.QUICK, sha="%040x" % 58, ago=9)],
+                         verify=[reads._run(name=reads.VERIFY, sha="%040x" % 58, conclusion="failure", ago=2)])], dispatch_=True)
+    want("asked alongside the tests, and not once verify has failed", [d["inputs"]["pr"] for d in api.dispatched], ["57"])
     # A second round: the first mark was read and left findings, on another commit, and a fix and a
     # new mark followed. The new mark is asked for; nothing about earlier commits stands in its way.
     n, api, said = go([make(40, read=[reads._run(sha="e" * 40, conclusion="failure")])], dispatch_=True)

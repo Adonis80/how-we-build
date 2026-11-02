@@ -97,7 +97,9 @@ run-name: Review ${{ inputs.repo }}#${{ inputs.pr }} at ${{ inputs.sha }}
 #   - that commit is the builder's ready mark: one commit that changes no file
 #     and names the commit beneath it, so a read is never asked of work that is
 #     still moving. An earlier mark in the history is no concern of this check;
-#   - the product's own `verify` check passed on it;
+#   - the product's own quick `checks` passed on it, or its `verify` where it has no
+#     `checks`, and no `verify` has failed: a read starts alongside the tests (his
+#     word, 2 November 2026), and the product's gate waits for `verify`;
 #   - it has not been read, is not being read, and did not fail to be read in a
 #     way nobody has looked at. `again` is a builder's word that someone has.
 # The rules are in product-reads/reads.py, once; this file asks it, and the
@@ -336,9 +338,10 @@ jobs:
           [[ "$parent" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::the commit has no parent, so it cannot be a ready mark"; exit 1; }
           api "commits/$parent" > "$t/parent.json"
           python3 -I product-reads/reads.py ready "$t/commit.json" "$t/parent.json" "$SHA"
-          # The product's own check passed on this very commit.
+          # The product's own checks let a read start on this very commit.
+          api "commits/$SHA/check-runs?check_name=checks&filter=all&per_page=100" > "$t/checks.json"
           api "commits/$SHA/check-runs?check_name=verify&filter=all&per_page=100" > "$t/verify.json"
-          python3 -I product-reads/reads.py verify "$t/verify.json" "$SHA"
+          python3 -I product-reads/reads.py verify "$t/checks.json" "$t/verify.json" "$SHA"
           # Not read, not being read, and not a read that failed unseen. `filter=all`,
           # as review-gate.py asks: on the default `latest` a verdict could be hidden
           # behind a newer run that ended without one.
@@ -348,8 +351,8 @@ jobs:
           else
             python3 -I product-reads/reads.py state "$t/read.json" "$SHA" "$REVIEWER_APP_ID"
           fi
-          rm -f "$t"/commit.json "$t"/parent.json "$t"/verify.json "$t"/read.json
-          echo "$SHA is the ready mark, its own check passed, and it is free to be read"
+          rm -f "$t"/commit.json "$t"/parent.json "$t"/checks.json "$t"/verify.json "$t"/read.json
+          echo "$SHA is the ready mark, its own checks let a read start, and it is free to be read"
 
       - name: Say it is reading
         id: open

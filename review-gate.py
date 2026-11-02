@@ -6039,8 +6039,9 @@ def _product_asks(reads):
         'api "commits/$SHA" > "$t/commit.json"',
         'api "commits/$parent" > "$t/parent.json"',
         '%s ready "$t/commit.json" "$t/parent.json" "$SHA"' % check,
+        'api "commits/$SHA/check-runs?check_name=%s&filter=all&per_page=100" > "$t/checks.json"' % reads.QUICK,
         'api "commits/$SHA/check-runs?check_name=%s&filter=all&per_page=100" > "$t/verify.json"' % reads.VERIFY,
-        '%s verify "$t/verify.json" "$SHA"' % check,
+        '%s verify "$t/checks.json" "$t/verify.json" "$SHA"' % check,
         'api "commits/$SHA/check-runs?check_name=%s&app_id=$REVIEWER_APP_ID&filter=all&per_page=100" > '
         '"$t/read.json"' % reads.REVIEWER_CHECK,
         'if [ "$AGAIN" = "true" ]; then',
@@ -7436,10 +7437,12 @@ def _preflight_cases(reads):
                 "conclusion": conclusion, "started_at": _stamp_ago(ago)}
 
     def routes(commit=marked, parent=below, verify=None, read=None, read_latest=None, status=200,
-               parent_status=200):
+               parent_status=200, checks=None):
         return [
             (r"/commits/%s$" % head, status, commit),
             (r"/commits/%s$" % beneath, parent_status, parent),
+            (r"check_name=checks&filter=all&per_page=100$", 200,
+             {"check_runs": [] if checks is None else checks}),
             (r"check_name=verify&filter=all&per_page=100$", 200,
              {"check_runs": [run(name="verify")] if verify is None else verify}),
             (r"check_name=juku-reviewer&app_id=%d&filter=all&per_page=100$" % REVIEWER_APP_ID, 200,
@@ -7496,6 +7499,12 @@ def _preflight_cases(reads):
                 read=[run(conclusion="failure", sha="e" * 40)]), {}, True),
         ("its own check never run", P, routes(verify=[]), {}, False),
         ("its own check failed", P, routes(verify=[run(name="verify", conclusion="failure")]), {}, False),
+        # A read alongside the tests (2 November 2026): the quick checks passed, verify still running.
+        ("its quick checks passed, verify still running", P,
+         routes(checks=[run(name="checks", ago=9)], verify=[run(name="verify", status="in_progress", conclusion=None, ago=8)]), {}, True),
+        ("its quick checks passed, verify failed", P,
+         routes(checks=[run(name="checks", ago=30)], verify=[run(name="verify", conclusion="failure", ago=9)]), {}, False),
+        ("its quick checks failed, verify not begun", P, routes(checks=[run(name="checks", conclusion="failure", ago=9)], verify=[]), {}, False),
         ("a clean read already on it", P, routes(read=[run()]), {}, False),
         ("findings already on it", P, routes(read=[run(conclusion="failure")]), {}, False),
         ("a read in progress", P, routes(read=[going]), {}, False),
@@ -7657,13 +7666,21 @@ ASK_HOLDS = (
     (ASK_LOOKS_ENV, "a timed run and a relay looking 32 times and a person's run once"),
     ('[[ "$looks" =~ ^[1-9][0-9]?$ ]] && [ "$looks" -le 32 ] || { echo "::error::looks is 1 to 32"; exit 1; }',
      "the looks bounded, 1 to 32, inside the job's limit"),
-    ("            sleep 600\n", "ten minutes between looks, unless a mark is still in its checks"),
-    # THE QUICK LOOK (D, 21 October 2026): a minute, only after a look that saw a ready mark
-    # still in its checks, twenty a run at most, and the note read afresh at every look.
-    ('            if [ -s "$RUNNER_TEMP/ask-pending" ] && [ "$quick" -lt 20 ]; then\n',
-     "a quick look only after a mark still in its checks, twenty a run at most"),
+    ('            if [ -s "$RUNNER_TEMP/ask-pending" ]; then nap=60; else nap=600; fi\n',
+     "ten minutes between looks, unless a mark is still in its checks"),
+    # THE QUICK LOOK (D, 21 October 2026; as long as the check runs, 2 November 2026): a minute,
+    # only after a look that saw a ready mark still in its checks, each spending a minute of the
+    # run's own budget, and the note read afresh at every look.
+    ("          budget=$(( (looks - 1) * 600 ))\n", "a run's length bounded by its looks, ten minutes each"),
+    ("          begun=$(date +%s)\n", "the run's clock started before its first look"),
+    ("          elapsed=$(( $(date +%s) - begun ))\n", "the clock read after every look"),
+    ("          spent=$(( elapsed > slept ? elapsed : slept ))\n", "the time used counted on the clock, looks included (#299's read)"),
+    ('          while [ "$look" -eq 0 ] || [ "$spent" -lt "$budget" ]; do\n', "no look once the budget is spent"),
+    ('            [ "$nap" -le $((budget - spent)) ] || nap=$((budget - spent))\n', "the last wait cut to what is left"),
+    ("            slept=$((slept + nap))\n", "every wait, quick or not, counted"),
+    ('            sleep "$nap"\n', "a wait of the seconds chosen, and no other"),
     ('          : > "$RUNNER_TEMP/ask-pending"\n', "the quick-look note read afresh at every look"),
-    ("    timeout-minutes: 340\n", "a job limit that holds 32 looks ten minutes apart"),
+    ("    timeout-minutes: 340\n", "a job limit past the run's five hours ten and its last look"),
     # THE RELAY (#202): the names the runs wear are the names the shell counts by.
     (ASK_RUN_NAME, "each run named for its mode, timed, dry run, relay or asking"),
     (ASK_WAITING, "only an asking run on main, waiting its turn, counted as one that carries the clock"),
@@ -7802,9 +7819,14 @@ ASK_LOOSENINGS = (
     ("more than read at the workflow", lambda t: t.replace("  contents: read\n  actions: write\n", "  contents: write\n  actions: write\n", 1)),
     ("a second permissions block", lambda t: t.replace("    timeout-minutes: 340\n", "    timeout-minutes: 340\n    permissions: write-all\n", 1)),
     ("a person's run that keeps looking", lambda t: t.replace("&& '32' || '1' }}", "&& '32' || '32' }}", 1)),
-    ("looks a minute apart", lambda t: t.replace("            sleep 600\n", "            sleep 60\n", 1)),
-    ("quick looks without end", lambda t: t.replace('[ "$quick" -lt 20 ]', "true", 1)),
-    ("a quick look with no mark waiting", lambda t: t.replace('[ -s "$RUNNER_TEMP/ask-pending" ] && ', "", 1)),
+    ("looks a minute apart", lambda t: t.replace("else nap=600; fi", "else nap=60; fi", 1)),
+    ("quick looks that spend nothing", lambda t: t.replace("            slept=$((slept + nap))\n", "", 1)),
+    ("the looks' own time not counted", lambda t: t.replace("spent=$(( elapsed > slept ? elapsed : slept ))", "spent=$slept", 1)),
+    ("the clock never read", lambda t: t.replace("          elapsed=$(( $(date +%s) - begun ))\n", "          elapsed=0\n", 1)),
+    ("quick looks without end", lambda t: t.replace('[ "$look" -eq 0 ] || [ "$spent" -lt "$budget" ]', "true", 1)),
+    ("a budget past the job's limit", lambda t: t.replace("budget=$(( (looks - 1) * 600 ))", "budget=$(( looks * 1200 ))", 1)),
+    ("the last wait not cut", lambda t: t.replace('            [ "$nap" -le $((budget - spent)) ] || nap=$((budget - spent))\n', "", 1)),
+    ("a quick look with no mark waiting", lambda t: t.replace('if [ -s "$RUNNER_TEMP/ask-pending" ]; then nap=60;', "if true; then nap=60;", 1)),
     ("the quick-look note never cleared", lambda t: t.replace('          : > "$RUNNER_TEMP/ask-pending"\n', "", 1)),
     ("looks without end", lambda t: t.replace(' && [ "$looks" -le 32 ] ||', " ||", 1)),
     ("another group", lambda t: t.replace("&& 'ask-product-reads' ||", "&& 'ask' ||", 1)),
@@ -7949,10 +7971,17 @@ KIT_WAKE_SHA = ('          sha=$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)'
                 '          sha="$SHA"')
 KIT_WAKE_MINE = ("""          mine='select(.name=="check") | select(.event!="issue_comment")'""",
                  """          mine='select(.name=="gate") | select(.event!="issue_comment")'""")
-KIT_WAKE_IF = "if: github.event.check_run.app.id == %d && github.event.check_run.name == '%s'" % (
-    REVIEWER_APP_ID, REVIEWER_CHECK)
-KIT_WAKE_ENV = ("GH_TOKEN: ${{ github.token }}", "SHA: ${{ github.event.check_run.head_sha }}",
+# The wake also re-runs the gate when the product's verify finishes green (his word, 2 November
+# 2026: "implement Ideas 1 and 2"): a read may land before the tests do, and the gate waits for both.
+KIT_WAKE_IF = ("if: (github.event.check_run.app.id == %d && github.event.check_run.name == '%s') || "
+               "(github.event.workflow_run.name == 'verify' && github.event.workflow_run.conclusion == 'success')"
+               % (REVIEWER_APP_ID, REVIEWER_CHECK))
+KIT_WAKE_VERIFY = "  workflow_run:\n    workflows: [verify]\n    types: [completed]\n"
+KIT_WAKE_ENV = ("GH_TOKEN: ${{ github.token }}",
+                "SHA: ${{ github.event.check_run.head_sha || github.event.workflow_run.head_sha }}",
                 "REPO: ${{ github.repository }}")
+KIT_ACTIONS_APP_ID = 15368
+KIT_GATE_TESTS = "    if tests(runs, head) != PASSED:\n"
 KIT_GATE_RUN = 'python3 review-gate.py "$REPO" "$HEAD_SHA" "$GH_TOKEN"'
 # A READY MARK ON A DRAFT IS READ (D, 21 October 2026), so the kit's verify fails no draft.
 KIT_VERIFY_TYPES = "    types: [opened, synchronize, reopened, ready_for_review]\n"
@@ -7990,6 +8019,36 @@ def _kit_runs(head):
                                          "head_sha": other, "status": "completed", "conclusion": "success"}]
     pairs = [[a, b] for a in mine for b in mine]
     return [[r] for r in one] + pairs + [[]]
+
+
+def _kit_tests(runs, head):
+    """What the kit gate must say of a commit's tests: its latest verify, by GitHub Actions, passed."""
+    mine = [r for r in runs if (r.get("app") or {}).get("id") == KIT_ACTIONS_APP_ID
+            and r.get("name") == "verify" and r.get("head_sha") == head]
+    if not mine:
+        return "unpassed"
+    last = max(mine, key=lambda r: str(r.get("started_at") or ""))
+    return "passed" if (last.get("status"), last.get("conclusion")) == ("completed", "success") else "unpassed"
+
+
+def _kit_test_runs(head):
+    """Every one-run shape of a verify worth asking, and pairs of representative ones in both orders."""
+    other, early, late = "b" * 40, "2026-11-02T12:00:00Z", "2026-11-02T12:30:00Z"
+    one = []
+    for app in (KIT_ACTIONS_APP_ID, REVIEWER_APP_ID, None):
+        for name in ("verify", "checks"):
+            for sha in (head, other):
+                for status in ("completed", "in_progress", "queued"):
+                    for conclusion in ("success", "failure", "skipped", "cancelled", None):
+                        run = {"name": name, "head_sha": sha, "status": status, "conclusion": conclusion,
+                               "started_at": early}
+                        if app is not None:
+                            run["app"] = {"id": app}
+                        one.append(run)
+    mine = [{"app": {"id": KIT_ACTIONS_APP_ID}, "name": "verify", "head_sha": head, "status": s, "conclusion": c,
+             "started_at": at} for s, c in (("completed", "success"), ("completed", "failure"), ("in_progress", None))
+            for at in (early, late)]
+    return [[r] for r in one] + [[a, b] for a in mine for b in mine] + [[]]
 
 
 def _agents_step(verify):
@@ -8057,6 +8116,19 @@ def _check_kit(kit=None, wake=None, quiet=False, deep=True):
                   "`latest` a finding could be retired by asking again, and on one page by a busy commit")
         if reads.REVIEWER_CHECK != REVIEWER_CHECK:
             fault("the rules and the gate name the reviewer's check differently")
+        # And its tests: the latest verify by GitHub Actions on the commit passed (2 November 2026).
+        wrong = 0
+        for runs in _kit_test_runs(head):
+            try:
+                if mod.tests(runs, head) != _kit_tests(runs, head):
+                    wrong += 1
+            except Exception:
+                wrong += 1
+        if wrong:
+            fault("review-gate.py's tests() differs from what the gate must say of a commit's verify on %d cases" % wrong)
+        main_src = kit["review-gate.py"].split("\ndef main(argv):", 1)[-1].split("\ndef _selftest", 1)[0]
+        if KIT_GATE_TESTS not in main_src or "        return 1\n" not in main_src.split(KIT_GATE_TESTS, 1)[-1][:400]:
+            fault("review-gate.py must refuse a clean read whose verify has not passed: nothing merges on failing tests")
 
     # 2. The wake: the rulebook's, with the commit from the check run and `gate`.
     expected = wake_script(wake)
@@ -8080,10 +8152,14 @@ def _check_kit(kit=None, wake=None, quiet=False, deep=True):
                     fault("wake.yml's shell, with %s, %s" % (what, why or (
                         "came out %s where it must come out %s" % ("green" if code == 0 else "red",
                                                                     "red" if red else "green"))))
-    if triggers(kit["wake.yml"]) != ["check_run"] or "    types: [completed]\n" not in kit["wake.yml"]:
-        fault("wake.yml must wake on a check run completing and on nothing else")
+    if triggers(kit["wake.yml"]) != ["check_run", "workflow_run"] or "  check_run:\n    types: [completed]\n" not in kit["wake.yml"] \
+            or KIT_WAKE_VERIFY not in kit["wake.yml"]:
+        fault("wake.yml must wake on a check run completing and on the verify workflow finishing, and on nothing else")
+    if not re.match(r"name: verify\n", kit["verify.yml"]):
+        fault("verify.yml's workflow must be named `verify`, the name the wake listens for")
     if KIT_WAKE_IF not in kit["wake.yml"]:
-        fault("wake.yml must wake only for the reviewer's own check run, by App and by name (`%s`)" % KIT_WAKE_IF)
+        fault("wake.yml must wake only for the reviewer's own check run, by App and by name, or verify "
+              "finishing green (`%s`)" % KIT_WAKE_IF)
     if re.findall(r"^permissions:\n((?:  .*\n)+)", kit["wake.yml"], re.M) != ["  actions: write\n"] \
             or kit["wake.yml"].count("permissions:") != 1:
         fault("wake.yml may ask for actions write and nothing else")
@@ -8167,7 +8243,7 @@ def _check_kit(kit=None, wake=None, quiet=False, deep=True):
         fault("roadmap.starter.json is not a roadmap the Roadmap can read (%s)" % type(e).__name__)
     if not bad:
         say("ok: the starter kit's gate gives the rulebook's verdict on %d cases and says how to mark a "
-            "commit ready; its wake is the rulebook's wake with two changes and fails loudly in each of "
+            "commit ready; opens only once the commit's latest verify passed; its wake is the rulebook's wake with two changes, woken by verify too, and fails loudly in each of "
             "%d places it is made to; its workflows have the shape the wake, the ready check and the "
             "setup script assume, and its verify fails no draft, a ready mark on one being read like any other; "
             "its AGENTS.md passes its own check, and its roadmap is one the Roadmap reads"
@@ -8187,7 +8263,16 @@ KIT_LOOSENINGS = (
     ("one page of check runs", "review-gate.py", lambda t: t.replace('"per_page": "100", "page": str(page)', '"per_page": "100"', 1)),
     ("the builder not told to mark ready", "review-gate.py", lambda t: t.replace("`Review-Ready: yes`", "a ready comment", 1)),
     ("the wake re-runs another check", "wake.yml", lambda t: t.replace('select(.name=="gate")', 'select(.name=="check")', 1)),
-    ("anyone's check run wakes it", "wake.yml", lambda t: t.replace("    # The reviewer's own check run, and nobody else's: its App's id and its name.\n    " + KIT_WAKE_IF + "\n", "", 1)),
+    ("anyone's check run wakes it", "wake.yml", lambda t: t.replace("    " + KIT_WAKE_IF + "\n", "", 1)),
+    ("any workflow finishing wakes it", "wake.yml", lambda t: t.replace("github.event.workflow_run.name == 'verify' && ", "", 1)),
+    ("the verify workflow not listened for", "wake.yml", lambda t: t.replace(KIT_WAKE_VERIFY, "", 1)),
+    ("another workflow listened for", "wake.yml", lambda t: t.replace("workflows: [verify]", "workflows: [deploy]", 1)),
+    ("the verify workflow renamed", "verify.yml", lambda t: t.replace("name: verify\n", "name: Verify\n", 1)),
+    ("the tests never required", "review-gate.py", lambda t: t.replace(KIT_GATE_TESTS, "    if False:\n", 1)),
+    ("a verify still going counted", "review-gate.py", lambda t: t.replace('ok = last.get("status") == "completed" and last.get("conclusion") == "success"', 'ok = last.get("conclusion") == "success"', 1)),
+    ("any App's verify counted", "review-gate.py", lambda t: t.replace('(run.get("app") or {}).get("id") == ACTIONS_APP_ID\n            and ', "", 1)),
+    ("the first verify, not the latest", "review-gate.py", lambda t: t.replace('last = max(mine, key=lambda run: str(run.get("started_at") or ""))', "last = mine[0]", 1)),
+    ("a verify of another commit counted", "review-gate.py", lambda t: t.replace(' and run.get("head_sha") == head]', "]", 1)),
     ("another App's check run wakes it", "wake.yml", lambda t: t.replace("app.id == 5000405", "app.id == 15368", 1)),
     ("any check run of the App wakes it", "wake.yml", lambda t: t.replace(" && github.event.check_run.name == 'juku-reviewer'", "", 1)),
     ("a wider token", "wake.yml", lambda t: t.replace("permissions:\n  actions: write\n", "permissions:\n  actions: write\n  contents: write\n", 1)),
@@ -8195,7 +8280,8 @@ KIT_LOOSENINGS = (
     ("a re-run swallowed", "wake.yml", lambda t: t.replace('if gh api -X POST "repos/$REPO/actions/runs/$id/rerun" >/dev/null 2>&1; then', 'if gh api -X POST "repos/$REPO/actions/runs/$id/rerun" >/dev/null 2>&1 || true; then', 1)),
     ("the commit from the wrong place", "wake.yml", lambda t: t.replace('sha="$SHA"', 'sha="$GITHUB_SHA"', 1)),
     ("a pull request's number looked up", "wake.yml", lambda t: t.replace('sha="$SHA"', 'sha=$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)', 1)),
-    ("the commit not handed to the shell", "wake.yml", lambda t: t.replace("          SHA: ${{ github.event.check_run.head_sha }}\n", "", 1)),
+    ("the commit not handed to the shell", "wake.yml", lambda t: t.replace("          SHA: ${{ github.event.check_run.head_sha || github.event.workflow_run.head_sha }}\n", "", 1)),
+    ("the commit not handed to the shell on a verify", "wake.yml", lambda t: t.replace(" || github.event.workflow_run.head_sha }}", " }}", 1)),
     ("the gate run on a push", "gate.yml", lambda t: t.replace("on:\n  pull_request_target:", "on:\n  push:\n  pull_request_target:", 1)),
     ("a pull request into any branch", "gate.yml", lambda t: t.replace("    branches: [main]\n", "", 1)),
     ("a pull request into another branch too", "gate.yml", lambda t: t.replace("    branches: [main]\n", "    branches: [main, develop]\n", 1)),
@@ -8318,7 +8404,10 @@ case "$*" in
   *ask.py*)
     repo=$(printf '%s' "$*" | sed -E 's/.*ask\\.py ([^ ]+).*/\\1/')
     printf 'ASKED %s | KEY=%s ID=%s TOKEN=%s APPID=%s FLAGS=%s\\n' "$repo" "${APP_KEY:-unset}" "${APP_ID:-unset}" "${PRODUCT_TOKEN:-unset}" "${REVIEWER_APP_ID:-unset}" "$(printf '%s' "$*" | grep -o -- '--dispatch' || true)" >> "$ASK_LOG"
-    case " ${ASK_PENDING:-} " in *" $repo "*) echo 1 >> "$RUNNER_TEMP/ask-pending" ;; esac
+    case " ${ASK_PENDING:-} " in *" $repo "*)
+      n=$(grep -c "^ASKED $repo " "$ASK_LOG" || true)
+      if [ -z "${ASK_PENDING_FOR:-}" ] || [ "$n" -le "$ASK_PENDING_FOR" ]; then echo 1 >> "$RUNNER_TEMP/ask-pending"; fi ;;
+    esac
     case " $ASK_FAILS " in *" $repo "*) exit 1 ;; *" $repo=3 "*) exit 3 ;; esac
     exit 0 ;;
   *) exec "$REAL_PY" "$@" ;;
@@ -8385,8 +8474,15 @@ while True:
 """
 # The day the relay counts from is the scenario's, far from any real one, so a shell that
 # asks for the day in another way is given another day and counts the wrong runs.
+# The run's clock (#299's read): the sleeps it took, and ASK_LOOK_SECONDS for every product a
+# look asked about, so a slow look is time that passed and a test can show it is counted.
 STUB_ASK_DATE = """#!/usr/bin/env bash
 if [ "$*" = "-u +%Y-%m-%dT00:00:00Z" ]; then echo "2030-01-15T00:00:00Z"; exit 0; fi
+if [ "$*" = "+%s" ]; then
+  slept=$(awk '/^SLEPT /{s+=$2} END{print s+0}' "$ASK_LOG" 2>/dev/null || echo 0)
+  asked=$(grep -c '^ASKED ' "$ASK_LOG" 2>/dev/null || true)
+  echo $(( 1900000000 + ${slept:-0} + ${ASK_LOOK_SECONDS:-0} * ${asked:-0} )); exit 0
+fi
 exec "$REAL_DATE" "$@"
 """
 ASK_DAY = "2030-01-15"
@@ -8556,16 +8652,26 @@ def _check_ask_run(ask=None, quiet=False):
             fault("%s: the log does not say `%s`" % (what, said))
         if env.get("DISPATCH") != "true" and "GH " in kept:
             fault("%s: a dry run asked GitHub about runs or starts, and it never yields or relays" % what)
-    # THE QUICK LOOK (D, 21 October 2026): a mark still in its checks brings the next look a
-    # minute later; twenty a run at most, then ten minutes again; no note, ten minutes.
+    # THE QUICK LOOK (D, 21 October 2026; 2 November 2026): a mark still in its checks brings
+    # the next look a minute later, for as long as it runs, each minute spent from the run's
+    # budget of ten minutes a look; once it has finished, ten minutes, the last wait cut to
+    # what the budget has left; no note, ten minutes.
     for what, env, slept_want in (
-            ("a mark still in its checks, so the next looks come a minute apart",
-             {"LOOKS": "3", "DISPATCH": "true", "ASK_PENDING": repos[0]}, ["SLEPT 60"] * 2),
-            ("twenty quick looks a run, then ten minutes again",
-             {"LOOKS": "23", "DISPATCH": "true", "ASK_PENDING": repos[1]}, ["SLEPT 60"] * 20 + ["SLEPT 600"] * 2),
+            ("a mark still in its checks, so the next looks come a minute apart until the budget is spent",
+             {"LOOKS": "3", "DISPATCH": "true", "ASK_PENDING": repos[0]}, ["SLEPT 60"] * 20),
+            ("quick looks past twenty while the check still runs, and never past the budget",
+             {"LOOKS": "4", "DISPATCH": "true", "ASK_PENDING": repos[1]}, ["SLEPT 60"] * 30),
+            ("a check that finishes after three quick looks, then ten minutes, the last wait cut",
+             {"LOOKS": "3", "DISPATCH": "true", "ASK_PENDING": repos[0], "ASK_PENDING_FOR": "3"},
+             ["SLEPT 60"] * 3 + ["SLEPT 600", "SLEPT 420"]),
             ("a dry run seeing a mark still in its checks looks once, and never quickly",
              {"ASK_PENDING": repos[0]}, []),
-            ("no mark waiting, so ten minutes", {"LOOKS": "3", "DISPATCH": "true"}, ["SLEPT 600"] * 2)):
+            ("no mark waiting, so ten minutes", {"LOOKS": "3", "DISPATCH": "true"}, ["SLEPT 600"] * 2),
+            # #299's read: a look's own time is counted, so six-minute looks leave room for one wait, not two.
+            ("looks that take six minutes each, counted on the clock", {"LOOKS": "3", "DISPATCH": "true", "ASK_LOOK_SECONDS": "120"},
+             ["SLEPT 600"]),
+            ("a wait cut to what the clock leaves after a slow look",
+             {"LOOKS": "2", "DISPATCH": "true", "ASK_LOOK_SECONDS": "50"}, ["SLEPT 450"])):
         code, printed, kept = _run_ask(script, {}, "", ASK_README, env)
         slept = [l for l in kept.splitlines() if l.startswith("SLEPT ")]
         if code != 0 or slept != slept_want:
