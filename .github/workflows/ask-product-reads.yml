@@ -149,7 +149,7 @@ jobs:
           # for time that passed (#299's read, blocking).
           budget=$(( (looks - 1) * 600 ))
           slept=0
-          begun=$SECONDS
+          begun=$(date +%s)
           spent=0
           # Each look is the whole of what follows, at this indentation so its lines
           # stay the ones review-gate.py holds. A RED LOOK IS REMEMBERED, NEVER THE END
@@ -241,7 +241,7 @@ jobs:
           # One product's trouble does not stop the others being looked at, nor the
           # next look; and it does not go unsaid: the job is red at the end.
           [ "$failed" -eq 0 ] || { red=1; echo "::error::look $look was red; looking on"; }
-          elapsed=$((SECONDS - begun))
+          elapsed=$(( $(date +%s) - begun ))
           spent=$(( elapsed > slept ? elapsed : slept ))
           done
           # THE RELAY (#202): after its last look an asking run starts its one successor,

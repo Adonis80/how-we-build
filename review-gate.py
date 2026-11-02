@@ -7672,8 +7672,8 @@ ASK_HOLDS = (
     # only after a look that saw a ready mark still in its checks, each spending a minute of the
     # run's own budget, and the note read afresh at every look.
     ("          budget=$(( (looks - 1) * 600 ))\n", "a run's length bounded by its looks, ten minutes each"),
-    ("          begun=$SECONDS\n", "the run's clock started before its first look"),
-    ("          elapsed=$((SECONDS - begun))\n", "the clock read after every look"),
+    ("          begun=$(date +%s)\n", "the run's clock started before its first look"),
+    ("          elapsed=$(( $(date +%s) - begun ))\n", "the clock read after every look"),
     ("          spent=$(( elapsed > slept ? elapsed : slept ))\n", "the time used counted on the clock, looks included (#299's read)"),
     ('          while [ "$look" -eq 0 ] || [ "$spent" -lt "$budget" ]; do\n', "no look once the budget is spent"),
     ('            [ "$nap" -le $((budget - spent)) ] || nap=$((budget - spent))\n', "the last wait cut to what is left"),
@@ -7822,11 +7822,11 @@ ASK_LOOSENINGS = (
     ("looks a minute apart", lambda t: t.replace("else nap=600; fi", "else nap=60; fi", 1)),
     ("quick looks that spend nothing", lambda t: t.replace("            slept=$((slept + nap))\n", "", 1)),
     ("the looks' own time not counted", lambda t: t.replace("spent=$(( elapsed > slept ? elapsed : slept ))", "spent=$slept", 1)),
-    ("the clock never read", lambda t: t.replace("          elapsed=$((SECONDS - begun))\n", "          elapsed=0\n", 1)),
+    ("the clock never read", lambda t: t.replace("          elapsed=$(( $(date +%s) - begun ))\n", "          elapsed=0\n", 1)),
     ("quick looks without end", lambda t: t.replace('[ "$look" -eq 0 ] || [ "$spent" -lt "$budget" ]', "true", 1)),
     ("a budget past the job's limit", lambda t: t.replace("budget=$(( (looks - 1) * 600 ))", "budget=$(( looks * 1200 ))", 1)),
     ("the last wait not cut", lambda t: t.replace('            [ "$nap" -le $((budget - spent)) ] || nap=$((budget - spent))\n', "", 1)),
-    ("a quick look with no mark waiting", lambda t: t.replace('if [ -s "$RUNNER_TEMP/ask-pending" ]; then nap=1;', "if true; then nap=1;", 1)),
+    ("a quick look with no mark waiting", lambda t: t.replace('if [ -s "$RUNNER_TEMP/ask-pending" ]; then nap=60;', "if true; then nap=60;", 1)),
     ("the quick-look note never cleared", lambda t: t.replace('          : > "$RUNNER_TEMP/ask-pending"\n', "", 1)),
     ("looks without end", lambda t: t.replace(' && [ "$looks" -le 32 ] ||', " ||", 1)),
     ("another group", lambda t: t.replace("&& 'ask-product-reads' ||", "&& 'ask' ||", 1)),
@@ -8474,8 +8474,15 @@ while True:
 """
 # The day the relay counts from is the scenario's, far from any real one, so a shell that
 # asks for the day in another way is given another day and counts the wrong runs.
+# The run's clock (#299's read): the sleeps it took, and ASK_LOOK_SECONDS for every product a
+# look asked about, so a slow look is time that passed and a test can show it is counted.
 STUB_ASK_DATE = """#!/usr/bin/env bash
 if [ "$*" = "-u +%Y-%m-%dT00:00:00Z" ]; then echo "2030-01-15T00:00:00Z"; exit 0; fi
+if [ "$*" = "+%s" ]; then
+  slept=$(awk '/^SLEPT /{s+=$2} END{print s+0}' "$ASK_LOG" 2>/dev/null || echo 0)
+  asked=$(grep -c '^ASKED ' "$ASK_LOG" 2>/dev/null || true)
+  echo $(( 1900000000 + ${slept:-0} + ${ASK_LOOK_SECONDS:-0} * ${asked:-0} )); exit 0
+fi
 exec "$REAL_DATE" "$@"
 """
 ASK_DAY = "2030-01-15"
@@ -8659,7 +8666,12 @@ def _check_ask_run(ask=None, quiet=False):
              ["SLEPT 60"] * 3 + ["SLEPT 600", "SLEPT 420"]),
             ("a dry run seeing a mark still in its checks looks once, and never quickly",
              {"ASK_PENDING": repos[0]}, []),
-            ("no mark waiting, so ten minutes", {"LOOKS": "3", "DISPATCH": "true"}, ["SLEPT 600"] * 2)):
+            ("no mark waiting, so ten minutes", {"LOOKS": "3", "DISPATCH": "true"}, ["SLEPT 600"] * 2),
+            # #299's read: a look's own time is counted, so six-minute looks leave room for one wait, not two.
+            ("looks that take six minutes each, counted on the clock", {"LOOKS": "3", "DISPATCH": "true", "ASK_LOOK_SECONDS": "120"},
+             ["SLEPT 600"]),
+            ("a wait cut to what the clock leaves after a slow look",
+             {"LOOKS": "2", "DISPATCH": "true", "ASK_LOOK_SECONDS": "50"}, ["SLEPT 450"])):
         code, printed, kept = _run_ask(script, {}, "", ASK_README, env)
         slept = [l for l in kept.splitlines() if l.startswith("SLEPT ")]
         if code != 0 or slept != slept_want:
