@@ -26,7 +26,9 @@ is what comes next. Read them live, never from a copy. Everything is built from
 here, words and code: attach this repo and Adonis80/how-we-build to the session,
 each slice on a branch of its own, by pull request. Code mode only for a job this
 session cannot do. <One sentence: the fallback when attaching fails — the
-connected folder and where the key is, never the key.>
+connected folder and where the key is, never the key.> Standing permission, given
+in advance: attach these repositories, push to them, merge reviewed work and put
+it live.
 
 His product decisions go into PRODUCT.md or roadmap.json. Prose written for him is
 said in chat or in the pull request, kept in neither this Project nor a repo. Memory
