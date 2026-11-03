@@ -49,12 +49,13 @@ name: Ask for product reads
 # 37704348679), 3 to 7 hours apart, and none from 09:25 to 17:08 UTC on 9
 # October, minute 7 in place since 15:58. GitHub runs a schedule when it can
 # and drops what it cannot, and no cron line changes that. So a tick that lands keeps the ruling itself: it
-# looks, then every ten minutes again, for LOOKS ten-minute spells in all (32: about five
-# hours ten of waiting, inside the job's limit); a minute instead while a ready mark's check is
+# looks, then every ten minutes again, for LOOKS - 1 ten-minute spells of waiting (LOOKS 32:
+# five hours ten, inside the job's limit); a minute instead while a ready mark's check is
 # still running, for as long as it runs (his word, 2 November 2026: "implement Ideas 1 and 2"),
 # each quick look a minute of the same five hours ten, counted on the clock, looks included, so a
-# run ends by then and its last look inside the job's limit, and
-# a check running past an hour earns ten minutes again (product-reads/reads.py). A newer run
+# run ends by then and its last look inside the job's limit; a check running past an hour, or
+# with no start time, earns ten minutes again (product-reads/reads.py), and a run takes at most
+# 120 quick looks, two such hours, so every look's calls to GitHub stay bounded (#299's read). A newer run
 # waiting its turn, a tick or a person's, takes over at its next look. One tick in five hours keeps the
 # ten-minute clock; a person's run looks once. On a public repository the
 # runner's minutes cost nothing. Still the one schedule, and nothing else.
@@ -149,6 +150,7 @@ jobs:
           # for time that passed (#299's read, blocking).
           budget=$(( (looks - 1) * 600 ))
           slept=0
+          quick=0
           begun=$(date +%s)
           spent=0
           # Each look is the whole of what follows, at this indentation so its lines
@@ -175,8 +177,9 @@ jobs:
             # mark whose product check was still running, ask.py left a note, and the next
             # look comes a minute later rather than ten, so a read starts about a minute
             # after the check passes. As long as the check runs (2 November 2026), each a
-            # minute of the run's budget; the last wait is cut to what the budget has left.
-            if [ -s "$RUNNER_TEMP/ask-pending" ]; then nap=60; else nap=600; fi
+            # minute of the run's budget, 120 in a run at most (#299's read: each look asks
+            # GitHub about every product); the last wait is cut to what the budget has left.
+            if [ -s "$RUNNER_TEMP/ask-pending" ] && [ "$quick" -lt 120 ]; then nap=60; quick=$((quick + 1)); else nap=600; fi
             [ "$nap" -le $((budget - spent)) ] || nap=$((budget - spent))
             slept=$((slept + nap))
             sleep "$nap"

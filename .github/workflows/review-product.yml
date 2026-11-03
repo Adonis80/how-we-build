@@ -99,7 +99,8 @@ run-name: Review ${{ inputs.repo }}#${{ inputs.pr }} at ${{ inputs.sha }}
 #     still moving. An earlier mark in the history is no concern of this check;
 #   - the product's own quick `checks` passed on it, or its `verify` where it has no
 #     `checks`, and no `verify` has failed: a read starts alongside the tests (his
-#     word, 2 November 2026), and the product's gate waits for `verify`;
+#     word, 2 November 2026), only for a product reads.py names as one whose gate
+#     waits for `verify` (#299's read); any other, once its `verify` passed;
 #   - it has not been read, is not being read, and did not fail to be read in a
 #     way nobody has looked at. `again` is a builder's word that someone has.
 # The rules are in product-reads/reads.py, once; this file asks it, and the
@@ -341,7 +342,7 @@ jobs:
           # The product's own checks let a read start on this very commit.
           api "commits/$SHA/check-runs?check_name=checks&filter=all&per_page=100" > "$t/checks.json"
           api "commits/$SHA/check-runs?check_name=verify&filter=all&per_page=100" > "$t/verify.json"
-          python3 -I product-reads/reads.py verify "$t/checks.json" "$t/verify.json" "$SHA"
+          python3 -I product-reads/reads.py verify "$REPO" "$t/checks.json" "$t/verify.json" "$SHA"
           # Not read, not being read, and not a read that failed unseen. `filter=all`,
           # as review-gate.py asks: on the default `latest` a verdict could be hidden
           # behind a newer run that ended without one.
