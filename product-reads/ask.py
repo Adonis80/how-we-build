@@ -83,7 +83,7 @@ def ready_to_read(call, repo, sha, app_id, now):
         # The quick `checks` and the full `verify`, asked apart and judged together: a read
         # starts alongside the tests (his word, 2 November 2026).
         reads.verified([r for name in (reads.QUICK, reads.VERIFY) for r in reads._runs(
-            get("commits/%s/check-runs?check_name=%s&filter=all&per_page=100" % (sha, name)))], sha, now)
+            get("commits/%s/check-runs?check_name=%s&filter=all&per_page=100" % (sha, name)))], sha, now, repo)
         reads.unread(get("commits/%s/check-runs?check_name=%s&app_id=%s&filter=all&per_page=100"
                          % (sha, reads.REVIEWER_CHECK, app_id)), app_id, sha, now)
     except reads.Malformed as why:
@@ -255,11 +255,11 @@ def _selftest():
               reads.REVIEWER_CHECK: kw.get("read", [])}
         return pr
 
-    def go(prs, dispatch_=False, runs=()):
+    def go(prs, dispatch_=False, runs=(), product=repo):
         api = Product(prs, runs)
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
-            n = run(api, api, repo, app, now, dispatch_)
+            n = run(api, api, product, app, now, dispatch_)
         return n, api, out.getvalue()
 
     n, api, said = go([make(1)])
@@ -316,6 +316,16 @@ def _selftest():
                     make(58, checks=[reads._run(name=reads.QUICK, sha="%040x" % 58, ago=9)],
                          verify=[reads._run(name=reads.VERIFY, sha="%040x" % 58, conclusion="failure", ago=2)])], dispatch_=True)
     want("asked alongside the tests, and not once verify has failed", [d["inputs"]["pr"] for d in api.dispatched], ["57"])
+    # #299's read: only a product reads.EARLY names is read early; another waits for its verify,
+    # with a quick look, and is asked once verify has passed.
+    if os.path.exists(note):
+        os.remove(note)
+    n, api, _ = go([make(59, fork="Adonis80/myst", checks=[reads._run(name=reads.QUICK, sha="%040x" % 59, ago=9)],
+                         verify=[reads._run(name=reads.VERIFY, sha="%040x" % 59, status="in_progress", conclusion=None, ago=8)]),
+                    make(60, fork="Adonis80/myst", checks=[reads._run(name=reads.QUICK, sha="%040x" % 60, ago=30)])],
+                   dispatch_=True, product="Adonis80/myst")
+    want("a product not read early waits for verify, and is asked once it passed",
+         ([d["inputs"]["pr"] for d in api.dispatched], open(note, encoding="utf-8").read() if os.path.exists(note) else None), (["60"], "1\n"))
     # A second round: the first mark was read and left findings, on another commit, and a fix and a
     # new mark followed. The new mark is asked for; nothing about earlier commits stands in its way.
     n, api, said = go([make(40, read=[reads._run(sha="e" * 40, conclusion="failure")])], dispatch_=True)
@@ -438,8 +448,8 @@ def _selftest():
             print("  ask selftest: %s" % b)
         print("ask selftest failed: %d case(s)" % len(bad))
         return 1
-    print("ok: the asker asks, once and exactly, only for a commit that is the ready mark with its own "
-          "check passed and no read begun, asks for a draft carrying its mark, leaves a fork, a read begun or lost, notes a mark still in its checks for a quick look, never asks "
+    print("ok: the asker asks, once and exactly, only for a commit that is the ready mark whose own "
+          "checks let a read start (early only where reads.EARLY names the product) and no read begun, asks for a draft carrying its mark, leaves a fork, a read begun or lost, notes a mark still in its checks for a quick look, never asks "
           "about a commit twice or retries a read that went wrong across seven timed runs, and fails "
           "the run when GitHub will not answer")
     return 0
