@@ -8,7 +8,7 @@ One picture of every part and who owns which truth. It says where things live, n
 flowchart TB
   CH(["Chairman<br/>money · permissions · product truth · looks · irreversible"])
   PJ["Projects<br/>a pointer to GitHub, no rules, no files"]
-  CO["Consultant (other stack)<br/>reads live; on ChatGPT, writes comments and proposals"]
+  CO["Consultant (other stack)<br/>reads live; on ChatGPT, writes comments and issues"]
   subgraph RB["Rulebook · how-we-build · public"]
     direction TB
     HWB["HOW-WE-BUILD.md<br/>the loop, read first"]
