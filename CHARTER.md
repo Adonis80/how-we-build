@@ -122,7 +122,7 @@ When a rule, requirement or design changes:
 
 Git history is the archive. Temporary reasoning belongs in the pull request and disappears when the work closes.
 
-Operating instructions and design rules carry hard word budgets, because every session pays for them: one in, one out, counted by machine (`library/changing-the-rulebook.md`). A product's requirements, roadmap and locked figures carry none; semantic duplication and stale text are the problem there, not legitimate product complexity.
+Operating instructions and design rules carry hard word budgets (in this rulebook, its reading path; its other pages a reported size), because every session pays for them: one in, one out, counted by machine (`library/changing-the-rulebook.md`). A product's requirements, roadmap and locked figures carry none; semantic duplication and stale text are the problem there, not legitimate product complexity.
 
 A new document is justified only when it owns durable information that cannot live clearly in an existing canonical owner.
 
