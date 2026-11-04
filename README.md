@@ -1,6 +1,6 @@
 # how-we-build
 
-The rulebook for every product Dhayan's AI studio builds: **how** we work. Each product's repository says **what** it builds. Public: no secrets, prices or customer data, so any session in either stack reads it with no setup.
+The rulebook for every product Dhayan's AI studio builds: **how** we work. Each product's repository says **what** it builds. Public: no secrets, prices or customer data, so any session reads it with no setup.
 
 **The reading path** is `HOW-WE-BUILD.md` whole, then this page. A library page is opened only when its row below fires, and only that page; nothing is read whole to be safe (his ruling, 25 September 2026). `CHARTER.md` is the reasoning, `RICH-DATA.md` opens on its row, `AGENTS.md` is the reviewer's brief, and `juku-library/` is the archive of papers and frozen decision records, read like the decision issues: when a rule is about to change or its reason is in question, or when a build must read a paper from GitHub, and never loaded into a working session (`library/rulebook-files.md`).
 
