@@ -198,12 +198,19 @@ jobs:
               *) fail "$role is served through $interface, which the canary does not ask" ;;
             esac
             python3 "$reg/ask.py" record close "$ledger" "$n" "$rc" "$out" || true
+            # The answer as the model wrote it, kept before the verdict replaces it:
+            # the fixture is public, so its answer is printed when no verdict comes
+            # of it, and the next red canary says what was malformed (#169, 4 Nov).
+            cp "$out" "$t/answer.json" 2>/dev/null || : > "$t/answer.json"
             python3 "$reg/ask.py" derive "$out" || printf '{"is_error":true,"subtype":"not_derived"}\n' > "$out"
             echo "spend: $(python3 "$reg/ask.py" record summary "$ledger")" | tee -a "$GITHUB_STEP_SUMMARY"
             verdict=$(jq -r '.result // empty' "$out" 2>/dev/null | jq -r '.verdict // empty' 2>/dev/null || true)
             case "$verdict" in
               clean|advisory|blocking) echo "$role answered, $verdict, from the pinned $model" ;;
-              *) fail "$role gave no verdict: $(jq -r '[.subtype // "", .result // ""] | join(": ")' "$out" 2>/dev/null | cut -c1-240)" ;;
+              *) { echo "### $role's answer to the public fixture, as written"; echo '```'
+                   jq -r 'if (.structured_output | type) == "object" then (.structured_output | tojson) elif (.result | type) == "string" then .result else (.result | tojson) end' "$t/answer.json" 2>/dev/null | head -c 4000 || true
+                   echo '```'; } | tee -a "$GITHUB_STEP_SUMMARY"
+                 fail "$role gave no verdict: $(jq -r '[.subtype // "", .result // ""] | join(": ")' "$out" 2>/dev/null | cut -c1-240)" ;;
             esac
           done
           # THE KEY'S OWN LIMIT (decision 0014, D): whether the provider holds one
