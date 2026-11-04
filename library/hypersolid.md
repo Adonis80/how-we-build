@@ -2,7 +2,7 @@
 
 Scope: every screen, either stack. Open when: a screen is new or reworked, before code.
 
-The one standard for how every screen in every product looks, and the one order for visual front-end work. **He approves by looking, never by reading a spec**: a look or motion rule here is adopted or changed only on his approval of what it shows, a picture, or for motion a rehearsal played on his phone; a draft may come first, and his approval covers the behaviour shown, never a restriction carried in a prose summary (#287's repair, agreed with the consultant on 3 November 2026; his picture rule, *Who decides* in `HOW-WE-BUILD.md`).
+The one standard for how every screen in every product looks, and the one order for visual front-end work. **He approves by looking, never by reading a spec**: a look or motion rule here is adopted or changed only on his approval of what it shows — a picture; for motion, a rehearsal played on his phone; a draft may come first, and his approval covers the behaviour shown, never a restriction carried in a prose summary (his ruling, 4 November 2026).
 
 ## The steps
 
