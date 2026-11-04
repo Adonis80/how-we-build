@@ -26,6 +26,7 @@ A change made here reaches every product because each session reads this list at
 - Ideas kept as `proposed` items numbered `I<PR number><letter>`, with a `retired` list, a shared one raised as a `proposal` issue here, none built before its review agrees, exactly as `library/ideas-for-later.md` gives (decisions 0011, 0012, 0020); a product changes nothing for this before its next roadmap edit.
 
 **Its sessions.**
+- His standing permission for every product (2 November 2026): attach its repository and this one, push to them, merge reviewed work and put it live. Prose written for him is said in chat or in the pull request, kept in neither a Project nor a repository.
 - Open pull requests first: one parked for review or waiting on hands is moved on, not rebuilt; a stale one is closed or taken over; anything else is left and the next item taken. An open pull request defers a slice, never blocks every slice.
 - A stopped session may be woken by something happening (a read landing, a check failing, him writing, its predecessor ending), never a clock. No shell left waiting past the work in hand, beyond waits a slice needs, such as a deploy's minutes.
 - A consultant that cannot be reached never holds up a slice: a Claude lead puts the question to a Claude Fable subagent at its highest effort, as a cold read, and carries on; an OpenAI lead leaves it standing on the pull request. Running out of the other stack's allowance is never put to him as a purchase.
