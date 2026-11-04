@@ -34,3 +34,4 @@ The brief is *The independent reviewer*: `library/reviewer.md` and the pages the
 19. Which file names a model? — `model-registry/registry.json` alone (`library/model-registry.md`).
 20. A design brief or correction plans the layout, or skips `brief-check.py`. Allowed? — No; the goal, never the plan (`library/hypersolid.md`, step 3).
 21. A slice merged. Who writes its roadmap bookkeeping, and when? — The next `building` publication or any earlier roadmap edit, from its `Advisories` and `Ideas:` lines; a merge with nothing ready after it, itself (`library/carries-sessions.md`).
+23. A product with screens starts a new or reworked screen. What must exist first, and where? — One whole-product map covering its current agreed scope, each live item in one canonical record, at `design/map.md`; each slice then updates the jobs it touches; assistant-only work updates a mapped job it changes (`library/hypersolid.md`, step 2 and *What stays*).
