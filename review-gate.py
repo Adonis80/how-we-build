@@ -8242,7 +8242,7 @@ def _check_kit(kit=None, wake=None, quiet=False, deep=True):
         cases = ((starter, 0, "the starter AGENTS.md"),
                  (starter.split("\n", 1)[1], 1, "an AGENTS.md without the Rulebook line"),
                  (starter.replace("## Review guidelines", "## Notes"), 1, "an AGENTS.md without its review guidelines"),
-                 (starter + "word " * 600, 1, "an AGENTS.md of 600 words"),
+                 (starter + "word " * 600, 0, "an AGENTS.md of 600 words (no word limits, decision 0026)"),
                  ("", 1, "an empty AGENTS.md"))
         for text, want, what in cases:
             got = _run_agents_step(script, text)
@@ -8319,7 +8319,6 @@ KIT_LOOSENINGS = (
     ("the gate's selftest dropped", "verify.yml", lambda t: t.replace("run: python3 review-gate.py --selftest", "run: true", 1)),
     ("the Rulebook line not required", "verify.yml", lambda t: t.replace('if not first.startswith("Rulebook: https://github.com/Adonis80/how-we-build"):', "if False:", 1)),
     ("the review guidelines not required", "verify.yml", lambda t: t.replace('if not re.search(r"(?m)^## Review guidelines\\s*$", text):', "if False:", 1)),
-    ("the word cap not held", "verify.yml", lambda t: t.replace("if len(text.split()) >= 500:", "if False:", 1)),
     ("a verify that runs on a push", "verify.yml", lambda t: t.replace("on:\n  pull_request:", "on:\n  push:\n  pull_request:", 1)),
     ("a verify not run when a draft is made ready", "verify.yml", lambda t: t.replace(", ready_for_review]", "]", 1)),
     ("a ready mark on a draft failed again", "verify.yml", lambda t: t.replace("      - name: The gate still means what the rulebook's does\n", "      - name: A ready mark is not left on a draft\n        run: exit 1\n      - name: The gate still means what the rulebook's does\n", 1)),
