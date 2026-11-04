@@ -34,4 +34,4 @@
 
 **When something goes wrong**: reproduce; repair or delete the cause; add the smallest regression test; shrink the slice; change method after two identical failures; start fresh on a file you keep changing, or a rule restated not applied. Never answer a failure with a new rule or agent.
 
-**Changing a rule** (`library/changing-the-rulebook.md`): one home per rule; the change names what it replaces and deletes it in the same pull request; the reading path and the active rules keep their word budgets.
+**Changing a rule** (`library/changing-the-rulebook.md`): one home per rule; the change names what it replaces and deletes it in the same pull request; the reading path keeps its word budget.
