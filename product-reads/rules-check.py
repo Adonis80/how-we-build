@@ -9,7 +9,8 @@ a pull request the pull request's own event and its list of changed files.
     rules-check.py --product --path-budget N --active-budget M [--tokens FILE]
     rules-check.py --selftest
 
-Budgets are hard: over either fails. A change that needs room cuts elsewhere in
+Budgets are hard: over one fails. This rulebook has one, its reading path (its
+active rules are reported, never capped); a product passes both. A change that needs room cuts elsewhere in
 the same pull request, and the count sees the cut. A product's requirements,
 roadmap and locked figures are never counted (PRODUCT.md, roadmap.json, its
 library and evidence are not rule pages).
