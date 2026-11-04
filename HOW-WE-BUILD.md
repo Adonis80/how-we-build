@@ -11,7 +11,7 @@
 4. Memory, old chats and handovers are never rules. Memory holds who he is and how he likes to be spoken to, never how we build (his words).
 5. Two texts that disagree are a defect: the loser is deleted in the next change that touches it.
 
-**Asking the Chairman.** Only money, a permission, product truth or a picture reaches him, self-contained: what is missing, what happens meanwhile, the link, the taps, the words to reply. He approves by looking, never by reading. Plain English: summaries and actions, never technical commentary. Every reply ends "continue to build here", or "ready to start fresh session" naming where and what to type.
+**Asking the Chairman.** Only money, a permission, product truth or a picture reaches him, self-contained: what is missing, what happens meanwhile, the link, the taps, the words to reply. He approves by looking, never by reading. Plain English: summaries and actions, never technical commentary. Every reply ends "continue to build here", or "ready to start fresh session" naming the successor started, else where and what to type.
 
 **Numbers.** Never invent one; unknown is valid. An unrun number is a claim: the machine checks, not the model.
 

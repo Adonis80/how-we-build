@@ -6,18 +6,18 @@ A change made here reaches every product because each session reads this list at
 
 **Its pages.**
 - `AGENTS.md`, first line `Rulebook: https://github.com/Adonis80/how-we-build — read HOW-WE-BUILD.md before anything else, then What every product carries in its README.`; below it only what is true for that product; ending `## Review guidelines` (`library/reviewer.md`). Under 500 words.
-- For a product with screens, `MAP.md`, its whole-product map (`library/hypersolid.md`, step 2), and `design/CONSTITUTION.md`, one page in the shape `library/changing-the-rulebook.md` names and its check holds. Everything else about looks is HyperSolid's, read from this repository, never copied down.
+- For a product with screens, `MAP.md`, its whole-product map, due before its next new or reworked screen design (`library/hypersolid.md`, step 2), and `design/CONSTITUTION.md`, one page in the shape `library/changing-the-rulebook.md` names and its check holds. Everything else about looks is HyperSolid's, read from this repository, never copied down.
 - `PRODUCT.md` (what it is and does; his decisions land here or in `roadmap.json`), `NAMES.md` (its own words), `README.md` (commands, and the route: an attached session works directly, any other goes through the Mac; the ten-second test tells which).
 - **Languages** (his ruling, 29 October 2026, #288): every product is language-ready from its first screen, an existing one from each screen it next builds or reworks (no on-screen word fixed in code; dates and numbers in the reader's form, the currency staying the product's; layouts that take longer words): one product with many languages, never a copy each. `PRODUCT.md` names its launch languages, staff and customer languages apart where both exist. A new language then costs translation, a native speaker's check of trade and money words, and small layout tweaks.
 - `<product>-library/`: created with its first paper: agreed papers, and agreed screen designs in `design/<screen>/` (never in the product's `design/`, and its check allows each screen's folder); papers from `juku-os-papers` move in when the product joins, and `NAMES.md` gains the library's name. Read like the decision issues, or when a task needs a paper or an agreed design from it; never loaded into a working session. This rulebook's own Roadmap has none: `juku-library/` is flat and public.
-- No copy of rulebook text beyond the copies the rulebook asks for (such as the `AGENTS.md` first line, the `## Review guidelines` block, the max subagent file and a Project's instructions); a pointer instead. The reviewer holds this, through the exam in its brief.
+- No copy of rulebook text beyond the copies the rulebook asks for (such as the `AGENTS.md` first line, the `## Review guidelines` block, and the max subagent file); a pointer instead. The reviewer holds this, through the exam in its brief.
 
 **Its machinery.**
 - The reviewer's gate from the starter kit, its own check named `verify`, and the ready mark (`library/product-joins.md`).
-- `.claude/settings.json` denying the clock tools (`ScheduleWakeup`, `CronCreate`, `RemoteTrigger`, `mcp__*__send_later`, `mcp__*__create_trigger`, `mcp__*__update_trigger`, `mcp__*__fire_trigger`), its check failing if one goes missing. No product has a timer; the rulebook's asker, every ten minutes, is the only one. Codex runs no automation, schedule or polling in the build loop either.
+- `.claude/settings.json` denying the clock tools (`ScheduleWakeup`, `CronCreate`, `RemoteTrigger`, `mcp__*__send_later`), its check failing if one goes missing; `mcp__*__create_trigger`, `mcp__*__update_trigger` and `mcp__*__fire_trigger` stay allowed to start a successor with no repeat or run time (`library/session-changeover.md`, his ruling of 4 November 2026). No product has a timer; the rulebook's asker, every ten minutes, is the only one. Codex runs no automation, schedule or polling in the build loop either.
 - `.claude/agents/max-subagent.md`, exactly as `library/max-subagent.md` gives it (his ruling, 28 September 2026).
 - Checks that do each piece of work once: one full run per commit; a posted review re-checks the review, not the suite; a newer push cancels the older run on a branch, never on `main`; a words-only change skips browsers and deploys; browsers cached. Every test that runs today still runs on every commit that can reach `main`.
-- A Project whose instructions are its template, whole (`library/project-instructions.md`).
+- A Project holding the pointer alone, set once when it joins (`library/project-instructions.md`).
 
 **Its roadmap.**
 - `roadmap.json` fit for a one-word *build*: every `next` line current and self-sufficient, items in the order they will be taken (ready, then priority, then oldest), each with its level P1–P4 (`library/changing-the-rulebook.md`). Words still waiting in an unmerged pull request are the one exception: the session that opened them says so.
@@ -26,8 +26,9 @@ A change made here reaches every product because each session reads this list at
 - Ideas kept as `proposed` items numbered `I<PR number><letter>`, with a `retired` list, a shared one raised as a `proposal` issue here, none built before its review agrees, exactly as `library/ideas-for-later.md` gives (decisions 0011, 0012, 0020); a product changes nothing for this before its next roadmap edit.
 
 **Its sessions.**
+- His standing permission for every product (2 November 2026): attach its repository and this one, push to them, merge reviewed work and put it live. Prose written for him is said in chat or in the pull request, kept in neither a Project nor a repository.
 - Open pull requests first: one parked for review or waiting on hands is moved on, not rebuilt; a stale one is closed or taken over; anything else is left and the next item taken. An open pull request defers a slice, never blocks every slice.
-- A stopped session may be woken by something happening (a read landing, a check failing, him writing), never a clock. No shell left waiting past the work in hand, beyond waits a slice needs, such as a deploy's minutes.
+- A stopped session may be woken by something happening (a read landing, a check failing, him writing, its predecessor ending), never a clock. No shell left waiting past the work in hand, beyond waits a slice needs, such as a deploy's minutes.
 - A consultant that cannot be reached never holds up a slice: a Claude lead puts the question to a Claude Fable subagent at its highest effort, as a cold read, and carries on; an OpenAI lead leaves it standing on the pull request. Running out of the other stack's allowance is never put to him as a purchase.
 
 
