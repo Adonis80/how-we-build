@@ -1,6 +1,6 @@
 # how-we-build
 
-The rulebook for every product Dhayan's AI studio builds: **how** we work. Each product's repository says **what** it builds. Public: no secrets, prices or customer data, so any session in either stack reads it with no setup.
+The rulebook for every product Dhayan's AI studio builds: **how** we work. Each product's repository says **what** it builds. Public: no secrets, prices or customer data, so any session reads it with no setup.
 
 **The reading path** is `HOW-WE-BUILD.md` whole, then this page. A library page is opened only when its row below fires, and only that page; nothing is read whole to be safe (his ruling, 25 September 2026). `CHARTER.md` is the reasoning, `RICH-DATA.md` opens on its row, `AGENTS.md` is the reviewer's brief, and `juku-library/` is the archive of papers and frozen decision records, read like the decision issues: when a rule is about to change or its reason is in question, or when a build must read a paper from GitHub, and never loaded into a working session (`library/rulebook-files.md`).
 
@@ -30,7 +30,7 @@ The list, and how a repository makes itself current: `library/carries-sessions.m
 
 | Page | Open when |
 |---|---|
-| `library/hypersolid.md`: *HyperSolid* | a screen is new or reworked, before code |
+| `library/hypersolid.md`: *HyperSolid* | a product's map or a screen is new or reworked, before code |
 | `library/voice-native.md`: *Voice Native* | work touches a product's assistant or its actions, or a screen's spoken path is mapped or built |
 | `library/carries-sessions.md`: *What every product carries* | starting or stopping a product session, merging, setting up or checking a product's repository or what its checks run, or a slice touches money milestones, evidence or the product's own pages |
 | `library/session-changeover.md`: *Session changeover* | deciding whether to stay in a session or start a fresh one, and before leaving one |
