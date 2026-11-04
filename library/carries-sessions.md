@@ -14,6 +14,7 @@ A change made here reaches every product because each session reads this list at
 
 **Its machinery.**
 - The reviewer's gate from the starter kit, its own check named `verify`, and the ready mark (`library/product-joins.md`).
+- A ruleset on `main` requiring its `gate`, with no bypass, so GitHub's auto-merge is the session's merging hand (`library/changing-the-rulebook.md`; his word, 4 November 2026).
 - `.claude/settings.json` denying the clock tools (`ScheduleWakeup`, `CronCreate`, `RemoteTrigger`, `mcp__*__send_later`), its check failing if one goes missing; `mcp__*__create_trigger`, `mcp__*__update_trigger` and `mcp__*__fire_trigger` stay allowed to start a successor with no repeat or run time (`library/session-changeover.md`, his ruling of 4 November 2026). No product has a timer; the rulebook's asker, every ten minutes, is the only one. Codex runs no automation, schedule or polling in the build loop either.
 - `.claude/agents/max-subagent.md`, exactly as `library/max-subagent.md` gives it (his ruling, 28 September 2026).
 - Checks that do each piece of work once: one full run per commit; a posted review re-checks the review, not the suite; a newer push cancels the older run on a branch, never on `main`; a words-only change skips browsers and deploys; browsers cached. Every test that runs today still runs on every commit that can reach `main`.
