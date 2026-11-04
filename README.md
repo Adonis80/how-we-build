@@ -42,7 +42,7 @@ The list, and how a repository makes itself current: `library/carries-sessions.m
 | `library/consultant.md`: *The consultant* | asking the consultant for anything, answering its findings, settling a big idea with it, or setting its standing instructions, or it cannot be reached |
 | `library/ideas-for-later.md`: *Ideas for later* | a session spots an improvement it will not build now, a roadmap read shows ideas due for review, a session closes, or a `proposal` issue is raised, ranked or debated |
 | `library/product-joins.md`: *How a product joins* | adding a product to the map, or setting up its repository |
-| `library/project-instructions.md`: *Project instructions* | setting or checking any Project's instructions |
+| `library/project-instructions.md`: *Project instructions* | setting up or checking a Project |
 | `library/roadmap.md`: *The Roadmap* | working on the Roadmap |
 | `library/board-proposals-card.md`: *The Roadmap: the proposals card* | changing the proposals card, or checking it against what he approved |
 | `library/deploy.md`: *The deploy, in shape* | building or changing a product's deploy |

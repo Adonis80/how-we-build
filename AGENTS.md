@@ -28,10 +28,12 @@ The brief is *The independent reviewer*: `library/reviewer.md` and the pages the
 13. What must a product's constitution contain, and nothing else? — Tokens, Units, Money, Domain law, Approved by picture (dated, with the picture) (`library/changing-the-rulebook.md`).
 14. Where are past decisions, and when are they read? — The decision issues and `juku-library/`; when a rule is about to change or its reason is in question (or a build needs a paper), never loaded into a working session (`library/rulebook-files.md`).
 15. What reaches the Chairman, and how? — Money, permissions, product truth or a picture, self-contained (*Asking the Chairman*).
-16. What ends every reply to him? — "continue to build here" or "ready to start fresh session" with where and what to type (*Asking the Chairman*).
+16. What ends every reply to him? — "continue to build here" or "ready to start fresh session" naming the successor the session started, else where and what to type (*Asking the Chairman*).
 17. What does "build" mean? — Take the top ready item; never a question (`HOW-WE-BUILD.md`).
 18. Where do a product's words change, and where does code? — Both in a Cowork session, by pull request; code mode only for a job Cowork cannot do (`library/two-stacks.md`).
 19. Which file names a model? — `model-registry/registry.json` alone (`library/model-registry.md`).
 20. A design brief or correction plans the layout, or skips `brief-check.py`. Allowed? — No; the goal, never the plan (`library/hypersolid.md`, step 3).
 21. A slice merged. Who writes its roadmap bookkeeping, and when? — The next `building` publication or any earlier roadmap edit, from its `Advisories` and `Ideas:` lines; a merge with nothing ready after it, itself (`library/carries-sessions.md`).
 22. A rule change alters a rule's meaning or scope. Where does it start, and what must the changed text carry? — His originals in `juku-library/` and his later rulings, each side naming the obligations before reading the other's; the text quotes the source words, cites each as `path#heading`, and names a dated authority beside any weakening, loss or contradiction (`library/changing-the-rulebook.md`, *What a rule change owes*).
+23. May a session start a fresh session itself? — Yes, its own successor when it ends with an item ready, at once: its Project's standing task, with no repeat or run time, fired; never on a clock (`library/session-changeover.md`).
+25. He approved a picture or demo that came with a prose summary limiting something. Does the limit bind? — No; his approval covers only what was shown, and a look or motion rule changes only on his approval of what it shows (`library/hypersolid.md`, opening).
