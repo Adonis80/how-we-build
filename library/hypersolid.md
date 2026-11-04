@@ -2,7 +2,7 @@
 
 Scope: every screen, either stack. Open when: a screen is new or reworked, before code.
 
-The one standard for how every screen in every product looks, and the one order for visual front-end work. **He approves by looking, never by reading a spec**: a look or motion rule here is adopted or changed only on his approval of what it shows — a picture; for motion, a rehearsal played on his phone; a draft may come first, and his approval covers the behaviour shown, never a restriction carried in a prose summary (his ruling, 4 November 2026: "Approving a picture covers only what it shows, never limits written in a summary", `juku-library/DECISION-0024-PICTURE-AND-SOURCE.md#Decision 0024: his approval covers what a picture shows; rule changes start from his originals`).
+The one standard for how every screen in every product looks, and the one order for visual front-end work. **It alone owns the look** (`HOW-WE-BUILD.md`, *Which rule wins*); any other looks line in a product page is deleted when found. **He approves by looking, never by reading a spec**: a look or motion rule here is adopted or changed only on his approval of what it shows — a picture; for motion, a rehearsal played on his phone (a written draft may come before it, never in force until he approves); his approval covers the behaviour shown, never a restriction carried in a prose summary (his ruling, 4 November 2026: "Approving a picture covers only what it shows, never limits written in a summary", `juku-library/DECISION-0024-PICTURE-AND-SOURCE.md#Decision 0024: his approval covers what a picture shows; rule changes start from his originals`).
 
 ## The steps
 
