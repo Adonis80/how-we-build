@@ -1,6 +1,6 @@
 # What every product carries
 
-Scope: every product repository and session. Open when: starting or stopping a product session, setting up or checking a product's repository or what its checks run, or a slice touches money milestones, evidence or the product's own pages.
+Scope: every product repository and session. Open when: starting or stopping a product session, merging, setting up or checking a product's repository or what its checks run, or a slice touches money milestones, evidence or the product's own pages.
 
 A change made here reaches every product because each session reads this list at its start; a repository missing a line makes itself current in its next pull request.
 
@@ -14,6 +14,7 @@ A change made here reaches every product because each session reads this list at
 
 **Its machinery.**
 - The reviewer's gate from the starter kit, its own check named `verify`, and the ready mark (`library/product-joins.md`).
+- Its merging hand (his word in the Hemz OS chat, 4 November 2026, 09:59: *"You may merge any pull request the gate passes and write that permission into the repo. I also want you to make sure that this permission reaches Juku OS and therefore all Juku OS products."*): with a ruleset on `main` requiring a `gate` that opens only on a passed `verify`, no bypass, and auto-merge allowed, the session enables auto-merge (squash) after its last push, once step 6's look is not owed or given; one stalled by main moving is updated and read afresh. CI deploys, smokes and rolls back (`library/deploy.md`). Bookkeeping stays *Its roadmap*'s: with no ready item next, the session waits on the merge, as on a deploy. It sets the ruleset by its own hands once the kit's gate stands, never his; until then, step 7. Shown: private Hemz OS#275 held `blocked` on a red `gate`; no product auto-merge yet.
 - `.claude/settings.json` denying the clock tools (`ScheduleWakeup`, `CronCreate`, `RemoteTrigger`, `mcp__*__send_later`), its check failing if one goes missing; `mcp__*__create_trigger`, `mcp__*__update_trigger` and `mcp__*__fire_trigger` stay allowed to start a successor with no repeat or run time (`library/session-changeover.md`, his ruling of 4 November 2026). No product has a timer; the rulebook's asker, every ten minutes, is the only one. Codex runs no automation, schedule or polling in the build loop either.
 - `.claude/agents/max-subagent.md`, exactly as `library/max-subagent.md` gives it (his ruling, 28 September 2026).
 - Checks that do each piece of work once: one full run per commit; a posted review re-checks the review, not the suite; a newer push cancels the older run on a branch, never on `main`; a words-only change skips browsers and deploys; browsers cached. Every test that runs today still runs on every commit that can reach `main`.
