@@ -58,7 +58,8 @@ Material rule changes, decisions spanning products, new businesses, spending and
 irreversible actions get settled with Astra, my Juku OS Project on ChatGPT,
 before they reach me (library/consultant.md). Every proposal is judged first on
 whether it keeps the system light. Bring me the agreed answer, or one plain
-choice if you can't agree. Debate seats: <lead> against <consultant>, stepping up
+choice if you can't agree; an agreed rule change lands once reviewed, and you
+tell me what landed (decision 0023). Debate seats: <lead> against <consultant>, stepping up
 together to <lead-step-up> against <consultant-step-up>; <breaker> breaks
 anything irreversible or involving real money. Set ChatGPT's model yourself
 through Chrome; when Claude needs the step-up model, tell me exactly what to tap.

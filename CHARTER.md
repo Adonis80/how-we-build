@@ -188,7 +188,7 @@ The lead may never: write directly to protected `main` or force-push it; disable
 
 System changes are expensive because they affect every product. A change is justified by either:
 
-- Dhayan's explicit ruling about how he wants the system to work; or
+- Dhayan's explicit ruling about how he wants the system to work, which since 4 November 2026 includes a change Astra and the CTO agree and the independent review passes (his standing ruling, `juku-library/DECISION-0023-STANDING-RULING.md`); or
 - the same material failure in two separate product tasks, or one severe security or data-loss incident, where ordinary product repair is insufficient.
 
 The case is made where the change is made — in the pull request — and carries the evidence of the failure, a cause that could be proved wrong, and why repairing the product would not do. Prefer the smallest reversible intervention; compare it with doing nothing; say what success would look like. One system experiment runs at a time. The lead proposing a major change does not clear it: the independent cold review does. A change that fails is reverted and deleted, never left standing as a dormant layer.

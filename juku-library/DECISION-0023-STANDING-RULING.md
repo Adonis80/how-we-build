@@ -10,4 +10,6 @@ My standing ruling: a change to how we build that Astra and the CTO agree, and t
 
 **Where it lives.** `library/changing-the-rulebook.md`, the gate paragraph, beside "nor does a change the Chairman rules himself". The consultant's agreement is cited, dated, in each changed text, so the reviewer, who never sees a pull request's body, can see it. The reviewer's verdict still gates every merge; a consensus never stands in for it (`library/consultant.md`).
 
+**How he hears of it.** An agreed rule change lands first, once reviewed, and he is told what landed: the debate's agreed implementation of this ruling (`library/consultant.md`), as the Juku OS Project text says.
+
 **What it does not cover.** Money, anything irreversible, and how things look still go to him.
