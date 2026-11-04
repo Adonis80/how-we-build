@@ -25,7 +25,9 @@ import urllib.request
 # This repository's budgets. Changing one is a rule change like any other.
 RULEBOOK_PATH = ("HOW-WE-BUILD.md", "README.md")
 RULEBOOK_PATH_BUDGET = 1700
-RULEBOOK_ACTIVE_BUDGET = 30000
+# No ceiling on the rulebook's active rules (agreed 4 November 2026, #314 item 1):
+# reported as a size, never failed. A product still passes --active-budget.
+RULEBOOK_ACTIVE_BUDGET = None
 # History, not rules: the archive and the upgrade log are never budgeted.
 RULEBOOK_NOT_ACTIVE = ("library/upgrade-log.md",)
 RULEBOOK_SCREEN = ("HOW-WE-BUILD.md", "README.md", "library/hypersolid.md", "library/voice-native.md")
@@ -216,6 +218,9 @@ def main(argv):
         pb, ab = RULEBOOK_PATH_BUDGET, RULEBOOK_ACTIVE_BUDGET
         path, active, screen = list(RULEBOOK_PATH), rulebook_active(), list(RULEBOOK_SCREEN)
     for name, files, limit in (("the reading path", path, pb), ("the active rules", active, ab)):
+        if limit is None:
+            print("size: %s is %d words (no ceiling; library/changing-the-rulebook.md)" % (name, sum(words(f) for f in files)))
+            continue
         _, line = budget(name, files, limit)
         print(line)
         fail |= line.startswith("FAIL")
@@ -321,7 +326,10 @@ def selftest():
                 want("over the reading path's budget fails", main([]), 1)
             RULEBOOK_PATH_BUDGET, RULEBOOK_ACTIVE_BUDGET = 20, 29
             with contextlib.redirect_stdout(io.StringIO()):
-                want("over the active rules' budget fails", main([]), 1)
+                want("a budget on the active rules, where one is set, still fails", main([]), 1)
+            RULEBOOK_ACTIVE_BUDGET = None
+            with contextlib.redirect_stdout(io.StringIO()):
+                want("the rulebook's active rules carry no ceiling", main([]), 0)
             RULEBOOK_ACTIVE_BUDGET = 30
 
             def down():
