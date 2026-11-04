@@ -7,7 +7,7 @@ One picture of every part and who owns which truth. It says where things live, n
 ```mermaid
 flowchart TB
   CH(["Chairman<br/>money · permissions · product truth · looks · irreversible"])
-  PJ["Projects<br/>instructions only, no files"]
+  PJ["Projects<br/>a pointer to GitHub, no rules, no files"]
   CO["Consultant (other stack)<br/>reads live, writes nothing"]
   subgraph RB["Rulebook · how-we-build · public"]
     direction TB
