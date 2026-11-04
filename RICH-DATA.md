@@ -2,7 +2,7 @@
 
 **How a product's AI gets smarter in its domain, and how we know it did.**
 
-Read this page only when your slice changes what a product learns from, shows about a person, or claims about its own accuracy. Ordinary slices do not load it. It is the method every product follows; each product's own `PRODUCT.md` says how the method applies there. Agreed with Astra over four rounds, September 2026. Nothing on this page is an automated check: the proof lives in each product's tests, in the slice that changes the behaviour.
+Read this page only when your slice changes what a product learns from, shows about a person, or claims about its own accuracy. Ordinary slices do not load it. It is the method every product follows; each product's own `PRODUCT.md` says how the method applies there. Nothing on this page is an automated check: the proof lives in each product's tests, in the slice that changes the behaviour.
 
 ## 1. The goal
 
