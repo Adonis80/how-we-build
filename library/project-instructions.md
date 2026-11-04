@@ -34,8 +34,8 @@ His product decisions go into PRODUCT.md or roadmap.json. Prose written for him 
 said in chat or in the pull request, kept in neither this Project nor a repo. Memory
 holds who he is and how he likes to be spoken to, never how we build. This Project holds these
 instructions and no files. End every reply with "continue to build here" or "ready
-to start fresh session", the second naming Cowork, or code mode at
-https://claude.ai/code with this repository and Adonis80/how-we-build.
+to start fresh session", the second naming the successor started, else Cowork, or
+code mode at https://claude.ai/code with this repository and Adonis80/how-we-build.
 ```
 
 **The Juku OS Project** (head office, where the system's own words change; not a product). His own text, each debate model a `<role>`, the last paragraph the lines only Claude needs:
@@ -71,8 +71,9 @@ Cowork cannot do. Standing permission, given in advance: create repositories,
 merge reviewed work and put it live. This Project holds these instructions and no files.
 
 Plain English, short, no jargon. End every reply with "continue to build here"
-or "ready to start fresh session", and the second always says where (Cowork, or
-code mode at https://claude.ai/code with the repositories named) and what to paste.
+or "ready to start fresh session", and the second names the successor you started,
+or else says where (Cowork, or code mode at https://claude.ai/code with the
+repositories named) and what to paste.
 
 For Claude only. At the start, check these instructions against the rulebook's
 library/project-instructions.md, as that page says. For a pull request, attach
