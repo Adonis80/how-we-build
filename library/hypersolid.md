@@ -2,7 +2,7 @@
 
 Scope: every screen, either stack. Open when: a screen is new or reworked, before code.
 
-The one standard for how every screen in every product looks, and the one order for visual front-end work. He approves by looking, never by reading a spec. **It alone owns the look** (`HOW-WE-BUILD.md`, *Which rule wins*); any other looks line in a product page is deleted when found.
+The one standard for how every screen in every product looks, and the one order for visual front-end work. **It alone owns the look** (`HOW-WE-BUILD.md`, *Which rule wins*); any other looks line in a product page is deleted when found. **He approves by looking, never by reading a spec**: a look or motion rule here is adopted or changed only on his approval of what it shows — a picture; for motion, a rehearsal played on his phone (a written draft may come before it, never in force until he approves); his approval covers the behaviour shown, never a restriction carried in a prose summary (his ruling, 4 November 2026: "Approving a picture covers only what it shows, never limits written in a summary", `juku-library/DECISION-0024-PICTURE-AND-SOURCE.md#Decision 0024: his approval covers what a picture shows; rule changes start from his originals`).
 
 ## The steps
 
@@ -27,21 +27,19 @@ How the map (step 2) is made (his paper, `juku-library/Juku_Complexity_Distillat
 
 **Calm Depth** (his ruling, 29 October 2026). His words, 2 October 2026 (`juku-library/Juking_Style_3D_UI.md`): "The goal is to make our products feel like lightweight interactive 3D environments, closer to a lightweight game or cinematic spatial interface than a conventional website." "Use Three.js/WebGL/WebGPU where appropriate, but avoid unnecessarily heavy 3D rendering." His 29 October clarification: "this relates to spectacular charts. That move with motion graphics. It does not relate to navigation."
 
-1. **Depth by layers, never a moving world.** An overlay rises over its still, slightly dimmed parent; in-place disclosure stays in place (Screen law 9), and the map decides what earns an overlay. No camera travel in application navigation. Within charts and data spaces (the Phena River), user-controlled exploration and meaningful data animation are allowed. The reference, https://tarasovvitalii.com/demos/hypersolid/: inspect live, never copy; borrow its depth and light, never its travel.
-2. **Motion short and directional.** Tabs slide a short way sideways; drilling in rises from what was tapped and back reverses it; about a quarter of a second, no bounce.
+1. **In navigation, depth by layers, never a moving world.** An overlay rises over its still, slightly dimmed parent; in-place disclosure stays in place (Screen law 9), and the map decides what earns an overlay. No camera travel in application navigation; data spaces are below. The reference, https://tarasovvitalii.com/demos/hypersolid/: inspect live, never copy; in navigation borrow its depth and light, never its travel.
+2. **Navigation motion short and directional.** Tabs slide a short way sideways; drilling in rises from what was tapped and back reverses it; about a quarter of a second, no bounce.
 3. **Touch answers back.** Where supported, light haptics acknowledge activation, with distinct confirmation and stop cues as the platform permits; visual feedback always remains, sound follows the rule below, rehearsed on the target phone.
 4. **Density is rhythm.** One spacing scale, sections clearly apart, every control thumb-sized.
 5. **Light and fast.** A light web app; native only if needed. Text, figures, forms and payments stay plain HTML (or native) controls. Essential journeys work without 3D or motion: keyboard, screen reader, an alternative to every gesture, reduced motion. Light assets, progressive loading, graceful fallback on weak devices. Usable within two seconds on the mid-range phone and network named in the note, plain interface before any chart's 3D. One product across all devices.
 
 **Sound, as standard.** Every product carries a light, game-grade sound layer, on from the first visit unless he approved otherwise by picture or rehearsal: short cues that confirm, travel and reward. Never the only signal; silent while the device is silenced; one mute control, remembered; assets within the speed limit; drawn in the design, heard and approved in the rehearsal.
 
-**Moving charts, as standard.** Wherever a product holds complex data, design a useful, living, explorable chart, in 3D and motion graphics where they help understanding, its exact records and figures still available as text and to a screen reader. Each answers a question its user has, faster and more clearly than plain figures; its movement carries meaning (change, comparison, cause, uncertainty), never decoration. A chart that adds no understanding goes (Screen law 1).
+**Moving charts and data spaces, as standard.** Wherever a product holds complex data, design a useful, living, explorable chart, in 3D and motion graphics where they help understanding, its exact records and figures still available as text and to a screen reader. Each answers a question its user has, faster and more clearly than plain figures; its movement carries meaning (change, comparison, cause, uncertainty), never decoration. A chart that adds no understanding goes (Screen law 1). In charts and data spaces, where it helps (his "Chart approved", 3 November 2026, on #287, on his tap of the tappable chart demo on his phone; `juku-library/Juking_Style_3D_UI.md#Added Juku Style spatial layer`, `juku-library/Juking_Style_3D_UI.md#Phena River`): "one-finger swipe/drag to pan, rotate or move through space", "pinch to zoom in and out", "tap objects to select them or move toward them", "momentum/inertia where useful", "optional subtle device-motion/parallax"; hierarchy "partly through physical depth, scale and position". "Apply this layer strongly to the Phena River", from "the broad landscape and major patterns" through "clusters and themes" and "individual experiences" to "individual people, claims, transcripts, audio and supporting evidence". Always "the maximum perception of depth and spatial sophistication with the minimum rendering cost".
 
 ## Screen law
 
 How every screen, in every product, earns its look, and so does a prototype or picture of one put to the Chairman. Reviewers judge by this; nobody re-explains it.
-
-A rule here changes only with the Chairman's eyes on a screen that proves the change.
 
 ### Comprehension
 
