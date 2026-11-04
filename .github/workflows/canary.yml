@@ -207,9 +207,14 @@ jobs:
             verdict=$(jq -r '.result // empty' "$out" 2>/dev/null | jq -r '.verdict // empty' 2>/dev/null || true)
             case "$verdict" in
               clean|advisory|blocking) echo "$role answered, $verdict, from the pinned $model" ;;
-              *) { echo "### $role's answer to the public fixture, as written"; echo '```'
+              *) # The answer is the model's text: between these two lines the log
+                 # runs no workflow command, so a "::" line in it is only text (#341).
+                 tok=$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')
+                 echo "::stop-commands::$tok"
+                 { echo "### $role's answer to the public fixture, as written"; echo '```'
                    jq -r 'if (.structured_output | type) == "object" then (.structured_output | tojson) elif (.result | type) == "string" then .result else (.result | tojson) end' "$t/answer.json" 2>/dev/null | head -c 4000 || true
-                   echo '```'; } | tee -a "$GITHUB_STEP_SUMMARY"
+                   echo; echo '```'; } | tee -a "$GITHUB_STEP_SUMMARY"
+                 echo "::$tok::"
                  fail "$role gave no verdict: $(jq -r '[.subtype // "", .result // ""] | join(": ")' "$out" 2>/dev/null | cut -c1-240)" ;;
             esac
           done
