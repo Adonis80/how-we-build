@@ -82,4 +82,4 @@ A rule here changes only with the Chairman's eyes on a screen that proves the ch
 
 ## What stays
 
-A routine change keeping the agreed layout and behaviour goes straight in. The steps above run only for a new or reworked map or screen. Assistant-only work follows `library/voice-native.md` without a brief, design or save; a changed screen takes the steps. Updating a mapped job is not a rework: the slice edits that job's map entry, with no brief, design or save; moving a frequent job stays batched and his by picture.
+A routine change keeping the agreed layout and behaviour goes straight in. The steps above run only for a new or reworked map or screen. Assistant-only work follows `library/voice-native.md` without a brief, design or save; a changed screen takes the steps. Updating a mapped job's entry without moving it is not a rework: the slice edits the entry, with no brief, design or save; moving any job to another level or screen changes a screen and takes the steps, a frequent job's move batched and his by picture.
