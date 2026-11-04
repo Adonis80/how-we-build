@@ -1,6 +1,6 @@
 # What every product carries
 
-Scope: every product repository and session. Open when: starting or stopping a product session, setting up or checking a product's repository or what its checks run, or a slice touches money milestones, evidence or the product's own pages.
+Scope: every product repository and session. Open when: starting or stopping a product session, merging, setting up or checking a product's repository or what its checks run, or a slice touches money milestones, evidence or the product's own pages.
 
 A change made here reaches every product because each session reads this list at its start; a repository missing a line makes itself current in its next pull request.
 
@@ -14,7 +14,7 @@ A change made here reaches every product because each session reads this list at
 
 **Its machinery.**
 - The reviewer's gate from the starter kit, its own check named `verify`, and the ready mark (`library/product-joins.md`).
-- A ruleset on `main` requiring its `gate`, with no bypass, so GitHub's auto-merge is the session's merging hand (`library/changing-the-rulebook.md`; his word, 4 November 2026).
+- A ruleset on `main` requiring its `gate`, with no bypass, so GitHub's auto-merge is the session's merging hand (his word in the Hemz OS chat, 4 November 2026, 09:59: *"You may merge any pull request the gate passes and write that permission into the repo. I also want you to make sure that this permission reaches Juku OS and therefore all Juku OS products."*). Shown on a private repository: Hemz OS#275, its `gate` red, reported `blocked` by GitHub. The session enables auto-merge (squash) after its last fix and its one ask, and only once step 6's look is not owed or he has given it; the merge landing wakes it (*Its sessions*) for step 7's deploy check and the merge's bookkeeping (*Its roadmap*). Without the ruleset it merges by hand (step 7) and sets the ruleset in its next pull request.
 - `.claude/settings.json` denying the clock tools (`ScheduleWakeup`, `CronCreate`, `RemoteTrigger`, `mcp__*__send_later`), its check failing if one goes missing; `mcp__*__create_trigger`, `mcp__*__update_trigger` and `mcp__*__fire_trigger` stay allowed to start a successor with no repeat or run time (`library/session-changeover.md`, his ruling of 4 November 2026). No product has a timer; the rulebook's asker, every ten minutes, is the only one. Codex runs no automation, schedule or polling in the build loop either.
 - `.claude/agents/max-subagent.md`, exactly as `library/max-subagent.md` gives it (his ruling, 28 September 2026).
 - Checks that do each piece of work once: one full run per commit; a posted review re-checks the review, not the suite; a newer push cancels the older run on a branch, never on `main`; a words-only change skips browsers and deploys; browsers cached. Every test that runs today still runs on every commit that can reach `main`.
@@ -29,7 +29,7 @@ A change made here reaches every product because each session reads this list at
 **Its sessions.**
 - His standing permission for every product (2 November 2026): attach its repository and this one, push to them, merge reviewed work and put it live. Prose written for him is said in chat or in the pull request, kept in neither a Project nor a repository.
 - Open pull requests first: one parked for review or waiting on hands is moved on, not rebuilt; a stale one is closed or taken over; anything else is left and the next item taken. An open pull request defers a slice, never blocks every slice.
-- A stopped session may be woken by something happening (a read landing, a check failing, him writing, its predecessor ending), never a clock. No shell left waiting past the work in hand, beyond waits a slice needs, such as a deploy's minutes.
+- A stopped session may be woken by something happening (a read landing, a check failing, its pull request merging, him writing, its predecessor ending), never a clock. No shell left waiting past the work in hand, beyond waits a slice needs, such as a deploy's minutes.
 - A consultant that cannot be reached never holds up a slice: a Claude lead puts the question to a Claude Fable subagent at its highest effort, as a cold read, and carries on; an OpenAI lead leaves it standing on the pull request. Running out of the other stack's allowance is never put to him as a purchase.
 
 

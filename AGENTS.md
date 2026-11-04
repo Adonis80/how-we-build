@@ -19,7 +19,7 @@ The brief is *The independent reviewer*: `library/reviewer.md` and the pages the
 4. `PRODUCT.md` and `roadmap.json` disagree. Which wins? — `PRODUCT.md`; the copy is corrected (*Which rule wins*).
 5. Who decides a product's prices, figures and how it looks? — The Chairman (*Who decides*).
 6. Who decides a technical question, and may the session ask him? — The CTO; never ask him (*Who decides*).
-7. Who merges a green pull request? — The session itself (loop step 7); here, and in a product whose `main` requires its `gate`, GitHub's auto-merge, which the session enables (`library/changing-the-rulebook.md`).
+7. Who merges a green pull request? — The session itself (loop step 7); here, GitHub's auto-merge, which the session enables (`library/changing-the-rulebook.md`); in a product whose `main` requires its `gate`, the same, once his look is not owed or given (`library/carries-sessions.md`).
 8. How many review rounds, and what after them? — Two; then the CTO's call, dissent left standing; a disputed blocking finding goes to him (`library/reviewer.md`).
 9. The reviewer is unreachable. What happens? — The slice parks, one comment, the next item begins (`library/reviewer-parking.md`).
 10. May a session set a timer to check back later? — No (`HOW-WE-BUILD.md`, the loop).
