@@ -7,7 +7,7 @@ One picture of every part and who owns which truth. It says where things live, n
 ```mermaid
 flowchart TB
   CH(["Chairman<br/>money · permissions · product truth · looks · irreversible"])
-  PJ["Projects<br/>instructions only, no files"]
+  PJ["Projects<br/>a pointer to GitHub, no rules, no files"]
   CO["Consultant (other stack)<br/>reads live, writes nothing"]
   subgraph RB["Rulebook · how-we-build · public"]
     direction TB
@@ -46,4 +46,4 @@ flowchart TB
 
 **Reading it.** A session starts in a Project, which sends it to `HOW-WE-BUILD.md`, then the README. The README's map sends it to one product repo; the library opens only on a trigger. Work leaves only as a pull request: the reviewer signs a verdict on the current commit and the gate consumes it. A consensus with the consultant never stands in for that verdict. The Roadmap reads each product's plan and shows it to the Chairman, who answers only what is his.
 
-**Who owns which truth.** How we build: this repository. What a product is and does next: its own repository. Which model does a job: `model-registry/registry.json`. Why a rule is what it is: the decision issues and `juku-library/`. Papers for an idea not yet a product: `juku-os-papers`. A Project holds instructions, never a copy of any of these.
+**Who owns which truth.** How we build: this repository. What a product is and does next: its own repository. Which model does a job: `model-registry/registry.json`. Why a rule is what it is: the decision issues and `juku-library/`. Papers for an idea not yet a product: `juku-os-papers`. A Project holds a pointer to GitHub, never a copy of any of these.

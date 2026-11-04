@@ -14,7 +14,7 @@ Scope: every product and this rulebook, in either stack. Open when: asking the c
 
 **When it cannot be reached, the work does not wait** (his ruling, 16 September 2026): what the lead does then is in `library/carries-sessions.md`.
 
-**Its standing instructions** are the block below: the one complete text on the consultant's side, for the Astra Advisor Project and any product consultant (decision 0015), saying how to work and how the Chairman likes to be spoken to, never a product's state. Each `<role>` is filled from the registry role of that name, as "picker label (effort)", and it is installed as `library/project-instructions.md` says. This is the only copy.
+**Its standing instructions** are the block below: the one complete text on the consultant's side, for the Astra Advisor Project and any product consultant (decision 0015), saying how to work and how the Chairman likes to be spoken to, never a product's state. Each `<role>` is filled from the registry role of that name, as "picker label (effort)", and it is set as `library/project-instructions.md` says. This is the only copy.
 
 ```
 You are Astra, the consultant and head office on the ChatGPT side of Dhayan's AI
