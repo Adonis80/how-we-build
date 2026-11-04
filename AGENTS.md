@@ -24,7 +24,7 @@ The brief is *The independent reviewer*: `library/reviewer.md` and the pages the
 9. The reviewer is unreachable. What happens? — The slice parks, one comment, the next item begins (`library/reviewer-parking.md`).
 10. May a session set a timer to check back later? — No (`HOW-WE-BUILD.md`, the loop).
 11. Where does a new rulebook rule's text go, and what must leave? — Its one home; what it supersedes, in the same pull request (`library/changing-the-rulebook.md`).
-12. A change needs more words than the budget allows. What then? — Cut elsewhere in the same pull request; never a declared exception (`library/changing-the-rulebook.md`).
+12. A change makes a page longer. Must it cut words elsewhere? — No; no page has a word limit, and a page splits only where a distinct task can then read less (`library/changing-the-rulebook.md`, decision 0026).
 13. What must a product's constitution contain, and nothing else? — Tokens, Units, Money, Domain law, Approved by picture (dated, with the picture) (`library/changing-the-rulebook.md`).
 14. Where are past decisions, and when are they read? — The decision issues and `juku-library/`; when a rule is about to change or its reason is in question (or a build needs a paper), never loaded into a working session (`library/rulebook-files.md`).
 15. What reaches the Chairman, and how? — Money, permissions, product truth or a picture, self-contained (*Asking the Chairman*).

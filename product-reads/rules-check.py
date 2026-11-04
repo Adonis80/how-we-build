@@ -1,43 +1,32 @@
 #!/usr/bin/env python3
-"""The rules' own guard: word budgets, the Replaces: line, the constitution's shape.
+"""The rules' own guard: the Replaces: line and the constitution's shape. No word count.
 
 Run by check.sh here; a product is to run it from a pinned commit of this
 repository, from its own check (library/changing-the-rulebook.md). Free: it reads files, and in
 a pull request the pull request's own event and its list of changed files.
 
     product-reads/rules-check.py           this repository, from its root
-    rules-check.py --product --path-budget N --active-budget M [--tokens FILE]
+    rules-check.py --product
     rules-check.py --selftest
 
-Budgets are hard: over one fails. This rulebook has one, its reading path (its
-active rules are reported, never capped); a product passes both. A change that needs room cuts elsewhere in
-the same pull request, and the count sees the cut. A product's requirements,
-roadmap and locked figures are never counted (PRODUCT.md, roadmap.json, its
-library and evidence are not rule pages).
+No page is held to a word count (his ruling, 4 November 2026, decision 0026:
+"There should not be a word limit. Instead, we will have a hierarchy of
+information"). The hierarchy is held by check.sh's index checks: every page
+named by the README with when to open it. A product that still passes the
+retired --path-budget, --active-budget or --tokens is told to drop them; they cap nothing.
 """
 import fnmatch
-import glob
 import json
 import os
 import re
 import sys
 import urllib.request
 
-# This repository's budgets. Changing one is a rule change like any other.
-RULEBOOK_PATH = ("HOW-WE-BUILD.md", "README.md")
-RULEBOOK_PATH_BUDGET = 1700
-# No ceiling on the rulebook's active rules (agreed 4 November 2026, #314 item 1):
-# reported as a size, never failed. A product still passes --active-budget.
-RULEBOOK_ACTIVE_BUDGET = None
-# History, not rules: the archive and the upgrade log are never budgeted.
+# History, not rules: the upgrade log is never a rule page.
 RULEBOOK_NOT_ACTIVE = ("library/upgrade-log.md",)
-RULEBOOK_SCREEN = ("HOW-WE-BUILD.md", "README.md", "library/hypersolid.md", "library/voice-native.md")
 
-PRODUCT_PATH = ("AGENTS.md", "design/CONSTITUTION.md")
 PRODUCT_RULE_GLOBS = ("AGENTS.md", "CLAUDE.md", "NAMES.md", "design/*.md", "design-system.md")
 
-CONSTITUTION_WORDS = 450
-INTRO_WORDS = 80
 HEADINGS = ("Tokens", "Units", "Money", "Domain law", "Approved by picture")
 DATE = re.compile(r"\b(\d{1,2} (January|February|March|April|May|June|July|August|September|October|November|December) 20\d\d|20\d\d-\d\d-\d\d)\b")
 PICTURE = re.compile(r"(https?://\S+|[\w./-]+\.(png|jpe?g|webp|gif|svg|pdf|mp4|mov|webm|m4a|mp3|wav))", re.I)
@@ -45,43 +34,9 @@ TEMPLATE_HOLES = ("<the text or page it supersedes>", "<product pages updated, o
 REPLACES = re.compile(r"^\s*Replaces:\s*(.+)$", re.M | re.I)
 
 
-def words(path):
-    try:
-        with open(path, encoding="utf-8") as f:
-            return len(f.read().split())
-    except OSError:
-        return 0
-
-
-def rulebook_active():
-    files = [f for f in ("HOW-WE-BUILD.md", "README.md", "CHARTER.md", "RICH-DATA.md", "AGENTS.md")
-             if os.path.isfile(f)]
-    files += sorted(f for f in glob.glob("library/*.md") if f not in RULEBOOK_NOT_ACTIVE)
-    return files
-
-
-def product_active():
-    seen = []
-    for g in PRODUCT_RULE_GLOBS:
-        for f in sorted(glob.glob(g)):
-            if os.path.isfile(f) and f not in seen:
-                seen.append(f)
-    return seen
-
-
-def budget(name, files, limit):
-    n = sum(words(f) for f in files)
-    if n > limit:
-        return n, "FAIL: %s is %d words, over its %d budget by %d. Cut elsewhere in this pull request (library/changing-the-rulebook.md)." % (
-            name, n, limit, n - limit)
-    return n, "ok: %s is %d words (budget %d)" % (name, n, limit)
-
-
 def constitution_faults(text):
     """What is wrong with a design/CONSTITUTION.md, as a list of reasons."""
-    bad, section, before, approvals = [], None, [], []
-    if len(text.split()) > CONSTITUTION_WORDS:
-        bad.append("it is %d words; the cap is %d" % (len(text.split()), CONSTITUTION_WORDS))
+    bad, section, approvals = [], None, []
     for line in text.splitlines():
         m = re.match(r"^##\s+(.+?)\s*$", line)
         if m:
@@ -91,8 +46,6 @@ def constitution_faults(text):
             continue
         if re.match(r"^#{3,}\s", line):
             bad.append("sub-heading '%s': the constitution has only its five headings" % line.lstrip("#").strip())
-        if section is None and not line.startswith("# "):
-            before.append(line)
         # Every line under the last heading is an approval, or the indented
         # continuation of one. An indented list item is an approval of its own
         # and never borrows its parent's date or picture.
@@ -106,8 +59,6 @@ def constitution_faults(text):
             bad.append("an approval with no date: %s" % item[:80])
         if not PICTURE.search(item):
             bad.append("an approval naming no picture (a path or link): %s" % item[:80])
-    if len(" ".join(before).split()) > INTRO_WORDS:
-        bad.append("more than %d words before its first heading: rules go under the five headings" % INTRO_WORDS)
     return bad
 
 
@@ -203,32 +154,9 @@ def is_rule_page(path, product):
 def main(argv):
     product = "--product" in argv
     fail = 0
-
-    def arg(name, default=None):
-        return int(argv[argv.index(name) + 1]) if name in argv else default
-
-    if product:
-        pb, ab = arg("--path-budget"), arg("--active-budget")
-        if pb is None or ab is None:
-            print("FAIL: a product passes --path-budget and --active-budget")
-            return 1
-        path = [f for f in PRODUCT_PATH if os.path.isfile(f)]
-        active = product_active()
-        screen = path + ([argv[argv.index("--tokens") + 1]] if "--tokens" in argv else [])
-    else:
-        pb, ab = RULEBOOK_PATH_BUDGET, RULEBOOK_ACTIVE_BUDGET
-        path, active, screen = list(RULEBOOK_PATH), rulebook_active(), list(RULEBOOK_SCREEN)
-    for name, files, limit in (("the reading path", path, pb), ("the active rules", active, ab)):
-        if limit is None:
-            print("size: %s is %d words (no ceiling; library/changing-the-rulebook.md)" % (name, sum(words(f) for f in files)))
-            continue
-        _, line = budget(name, files, limit)
-        print(line)
-        fail |= line.startswith("FAIL")
-    print("size: the screen path here is %d words (%s)" % (sum(words(f) for f in screen), ", ".join(screen)))
-    if active:
-        big = max(active, key=words)
-        print("size: the largest active page is %s, %d words" % (big, words(big)))
+    for retired in ("--path-budget", "--active-budget", "--tokens"):
+        if retired in argv:
+            print("note: %s is retired and caps nothing (decision 0026: no word limits); drop it" % retired)
     if product and os.path.isfile("design/CONSTITUTION.md"):
         with open("design/CONSTITUTION.md", encoding="utf-8") as f:
             faults = constitution_faults(f.read())
@@ -272,8 +200,8 @@ def selftest():
          len(constitution_faults("## Approved by picture\n\n- The plaque, 12 August 2026\n")), 1)
     want("a sub-heading", len(constitution_faults("## Money\n\n### Style\n")), 1)
     want("a deeper sub-heading", len(constitution_faults("## Money\n\n#### Style\n")), 1)
-    want("a long preamble", len(constitution_faults("# C\n\n" + "word " * 90 + "\n\n## Tokens\n")), 1)
-    want("an over-long constitution", len(constitution_faults("## Domain law\n\n" + "word " * 460)), 1)
+    want("a long constitution is no fault (no word limits)",
+         constitution_faults("# C\n\n" + "word " * 90 + "\n\n## Domain law\n\n" + "word " * 2000), [])
     want("a paragraph of undated exceptions",
          len(constitution_faults("## Approved by picture\n\nThe old look stays, as agreed.\n")) > 0, True)
     want("none yet", constitution_faults("## Approved by picture\n\nNone yet.\n"), [])
@@ -299,39 +227,38 @@ def selftest():
     want("a library page is", is_rule_page("library/reviewer.md", False), True)
     want("a product's design page is", is_rule_page("design/HEMZ-VOICE.md", True), True)
     want("a product's PRODUCT.md is not", is_rule_page("PRODUCT.md", True), False)
-    want("the budgets' own file is", is_rule_page("product-reads/rules-check.py", False), True)
+    want("this check's own file is", is_rule_page("product-reads/rules-check.py", False), True)
     want("a filled line naming <product>-library", replaces_fault(
         "Replaces: the old `<product>-library` rule; products: none", ["AGENTS.md"]), None)
-    want("over budget", budget("x", [__file__], 1)[1].startswith("FAIL"), True)
-    # The wiring: main() on a made-up rulebook, over budget and under; the upgrade log
-    # and the archive never counted; a GitHub that does not answer fails the run.
+    # The wiring: main() on a made-up rulebook of any size passes; a GitHub that does
+    # not answer fails the run; a product's retired budget flags cap nothing.
     import contextlib, io, tempfile
-    global RULEBOOK_PATH_BUDGET, RULEBOOK_ACTIVE_BUDGET, pull_request
-    keep = (os.getcwd(), RULEBOOK_PATH_BUDGET, RULEBOOK_ACTIVE_BUDGET, pull_request)
+    global pull_request
+    keep = (os.getcwd(), pull_request)
     with tempfile.TemporaryDirectory() as d:
         os.chdir(d)
         try:
-            os.makedirs("library"); os.makedirs("juku-library")
-            for f, n in (("HOW-WE-BUILD.md", 10), ("README.md", 10), ("library/" + "a.md", 10),
-                         ("library/upgrade-log.md", 500), ("juku-library/X.md", 500)):
+            os.makedirs("library")
+            for f, n in (("HOW-WE-BUILD.md", 50000), ("README.md", 10), ("library/" + "a.md", 50000)):
                 with open(f, "w") as h:
                     h.write("word " * n)
-            want("the upgrade log and the archive are not active rules", rulebook_active(),
-                 ["HOW-WE-BUILD.md", "README.md", "library/" + "a.md"])
             pull_request = lambda: None
-            RULEBOOK_PATH_BUDGET, RULEBOOK_ACTIVE_BUDGET = 20, 30
             with contextlib.redirect_stdout(io.StringIO()):
-                want("under both budgets passes", main([]), 0)
-            RULEBOOK_PATH_BUDGET = 19
+                want("a rulebook of any size passes", main([]), 0)
+            with open("AGENTS.md", "w") as h:
+                h.write("word " * 50000)
+            os.makedirs("design")
+            with open("design/CONSTITUTION.md", "w") as h:
+                h.write("## Domain law\n\n" + "word " * 5000 + "\n")
+            said = io.StringIO()
+            with contextlib.redirect_stdout(said):
+                want("a product of any size, still passing the retired flags, passes",
+                     main(["--product", "--path-budget", "1", "--active-budget", "1"]), 0)
+            want("the retired flags are named for dropping", said.getvalue().count("is retired"), 2)  # --tokens not passed here
+            with open("design/CONSTITUTION.md", "w") as h:
+                h.write("## Style\n\nA bank statement.\n")
             with contextlib.redirect_stdout(io.StringIO()):
-                want("over the reading path's budget fails", main([]), 1)
-            RULEBOOK_PATH_BUDGET, RULEBOOK_ACTIVE_BUDGET = 20, 29
-            with contextlib.redirect_stdout(io.StringIO()):
-                want("a budget on the active rules, where one is set, still fails", main([]), 1)
-            RULEBOOK_ACTIVE_BUDGET = None
-            with contextlib.redirect_stdout(io.StringIO()):
-                want("the rulebook's active rules carry no ceiling", main([]), 0)
-            RULEBOOK_ACTIVE_BUDGET = 30
+                want("a product's constitution off its headings still fails", main(["--product"]), 1)
 
             def down():
                 raise OSError("no answer")
@@ -340,7 +267,7 @@ def selftest():
                 want("a GitHub that does not answer fails the run", main([]), 1)
         finally:
             os.chdir(keep[0])
-            RULEBOOK_PATH_BUDGET, RULEBOOK_ACTIVE_BUDGET, pull_request = keep[1], keep[2], keep[3]
+            pull_request = keep[1]
     print("ok: rules-check selftest, every case as it should be" if not bad else "FAIL: rules-check selftest")
     return 1 if bad else 0
 

@@ -12,7 +12,7 @@
 # has read clean — unread, or read and left a blocking finding on — or a change to the review
 # machinery while the newest canary on main is red, or a change to what runs that adds
 # no line to library/upgrade-log.md, and, through product-reads/rules-check.py,
-# a rule page over its word budget or a rule change without its Replaces: line,
+# a rule change without its Replaces: line or a constitution off its headings,
 # and a design brief check (product-reads/brief-check.py) that no longer refuses
 # a brief that plans the screen, overloads it or skips its slots.
 # Nothing else. A read by anybody the
@@ -22,8 +22,9 @@
 # gone with the second: see review-gate.py on CROSS_VENDOR. A header describing
 # a state the file can no longer reach is the drift this guard exists to catch,
 # so it is corrected here rather than left for the next reader to discover.
-# Word budgets, the Replaces: line and a product constitution's shape are
-# product-reads/rules-check.py's (his ruling, 20 October 2026: one in, one out), run below.
+# The Replaces: line and a product constitution's shape are
+# product-reads/rules-check.py's, run below. No page is held to a word count (his
+# ruling, 4 November 2026, decision 0026): the hierarchy is the guard, 2c below.
 set -euo pipefail
 cd "$(dirname "$0")"
 fail=0
@@ -36,8 +37,8 @@ part="${CHECK_PART:-whole}"
 case "$part" in whole|selftest|gate) ;; *) echo "FAIL: CHECK_PART is '$part'; it is selftest, gate or unset."; exit 1 ;; esac
 if [ "$part" != gate ]; then
 
-# 1. The rules' own guard: word budgets (hard), the Replaces: line in a pull
-# request that changes a rule page, and its own selftest.
+# 1. The rules' own guard: the Replaces: line in a pull request that changes a
+# rule page, and its own selftest.
 python3 -I product-reads/rules-check.py --selftest || fail=1
 python3 -I product-reads/rules-check.py || { echo "FAIL: see product-reads/rules-check.py's reason above."; fail=1; }
 
@@ -109,7 +110,8 @@ fi
 # ruling of 23 September 2026, decision 0005, issue #75). The README is its
 # index, both ways: a page the README does not name is never opened, and a
 # name with no page sends a session nowhere. Each page is one topic, says whom
-# it binds and when to open it (its words are budgeted by product-reads/rules-check.py).
+# it binds and when to open it, so a session loads only the pages its task names
+# (decision 0026: a hierarchy, never a word count).
 # A link to a page from
 # anywhere in this repository must resolve too, not only the README's: a list
 # of the files to search would be one more list to drift. With no page named there is no

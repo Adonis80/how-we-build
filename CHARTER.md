@@ -122,7 +122,7 @@ When a rule, requirement or design changes:
 
 Git history is the archive. Temporary reasoning belongs in the pull request and disappears when the work closes.
 
-Operating instructions and design rules carry hard word budgets (in this rulebook, its reading path; its other pages a reported size), because every session pays for them: one in, one out, counted by machine (`library/changing-the-rulebook.md`). A product's requirements, roadmap and locked figures carry none; semantic duplication and stale text are the problem there, not legitimate product complexity.
+No page carries a word limit (his ruling, 4 November 2026, decision 0026): trimming words to fit a number drops requirements. Every session pays for what it loads, so the rules are a hierarchy, each page opened only when its task needs it (`library/changing-the-rulebook.md`). Semantic duplication and stale text are the problem, not length.
 
 A new document is justified only when it owns durable information that cannot live clearly in an existing canonical owner.
 
