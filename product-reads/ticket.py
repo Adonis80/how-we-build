@@ -22,7 +22,8 @@ session reads as decision 0015 says (the README's *Products under this rulebook*
   ticket.py --selftest
 
 `check` fails a piece that does not resolve, an address naming more than one piece, a path
-outside its repository, a piece of any repository but how-we-build, a ticket without OWN (the rule it boots by), and a total over CAP
+outside its repository, a piece of any repository but how-we-build, a piece in juku-library/ (never loaded
+into a working session), a ticket without OWN (the rule it boots by), and a total over CAP
 tokens (bytes / 4, rounded up: an estimate a check can repeat, never a session's real
 size, which the size hook reads). Too big: the outgoing session splits the job; the
 successor is never handed the excess. Exit 0 passes; 1 names each fault.
@@ -36,6 +37,7 @@ import tempfile
 CAP = 40_000   # tokens a ticket may hand a successor: ~45k harness + this, under ~90k boot (#363)
 RULEBOOK = "how-we-build"
 HERE = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+ARCHIVE = "juku-library/"
 OWN = "how-we-build:library/session-changeover.md#The ticket"   # the rule a ticketed session boots by
 ITEM = re.compile(r"^\s*[-*]\s+(\S.*?)\s*$")
 
@@ -104,20 +106,31 @@ def md_piece(text, address):
     fence = False
     heads = []
     for i, line in enumerate(lines):
-        if line.lstrip().startswith("```"):
+        if line.lstrip().startswith(("```", "~~~")):
             fence = not fence
         m = None if fence else re.match(r"^(#{1,6})\s+(.*)$", line)
         if m:
             heads.append((i, len(m.group(1)), m.group(2)))
     hits = [n for n, (_, _, title) in enumerate(heads) if starts(title, address)]
-    n = one(hits, [heads[k][2] for k in hits], address)
-    if n is not None:
-        i, level, _ = heads[n]
-        end = next((j for j, lv, _ in heads[n + 1:] if lv <= level), len(lines))
-        return "\n".join(lines[i:end]).rstrip() + "\n"
     paras = re.split(r"\n\s*\n", text)
     bold = [(re.match(r"^\s*\*\*(.+?)\*\*", p), p) for p in paras]
     bold = [(m.group(1), p) for m, p in bold if m and starts(m.group(1), address)]
+
+    def heading(n):
+        i, level, _ = heads[n]
+        end = next((j for j, lv, _ in heads[n + 1:] if lv <= level), len(lines))
+        return "\n".join(lines[i:end]).rstrip() + "\n"
+
+    exact = [("h", n) for n in hits if norm(heads[n][2]) == norm(address)]
+    exact += [("b", k) for k, (t, _) in enumerate(bold) if norm(t) == norm(address)]
+    if len(exact) > 1:
+        ambiguous(address, [heads[n][2] if kind == "h" else bold[n][0] for kind, n in exact])
+    if exact:
+        kind, n = exact[0]
+        return heading(n) if kind == "h" else bold[n][1].strip() + "\n"
+    n = one(hits, [heads[k][2] for k in hits], address)
+    if n is not None:
+        return heading(n)
     k = one(list(range(len(bold))), [b[0] for b in bold], address)
     if k is not None:
         return bold[k][1].strip() + "\n"
@@ -194,6 +207,8 @@ def check(words, repos):
     for e in entries:
         if split(e)[0] != RULEBOOK:
             faults.append(f"'{e}': a ticket names only '{RULEBOOK}:' pieces for now; a product session reads as decision 0015 says")
+        elif split(e)[1].startswith(ARCHIVE):
+            faults.append(f"'{e}': '{ARCHIVE}' is never loaded into a working session (the README); read it at work, as `Added:`")
     report.append(f"  {total:>7,}  total (cap {CAP:,})")
     if total > CAP:
         faults.append(f"{total:,} tokens is over the {CAP:,} cap: split the job")
@@ -234,7 +249,8 @@ def selftest():
         open(os.path.join(prod, "AGENTS.md"), "w").write("# Agents\n\nRules.\n")
         open(os.path.join(rule, "README.md"), "w").write("# Rulebook\n\n## What every product carries\n\nThe list.\n\n## Where\n\nElse.\n")
         open(os.path.join(prod, "PRODUCT.md"), "w").write(
-            "# Product\n\n## §5 Prices\n\nFive.\n\n## §50 Other\n\nFifty.\n\n```\n## 6 not a heading\n```\n")
+            "# Product\n\n## §5 Prices\n\nFive.\n\n## §50 Other\n\nFifty.\n\n```\n## 6 not a heading\n```\n\n~~~\n## 7 not one either\n~~~\n\n"
+            "## Wait for it\n\nA heading.\n\n**Wait** the exact bold one.\n")
         open(os.path.join(prod, "MAP.md"), "w").write("# Map\n\n| K10 | Take an order | first |\n| K1 | Other | second |\n| Two words | multi | third |\n\n- K7 one\n- K7 two\n")
         json.dump({"_what_this_is": "order", "items": [{"id": "P62", "next": "build"}, {"id": "P6", "next": "no"}, {"id": "D1"}, {"key": "D1"}]},
                   open(os.path.join(prod, "roadmap.json"), "w"))
@@ -254,6 +270,8 @@ def selftest():
             ("heading runs to the next as high", read("how-we-build:notes/page.md#Part two"), lambda r: "Still two" in r and "Three" not in r),
             ("section sign, word break", read("hemz:PRODUCT.md#5"), lambda r: "Five" in r and "Fifty" not in r),
             ("fenced text is no heading", read("hemz:PRODUCT.md#6"), lambda r: r.startswith("ERR")),
+            ("a tilde fence is a fence too", read("hemz:PRODUCT.md#7"), lambda r: r.startswith("ERR")),
+            ("an exact bold title beats a heading it starts", read("hemz:PRODUCT.md#Wait"), lambda r: r.startswith("**Wait**")),
             ("map row by its id", read("hemz:MAP.md#K10"), lambda r: "Take an order" in r and "Other" not in r),
             ("a multi-word first cell", read("hemz:MAP.md#Two words"), lambda r: "multi" in r),
             ("a row id listed twice refused", read("hemz:MAP.md#K7"), lambda r: r.startswith("ERR")),
@@ -282,6 +300,7 @@ def selftest():
             ("a ticket without The ticket fails", check("Ticket:\n- how-we-build:notes/page.md#Part two\n", repos)[0], lambda f: any("boots by" in x for x in f)),
             ("The ticket not first fails", check("Ticket:\n- how-we-build:notes/page.md#Part two\n- " + OWN + "\n", repos)[0], lambda f: any("first" in x for x in f)),
             ("The ticket resolves on this repository's own page", own_page(), lambda r: r.startswith("**The ticket**")),
+            ("a piece in the archive fails", check(T + "- how-we-build:juku-library/x.md\n", repos)[0], lambda f: any("never loaded" in x for x in f)),
             ("a piece with no repository fails", check(T + "- notes/page.md#Part two\n", repos)[0], lambda f: any("decision 0015" in x for x in f)),
         ]
         for name, result, ok in cases + tickets:
