@@ -63,6 +63,8 @@ Words and figures sit straight on a near-black ground, like a private-bank state
 - Use gold text for back, add and selected. Back names the level it goes back to.
 - Make a tapped part the whole view, with at most two levels showing behind it, blurred. With reduced motion, the screen just changes, with no movement.
 - Put the › only on rows that open.
+- Give each level one job: its title, a line saying what it adds up to, and its parts. Any part with detail of its own opens as its own level by the drill-in, so detail is never crammed underneath. If a level would need more than one phone screen of rows, split it into deeper levels instead of shrinking the spacing.
+- Use only the kit's spacing values (gutters, row heights, gaps, the 76px under the bar). Spacing is never tightened to fit more in.
 
 **Never**
 - Never put content in boxes, cards, panels, borders or row dividers. The only filled things are controls and the (i) sheet.
@@ -82,7 +84,7 @@ Words and figures sit straight on a near-black ground, like a private-bank state
 4. **Use only `.j-` classes.** Write no inline styles and no new values. If something has no class here, it is a design question: send it back to the designer and don't invent a fix.
 5. **Wire the drill-in.** Tapping a row sets the levels to `.is-on`, `.is-behind-1` or `.is-behind-2` (`.is-off` for anything else) and puts `.is-forward` on the screen. Back drops the class from the screen and sets the leaving level to `.is-off`. Mark each arriving row `.j-in` with `--i`. Make the levels behind `inert`.
 
-## (e) Self-check: answer yes to all ten
+## (e) Self-check: answer yes to all eleven
 
 1. Is every piece of content sitting on the ground, with no boxes, cards, borders or row dividers?
 2. Is there exactly one hairline per total, directly above it, and no other line in the content?
@@ -94,3 +96,4 @@ Words and figures sit straight on a near-black ground, like a private-bank state
 8. Are back, add and selected shown as gold text, with no flat gold button anywhere?
 9. Does tapping a part make it the whole view, with the parent blurred behind and Back naming the parent, and does it simply switch with no movement when reduced motion is on?
 10. Is every size, colour, gap and timing on the screen one of the values in `juku-style.css`, with no inline styles?
+11. Does each level do one job and fit one phone screen, with any further detail opening as a deeper level rather than crammed in or squeezed tighter?
