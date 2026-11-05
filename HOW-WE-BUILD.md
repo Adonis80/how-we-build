@@ -6,7 +6,7 @@
 
 **Which rule wins** (his ruling, decision 0021).
 1. How we build: this rulebook. A product's `AGENTS.md` adds only what is true there.
-2. How a screen looks: `library/hypersolid.md` alone. A product's `design/CONSTITUTION.md` holds only its tokens, units, money and domain law, and the exceptions he approved by picture, each dated. Any other looks line in a product is void.
+2. How a screen looks: `library/hypersolid.md` alone, its look drawn in its kit, `library/juku-style.md`. A product's `design/CONSTITUTION.md` holds only its tokens, units, money and domain law, and the exceptions he approved by picture, each dated. Any other looks line in a product is void.
 3. What a product does: its `PRODUCT.md`, with `roadmap.json` for order and gates; where they disagree, `PRODUCT.md` wins and the copy is corrected.
 4. Memory, old chats and handovers are never rules. Memory holds who he is and how he likes to be spoken to, never how we build (his words).
 5. Two texts that disagree are a defect: the loser is deleted in the next change that touches it.

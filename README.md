@@ -31,6 +31,7 @@ The list, and how a repository makes itself current: `library/carries-sessions.m
 | Page | Open when |
 |---|---|
 | `library/hypersolid.md`: *HyperSolid* | a product's map or a screen is new or reworked, before code |
+| `library/juku-style.md`: *HyperSolid: the Juku style* | a screen is designed, built or reviewed, or a design brief is written |
 | `library/voice-native.md`: *Voice Native* | work touches a product's assistant or its actions, or a screen's spoken path is mapped or built |
 | `library/carries-sessions.md`: *What every product carries* | starting or stopping a product session, merging, setting up or checking a product's repository or what its checks run, or a slice touches money milestones, evidence or the product's own pages |
 | `library/session-changeover.md`: *Session changeover* | the Juku OS Project's session starts, deciding to stay or start fresh, and before leaving one |
