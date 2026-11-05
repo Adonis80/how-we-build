@@ -58,6 +58,7 @@ ITEM = re.compile(r"^\s*[-*]\s+(\S.*?)\s*$")
 MAP_LINE = re.compile(r"^- \*\*[^*]+\*\* — `https://github\.com/Adonis80/([\w.-]+)`\s*(\([^)]*\))?", re.M)
 NOTES = ("_what_this_is", "order_set", "money_milestones")   # a roadmap's top-level notes (decision 0015)
 WHOLE_NEVER = ("PRODUCT.md", "roadmap.json")                    # read by passage, never whole (decision 0015)
+BIG = 2_000   # a passage this many tokens or fewer is never "whole in all but name": a small file costs nothing
 
 
 def tokens(text):
@@ -249,8 +250,10 @@ def product_faults(entries, repos):
             faults.append(f"no '{p}:{f}#…' piece: name at least the passages the job needs (decision 0015)")
         for a in paths(f):
             try:
-                whole = os.path.getsize(locate(p, f, repos))
-                if a and len(piece(f"{p}:{f}#{a}", repos).encode("utf-8")) * 2 > whole:
+                whole = tokens(piece(f"{p}:{f}", repos) if f.endswith(".md") else
+                               json.dumps(json.loads(piece(f"{p}:{f}", repos)), indent=1, ensure_ascii=False))
+                n = tokens(piece(f"{p}:{f}#{a}", repos)) if a else 0
+                if n > BIG and n * 2 > whole:
                     faults.append(f"'{p}:{f}#{a}' is more than half the file: whole in all but name (decision 0015)")
             except (LookupError, ValueError, OSError, UnicodeDecodeError):
                 pass
@@ -339,13 +342,19 @@ def selftest():
         open(os.path.join(root, "myst", "AGENTS.md"), "w").write("# Myst\n")
         open(os.path.join(prod, "PRODUCT.md"), "w").write(
             "# Product\n\n## §5 Prices\n\nFive.\n\n## §50 Other\n\nFifty.\n\n```\n## 6 not a heading\n```\n\n~~~\n## 7 not one either\n~~~\n\n"
-            "## Wait for it\n\nA heading.\n\n**Wait** the exact bold one.\n")
+            "## Wait for it\n\nA heading.\n\n**Wait** the exact bold one.\n\n## Long\n\n" + "word " * 2000 + "\n")
         os.makedirs(os.path.join(prod, "hemz-library"))
         open(os.path.join(prod, "hemz-library", "paper.md"), "w").write("# Paper\n")
         open(os.path.join(prod, "MAP.md"), "w").write("# Map\n\n| K10 | Take an order | first |\n| K1 | Other | second |\n| Two words | multi | third |\n\n- K7 one\n- K7 two\n")
-        json.dump({"_what_this_is": "order", "items": [{"id": "P62", "next": "build"}, {"id": "P6", "next": "no"}, {"id": "D1"}, {"key": "D1"}]},
+        json.dump({"_what_this_is": "order", "items": [{"id": "P62", "next": "build"}, {"id": "P6", "next": "no"}, {"id": "D1"}, {"key": "D1"}]
+                   + [{"id": f"X{i}", "next": "a long line " * 10} for i in range(80)]},
                   open(os.path.join(prod, "roadmap.json"), "w"))
         open(os.path.join(rule, "big.md"), "w").write("x" * (4 * CAP + 8))
+        small = os.path.join(root, "small")
+        os.makedirs(small)
+        open(os.path.join(small, "AGENTS.md"), "w").write("# A\n")
+        open(os.path.join(small, "PRODUCT.md"), "w").write("# P\n\n## 5 Prices\n\nFive.\n")
+        json.dump({"_what_this_is": "order", "items": [{"id": "P62"}]}, open(os.path.join(small, "roadmap.json"), "w"))
         repos = {"how-we-build": rule, "hemz": prod, "Hemz-OS": prod, "myst": os.path.join(root, "myst"), "gone": prod}
 
         def read(entry):
@@ -402,6 +411,7 @@ def selftest():
             ("a roadmap note left off fails", check(drop("- Hemz-OS:roadmap.json#_what_this_is"), repos)[0], lambda f: any("#_what_this_is'" in x for x in f)),
             ("PRODUCT.md by its title, whole in all but name, fails", check(P + "- Hemz-OS:PRODUCT.md#Product\n", repos)[0], lambda f: any("more than half" in x for x in f)),
             ("roadmap.json's whole queue by its key fails", check(P + "- Hemz-OS:roadmap.json#items\n", repos)[0], lambda f: any("#items' is more than half" in x for x in f)),
+            ("a small file's note over half of it passes", check(P, {**repos, "Hemz-OS": small})[0], lambda f: f == []),
             ("a product's library paper fails", check(P + "- Hemz-OS:hemz-library/paper.md\n", repos)[0], lambda f: any("library is never loaded" in x for x in f)),
             ("no roadmap item fails", check(drop("- Hemz-OS:roadmap.json#P62"), repos)[0], lambda f: any("item the job builds" in x for x in f)),
             ("a product not given by --repo fails", check(P, {"how-we-build": rule})[0], lambda f: any("no repository named 'Hemz-OS'" in x for x in f)),
