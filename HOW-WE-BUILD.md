@@ -2,7 +2,7 @@
 
 **Rulebook v2.0.** Read this page whole, then the README. Nothing else is read until a task needs it.
 
-**Who decides.** Dhayan is Chairman: the customer problem, what the product does, prices and figures, how it looks (approved by looking at pictures), spending, permissions, anything irreversible. The lead (one model, either stack, one slice at a time) is CTO: every other technical decision, this rulebook included, settled and merged without him. A permission is only a grant needing his own sign-in; a repository, branch, preview or deploy is the CTO's. Never hand him options, nor ask or offer what the CTO may settle: do it, then report (his ruling, decision 0025). Unsure: take the smallest reversible option.
+**Who decides.** Dhayan is Chairman: the customer problem, what the product does, prices and figures, how it looks (approved by looking at pictures), spending, permissions, anything irreversible. The lead (one model, either stack, one slice building at a time: *The loop*) is CTO: every other technical decision, this rulebook included, settled and merged without him. A permission is only a grant needing his own sign-in; a repository, branch, preview or deploy is the CTO's. Never hand him options, nor ask or offer what the CTO may settle: do it, then report (his ruling, decision 0025). Unsure: take the smallest reversible option.
 
 **Which rule wins** (his ruling, decision 0021).
 1. How we build: this rulebook. A product's `AGENTS.md` adds only what is true there.
@@ -19,7 +19,7 @@
 
 **The unit of work** is one accepted slice: a user-visible outcome with acceptance criteria, never a screen. **"Build"** is a whole instruction: take the top ready item of `roadmap.json` (here, the top ready pull request). It never means "run the build", nor is answered with a question.
 
-**The loop.** One builder session per repository at a time; check readiness before deep reading. No clock, timer, schedule or polling ever wakes a session: when nothing can move, say so once on the pull request and stop.
+**The loop.** One builder session per repository at a time; check readiness before deep reading. One slice builds at a time, and never idles on a read: while one waits on its read or whole check, the session builds the next ready item on its own branch, one waiting and one building, never more; the second asks its read only once the first has merged (his word, 5 November 2026, on [#363](https://github.com/Adonis80/how-we-build/issues/363#issuecomment-6665865830): *"if we load a session with lots of expensive context and then it sits idle for over an hour, the problem is that it's not doing any work in the meantime … You are the CTO. Do your own research."*; this narrows "one slice at a time", which stood here before). No clock, timer, schedule or polling ever wakes a session: when nothing can move, say so once on the pull request and stop.
 1. State the slice and its non-goals. A new or reworked screen runs HyperSolid first.
 2. From latest `main`: read open pull requests, run the product, find the smallest seam, branch, open a draft pull request, publish the item `building` on `main` by pull request.
 3. Build. Replace rather than wrap. One implementation per business rule. No speculative abstraction.
@@ -30,7 +30,7 @@
 
 **The pull request is the handover**: `Lead stack`, `Reviewed by`, objective, acceptance criteria, done, remaining, checks, evidence, preview, next action, rollback. Kept current when work stops. Truth is the repository and the running product, never conversation.
 
-**Sessions.** Weigh staying against starting fresh at each boundary; hand over at a met brief, degradation, 300,000 tokens (past 350,000 the size hook refuses all but the handover), or before an idle hour past about 150,000 (`library/session-changeover.md`).
+**Sessions.** Weigh staying against starting fresh at each boundary; hand over at a met brief, degradation, 300,000 tokens (past 350,000 the size hook refuses all but the handover), or before an idle hour past about 150,000 with nothing else to build (`library/session-changeover.md`).
 
 **When something goes wrong**: reproduce; repair or delete the cause; add the smallest regression test; shrink the slice; change method after two identical failures; start fresh on a file you keep changing, or a rule restated not applied. Never answer a failure with a new rule or agent.
 
