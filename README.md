@@ -6,7 +6,7 @@ The rulebook for every product Dhayan's AI studio builds: **how** we work. Each 
 
 ## Products under this rulebook
 
-To read one (decision 0015): its `AGENTS.md` whole; from `PRODUCT.md`, its purpose, the rules it holds across every slice and the passages the task needs, with what they reference; from `roadmap.json`, how its order is set (its `_what_this_is` and order note), money milestones, open items with their `next` lines, the `retired` notes when an ideas review is due, and a `done` item only when its evidence is needed. A session whose task carries a ticket reads the ticket's pieces instead, the product's `AGENTS.md` whole among them, which `product-reads/ticket.py` holds.
+To read one (decision 0015): its `AGENTS.md` whole; from `PRODUCT.md`, its purpose, the rules it holds across every slice and the passages the task needs, with what they reference; from `roadmap.json`, how its order is set (its `_what_this_is` and order note), money milestones, open items with their `next` lines, the `retired` notes when an ideas review is due, and a `done` item only when its evidence is needed. A session whose task carries a ticket reads the ticket's pieces instead, the product's `AGENTS.md` whole and *What every product carries* among them, which `product-reads/ticket.py` holds.
 
 - **Myst** — `https://github.com/Adonis80/myst` (private; paused 28 Oct 2026, his word). The App for Perfume Collectors: a Personal Nose that learns a person's taste, samples picked for them, and the value on collectors' shelves.
 - **Hemz OS** — `https://github.com/Adonis80/Hemz-OS` (private). The operating system for an alterations business, grown out of Alma's Alterations in Brighton.

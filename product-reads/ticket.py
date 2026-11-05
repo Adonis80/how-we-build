@@ -25,8 +25,9 @@ file. The block ends at the first line that is not an item.
 
 `check` fails a piece that does not resolve, a path outside its repository, a total over
 CAP tokens (bytes / 4, rounded up: an estimate a check can repeat, never a session's real
-size, which the size hook reads), and, with --product, a ticket without that product's
-`AGENTS.md` whole (decision 0015 keeps it read whole). Too big: the outgoing session splits
+size, which the size hook reads), and, for each product it names (any repository but how-we-build, or --product), a ticket without its
+`AGENTS.md` whole (decision 0015 keeps it read whole) and the README's *What every product carries*, where that file sends its session. An address matching more than one piece
+by the start of its title, with no exact match, is refused. Too big: the outgoing session splits
 the job; the successor is never handed the excess. Exit 0 passes; 1 names each fault.
 """
 import json
@@ -36,6 +37,8 @@ import sys
 import tempfile
 
 CAP = 40_000   # tokens a ticket may hand a successor: ~45k harness + this, under ~90k boot (#363)
+RULEBOOK = "how-we-build"
+CARRIES = "how-we-build:README.md#What every product carries"
 ITEM = re.compile(r"^\s*[-*]\s+(\S.*?)\s*$")
 
 
@@ -75,6 +78,20 @@ def starts(text, address):
     return t == a or (t.startswith(a) and not t[len(a)].isalnum())
 
 
+def one(hits, titles, address):
+    """The one piece an address names: its exact match, else its only prefix match."""
+    exact = [h for h, t in zip(hits, titles) if norm(t) == norm(address)]
+    if len(exact) == 1 or (exact and len(hits) == len(exact)):
+        return exact[0] if len(exact) == 1 else ambiguous(address, titles)
+    if len(hits) > 1:
+        ambiguous(address, titles)
+    return hits[0] if hits else None
+
+
+def ambiguous(address, titles):
+    raise LookupError(f"'{address}' names more than one piece: " + "; ".join(t[:40] for t in titles))
+
+
 def md_piece(text, address):
     lines = text.split("\n")
     fence = False
@@ -85,15 +102,18 @@ def md_piece(text, address):
         m = None if fence else re.match(r"^(#{1,6})\s+(.*)$", line)
         if m:
             heads.append((i, len(m.group(1)), m.group(2)))
-    for n, (i, level, title) in enumerate(heads):
-        if starts(title, address):
-            end = next((j for j, lv, _ in heads[n + 1:] if lv <= level), len(lines))
-            return "\n".join(lines[i:end]).rstrip() + "\n"
+    hits = [n for n, (_, _, title) in enumerate(heads) if starts(title, address)]
+    n = one(hits, [heads[k][2] for k in hits], address)
+    if n is not None:
+        i, level, _ = heads[n]
+        end = next((j for j, lv, _ in heads[n + 1:] if lv <= level), len(lines))
+        return "\n".join(lines[i:end]).rstrip() + "\n"
     paras = re.split(r"\n\s*\n", text)
-    for p in paras:
-        m = re.match(r"^\s*\*\*(.+?)\*\*", p)
-        if m and starts(m.group(1), address):
-            return p.strip() + "\n"
+    bold = [(re.match(r"^\s*\*\*(.+?)\*\*", p), p) for p in paras]
+    bold = [(m.group(1), p) for m, p in bold if m and starts(m.group(1), address)]
+    k = one(list(range(len(bold))), [b[0] for b in bold], address)
+    if k is not None:
+        return bold[k][1].strip() + "\n"
     for line in lines:
         cell = re.match(r"^\s*(?:\||[-*]|\d+\.)\s*([^|]*?)\s*(?:\||$|\s)", line)
         if cell and cell.group(1) and norm(cell.group(1)) == norm(address):
@@ -157,8 +177,12 @@ def check(words, repos, product=None):
             report.append(f"  {n:>7,}  {e}")
         except (LookupError, ValueError, UnicodeDecodeError) as err:
             faults.append(f"'{e}': {err}")
-    if product and f"{product}:AGENTS.md" not in entries:
-        faults.append(f"no '{product}:AGENTS.md' (whole): a product's AGENTS.md is read whole (decision 0015)")
+    products = sorted({split(e)[0] for e in entries} - {"", RULEBOOK} | ({product} if product else set()))
+    for name in products:
+        if f"{name}:AGENTS.md" not in entries:
+            faults.append(f"no '{name}:AGENTS.md' (whole): a product's AGENTS.md is read whole (decision 0015)")
+    if products and CARRIES not in entries:
+        faults.append(f"no '{CARRIES}': a product's AGENTS.md sends its session there first")
     report.append(f"  {total:>7,}  total (cap {CAP:,})")
     if total > CAP:
         faults.append(f"{total:,} tokens is over the {CAP:,} cap: split the job")
@@ -192,6 +216,7 @@ def selftest():
             "# Page\n\nIntro.\n\n**After a wait** (his ruling). Stays subscribed.\n\n"
             "**Afterwards** another.\n\n## Part two\n\nBody two.\n\n### Deeper\n\nStill two.\n\n## Part three\n\nThree.\n")
         open(os.path.join(prod, "AGENTS.md"), "w").write("# Agents\n\nRules.\n")
+        open(os.path.join(rule, "README.md"), "w").write("# Rulebook\n\n## What every product carries\n\nThe list.\n\n## Where\n\nElse.\n")
         open(os.path.join(prod, "PRODUCT.md"), "w").write(
             "# Product\n\n## §5 Prices\n\nFive.\n\n## §50 Other\n\nFifty.\n\n```\n## 6 not a heading\n```\n")
         open(os.path.join(prod, "MAP.md"), "w").write("# Map\n\n| K10 | Take an order | first |\n| K1 | Other | second |\n")
@@ -208,6 +233,8 @@ def selftest():
 
         cases = [
             ("bold paragraph", read("how-we-build:notes/page.md#After a wait"), lambda r: r.startswith("**After a wait**") and "Afterwards" not in r),
+            ("an address naming two pieces refused", read("how-we-build:notes/page.md#Part"), lambda r: r.startswith("ERR") and "more than one" in r),
+            ("an exact title wins over a longer one", read("how-we-build:notes/page.md#Afterwards"), lambda r: r.startswith("**Afterwards**")),
             ("heading runs to the next as high", read("how-we-build:notes/page.md#Part two"), lambda r: "Still two" in r and "Three" not in r),
             ("section sign, word break", read("hemz:PRODUCT.md#5"), lambda r: "Five" in r and "Fifty" not in r),
             ("fenced text is no heading", read("hemz:PRODUCT.md#6"), lambda r: r.startswith("ERR")),
@@ -221,14 +248,16 @@ def selftest():
             ("leaving the repository refused", read("hemz:../rule/notes/page.md"), lambda r: r.startswith("ERR")),
             ("absolute path refused", read("hemz:" + os.path.join(prod, "AGENTS.md")), lambda r: r.startswith("ERR")),
         ]
-        good = "Ticket:\n- hemz:AGENTS.md\n- hemz:roadmap.json#P62\n- how-we-build:notes/page.md#After a wait\n\nRest of the words.\n- not an item of the ticket: nope.md\n"
+        good = "Ticket:\n- hemz:AGENTS.md\n- how-we-build:README.md#What every product carries\n- hemz:roadmap.json#P62\n- how-we-build:notes/page.md#After a wait\n\nRest of the words.\n- not an item of the ticket: nope.md\n"
         tickets = [
             ("a good ticket passes", check(good, repos, "hemz")[0], lambda f: f == []),
             ("no Ticket line fails", check("Words only.", repos)[0], lambda f: f != []),
             ("an empty ticket fails", check("Ticket:\n\nNothing.", repos)[0], lambda f: f != []),
             ("an unresolved piece fails", check("Ticket:\n- hemz:PRODUCT.md#9\n", repos)[0], lambda f: f != []),
             ("over the cap fails", check("Ticket:\n- hemz:big.md\n", repos)[0], lambda f: any("cap" in x for x in f)),
-            ("a product ticket without its AGENTS.md fails", check("Ticket:\n- hemz:roadmap.json#P62\n", repos, "hemz")[0], lambda f: any("AGENTS.md" in x for x in f)),
+            ("a product ticket without its AGENTS.md fails", check("Ticket:\n- hemz:roadmap.json#P62\n- how-we-build:README.md#What every product carries\n", repos)[0], lambda f: any("AGENTS.md" in x for x in f)),
+            ("a product ticket without What every product carries fails", check("Ticket:\n- hemz:AGENTS.md\n", repos)[0], lambda f: any("What every product carries" in x for x in f)),
+            ("a rulebook-only ticket needs neither", check("Ticket:\n- how-we-build:notes/page.md#Part two\n", repos)[0], lambda f: f == []),
             ("a product AGENTS.md by address is not whole", check("Ticket:\n- hemz:AGENTS.md#Agents\n", repos, "hemz")[0], lambda f: any("AGENTS.md" in x for x in f)),
         ]
         for name, result, ok in cases + tickets:
