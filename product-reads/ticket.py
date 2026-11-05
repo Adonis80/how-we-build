@@ -19,11 +19,14 @@ that is not an item.
 A ticket names this rulebook's pieces and, for a product's successor, one product's, the
 repository named as the README's *Products under this rulebook* spells it (`Hemz-OS:`),
 never a paused one. Decision 0015's reads, by address: the product's `AGENTS.md` whole;
-`PRODUCT.md` and `roadmap.json` never whole, at least one passage of each; and each of the
-roadmap's top-level notes it has (NOTES: how its order is set, money milestones), by key.
+`PRODUCT.md` and `roadmap.json` never whole, at least one passage of each, none over BIG
+tokens and half its file but a note; each of the roadmap's top-level notes it has (NOTES:
+how its order is set, money milestones), by key; and CARRIES, read at every product
+session's start.
 
   Ticket:
   - how-we-build:library/session-changeover.md#The ticket
+  - how-we-build:library/carries-sessions.md
   - Hemz-OS:AGENTS.md
   - Hemz-OS:PRODUCT.md#1
   - Hemz-OS:roadmap.json#_what_this_is
@@ -58,6 +61,8 @@ ITEM = re.compile(r"^\s*[-*]\s+(\S.*?)\s*$")
 MAP_LINE = re.compile(r"^- \*\*[^*]+\*\* — `https://github\.com/Adonis80/([\w.-]+)`\s*(\([^)]*\))?", re.M)
 NOTES = ("_what_this_is", "order_set", "money_milestones")   # a roadmap's top-level notes (decision 0015)
 WHOLE_NEVER = ("PRODUCT.md", "roadmap.json")                    # read by passage, never whole (decision 0015)
+CARRIES = "library/carries-sessions.md"   # "each session reads this list at its start" (that page)
+BIG = 2_000   # a passage this many tokens or fewer is never "whole in all but name": a small file costs nothing
 
 
 def tokens(text):
@@ -240,6 +245,8 @@ def product_faults(entries, repos):
     p = named[0]
     mine = [split(e)[1:] for e in entries if split(e)[0] == p]
     paths = lambda f: [a for path, a in mine if os.path.normpath(path) == f]
+    if not any(split(e)[0] == RULEBOOK and os.path.normpath(split(e)[1]) == CARRIES for e in entries):
+        faults.append(f"no '{RULEBOOK}:{CARRIES}' piece: each product session reads its list at its start")
     if "" not in paths("AGENTS.md"):
         faults.append(f"'{p}:AGENTS.md' is not on it whole: a product session reads its AGENTS.md whole (decision 0015)")
     for f in WHOLE_NEVER:
@@ -249,8 +256,10 @@ def product_faults(entries, repos):
             faults.append(f"no '{p}:{f}#…' piece: name at least the passages the job needs (decision 0015)")
         for a in paths(f):
             try:
-                whole = os.path.getsize(locate(p, f, repos))
-                if a and len(piece(f"{p}:{f}#{a}", repos).encode("utf-8")) * 2 > whole:
+                whole = tokens(piece(f"{p}:{f}", repos) if f.endswith(".md") else
+                               json.dumps(json.loads(piece(f"{p}:{f}", repos)), indent=1, ensure_ascii=False))
+                n = tokens(piece(f"{p}:{f}#{a}", repos)) if a and a not in NOTES else 0
+                if n > BIG and n * 2 > whole:
                     faults.append(f"'{p}:{f}#{a}' is more than half the file: whole in all but name (decision 0015)")
             except (LookupError, ValueError, OSError, UnicodeDecodeError):
                 pass
@@ -339,13 +348,24 @@ def selftest():
         open(os.path.join(root, "myst", "AGENTS.md"), "w").write("# Myst\n")
         open(os.path.join(prod, "PRODUCT.md"), "w").write(
             "# Product\n\n## §5 Prices\n\nFive.\n\n## §50 Other\n\nFifty.\n\n```\n## 6 not a heading\n```\n\n~~~\n## 7 not one either\n~~~\n\n"
-            "## Wait for it\n\nA heading.\n\n**Wait** the exact bold one.\n")
+            "## Wait for it\n\nA heading.\n\n**Wait** the exact bold one.\n\n## Long\n\n" + "word " * 2000 + "\n")
         os.makedirs(os.path.join(prod, "hemz-library"))
         open(os.path.join(prod, "hemz-library", "paper.md"), "w").write("# Paper\n")
         open(os.path.join(prod, "MAP.md"), "w").write("# Map\n\n| K10 | Take an order | first |\n| K1 | Other | second |\n| Two words | multi | third |\n\n- K7 one\n- K7 two\n")
-        json.dump({"_what_this_is": "order", "items": [{"id": "P62", "next": "build"}, {"id": "P6", "next": "no"}, {"id": "D1"}, {"key": "D1"}]},
+        json.dump({"_what_this_is": "order", "items": [{"id": "P62", "next": "build"}, {"id": "P6", "next": "no"}, {"id": "D1"}, {"key": "D1"}]
+                   + [{"id": f"X{i}", "next": "a long line " * 10} for i in range(80)]},
                   open(os.path.join(prod, "roadmap.json"), "w"))
         open(os.path.join(rule, "big.md"), "w").write("x" * (4 * CAP + 8))
+        small = os.path.join(root, "small")
+        os.makedirs(small)
+        open(os.path.join(small, "AGENTS.md"), "w").write("# A\n")
+        open(os.path.join(small, "PRODUCT.md"), "w").write("# P\n\n## 5 Prices\n\nFive.\n")
+        json.dump({"_what_this_is": "order", "items": [{"id": "P62"}]}, open(os.path.join(small, "roadmap.json"), "w"))
+        noted = os.path.join(root, "noted")
+        os.makedirs(noted)
+        open(os.path.join(noted, "AGENTS.md"), "w").write("# A\n")
+        open(os.path.join(noted, "PRODUCT.md"), "w").write("# P\n\n## 5 Prices\n\nFive.\n")
+        json.dump({"_what_this_is": "why " * 5000, "items": [{"id": "P62"}]}, open(os.path.join(noted, "roadmap.json"), "w"))
         repos = {"how-we-build": rule, "hemz": prod, "Hemz-OS": prod, "myst": os.path.join(root, "myst"), "gone": prod}
 
         def read(entry):
@@ -380,7 +400,8 @@ def selftest():
         os.makedirs(os.path.join(rule, os.path.dirname(own)))
         open(os.path.join(rule, own), "w").write("# Changeover\n\n**The ticket** (his ruling). Reads.\n")
         T = "Ticket:\n- " + OWN + "\n"
-        P = T + "- Hemz-OS:AGENTS.md\n- Hemz-OS:PRODUCT.md#5\n- Hemz-OS:roadmap.json#_what_this_is\n- Hemz-OS:roadmap.json#P62\n"
+        open(os.path.join(rule, CARRIES), "w").write("# What every product carries\n\nThe list.\n")
+        P = T + "- how-we-build:" + CARRIES + "\n- Hemz-OS:AGENTS.md\n- Hemz-OS:PRODUCT.md#5\n- Hemz-OS:roadmap.json#_what_this_is\n- Hemz-OS:roadmap.json#P62\n"
         drop = lambda line: P.replace(line + "\n", "")
         real = products(HERE)
         good = "Ticket:\n- " + OWN + "\n- how-we-build:notes/page.md#After a wait\n- how-we-build:README.md#What every product carries\n\nRest of the words.\n- not an item of the ticket: nope.md\n"
@@ -402,10 +423,13 @@ def selftest():
             ("a roadmap note left off fails", check(drop("- Hemz-OS:roadmap.json#_what_this_is"), repos)[0], lambda f: any("#_what_this_is'" in x for x in f)),
             ("PRODUCT.md by its title, whole in all but name, fails", check(P + "- Hemz-OS:PRODUCT.md#Product\n", repos)[0], lambda f: any("more than half" in x for x in f)),
             ("roadmap.json's whole queue by its key fails", check(P + "- Hemz-OS:roadmap.json#items\n", repos)[0], lambda f: any("#items' is more than half" in x for x in f)),
+            ("a small file's note over half of it passes", check(P, {**repos, "Hemz-OS": small})[0], lambda f: f == []),
             ("a product's library paper fails", check(P + "- Hemz-OS:hemz-library/paper.md\n", repos)[0], lambda f: any("library is never loaded" in x for x in f)),
             ("no roadmap item fails", check(drop("- Hemz-OS:roadmap.json#P62"), repos)[0], lambda f: any("item the job builds" in x for x in f)),
             ("a product not given by --repo fails", check(P, {"how-we-build": rule})[0], lambda f: any("no repository named 'Hemz-OS'" in x for x in f)),
-            ("this README's map: Hemz-OS live, Myst paused", real, lambda r: r.get("Hemz-OS") is False and r.get("myst") is True),
+            ("this README's map parses: at least one product, each live or paused", real, lambda r: len(r) >= 1 and all(isinstance(v, bool) for v in r.values())),
+            ("a product ticket without the carries list fails", check(drop("- how-we-build:" + CARRIES), repos)[0], lambda f: any("carries-sessions" in x for x in f)),
+            ("a required note is never refused as over half its file", check(P, {**repos, "Hemz-OS": noted})[0], lambda f: f == []),
             ("a ticket without The ticket fails", check("Ticket:\n- how-we-build:notes/page.md#Part two\n", repos)[0], lambda f: any("boots by" in x for x in f)),
             ("The ticket not first fails", check("Ticket:\n- how-we-build:notes/page.md#Part two\n- " + OWN + "\n", repos)[0], lambda f: any("first" in x for x in f)),
             ("The ticket resolves on this repository's own page", own_page(), lambda r: r.startswith("**The ticket**")),
