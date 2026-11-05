@@ -1631,13 +1631,15 @@ def _check_read_loosenings():
 # instructions are read as code by reviewer-main. Replayed on this
 # repository's last 20 merged pull requests, it moved none: 18 read risky,
 # each for a gate file it touched.
-# Three pages are risky by name: library/deploy.md, which every product's deploy
+# Four pages are risky by name: library/deploy.md, which every product's deploy
 # is built from, put here by the finding #226's first read left on it (16
 # October 2026), as the rule above says a missed risky change is;
 # library/project-instructions.md, whose templates carry the standing
 # permissions every Project installs, by #302's first read (3 November 2026);
-# and library/consultant.md, which sets what the consultant may write on GitHub,
-# by #331's first read (4 November 2026). A till is
+# library/consultant.md, which sets what the consultant may write on GitHub,
+# by #331's first read (4 November 2026); and library/carries-sessions.md,
+# which holds every product's standing permission and its clock-tool lists,
+# by #354's second read (5 November 2026). A till is
 # pricing too, as a quote and a checkout are: Hemz OS's the-till.html holds the
 # Confirm guard that decides which figures may back a customer's price, and
 # was read as ordinary code until Adonis80/Hemz-OS#168's first read said so
@@ -1654,7 +1656,7 @@ RISK_CASE = 'case "${f,,}" in'
 # read is judged by, and a change to it was read as ordinary twice
 # (Adonis80/Hemz-OS#190's third read, #194's first). A class it already is,
 # not a seventh (decision 0019).
-RISK_GATE = ("check.sh|*/check.sh|review-gate.py|*/review-gate.py|board/build.py|library/deploy.md|library/project-instructions.md|library/consultant.md|agents.md|*/agents.md|"
+RISK_GATE = ("check.sh|*/check.sh|review-gate.py|*/review-gate.py|board/build.py|library/deploy.md|library/project-instructions.md|library/consultant.md|library/carries-sessions.md|agents.md|*/agents.md|"
              "model-registry/*|*/model-registry/*|product-reads/*|*/product-reads/*|.github/*|*/.github/*) risky=yes ;;")
 RISK_PRICING = "*pric*|*payment*|*billing*|*invoice*|*checkout*|*quote*|*till*) risky=yes ;;"
 RISK_DATA = ("*.sql|*migration*|*schema*|supabase/*|*/supabase/*|*backfill*|*purge*|*truncate*|"
@@ -1914,6 +1916,7 @@ CLASS_CASES = (
     (["README.md", "library/deploy.md"], "risky"),
     (["library/project-instructions.md"], "risky"),
     (["library/consultant.md"], "risky"),
+    (["library/carries-sessions.md"], "risky"),
     (["RICH-DATA.md"], "code"),
     (["library/hypersolid.md"], "code"),
     (["design/CONSTITUTION.md", "README.md"], "code"),
@@ -2318,6 +2321,7 @@ CLASS_LOOSENINGS = (
     ("the deploy page read as words", None, lambda t: t.replace(RISK_GATE, RISK_GATE.replace("library/deploy.md|", "", 1), 1)),
     ("the Projects' permissions read as words", None, lambda t: t.replace(RISK_GATE, RISK_GATE.replace("library/project-instructions.md|", "", 1), 1)),
     ("the consultant's write grant read as words", None, lambda t: t.replace(RISK_GATE, RISK_GATE.replace("library/consultant.md|", "", 1), 1)),
+    ("every product's standing permission read as words", None, lambda t: t.replace(RISK_GATE, RISK_GATE.replace("library/carries-sessions.md|", "", 1), 1)),
     ("the product read's rules read as ordinary", None, lambda t: t.replace(RISK_GATE, RISK_GATE.replace("product-reads/*|*/product-reads/*|", "", 1), 1)),
     ("an endpoint read as ordinary", None, lambda t: t.replace(RISK_BOUNDARY, RISK_BOUNDARY.replace("api/*|*/api/*|", "", 1), 1)),
     ("every script read as ordinary", None, lambda t: t.replace(RISK_RELEASE, RISK_RELEASE.replace("*.sh|", "", 1), 1)),
