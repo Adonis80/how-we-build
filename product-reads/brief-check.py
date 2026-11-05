@@ -26,9 +26,9 @@ VERBATIM = ("The task clear first, then the most spectacular, beautiful, creativ
 # The brief's slots, in order. "Look:" carries the tokens, counted on its own.
 SLOTS = ["Who:", "The job:", "What matters most:", "Real content:", "Rules:", "Look:"]
 BRIEF_WORDS = 150      # every slot but Look and the verbatim line
-# Look carries the tokens and names the kit, which goes as an attachment
-# (library/juku-style.md; his approval, 5 November 2026, #363). It has no word cap
-# (decision 0026); the plan words below still hold it.
+LOOK_WORDS = 80        # Look alone: the tokens and their meanings, never more content (#284's second read)
+# Look names the kit, which goes with the brief as an attachment
+# (library/juku-style.md; his approval, 5 November 2026, #363).
 KIT = re.compile(r"juku[ -]style", re.I)
 MOST_ITEMS = 3         # "What matters most": at most three, separated by ";"
 RULE_ITEMS = 3         # "Rules": at most three, separated by ";"
@@ -104,6 +104,8 @@ def check_brief(text):
     n = words(counted)
     if n > BRIEF_WORDS:
         faults.append(f"{n} words before Look; at most {BRIEF_WORDS}")
+    if words(look) > LOOK_WORDS:
+        faults.append(f"{words(look)} words in Look; at most {LOOK_WORDS}, the tokens and their meanings")
 
     def slot(name):
         i = body.find(name)
@@ -187,9 +189,10 @@ def selftest():
         ("brief", GOOD_BRIEF.replace("the next thing to give", "the next thing at 390px"), False),
         ("brief", GOOD_BRIEF.replace("the next thing to give", "its states"), False),
         ("correction", "Closer to the live picture. The owner prefers it.", False),
-        # Look names the kit, and has no word cap (decision 0026).
+        # Look is counted on its own, so content cannot move past it (#284's second read).
+        ("brief", GOOD_BRIEF.replace("Look: the", "Look: " + "word " * 80 + "the"), False),
+        # Look names the kit, which goes with the brief (#363).
         ("brief", GOOD_BRIEF.replace("the Juku style kit, attached; ", ""), False),
-        ("brief", GOOD_BRIEF.replace("Look: the", "Look: " + "word " * 80 + "the"), True),
         # The quote rule, both ways: a word quoted is exempt from the list, never from the count.
         ("brief", GOOD_BRIEF.replace("hourly rate £98.83", 'hourly rate £98.83, paid by "card"'), True),
         ("brief", GOOD_BRIEF.replace("hourly rate £98.83", "hourly rate £98.83, paid by card"), False),

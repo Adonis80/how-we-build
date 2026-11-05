@@ -6,9 +6,13 @@ HyperSolid's look, drawn: `library/hypersolid.md` owns how a screen looks, and t
 
 **Approved by him, 5 November 2026, 12:05: *"Kit matches"*** ([#363](https://github.com/Adonis80/how-we-build/issues/363#issuecomment-6657545568)), after comparing the blind test, a screen built from the kit alone (https://claude.ai/artifact/CaHkEXiUmtVXKunxRmCnjm), with the approved formula screen (https://claude.ai/artifact/85YmnKiJdRTG3saj96mJKh); transition, colours, type sizes and spacing confirmed identical by machine. Taken from the formula screen he approved by picture on 4 November 2026 (`Hemz-OS` `hemz-library/design/price-calculator/2026-11-04-R2-Main.dc.html` and `-Along-the-hem.dc.html`). The draft, the blind test's source and the inventory mapping every element of those screens to a kit class stand at commit `385b54b` (branch `juku-style-kit-draft`). His approval covers what those screens show (decision 0024): where these words and the screens differ, the screens win, and the difference is corrected here.
 
-Every value is in `library/juku-style.css`. If a value is not in that file, the screen does not use it, save a product's colours.
+Every value is in `library/juku-style.css`. If a value is not in that file, the screen does not use it, save a product's colours and a new part he approves by picture (below).
 
 **Colours are each product's own** (`library/hypersolid.md`, *Palette rule*: the hues are his, the constitution's tokens are the values). The colour values in the stylesheet, and the meanings this page names (gold, turquoise, green, red), are Hemz's, from its constitution. Another product sets its own in its constitution's *Tokens*, mapped onto the kit's colour tokens (`--j-ground`, the inks, `--j-gold`, `--j-turq`, `--j-green`, `--j-red`, the lines), and reads each colour named here as its own colour for that meaning; one meaning a colour still holds everywhere. Type, spacing, lines, corners, depth and motion are shared: a product departs from them only by an exception he approved by picture, dated in its constitution (`HOW-WE-BUILD.md`, *Which rule wins*).
+
+**What the kit does not draw yet.** It was lifted from one phone screen, so it holds the parts that screen shows. The desktop composition (`library/hypersolid.md`, Screen law 19 and step 4's desktop frame), charts and data spaces (*Moving charts and data spaces*), tabs and overlays (Spatial layer 2), and the gaps its blind test hit (a typed figure or text, confirm before a stop, a row of choices, read-only for staff, text inside the (i) sheet, full-screen safe-area gutters) are drawn by HyperSolid's steps 3 to 6 as before, in the kit's values wherever they apply. A new part or value is his by picture, and is added here in the slice that builds it, so the kit grows and is never worked round. The equation is for a level that adds something up; any other level keeps the kit's rows, type, spacing and lines, without operators.
+
+**Not covered by his approval** (decision 0024: it covers what the screens show). The stylesheet's values marked as not drawn in those screens (`--j-r-surface`, `--j-t`) and its light and midnight themes are not used until he approves them by picture; the midnight theme also gives done and measured one colour (`--j-green` and `--j-turq` both `#5FD3C4`), a clash to settle then.
 
 ## (a) The feel
 
@@ -61,7 +65,7 @@ Words and figures sit straight on a near-black ground, like a private-bank state
 **Always**
 - Put content straight on the ground.
 - Draw a hairline above each total and nowhere else in the content. The top bar's rule is the only other line.
-- Lay rows out as one equation, left to right: operator, name, figure, ›. Keep the operator column there even when it is empty, so the names line up.
+- On a level that adds something up, lay rows out as one equation, left to right: operator, name, figure, ›. Keep the operator column there even when it is empty, so the names line up.
 - Push the equation to the bottom of the level (`.j-foot`), so the screen's whole height is used. The title gets the space above it, and the thumb reaches the rows.
 - Keep sections clearly apart, each under its band heading (`.j-band-row`), never by a line or a box.
 - Colour every figure by what it means: gold for money, turquoise for anything measured (its unit too), ink for plain percentages.
@@ -83,14 +87,14 @@ Words and figures sit straight on a near-black ground, like a private-bank state
 - Never put explanations on the screen. They go behind the (i).
 - Never add shadows, glows or gradients to content. The only ones are the bar fade, the deep-level veil and the sheet's shadow.
 - Never round corners past 2px on controls (3px for surfaces, `--j-r-surface`).
-- Never introduce a size, colour, gap or timing that is not in `library/juku-style.css`, save the product's own colours from its constitution.
+- Never introduce a size, colour, gap or timing that is not in `library/juku-style.css`, save the product's own colours from its constitution and a new part he approved by picture, added here (*What the kit does not draw yet*).
 
 ## (d) How a new screen is made from this
 
-1. **Load the kit.** Link a copy of `library/juku-style.css`, its colour tokens set from the product's constitution where they differ. Put `.j-page` on the body and `.j-screen` on the root, and set `data-theme` on `<html>` only to switch to light or midnight.
+1. **Load the kit.** Load `library/juku-style.css` read from this repository at a pinned rulebook commit by the product's build, never a copy kept or edited in the product (`library/carries-sessions.md`, *Its pages*: "read from this repository, never copied down"); the product's own stylesheet sets the kit's colour tokens from its constitution where they differ. Put `.j-page` on the body and `.j-screen` on the root, and set `data-theme` on `<html>` only to switch to light or midnight.
 2. **Build the frame.** `.j-stage` holds one `.j-level` per level, with `.is-deep` on every level below the top one. `.j-bar` sits after the stage and contains back or brand, then `.j-bar-rule`, the (i) and Done. `.j-info` is optional and opens from the (i).
 3. **Map the content from the product's map.** Each level gets `.j-head` (crumb, title, lead) and then a `.j-eqn.j-foot` of `.j-row`s in the map's order. Each row's operator comes from the maths, and each figure is coloured by its meaning. Every subtotal and total is a `.j-sum`.
-4. **Use only `.j-` classes.** Write no inline styles and no new values. If something has no class here, it is a design question: send it back to the designer and don't invent a fix.
+4. **Use only `.j-` classes.** Write no inline styles and no new values. If something has no class here, it is a design question: send it back to the designer and don't invent a fix (*What the kit does not draw yet*).
 5. **Wire the drill-in.** Tapping a row sets the levels to `.is-on`, `.is-behind-1` or `.is-behind-2` (`.is-off` for anything else) and puts `.is-forward` on the screen. Back drops the class from the screen and sets the leaving level to `.is-off`. Mark each arriving row `.j-in` with `--i`. Make the levels behind `inert`.
 
 ## (e) Self-check: answer yes to all eleven
@@ -99,8 +103,8 @@ Words and figures sit straight on a near-black ground, like a private-bank state
 2. Is there exactly one hairline per total, directly above it, and no other line in the content?
 3. Does each money figure appear in gold, each measured figure and its unit in turquoise, and nothing else in either colour?
 4. Is the serif used only for the hero money?
-5. Do the operators sit in one 22px column, with the names lined up even where there is no operator?
-6. Does the equation sit at the bottom of the screen, within thumb reach, with every target at least 44px?
+5. On a level that adds up, do the operators sit in one 22px column, with the names lined up even where there is no operator?
+6. Do the working rows sit at the bottom of the screen, within thumb reach, with every target at least 44px?
 7. Are the crumbs, bands and total labels in spaced capitals, and only the title in sentence case?
 8. Are back, add and selected shown as gold text, with no flat gold button anywhere?
 9. Does tapping a part make it the whole view, with the parent blurred behind and Back naming the parent, and does it simply switch with no movement when reduced motion is on?
