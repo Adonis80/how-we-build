@@ -1,5 +1,7 @@
 # Juku style
 
+**Approved by him, 5 November 2026, 12:05: "Kit matches"**, after comparing the blind test (`blind-test-the-team.html`, https://claude.ai/artifact/CaHkEXiUmtVXKunxRmCnjm) with the approved formula screen (https://claude.ai/artifact/85YmnKiJdRTG3saj96mJKh); transition, colours, type sizes and spacing confirmed identical by machine.
+
 The one look for every screen in every product. Taken from the formula screen he approved by picture on 4 November 2026 (`hemz-library/design/price-calculator/2026-11-04-R2-Main.dc.html` and `-Along-the-hem.dc.html`). Every value is in `juku-style.css`. If a value is not in that file, the screen does not use it.
 
 ## (a) The feel
