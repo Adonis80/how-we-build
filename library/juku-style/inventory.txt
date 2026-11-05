@@ -1,0 +1,130 @@
+Every distinct visual element in the two approved screens -> kit class
+(source class or inline style in brackets; S = also in the Along-the-hem still)
+
+TOKENS / BASE
+ground colour #08090a [--ground] S                                  -> --j-ground
+ink #FFFDF7 [--ink] S                                               -> --j-ink
+mute #E0DCCE [--mute] S                                             -> --j-mute
+mute-2 #BFB9A9 [--mute-2] S                                         -> --j-mute-2
+ghost #9C9686 [--ghost] S                                           -> --j-ghost
+gold #FFB01F [--brass] S                                            -> --j-gold
+translucent gold rgba(255,176,31,.2) [--brass-dim, .tbtn.on]        -> --j-gold-dim
+turquoise #3DF2DC [--measure] S                                     -> --j-turq
+green #4DFFA3 [--signal] S                                          -> --j-green
+red #FF6A5A [--alert] (constitution meaning; no stop drawn here)    -> --j-red
+panel #0e0f11 [--panel, .tbtn fill] S                               -> --j-panel
+panel-2 #131417 [--panel-2, .pf-info]                               -> --j-panel-2
+line rgba(255,255,255,.10) [--line] S                               -> --j-line
+line-soft rgba(255,255,255,.055) [--line-soft] S                    -> --j-line-soft
+line-strong rgba(255,255,255,.16) [--line-strong, hover]            -> --j-line-strong
+gold 50% mix [.tbtn.on border]                                      -> --j-gold-edge
+green 45% mix [.pf-done border] S                                   -> --j-green-edge
+bar fade gradient ground 62% -> 0% [.pf-chrome] S                   -> --j-bar-fade
+deep-level veil 66% -> 38% [.pf-lvl.deep] S                         -> --j-veil
+page wash radial gradient [body::before] S                          -> --j-wash / .j-page::before
+sheet shadow 0 30px 50px -20px rgba(0,0,0,.95) [.pf-info]           -> --j-shadow-sheet
+sans family [--body/--display] S                                    -> --j-body / --j-display
+serif family [--serif] S                                            -> --j-serif
+all font sizes 42/30/27/20/16/15/13.5/12.5/11.5/10.5/10/9.5px S     -> --j-fs-*
+weights 400/450/500/600 S                                           -> --j-fw-*
+letter-spacings .2/.16/.14/.12/.02/-.02/-.01em S                    -> --j-ls-*
+line-heights 1/1.15/1.3/1.35/1.45/1.55 S                            -> --j-lh-*
+spacing values (14, 64, 8, 9, 76, 26, 7, 10, 68, 52, 6, 76, 14, 92, 18, 96, 40, 32, 44, 22, 12, 10) S -> --j-gutter ... --j-chev-w
+corners 2px [.pf-row, .tbtn, .mutebtn] S                            -> --j-r-control
+corners 3px surfaces (constitution; not drawn)                      -> --j-r-surface
+ease cubic-bezier(.22,1,.36,1) [--ease] S                           -> --j-ease
+150ms [--t-fast] S                                                  -> --j-t-fast
+260ms [--t] (sheet; unused here)                                    -> --j-t
+420ms [--t-slow]                                                    -> --j-t-slow
+60ms press [button:active]                                          -> --j-t-press
+rise .5s / 45ms / 12px [.pf-in, pf-rise]                            -> --j-rise / --j-rise-step / --j-rise-y
+light theme values [html[data-theme=light]]                         -> html[data-theme="light"]
+midnight theme values [html[data-theme=midnight]]                   -> html[data-theme="midnight"]
+dark colour-scheme [html]                                           -> html
+
+ELEMENTS
+page body (ground, ink, 13.5/1.45, tabular figures) [body] S        -> .j-page
+focus ring 1px gold, offset 2px [:focus-visible] S                  -> .j-screen button:focus-visible
+button press translateY(1px) [button:active] S                      -> .j-screen button:active
+screen frame 390x844 [.r6.pf] S                                     -> .j-screen
+gold text [.gold] S                                                 -> .j-gold
+turquoise text [.turq] S                                            -> .j-turq
+green text [.green] (sheet)                                         -> .j-green
+red text [.red] (sheet)                                             -> .j-red
+top bar [.pf-chrome] S                                              -> .j-bar
+back control with chevron icon and parent name [.pf-back] S         -> .j-back
+back chevron icon 18px [.pf-back svg] S                             -> .j-back svg
+brand "Hemz OS" at top level [.brand]                               -> .j-brand
+bar hairline rule [.rule] S                                         -> .j-bar-rule
+(i) info button [.mutebtn] S                                        -> .j-icon-btn
+(i) icon 17px in the bar [.pf-chrome .mutebtn svg]                  -> .j-bar .j-icon-btn svg
+(i) icon 14px default [.mutebtn svg] S                              -> .j-icon-btn svg
+(i) hover / open state [.mutebtn:hover/.on]                         -> .j-icon-btn:hover / .is-on
+Done button [.tbtn.pf-done] S                                       -> .j-btn.j-done
+Done tick icon 14px, stroke 2.6 S                                   -> .j-done svg
+explainer sheet behind the (i) [.pf-info]                           -> .j-info
+explainer line [.pf-info > div]                                     -> .j-info (children)
+stage [.pf-stage] S                                                 -> .j-stage
+level [.pf-lvl] S                                                   -> .j-level
+deeper-level veil [.pf-lvl.deep] S                                  -> .j-level.is-deep
+current level [.pf-lvl.on] S                                        -> .is-on
+level one behind [.pf-lvl.b1] S                                     -> .is-behind-1
+level two behind [.pf-lvl.b2] S                                     -> .is-behind-2
+level off / leaving [.pf-lvl.off]                                   -> .is-off
+forward direction flag [.pf-fwd] (back = .pf-bk, start = .pf-start) -> .j-screen.is-forward
+row rise-in animation [.pf-in, @keyframes pf-rise]                  -> .j-in, @keyframes j-rise
+reduced-motion fallback [@media prefers-reduced-motion]             -> @media (prefers-reduced-motion:reduce)
+hidden scrollbar [::-webkit-scrollbar] S                            -> .j-level::-webkit-scrollbar
+level head [.pf-head] S                                             -> .j-head
+crumb [.pf-crumb] S                                                 -> .j-crumb
+level title [.pf-h1] S                                              -> .j-title
+lead [.pf-lead] S                                                   -> .j-lead
+equation column [.pf-eqn] S                                         -> .j-eqn
+equation pushed to foot [.pf-bottom / .pf-eqn margin-top:auto] S    -> .j-foot
+part row [.pf-row] S                                                -> .j-row
+tappable row and its press background [button.pf-row:active]        -> button.j-row:active
+step row [.pf-step] S                                               -> .j-step
+step name 13.5px [.pf-step .pf-t b] S                               -> .j-step .j-name
+step figure 16px [.pf-step .pf-v] S                                 -> .j-step .j-val
+band row [inline min-height:40px;padding-bottom:0] S                -> .j-band-row
+band heading "LAYERS" [.pf-band] S                                  -> .j-band
+operator × + ≥ = and empty operator [.pf-op] S                      -> .j-op
+rule number 1-4 and empty number [.pf-n] S                          -> .j-n
+label block [.pf-t] S                                               -> .j-label
+part name [.pf-t b] S                                               -> .j-name
+name aside "· Outer" [.pf-t b em] S                                 -> .j-name-aside
+subline [.pf-t span] S                                              -> .j-sub
+turquoise subline "900 mm" [span.turq]                              -> .j-sub.j-turq
+inline measurement inside subline "924 mm" [inline span.turq]       -> .j-sub-measure
+inline emphasised percent inside subline "+20 %" [inline b]         -> .j-sub-strong
+row figure [.pf-v] S                                                -> .j-val
+plain-ink percentage figure "+25 %" [.pf-v no colour] S             -> .j-val (no colour class)
+unit beside figure "min" [.pf-v small] S                            -> .j-val-unit
+note under figure "min a metre" [.pf-v i] S                         -> .j-val-note
+quiet note under money "an hour" [.pf-v i.m] S                      -> .j-val-note.is-quiet
+opens marker › [.pf-chev] S                                         -> .j-chev
+total hairline [.pf-sum] S                                          -> .j-sum
+row total baseline alignment [inline align-items:baseline] S        -> .j-row.j-sum
+hero total row 92px / 18px [inline] S                               -> .j-row.j-sum.is-hero
+hero total line 96px [inline]                                       -> .j-line.j-sum.is-hero
+hero money serif [.pf-money] S                                      -> .j-money
+total figure [.pf-big] S                                            -> .j-big
+total unit "min" / "minutes a metre" [inline small] S               -> .j-big-unit
+total label "BEFORE VAT" / "WITH VAT" [.pf-sub] S                   -> .j-total-label
+total with a name on the left (Minutes = 36.3) [.pf-row.pf-sum + .pf-t] S -> .j-row.j-sum + .j-label
+opened-level line [.pf-line]                                        -> .j-line
+operator centred on line [.pf-line .pf-op]                          -> .j-line .j-op
+opened-level figure [.pf-fig]                                       -> .j-fig
+unit after opened figure [.pf-fig small]                            -> .j-fig-unit
+quiet unit after money "an hour" [inline small color:mute]          -> .j-fig-unit.is-quiet
+line label right [.pf-lab]                                          -> .j-line-label
+confirmation line with tick [.pf-ok]                                -> .j-ok
+green tick 16px stroke 2.6 [.pf-ok svg]                             -> .j-ok svg
+add control "Add a layer/step" [.pf-add] S                          -> .j-add
+add plus icon 14px [.pf-add svg] S                                  -> .j-add svg
+add indent wrapper [inline padding-left:32px] S                     -> .j-add-row
+bordered control / choice [.tbtn] S                                 -> .j-btn
+control hover [.tbtn:hover]                                         -> .j-btn:hover
+selected choice [.tbtn.on]                                          -> .j-btn.is-on
+full-width pick "Pick another rate" [.tbtn.pf-pick]                 -> .j-btn.j-pick
+stagger index [style --i] S                                         -> --i on .j-in

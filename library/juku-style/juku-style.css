@@ -1,0 +1,298 @@
+/* ═══ JUKU STYLE — the one look every screen in every product matches ═══
+   Lifted from the screens he approved by picture on 4 November 2026:
+     hemz-library/design/price-calculator/2026-11-04-R2-Main.dc.html
+     hemz-library/design/price-calculator/2026-11-04-R2-Along-the-hem.dc.html
+   and from the shared sheet both screens load (hemz-library/design/whole-day/
+   2026-10-30-R6-style.css): its tokens, themes, base rules and the classes the
+   screens use from it (.r6, .tbtn, .mutebtn, .brand, .rule, .turq/.gold/...).
+   Every value is verbatim. Where a value was written inline in the screens
+   (style="...") it is turned into a class here and marked INLINE. Where the two
+   screens disagree, the comment says which one this kit follows.
+   Source names are in brackets: [--ground], [.pf-row].
+   Themes: dark is the default; light and midnight are switched by
+   html[data-theme="light"|"midnight"], as in the source (no automatic switch). */
+
+/* ─── 1. TOKENS ─────────────────────────────────────────────────────────── */
+:root{
+  /* ground and surfaces */
+  --j-ground:#08090a;                 /* [--ground] the screen */
+  --j-panel:#0e0f11;                  /* [--panel] fill of a bordered control (.j-btn) */
+  --j-panel-2:#131417;                /* [--panel-2] the (i) explainer sheet */
+  /* ink */
+  --j-ink:#FFFDF7;                    /* [--ink] names, figures, title */
+  --j-mute:#E0DCCE;                   /* [--mute] lead, total label, line label */
+  --j-mute-2:#BFB9A9;                 /* [--mute-2] crumb, operator, rule number, subline, band, brand */
+  --j-ghost:#9C9686;                  /* [--ghost] the › that says "opens" */
+  /* meanings — one each */
+  --j-gold:#FFB01F;                   /* [--brass] money, director's word, selected, back, add — as text */
+  --j-gold-dim:rgba(255,176,31,.2);   /* [--brass-dim] fill under a selected control */
+  --j-turq:#3DF2DC;                   /* [--measure] a measured figure and its unit */
+  --j-green:#4DFFA3;                  /* [--signal] done */
+  --j-red:#FF6A5A;                    /* [--alert] a stop */
+  /* hairlines */
+  --j-line:rgba(255,255,255,.10);     /* [--line] border of a control; edge of the explainer */
+  --j-line-soft:rgba(255,255,255,.055); /* [--line-soft] THE hairline above a total; bar rule; row press */
+  --j-line-strong:rgba(255,255,255,.16);/* [--line-strong] control border on hover */
+  --j-hair:1px;                       /* every line is 1px */
+  /* translucent mixes used in the screens (verbatim percentages) */
+  --j-gold-edge:color-mix(in srgb,var(--j-gold) 50%,transparent);    /* selected control border [.tbtn.on] */
+  --j-green-edge:color-mix(in srgb,var(--j-green) 45%,transparent);  /* Done border [.pf-done] */
+  --j-bar-fade:linear-gradient(180deg,var(--j-ground) 62%,color-mix(in srgb,var(--j-ground) 0%,transparent)); /* [.pf-chrome] */
+  --j-veil:linear-gradient(180deg,color-mix(in srgb,var(--j-ground) 66%,transparent) 0%,color-mix(in srgb,var(--j-ground) 38%,transparent) 75%); /* [.pf-lvl.deep] */
+  --j-wash:radial-gradient(1200px 560px at 8% -10%, rgba(196,162,101,.055), transparent 62%); /* [body::before] page wash */
+  --j-shadow-sheet:0 30px 50px -20px rgba(0,0,0,.95); /* [.pf-info] the only shadow */
+
+  /* type */
+  --j-display:-apple-system,BlinkMacSystemFont,'SF Pro Text',Inter,system-ui,sans-serif; /* [--display] */
+  --j-body:-apple-system,BlinkMacSystemFont,'SF Pro Text',Inter,system-ui,sans-serif;    /* [--body] */
+  --j-serif:ui-serif,'New York','Iowan Old Style',Georgia,serif;  /* [--serif] hero money only */
+  --j-fs-hero:42px;     /* hero money */
+  --j-fs-big:30px;      /* total; opened-level figure */
+  --j-fs-title:27px;    /* level title */
+  --j-fs-fig:20px;      /* row figure; operator */
+  --j-fs-name:16px;     /* part name; step figure */
+  --j-fs-chev:15px;     /* › */
+  --j-fs-body:13.5px;   /* body; step name; back; confirm line; pick */
+  --j-fs-lead:12.5px;   /* lead; line label; explainer; unit beside a figure */
+  --j-fs-ctl:11.5px;    /* add; control text */
+  --j-fs-sub:10.5px;    /* subline; note under a figure */
+  --j-fs-band:10px;     /* band heading; rule number */
+  --j-fs-crumb:9.5px;   /* crumb; total label; brand */
+  --j-fw-regular:400;
+  --j-fw-figure:450;    /* figures and operators */
+  --j-fw-medium:500;    /* names, total, back, add, band */
+  --j-fw-title:600;     /* title, brand */
+  --j-ls-brand:.2em;
+  --j-ls-crumb:.16em;
+  --j-ls-band:.14em;    /* band, rule number */
+  --j-ls-sub:.12em;     /* total label */
+  --j-ls-ctl:.02em;     /* add, control */
+  --j-ls-title:-.02em;
+  --j-ls-hero:-.01em;
+  --j-lh-tight:1;       /* title, hero, total, operator */
+  --j-lh-fig:1.15;      /* row figure */
+  --j-lh-name:1.3;      /* part name */
+  --j-lh-label:1.35;    /* line label */
+  --j-lh-body:1.45;     /* body */
+  --j-lh-lead:1.55;     /* lead, explainer */
+
+  /* space */
+  --j-gutter:14px;          /* side gutter everywhere */
+  --j-bar-h:64px;           /* top bar height */
+  --j-bar-pad-top:8px;
+  --j-bar-gap:9px;
+  --j-level-top:76px;       /* level padding under the bar */
+  --j-level-bottom:26px;
+  --j-head-gap:7px;         /* crumb / title / lead */
+  --j-head-after:10px;
+  --j-gap:10px;             /* between columns in a row */
+  --j-row-h:68px;           /* part row */
+  --j-row-pad:10px;
+  --j-step-h:52px;          /* step row; pick button */
+  --j-step-pad:6px;
+  --j-line-h:76px;          /* opened-level line */
+  --j-line-pad:14px;
+  --j-hero-h:92px;          /* INLINE: hero total row on the formula level */
+  --j-hero-pad-top:18px;    /* INLINE: same row */
+  --j-hero-line-h:96px;     /* INLINE: hero total line on an opened level */
+  --j-band-h:40px;          /* INLINE: band row */
+  --j-indent:32px;          /* INLINE: add / confirm indent = operator 22 + gap 10 */
+  --j-target:44px;          /* every tap target at least */
+  --j-op-w:22px;            /* operator column */
+  --j-n-w:12px;             /* rule-number column */
+  --j-chev-w:10px;          /* › column */
+
+  /* corners */
+  --j-r-control:2px;        /* rows, buttons */
+  --j-r-surface:3px;        /* from CONSTITUTION Tokens ("3px surfaces"); not drawn in these two screens */
+
+  /* motion */
+  --j-ease:cubic-bezier(.22,1,.36,1); /* [--ease] */
+  --j-t-fast:150ms;                   /* [--t-fast] press, hover */
+  --j-t:260ms;                        /* [--t] sheet default; not used by these screens */
+  --j-t-slow:420ms;                   /* [--t-slow] drill-in */
+  --j-t-press:60ms;                   /* button press */
+  --j-rise:.5s;                       /* row rise-in */
+  --j-rise-step:45ms;                 /* stagger between rows */
+  --j-rise-y:12px;
+}
+
+/* light — porcelain, from the shared sheet, verbatim */
+html[data-theme="light"]{
+  color-scheme:light;
+  --j-ground:#eceef1; --j-panel:#ffffff; --j-panel-2:#e6eaf0;
+  --j-line:rgba(13,19,32,.20); --j-line-soft:rgba(13,19,32,.10); --j-line-strong:rgba(13,19,32,.34);
+  --j-gold:#8A5A00; --j-gold-dim:rgba(194,94,0,.14);
+  --j-green:#0A7440; --j-turq:#00796B; --j-red:#C02914;
+  --j-ink:#0A1018; --j-mute:#2E3946; --j-mute-2:#3F4A58; --j-ghost:#4F5A67;
+  --j-wash:radial-gradient(1100px 520px at 8% -10%, rgba(196,162,101,.12), transparent 62%);
+}
+/* midnight — from the shared sheet, verbatim */
+html[data-theme="midnight"]{
+  --j-ground:#0B0F14; --j-panel:#111922; --j-panel-2:#16202B;
+  --j-line:#22323F; --j-line-soft:#182430; --j-line-strong:#2E4252;
+  --j-gold:#E8A33D; --j-gold-dim:rgba(232,163,61,.14);
+  --j-green:#5FD3C4; --j-turq:#5FD3C4; --j-red:#E36A5C;
+  --j-ink:#E9F0F5; --j-mute:#93A5B4; --j-mute-2:#7D90A4; --j-ghost:#566B7E;
+  --j-wash:
+    radial-gradient(1200px 560px at 8% -10%, rgba(232,163,61,.09), transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, rgba(95,211,196,.055), transparent 58%),
+    repeating-linear-gradient(90deg, rgba(255,255,255,.014) 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(0deg, rgba(255,255,255,.010) 0 1px, transparent 1px 3px);
+}
+
+/* ─── 2. PAGE AND SCREEN ────────────────────────────────────────────────── */
+html{-webkit-text-size-adjust:100%;color-scheme:dark}
+.j-page,.j-page *{box-sizing:border-box}
+.j-page{margin:0;padding:0;background:var(--j-ground);color:var(--j-ink);font-family:var(--j-body);
+  font-size:var(--j-fs-body);line-height:var(--j-lh-body);font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+/* page wash [body::before]. In the source boards the screen's own ground covers it. */
+.j-page::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;background:var(--j-wash)}
+.j-page input,.j-page button,.j-page textarea,.j-page select{font-family:inherit;font-size:inherit;letter-spacing:inherit}
+
+/* the screen [.r6.pf] — boards are 390 × 844; a build may let it fill the viewport (generalised) */
+.j-screen{width:390px;height:844px;position:relative;overflow:hidden;background:var(--j-ground);color:var(--j-ink);
+  font-family:var(--j-body);font-size:var(--j-fs-body);line-height:var(--j-lh-body);font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+.j-screen button:focus-visible,.j-screen input:focus-visible{outline:1px solid var(--j-gold);outline-offset:2px}
+/* the press — a damped mechanical switch, not a spring */
+.j-screen button:not(:disabled):active{transform:translateY(1px);transition-duration:var(--j-t-press)}
+
+/* colour by meaning [.r6 .turq/.gold/.green/.red] — scoped like the source so it
+   beats a part's own colour (e.g. a turquoise subline) */
+.j-screen .j-gold{color:var(--j-gold)}
+.j-screen .j-turq{color:var(--j-turq)}
+.j-screen .j-green{color:var(--j-green)}
+.j-screen .j-red{color:var(--j-red)}
+
+/* ─── 3. TOP BAR ────────────────────────────────────────────────────────── */
+/* [.pf-chrome] stays put over every level; fades into the ground at its foot */
+.j-bar{position:absolute;left:0;right:0;top:0;z-index:20;height:var(--j-bar-h);box-sizing:border-box;
+  padding:var(--j-bar-pad-top) var(--j-gutter) 0;display:flex;align-items:center;gap:var(--j-bar-gap);background:var(--j-bar-fade)}
+/* back [.pf-back] — gold text naming the level it returns to; replaces the brand when deep */
+.j-back{display:inline-flex;align-items:center;gap:4px;min-height:var(--j-target);padding:0 10px 0 0;background:none;border:0;
+  color:var(--j-gold);font:inherit;font-size:var(--j-fs-body);font-weight:var(--j-fw-medium);cursor:pointer}
+.j-back svg{width:18px;height:18px}            /* path "M15 6l-6 6 6 6", stroke 2, round caps and joins */
+/* product name at the top level only [.brand] */
+.j-brand{text-transform:uppercase;letter-spacing:var(--j-ls-brand);font-size:var(--j-fs-crumb);font-weight:var(--j-fw-title);color:var(--j-mute-2)}
+/* the bar's hairline, filling the space between [.rule] */
+.j-bar-rule{flex:1;height:var(--j-hair);background:var(--j-line-soft)}
+/* square icon control — the (i) [.mutebtn] */
+.j-icon-btn{background:none;border:1px solid var(--j-line);border-radius:var(--j-r-control);color:var(--j-mute-2);cursor:pointer;padding:7px 8px;
+  display:inline-flex;align-items:center;justify-content:center;min-height:var(--j-target);min-width:var(--j-target);
+  transition:color var(--j-t-fast) var(--j-ease),border-color var(--j-t-fast) var(--j-ease)}
+.j-icon-btn svg{width:14px;height:14px;display:block}
+.j-bar .j-icon-btn svg{width:17px;height:17px}  /* [.pf-chrome .mutebtn svg] — Main only; the still keeps 14px (see note) */
+.j-icon-btn:hover{color:var(--j-ink);border-color:var(--j-line-strong)}
+.j-icon-btn.is-on{color:var(--j-mute);border-color:var(--j-line)}
+
+/* ─── 4. CONTROLS ───────────────────────────────────────────────────────── */
+/* bordered control / choice [.tbtn] and its selected state [.tbtn.on] */
+.j-btn{background:var(--j-panel);border:1px solid var(--j-line);border-radius:var(--j-r-control);color:var(--j-mute);padding:8px 11px;cursor:pointer;
+  font-size:var(--j-fs-ctl);font-weight:var(--j-fw-medium);letter-spacing:var(--j-ls-ctl);white-space:nowrap;
+  min-height:var(--j-target);display:inline-flex;align-items:center;
+  transition:color var(--j-t-fast) var(--j-ease),border-color var(--j-t-fast) var(--j-ease),background var(--j-t-fast) var(--j-ease)}
+.j-btn:hover{color:var(--j-ink);border-color:var(--j-line-strong);background:var(--j-line-soft)}
+.j-btn.is-on{color:var(--j-gold);border-color:var(--j-gold-edge);background:var(--j-gold-dim)}  /* selected: gold text + border on translucent gold */
+/* Done [.tbtn.pf-done] — green text and green edge */
+.j-done{gap:6px;color:var(--j-green);border-color:var(--j-green-edge)}
+.j-done svg{width:14px;height:14px}           /* path "M5 12.5l4.5 4.5L19 7.5", stroke 2.6 */
+/* full-width choice at the foot of an opened level [.tbtn.pf-pick] */
+.j-pick{justify-content:center;width:100%;min-height:var(--j-step-h);font-size:var(--j-fs-body)}
+/* add — gold text with a plus, never a filled button [.pf-add] */
+.j-add{display:inline-flex;align-items:center;gap:6px;min-height:var(--j-target);padding:0;background:none;border:0;color:var(--j-gold);
+  font:inherit;font-size:var(--j-fs-ctl);font-weight:var(--j-fw-medium);letter-spacing:var(--j-ls-ctl);cursor:pointer}
+.j-add svg{width:14px;height:14px}            /* path "M12 5v14M5 12h14", stroke 2 */
+.j-add-row{padding-left:var(--j-indent)}      /* INLINE wrapper: lines the add up with the names */
+
+/* (i) explainer sheet under the bar [.pf-info] — the only filled, shadowed surface */
+.j-info{position:absolute;left:0;right:0;top:var(--j-bar-h);z-index:19;padding:14px var(--j-gutter) 16px;display:flex;flex-direction:column;gap:8px;
+  font-size:var(--j-fs-lead);line-height:var(--j-lh-lead);color:var(--j-mute);background:var(--j-panel-2);
+  border-bottom:1px solid var(--j-line);box-shadow:var(--j-shadow-sheet)}
+
+/* ─── 5. LEVELS AND THE DRILL-IN ────────────────────────────────────────── */
+.j-stage{position:absolute;inset:0;overflow:hidden}                 /* [.pf-stage] */
+.j-level{position:absolute;inset:0;box-sizing:border-box;padding:var(--j-level-top) var(--j-gutter) var(--j-level-bottom);
+  display:flex;flex-direction:column;overflow-y:auto;scrollbar-width:none;transform-origin:50% 22%;
+  transition:transform var(--j-t-slow) var(--j-ease),opacity var(--j-t-slow) var(--j-ease),filter var(--j-t-slow) var(--j-ease),visibility 0s linear var(--j-t-slow)}
+.j-level::-webkit-scrollbar{display:none}
+/* any level below the top one carries a veil of the ground so it reads over the blur */
+.j-level.is-deep{background:var(--j-veil)}
+.j-level.is-on{z-index:3;visibility:visible;transition-delay:0s}
+.j-level.is-behind-1{z-index:2;visibility:visible;transition-delay:0s;opacity:.36;filter:blur(7px) saturate(.85);transform:scale(.92) translateY(-16px);pointer-events:none}
+/* the source code gives EVERY level two or more behind this state; the builder's
+   note says levels deeper than two are removed (use .is-off for those) */
+.j-level.is-behind-2{z-index:1;visibility:visible;transition-delay:0s;opacity:.18;filter:blur(12px) saturate(.7);transform:scale(.85) translateY(-30px);pointer-events:none}
+/* not on the path; also how a level leaves on Back: grows, blurs a little, fades */
+.j-level.is-off{z-index:4;visibility:hidden;opacity:0;filter:blur(3px);transform:scale(1.06);pointer-events:none}
+/* rows of the arriving level rise in — forward only (.is-forward on .j-screen);
+   set style="--i:n" on each, 0 for the head */
+.j-screen.is-forward .j-level.is-on .j-in{animation:j-rise var(--j-rise) var(--j-ease) both;animation-delay:calc(var(--i,0) * var(--j-rise-step))}
+@keyframes j-rise{from{opacity:0;transform:translateY(var(--j-rise-y))}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){
+  .j-level{transition:none!important}
+  .j-in{animation:none!important}
+  .j-page *,.j-screen *{transition:none!important;animation:none!important}  /* the shared sheet's global rule */
+}
+
+/* ─── 6. LEVEL HEAD ─────────────────────────────────────────────────────── */
+.j-head{display:flex;flex-direction:column;gap:var(--j-head-gap);margin-bottom:var(--j-head-after)}   /* [.pf-head] */
+.j-crumb{font-size:var(--j-fs-crumb);letter-spacing:var(--j-ls-crumb);text-transform:uppercase;color:var(--j-mute-2)} /* "THE FORMULA · MINUTES" */
+.j-title{font-family:var(--j-display);font-weight:var(--j-fw-title);letter-spacing:var(--j-ls-title);font-size:var(--j-fs-title);margin:0;line-height:var(--j-lh-tight);color:var(--j-ink)} /* sentence case */
+.j-lead{font-size:var(--j-fs-lead);color:var(--j-mute);line-height:var(--j-lh-lead);margin:0}  /* the level's equation in words */
+
+/* ─── 7. THE EQUATION (rows) ────────────────────────────────────────────── */
+.j-eqn{display:flex;flex-direction:column}
+.j-foot{margin-top:auto}    /* [.pf-bottom] the equation sits at the foot, in thumb reach */
+/* part row [.pf-row] — on the ground, no box */
+.j-row{display:flex;align-items:center;gap:var(--j-gap);width:100%;min-height:var(--j-row-h);padding:var(--j-row-pad) 0;box-sizing:border-box;
+  background:none;border:0;border-radius:var(--j-r-control);color:inherit;font:inherit;text-align:left}
+button.j-row{cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background var(--j-t-fast) var(--j-ease)}
+button.j-row:active{background:var(--j-line-soft)}
+/* step row — a level's own list [.pf-step] */
+.j-step{min-height:var(--j-step-h);padding:var(--j-step-pad) 0}
+.j-step .j-name{font-size:var(--j-fs-body)}
+.j-step .j-val{font-size:var(--j-fs-name)}
+/* band row holding a section heading [INLINE min-height:40px; padding-bottom:0] */
+.j-band-row{min-height:var(--j-band-h);padding-bottom:0}
+.j-band{font-size:var(--j-fs-band);font-weight:var(--j-fw-medium);letter-spacing:var(--j-ls-band);text-transform:uppercase;color:var(--j-mute-2)} /* [.pf-band] */
+
+/* operator column: × + ≥ =, or empty on a first row to keep the column [.pf-op] */
+.j-op{flex:0 0 var(--j-op-w);text-align:center;font-size:var(--j-fs-fig);font-weight:var(--j-fw-figure);line-height:var(--j-lh-tight);color:var(--j-mute-2)}
+/* rule number — the order rules run in [.pf-n]; leave an empty one to keep alignment */
+.j-n{flex:0 0 var(--j-n-w);align-self:flex-start;padding-top:4px;font-size:var(--j-fs-band);font-weight:var(--j-fw-medium);letter-spacing:var(--j-ls-band);color:var(--j-mute-2)}
+/* label block [.pf-t] */
+.j-label{flex:1;min-width:0;display:block}
+.j-name{display:block;font-size:var(--j-fs-name);font-weight:var(--j-fw-medium);line-height:var(--j-lh-name);color:var(--j-ink)}   /* [.pf-t b] */
+.j-name-aside{font-style:normal;color:var(--j-mute-2);font-weight:var(--j-fw-medium)}   /* "· Outer" [.pf-t b em] */
+.j-sub{display:block;font-size:var(--j-fs-sub);color:var(--j-mute-2);margin-top:3px}  /* subline [.pf-t span]; add .j-turq when it is a measurement */
+.j-sub-measure{display:inline;margin:0;color:var(--j-turq)}                           /* INLINE: "924 mm" inside a subline */
+.j-sub-strong{display:inline;font-size:var(--j-fs-sub);font-weight:var(--j-fw-medium);line-height:var(--j-lh-name);color:var(--j-ink)} /* INLINE <b>: "+20 %" inside a subline (500 via .pf-t b) */
+/* figure at the right of a row [.pf-v]; colour it by meaning, or leave ink */
+.j-val{flex:0 0 auto;display:block;font-size:var(--j-fs-fig);font-weight:var(--j-fw-figure);line-height:var(--j-lh-fig);white-space:nowrap;text-align:right}
+.j-val-unit{font-size:var(--j-fs-lead);margin-left:3px}                               /* "min" beside [.pf-v small]; takes the figure's colour */
+.j-val-note{display:block;font-style:normal;font-size:var(--j-fs-sub);margin-top:2px} /* "min a metre" under [.pf-v i]; takes the figure's colour */
+.j-val-note.is-quiet{color:var(--j-mute-2)}                                           /* "an hour" under money [.pf-v i.m] */
+.j-chev{flex:0 0 var(--j-chev-w);color:var(--j-ghost);font-size:var(--j-fs-chev)}     /* › only on rows that open [.pf-chev] */
+
+/* ─── 8. TOTALS ─────────────────────────────────────────────────────────── */
+/* THE one hairline: above a total, nowhere else in the content [.pf-sum] */
+.j-sum{border-top:var(--j-hair) solid var(--j-line-soft)}
+.j-row.j-sum{align-items:baseline}                                     /* INLINE on every row total */
+.j-row.j-sum.is-hero{min-height:var(--j-hero-h);padding-top:var(--j-hero-pad-top)} /* INLINE: hero total on the formula level */
+.j-line.j-sum.is-hero{min-height:var(--j-hero-line-h)}                 /* INLINE: hero total on an opened level */
+.j-money{font-family:var(--j-serif);font-size:var(--j-fs-hero);line-height:var(--j-lh-tight);color:var(--j-gold);letter-spacing:var(--j-ls-hero)} /* hero money [.pf-money] */
+.j-big{font-size:var(--j-fs-big);font-weight:var(--j-fw-medium);line-height:var(--j-lh-tight)}  /* total [.pf-big]; add .j-gold or .j-turq */
+.j-big-unit{font-size:var(--j-fs-lead);margin-left:4px;font-weight:var(--j-fw-figure)}          /* INLINE: "min" after a total */
+.j-total-label{font-size:var(--j-fs-crumb);letter-spacing:var(--j-ls-sub);text-transform:uppercase;color:var(--j-mute)} /* "BEFORE VAT" [.pf-sub] */
+
+/* ─── 9. OPENED LEVEL (a single rule worked through) ────────────────────── */
+/* line [.pf-line]: operator · big figure · label pushed right */
+.j-line{display:flex;align-items:baseline;gap:var(--j-gap);min-height:var(--j-line-h);padding:var(--j-line-pad) 0;box-sizing:border-box}
+.j-line .j-op{align-self:center}
+.j-fig{font-size:var(--j-fs-big);font-weight:var(--j-fw-medium);line-height:var(--j-lh-tight);white-space:nowrap}  /* [.pf-line .pf-fig] */
+.j-fig-unit{font-size:var(--j-fs-lead);margin-left:4px;font-weight:var(--j-fw-figure)}  /* takes the figure's colour */
+.j-fig-unit.is-quiet{color:var(--j-mute)}                                               /* INLINE: "an hour" after money */
+.j-line-label{margin-left:auto;text-align:right;font-size:var(--j-fs-lead);color:var(--j-mute);line-height:var(--j-lh-label)} /* [.pf-lab] */
+/* confirmation line with a green tick [.pf-ok] */
+.j-ok{display:flex;align-items:center;gap:var(--j-gap);padding:4px 0 14px var(--j-indent);font-size:var(--j-fs-body);color:var(--j-ink)}
+.j-ok svg{width:16px;height:16px;stroke:var(--j-green)}  /* path "M5 12.5l4.5 4.5L19 7.5", stroke 2.6 */
