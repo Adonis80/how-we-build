@@ -46,7 +46,7 @@ The list, and how a repository makes itself current: `library/carries-sessions.m
 | `library/roadmap.md`: *The Roadmap* | working on the Roadmap |
 | `library/board-proposals-card.md`: *The Roadmap: the proposals card* | changing the proposals card, or checking it against what he approved |
 | `library/deploy.md`: *The deploy, in shape* | building or changing a product's deploy |
-| `library/money.md`: *Money out waits for money in* | anything would cost money, or a product's hosting plan comes up |
+| `library/money.md`: *Money out waits for money in* | anything would cost money or spend a capped allowance, or a product's hosting plan comes up |
 | `library/changing-the-rulebook.md`: *Changing the rulebook* | changing a rule, proposing, prioritising or merging a change to this repository |
 | `library/rulebook-files.md`: *What each file here is for* | asking what a root file or a decision issue is for, or why this repository is public |
 | `library/upgrade-log.md`: *The upgrade log* | proposing an upgrade, or the Chairman asks what changed |
