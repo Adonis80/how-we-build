@@ -21,7 +21,7 @@ repository named as the README's *Products under this rulebook* spells it (`Hemz
 never a paused one. Decision 0015's reads, by address: the product's `AGENTS.md` whole;
 `PRODUCT.md` and `roadmap.json` never whole, at least one passage of each, none over BIG
 tokens and half its file but a note; each of the roadmap's top-level notes it has (NOTES:
-how its order is set, money milestones), by key; and CARRIES, read at every product
+how its order is set, money milestones), by key; and CARRIES whole, read at every product
 session's start.
 
   Ticket:
@@ -245,8 +245,8 @@ def product_faults(entries, repos):
     p = named[0]
     mine = [split(e)[1:] for e in entries if split(e)[0] == p]
     paths = lambda f: [a for path, a in mine if os.path.normpath(path) == f]
-    if not any(split(e)[0] == RULEBOOK and os.path.normpath(split(e)[1]) == CARRIES for e in entries):
-        faults.append(f"no '{RULEBOOK}:{CARRIES}' piece: each product session reads its list at its start")
+    if not any(split(e)[0] == RULEBOOK and os.path.normpath(split(e)[1]) == CARRIES and not split(e)[2] for e in entries):
+        faults.append(f"no '{RULEBOOK}:{CARRIES}' piece, whole: each product session reads its list at its start")
     if "" not in paths("AGENTS.md"):
         faults.append(f"'{p}:AGENTS.md' is not on it whole: a product session reads its AGENTS.md whole (decision 0015)")
     for f in WHOLE_NEVER:
@@ -429,6 +429,9 @@ def selftest():
             ("a product not given by --repo fails", check(P, {"how-we-build": rule})[0], lambda f: any("no repository named 'Hemz-OS'" in x for x in f)),
             ("this README's map parses: at least one product, each live or paused", real, lambda r: len(r) >= 1 and all(isinstance(v, bool) for v in r.values())),
             ("a product ticket without the carries list fails", check(drop("- how-we-build:" + CARRIES), repos)[0], lambda f: any("carries-sessions" in x for x in f)),
+            ("a product ticket with only part of the carries list fails",
+             check(P.replace("- how-we-build:" + CARRIES + "\n", "- how-we-build:" + CARRIES + "#What every product carries\n"), repos)[0],
+             lambda f: any("whole" in x for x in f)),
             ("a required note is never refused as over half its file", check(P, {**repos, "Hemz-OS": noted})[0], lambda f: f == []),
             ("a ticket without The ticket fails", check("Ticket:\n- how-we-build:notes/page.md#Part two\n", repos)[0], lambda f: any("boots by" in x for x in f)),
             ("The ticket not first fails", check("Ticket:\n- how-we-build:notes/page.md#Part two\n- " + OWN + "\n", repos)[0], lambda f: any("first" in x for x in f)),
