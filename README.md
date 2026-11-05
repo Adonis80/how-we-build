@@ -17,10 +17,10 @@ A repository not listed here is not under this rulebook. Papers for an idea not 
 
 ## Where each product's plan lives
 
-- **Juku OS** (this rulebook) — its open pull requests, ready first, then priority, then oldest, then its agreed `proposal` issues.
+- **Juku OS** (this rulebook) — its open pull requests and work issues (`library/changing-the-rulebook.md`), ready first, then priority, then oldest, then its agreed `proposal` issues.
 - **Each product** — its `roadmap.json` on `main`: [Hemz OS](https://github.com/Adonis80/Hemz-OS/blob/main/roadmap.json), [Myst](https://github.com/Adonis80/myst/blob/main/roadmap.json), [Phena](https://github.com/Adonis80/phena/blob/main/roadmap.json), [Fixed](https://github.com/Adonis80/fixed/blob/main/roadmap.json).
 
-The Roadmap at roadmap.juku.pro shows them all (`library/roadmap.md`).
+The Roadmap at roadmap.juku.pro shows them all, save the rulebook's work issues, which it does not yet read (`library/roadmap.md`).
 
 ## What every product carries
 

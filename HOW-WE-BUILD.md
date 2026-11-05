@@ -17,7 +17,7 @@
 
 **His hands are never used.** Work by hand goes into CI or the lead's own hands, else the slice passes to a stack with hands (`library/two-stacks.md`).
 
-**The unit of work** is one accepted slice: a user-visible outcome with acceptance criteria, never a screen. **"Build"** is a whole instruction: take the top ready item of `roadmap.json` (here, the top ready pull request). It never means "run the build", nor is answered with a question.
+**The unit of work** is one accepted slice: a user-visible outcome with acceptance criteria, never a screen. **"Build"** is a whole instruction: take the top ready item of `roadmap.json` (here, the top ready pull request or work issue, `library/changing-the-rulebook.md`). It never means "run the build", nor is answered with a question.
 
 **The loop.** One builder session per repository at a time; check readiness before deep reading. No clock, timer, schedule or polling ever wakes a session: when nothing can move, say so once on the pull request and stop.
 1. State the slice and its non-goals. A new or reworked screen runs HyperSolid first.
