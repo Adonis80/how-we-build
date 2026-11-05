@@ -17,7 +17,7 @@ The one standard for how every screen in every product looks, and the one order 
 
 **Every handoff sized for its reader** (his ruling, 28 October 2026): the goal and only what its job needs, the rest in files it can open; a builder starts fresh from the saved design, its note and the kit, never the map or this page pasted. What must hold every time is held by a check, not memory.
 
-**Palette rule.** Dark first, contrast measured, any approved light theme kept. A few accents, each with one meaning within its product; colour is never the only signal or decoration. New navigation and focus treatments must not confuse business meanings; an approved use that clashes is put to him as before-and-after pictures, never silently recoloured. The hues are his, chosen by looking: the constitution's tokens are the values, this page and its kit are how they are used.
+**Palette rule.** Dark first, contrast measured, any approved light theme kept. A few accents, each with one meaning within its product, save a sharing he approved by picture (Hemz's gold, money and actions, on the formula screen he approved on 4 November 2026; `library/juku-style.md`); colour is never the only signal or decoration. New navigation and focus treatments must not confuse business meanings; an approved use that clashes is put to him as before-and-after pictures, never silently recoloured. The hues are his, chosen by looking: the constitution's tokens are the values, this page and its kit are how they are used.
 
 ## Distillation rule
 
