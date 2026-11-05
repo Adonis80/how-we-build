@@ -29,8 +29,11 @@ and output tokens, as the model's own usage reports them.
   real figure. Head office's `Checkpoint: released` carries none (that page).
 
 The guard (his rulings of 5 November 2026 on #363: "Slim boot. A session loads
-one start page plus only what its job names"; "Locks, not reminders"), only in
-a repository that carries `product-reads/ticket.py` (this rulebook):
+one start page plus only what its job names"; "Locks, not reminders"), only where
+the rulebook's `product-reads/ticket.py` is reachable: in this rulebook, or in a
+product whose session has the rulebook cloned beside it as `how-we-build`. It
+knows a product's clone by the name the README's map gives it (a `hemz-os`
+directory is `Hemz-OS`), beside this repository or the rulebook's clone:
 
 - Before a call, a `create_trigger` or `update_trigger` whose words' ticket
   fails `ticket.py check` is refused, with its faults; a `fire_trigger` is
@@ -38,10 +41,11 @@ a repository that carries `product-reads/ticket.py` (this rulebook):
 - Before a call, while a session whose first message carries a `Ticket:` is
   booting (until its `Resumed:`, `Continued:` or `Checkpoint:` comment has gone
   through), a read off the ticket is refused: a `Read` or `Grep` of a file in
-  this repository other than `HOW-WE-BUILD.md`, `README.md` or a whole-file
-  piece, and a shell command naming a rule page (`library/`, `juku-library/`,
-  `CHARTER.md`, `AGENTS.md`, `RICH-DATA.md`) that is neither a whole-file
-  piece nor, inside a `ticket.py` command, a piece's file. It does not see a
+  a clone it knows other than the rulebook's `HOW-WE-BUILD.md` and `README.md`
+  or a whole-file piece, and a shell command naming a rule page (`library/`,
+  `juku-library/`, `CHARTER.md`, `AGENTS.md`, `RICH-DATA.md`) or a product's
+  `PRODUCT.md`, `roadmap.json` or `MAP.md` that is neither a whole-file piece
+  nor, inside a `ticket.py` command, a piece's file. It does not see a
   recursive search or a read dressed as a ticket read.
 
 The boot measured (his ruling, 5 November 2026, 18:15, on #363, "I agree to
@@ -93,7 +97,8 @@ BOOT_RE = re.compile(r"(?m)^\W*Boot:.*$")
 OURS_TARGET = 30_000   # what we make a fresh session read (his ruling, 5 November 2026, 18:15)
 OURS_SLACK = 3_000     # a Boot: line's ours figure may sit this far off the hook's
 NOT_OURS = ("ToolSearch",)   # a loaded tool's schema is the platform's
-RULE_PAGE_RE = re.compile(r"(?<![\w.-])(?:\./)?((?:juku-library|library)/[\w./-]*|CHARTER\.md|AGENTS\.md|RICH-DATA\.md)")
+RULE_PAGE_RE = re.compile(r"(?<![\w.-])(?:\./)?((?:juku-library|library)/[\w./-]*|CHARTER\.md|AGENTS\.md|RICH-DATA\.md"
+                          r"|PRODUCT\.md|roadmap\.json|MAP\.md)")
 
 CHECKPOINT_RE = re.compile(r"\A\W*Checkpoint:")
 RELEASED_RE = re.compile(r"\A\W*Checkpoint:\s*released")
@@ -244,11 +249,26 @@ def boot_problem(body, state):
 
 # ---- the guard --------------------------------------------------------------
 
-def _ticket():
-    """This repository's ticket.py, or None where it carries none (a product)."""
-    p = os.path.join(ROOT, "product-reads", "ticket.py")
-    if not os.path.isfile(p):
+def _rulebook_root():
+    """The rulebook's clone: this repository when it carries ticket.py, else a how-we-build
+    clone beside it (a product's session with the rulebook attached), else None."""
+    has = lambda d: os.path.isfile(os.path.join(d, "product-reads", "ticket.py"))
+    if has(ROOT):
+        return ROOT
+    up = os.path.dirname(ROOT)
+    try:
+        names = sorted(os.listdir(up))
+    except OSError:
         return None
+    return next((os.path.join(up, n) for n in names if n.lower() == "how-we-build" and has(os.path.join(up, n))), None)
+
+
+def _ticket():
+    """The rulebook's ticket.py, or None where none is reachable (a product without the rulebook beside it)."""
+    rb = _rulebook_root()
+    if rb is None:
+        return None
+    p = os.path.join(rb, "product-reads", "ticket.py")
     sys.dont_write_bytecode = True   # check.sh admits no __pycache__ beside it
     try:
         spec = importlib.util.spec_from_file_location("ticket", p)
@@ -259,35 +279,62 @@ def _ticket():
         return None
 
 
+def _repos(tk):
+    """Each clone the guard can see, by the name a ticket gives it: the rulebook's, and each
+    product on its README's map cloned beside this repository or the rulebook's clone."""
+    rb = _rulebook_root() or ROOT
+    repos = {tk.RULEBOOK: rb}
+    names = {p.lower(): p for p in tk.products(rb)}
+    if os.path.realpath(ROOT) != os.path.realpath(rb) and os.path.basename(ROOT).lower() in names:
+        repos[names[os.path.basename(ROOT).lower()]] = ROOT
+    for up in (os.path.dirname(ROOT), os.path.dirname(rb)):
+        try:
+            found = sorted(os.listdir(up))
+        except OSError:
+            continue
+        for n in found:
+            if n.lower() in names and os.path.isdir(os.path.join(up, n)):
+                repos.setdefault(names[n.lower()], os.path.join(up, n))
+    return repos
+
+
 def words_faults(words, tk):
-    faults, _ = tk.check(words or "", {tk.RULEBOOK: ROOT})
+    faults, _ = tk.check(words or "", _repos(tk))
     return faults
 
 
-def _rel(path):
-    """A path's place in this repository, or None outside it."""
+def _rel(path, root=None):
+    """A path's place in a clone (this repository by default), or None outside it."""
+    root = os.path.realpath(root or ROOT)
     if not path:
         return None
     full = os.path.realpath(path if os.path.isabs(path) else os.path.join(os.getcwd(), path))
-    if full != ROOT and os.path.commonpath([ROOT, full]) != ROOT:
+    if full != root and os.path.commonpath([root, full]) != root:
         return None
-    return os.path.relpath(full, ROOT)
+    return os.path.relpath(full, root)
+
+
+def _where(path, repos):
+    """(the clone's name, the path inside it) for a path in one of the session's clones, or None."""
+    for name, root in repos.items():
+        r = _rel(path, root)
+        if r is not None:
+            return name, os.path.normpath(r)
+    return None
 
 
 def off_ticket(tool_name, tool_input, entries, tk):
     """Why this call reads off the ticket at boot, or None."""
-    pieces = [tk.split(e) for e in entries if tk.split(e)[0] == tk.RULEBOOK]
-    whole = {os.path.normpath(p) for _, p, a in pieces if not a}
+    repos = _repos(tk)
+    pieces = [tk.split(e) for e in entries if tk.split(e)[0] in repos]
+    open_ = {name: {os.path.normpath(p) for r, p, a in pieces if r == name and not a} for name in repos}
+    open_[tk.RULEBOOK] |= set(BOOT_OPEN)
+    whole = set().union(*open_.values()) - set(BOOT_OPEN)
     files = {os.path.normpath(p) for _, p, _ in pieces}
-    open_ = whole | set(BOOT_OPEN)
-    if tool_name == "Read":
-        r = _rel(tool_input.get("file_path"))
-        if r is not None and os.path.normpath(r) not in open_:
-            return r
-    elif tool_name == "Grep":
-        r = _rel(tool_input.get("path") or os.getcwd())
-        if r is not None and os.path.normpath(r) not in open_:
-            return r
+    if tool_name in ("Read", "Grep"):
+        w = _where(tool_input.get("file_path") if tool_name == "Read" else (tool_input.get("path") or os.getcwd()), repos)
+        if w is not None and w[1] not in open_[w[0]]:
+            return w[0] + ":" + w[1]
     elif tool_name == "Bash":
         cmd = tool_input.get("command") or ""
         for m in RULE_PAGE_RE.finditer(cmd):
@@ -325,7 +372,7 @@ def guard(event, tool_name, tool_input, state, tk):
     if what is None:
         return None
     return _deny(f"size hook: `{what}` is off this session's ticket. At boot it reads `HOW-WE-BUILD.md`, the README "
-                 f"and its ticket's pieces (`python3 product-reads/ticket.py --repo how-we-build=. read <address>`); "
+                 f"and its ticket's pieces (the rulebook's `python3 product-reads/ticket.py --repo <name>=<clone> read <address>`); "
                  f"post `Resumed:` first, then take the read and name it in your next checkpoint as "
                  f"`Added: <address> — <why>` (library/session-changeover.md, *The ticket*)")
 
@@ -576,7 +623,63 @@ def _guard_cases(cases):
     cases.append(("a ticket pasted after the first reply arms nothing", decide("PreToolUse", "Read", {"file_path": lib}, s, tk) is None))
     s = _state([_first("Do the job, no ticket."), _turn(96_000, "Bash")])
     cases.append(("a session with no ticket is not guarded at boot", decide("PreToolUse", "Read", {"file_path": lib}, s, tk) is None))
+    _product_cases(cases, tk, U, F, C)
     return _boot_cases(cases, tk, C)
+
+
+def _product_cases(cases, tk, U, F, C):
+    """A product's copy of this hook, with the rulebook cloned beside it: the same locks on its ticket."""
+    global ROOT
+    home, cwd = ROOT, os.getcwd()
+    with tempfile.TemporaryDirectory() as up:
+        prod = os.path.join(up, "hemz-os")
+        os.makedirs(prod)
+        for name, text in (("AGENTS.md", "# Agents\n"), ("README.md", "# Hemz\n"),
+                           ("PRODUCT.md", "# Product\n\n## 1. What it is\n\nOne.\n\n## 2. Other\n\nTwo.\n"),
+                           ("roadmap.json", json.dumps({"_what_this_is": "order", "items": [{"id": "P62"}]}))):
+            with open(os.path.join(prod, name), "w") as f:
+                f.write(text)
+        alone = os.path.join(up, "alone", "hemz-os")
+        os.makedirs(alone)
+        os.symlink(home, os.path.join(up, "how-we-build"))
+        words = ("Words.\nTicket:\n- " + tk.OWN + "\n- Hemz-OS:AGENTS.md\n- Hemz-OS:PRODUCT.md#1\n"
+                 "- Hemz-OS:roadmap.json#_what_this_is\n- Hemz-OS:roadmap.json#P62\n\nBuild.\n")
+        try:
+            ROOT = alone
+            cases.append(("a product with no rulebook beside it has no guard", _ticket() is None))
+            ROOT = prod
+            os.chdir(prod)
+            ptk = _ticket()
+            cases.append(("a product's copy finds the rulebook's ticket.py beside it", ptk is not None))
+            if ptk is None:
+                return
+            s0 = _state([_turn(96_000, "Bash")])
+            boot = _state([_first("Do the job.\n" + words), _turn(96_000, "Bash")])
+            rd = lambda path: decide("PreToolUse", "Read", {"file_path": path}, boot, ptk)
+            sh = lambda cmd: decide("PreToolUse", "Bash", {"command": cmd}, boot, ptk)
+            cases += [
+                ("in a product, words with decision 0015's reads go through", decide("PreToolUse", U, {"prompt": words}, s0, ptk) is None),
+                ("in a product, words reading PRODUCT.md whole are refused",
+                 _denied(decide("PreToolUse", U, {"prompt": words.replace("PRODUCT.md#1", "PRODUCT.md")}, s0, ptk))),
+                ("in a product, words with no ticket are refused", _denied(decide("PreToolUse", U, {"prompt": "Build."}, s0, ptk))),
+                ("in a product, a fire with no words gone through is refused", _denied(decide("PreToolUse", F, {}, s0, ptk))),
+                ("at a product's boot PRODUCT.md is refused to Read", _denied(rd(os.path.join(prod, "PRODUCT.md")))),
+                ("at a product's boot its own README is refused", _denied(rd(os.path.join(prod, "README.md")))),
+                ("at a product's boot its AGENTS.md, a whole piece, is read", rd(os.path.join(prod, "AGENTS.md")) is None),
+                ("at a product's boot the rulebook's start page is read", rd(os.path.join(up, "how-we-build", "HOW-WE-BUILD.md")) is None),
+                ("at a product's boot a rulebook page off the ticket is refused",
+                 _denied(rd(os.path.join(up, "how-we-build", "library", "reviewer.md")))),
+                ("at a product's boot a search of it is refused", _denied(decide("PreToolUse", "Grep", {"pattern": "x"}, boot, ptk))),
+                ("at a product's boot a shell read of roadmap.json is refused", _denied(sh("head -c 4000 roadmap.json"))),
+                ("at a product's boot a shell read of PRODUCT.md is refused", _denied(sh("cat PRODUCT.md"))),
+                ("at a product's boot a piece is read with ticket.py", sh(
+                    "python3 ../how-we-build/product-reads/ticket.py --repo Hemz-OS=. read 'Hemz-OS:PRODUCT.md#1'") is None),
+                ("at a product's boot a Resumed: is held to its Boot: line",
+                 _denied(decide("PreToolUse", C, {"body": "Resumed: clean"}, boot, ptk))),
+            ]
+        finally:
+            ROOT = home
+            os.chdir(cwd)
 
 
 def _read_result(id, tokens):
