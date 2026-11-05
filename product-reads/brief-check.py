@@ -26,7 +26,10 @@ VERBATIM = ("The task clear first, then the most spectacular, beautiful, creativ
 # The brief's slots, in order. "Look:" carries the tokens, counted on its own.
 SLOTS = ["Who:", "The job:", "What matters most:", "Real content:", "Rules:", "Look:"]
 BRIEF_WORDS = 150      # every slot but Look and the verbatim line
-LOOK_WORDS = 80        # Look alone: the tokens and their meanings, never more content (#284's second read)
+# Look carries the tokens and names the kit, which goes as an attachment
+# (library/juku-style.md; his approval, 5 November 2026, #363). It has no word cap
+# (decision 0026); the plan words below still hold it.
+KIT = re.compile(r"juku[ -]style", re.I)
 MOST_ITEMS = 3         # "What matters most": at most three, separated by ";"
 RULE_ITEMS = 3         # "Rules": at most three, separated by ";"
 CORRECTION_WORDS = 40
@@ -101,8 +104,6 @@ def check_brief(text):
     n = words(counted)
     if n > BRIEF_WORDS:
         faults.append(f"{n} words before Look; at most {BRIEF_WORDS}")
-    if words(look) > LOOK_WORDS:
-        faults.append(f"{words(look)} words in Look; at most {LOOK_WORDS}, the tokens and their meanings")
 
     def slot(name):
         i = body.find(name)
@@ -121,6 +122,8 @@ def check_brief(text):
         faults.append("plan, not goal (quote it if it is his own words): " + ", ".join(hits))
     if look and not re.search(r"#[0-9A-Fa-f]{6}", look):
         faults.append("Look carries no colour token")
+    if look and not KIT.search(look):
+        faults.append("Look does not name the Juku style kit, which goes with the brief (library/juku-style.md)")
     return faults
 
 
@@ -159,7 +162,7 @@ CHECKS = {"brief": check_brief, "correction": check_correction, "frames": check_
 GOOD_BRIEF = ("Design one phone screen for Hemz OS. Who: the owner. The job: set up a new shop. "
               "What matters most: where setup stands; the next thing to give. "
               "Real content: hourly rate £98.83. Rules: locking is the owner's own tap. "
-              "Look: keep the live picture's feel; gold (#FFB01F) money. " + VERBATIM)
+              "Look: the Juku style kit, attached; keep the live picture's feel; gold (#FFB01F) money. " + VERBATIM)
 
 
 def selftest():
@@ -179,13 +182,14 @@ def selftest():
         ("frames", "Add:\n1. The rate in a gold card above the chart", False),
         ("frames", "Add:\n1. Spoken path, proposed: say the rate, hear it back", True),
         ("brief", GOOD_BRIEF.replace("the next thing to give", "the spoken path"), False),
-        ("brief", GOOD_BRIEF.replace("Look: keep", "Look: a grid of cards; keep"), False),
+        ("brief", GOOD_BRIEF.replace("Look: the", "Look: a grid of cards; the"), False),
         ("brief", GOOD_BRIEF + " Put the rate in a card above the list.", False),
         ("brief", GOOD_BRIEF.replace("the next thing to give", "the next thing at 390px"), False),
         ("brief", GOOD_BRIEF.replace("the next thing to give", "its states"), False),
         ("correction", "Closer to the live picture. The owner prefers it.", False),
-        # Look is counted on its own, so content cannot move past it (#284's second read).
-        ("brief", GOOD_BRIEF.replace("Look: keep", "Look: " + "word " * 80 + "keep"), False),
+        # Look names the kit, and has no word cap (decision 0026).
+        ("brief", GOOD_BRIEF.replace("the Juku style kit, attached; ", ""), False),
+        ("brief", GOOD_BRIEF.replace("Look: the", "Look: " + "word " * 80 + "the"), True),
         # The quote rule, both ways: a word quoted is exempt from the list, never from the count.
         ("brief", GOOD_BRIEF.replace("hourly rate £98.83", 'hourly rate £98.83, paid by "card"'), True),
         ("brief", GOOD_BRIEF.replace("hourly rate £98.83", "hourly rate £98.83, paid by card"), False),

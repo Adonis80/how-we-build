@@ -106,7 +106,7 @@ else
   echo "ok: $guide is the only front-end guide"
 fi
 
-# 2c. The library: one page per topic, and beside a page only its screen's PNG, opened only when a task touches it (his
+# 2c. The library: one page per topic, and beside a page only its screen's PNG or the look's stylesheet, opened only when a task touches it (his
 # ruling of 23 September 2026, decision 0005, issue #75). The README is its
 # index, both ways: a page the README does not name is never opened, and a
 # name with no page sends a session nowhere. Each page is one topic, says whom
@@ -140,6 +140,13 @@ for f in "${pages[@]}"; do
   case "$f" in library/*.png)
     { [[ "$f" =~ ^library/[A-Za-z0-9._-]+\.png$ ]] && [ -f "${f%.png}.md" ] && [ "$(wc -c < "$f")" -le 409600 ]; } \
       || { printf "FAIL: %q is an image with no page of its own name beside it, or over 400 KB.\n" "$f"; lib_fail=1; }
+    continue ;;
+  esac
+  # The look's stylesheet (his approval of the Juku style kit, 5 November 2026,
+  # #363): library/juku-style.css beside its page, under 64 KB, and no other.
+  case "$f" in library/*.css)
+    { [ "$f" = library/juku-style.css ] && [ -f "$f" ] && [ -f library/juku-style.md ] && [ "$(wc -c < "$f")" -le 65536 ]; } \
+      || { printf "FAIL: %q is a stylesheet other than library/juku-style.css beside its page, or over 64 KB.\n" "$f"; lib_fail=1; }
     continue ;;
   esac
   # A name the index cannot spell can never be named, so it is refused before
