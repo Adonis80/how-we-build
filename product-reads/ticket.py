@@ -22,7 +22,7 @@ session reads as decision 0015 says (the README's *Products under this rulebook*
   ticket.py --selftest
 
 `check` fails a piece that does not resolve, an address naming more than one piece, a path
-outside its repository, a piece of any repository but how-we-build, and a total over CAP
+outside its repository, a piece of any repository but how-we-build, a ticket without OWN (the rule it boots by), and a total over CAP
 tokens (bytes / 4, rounded up: an estimate a check can repeat, never a session's real
 size, which the size hook reads). Too big: the outgoing session splits the job; the
 successor is never handed the excess. Exit 0 passes; 1 names each fault.
@@ -35,6 +35,7 @@ import tempfile
 
 CAP = 40_000   # tokens a ticket may hand a successor: ~45k harness + this, under ~90k boot (#363)
 RULEBOOK = "how-we-build"
+OWN = "how-we-build:library/session-changeover.md#The ticket"   # the rule a ticketed session boots by
 ITEM = re.compile(r"^\s*[-*]\s+(\S.*?)\s*$")
 
 
@@ -88,6 +89,15 @@ def ambiguous(address, titles):
     raise LookupError(f"'{address}' names more than one piece: " + "; ".join(t[:40] for t in titles))
 
 
+def first_cell(line):
+    """A table row's first cell, or a list item's first word."""
+    m = re.match(r"^\s*\|([^|]*)\|", line)
+    if m:
+        return m.group(1)
+    m = re.match(r"^\s*(?:[-*]|\d+\.)\s+(\S+)", line)
+    return m.group(1) if m else ""
+
+
 def md_piece(text, address):
     lines = text.split("\n")
     fence = False
@@ -110,10 +120,11 @@ def md_piece(text, address):
     k = one(list(range(len(bold))), [b[0] for b in bold], address)
     if k is not None:
         return bold[k][1].strip() + "\n"
-    for line in lines:
-        cell = re.match(r"^\s*(?:\||[-*]|\d+\.)\s*([^|]*?)\s*(?:\||$|\s)", line)
-        if cell and cell.group(1) and norm(cell.group(1)) == norm(address):
-            return line.strip() + "\n"
+    rows = [line for line in lines if norm(first_cell(line)) == norm(address) != ""]
+    if len(rows) > 1:
+        ambiguous(address, rows)
+    if rows:
+        return rows[0].strip() + "\n"
     raise LookupError(f"no heading, bold paragraph or line '{address}'")
 
 
@@ -177,6 +188,8 @@ def check(words, repos):
             report.append(f"  {n:>7,}  {e}")
         except (LookupError, ValueError, UnicodeDecodeError) as err:
             faults.append(f"'{e}': {err}")
+    if entries and OWN not in entries:
+        faults.append(f"no '{OWN}': every ticket carries the rule its session boots by")
     for e in entries:
         if split(e)[0] != RULEBOOK:
             faults.append(f"'{e}': a ticket names only '{RULEBOOK}:' pieces for now; a product session reads as decision 0015 says")
@@ -214,7 +227,7 @@ def selftest():
         open(os.path.join(rule, "README.md"), "w").write("# Rulebook\n\n## What every product carries\n\nThe list.\n\n## Where\n\nElse.\n")
         open(os.path.join(prod, "PRODUCT.md"), "w").write(
             "# Product\n\n## §5 Prices\n\nFive.\n\n## §50 Other\n\nFifty.\n\n```\n## 6 not a heading\n```\n")
-        open(os.path.join(prod, "MAP.md"), "w").write("# Map\n\n| K10 | Take an order | first |\n| K1 | Other | second |\n")
+        open(os.path.join(prod, "MAP.md"), "w").write("# Map\n\n| K10 | Take an order | first |\n| K1 | Other | second |\n| Two words | multi | third |\n\n- K7 one\n- K7 two\n")
         json.dump({"_what_this_is": "order", "items": [{"id": "P62", "next": "build"}, {"id": "P6", "next": "no"}, {"id": "D1"}, {"key": "D1"}]},
                   open(os.path.join(prod, "roadmap.json"), "w"))
         open(os.path.join(rule, "big.md"), "w").write("x" * (4 * CAP + 8))
@@ -234,6 +247,8 @@ def selftest():
             ("section sign, word break", read("hemz:PRODUCT.md#5"), lambda r: "Five" in r and "Fifty" not in r),
             ("fenced text is no heading", read("hemz:PRODUCT.md#6"), lambda r: r.startswith("ERR")),
             ("map row by its id", read("hemz:MAP.md#K10"), lambda r: "Take an order" in r and "Other" not in r),
+            ("a multi-word first cell", read("hemz:MAP.md#Two words"), lambda r: "multi" in r),
+            ("a row id listed twice refused", read("hemz:MAP.md#K7"), lambda r: r.startswith("ERR")),
             ("roadmap item by id", read("hemz:roadmap.json#P62"), lambda r: '"build"' in r and '"no"' not in r),
             ("an id naming two items refused", read("hemz:roadmap.json#D1"), lambda r: r.startswith("ERR")),
             ("roadmap top-level key", read("hemz:roadmap.json#_what_this_is"), lambda r: '"order"' in r),
@@ -244,15 +259,20 @@ def selftest():
             ("leaving the repository refused", read("hemz:../rule/notes/page.md"), lambda r: r.startswith("ERR")),
             ("absolute path refused", read("hemz:" + os.path.join(prod, "AGENTS.md")), lambda r: r.startswith("ERR")),
         ]
-        good = "Ticket:\n- how-we-build:notes/page.md#After a wait\n- how-we-build:README.md#What every product carries\n\nRest of the words.\n- not an item of the ticket: nope.md\n"
+        own = OWN.split(":", 1)[1].split("#")[0]
+        os.makedirs(os.path.join(rule, os.path.dirname(own)))
+        open(os.path.join(rule, own), "w").write("# Changeover\n\n**The ticket** (his ruling). Reads.\n")
+        T = "Ticket:\n- " + OWN + "\n"
+        good = "Ticket:\n- how-we-build:notes/page.md#After a wait\n- " + OWN + "\n- how-we-build:README.md#What every product carries\n\nRest of the words.\n- not an item of the ticket: nope.md\n"
         tickets = [
             ("a good ticket passes", check(good, repos)[0], lambda f: f == []),
             ("no Ticket line fails", check("Words only.", repos)[0], lambda f: f != []),
             ("an empty ticket fails", check("Ticket:\n\nNothing.", repos)[0], lambda f: f != []),
-            ("an unresolved piece fails", check("Ticket:\n- how-we-build:notes/page.md#Nine\n", repos)[0], lambda f: f != []),
-            ("over the cap fails", check("Ticket:\n- how-we-build:big.md\n", repos)[0], lambda f: any("cap" in x for x in f)),
-            ("a product piece fails, for now", check("Ticket:\n- hemz:AGENTS.md\n", repos)[0], lambda f: any("decision 0015" in x for x in f)),
-            ("a piece with no repository fails", check("Ticket:\n- notes/page.md#Part two\n", repos)[0], lambda f: any("decision 0015" in x for x in f)),
+            ("an unresolved piece fails", check(T + "- how-we-build:notes/page.md#Nine\n", repos)[0], lambda f: f != []),
+            ("over the cap fails", check(T + "- how-we-build:big.md\n", repos)[0], lambda f: any("cap" in x for x in f)),
+            ("a product piece fails, for now", check(T + "- hemz:AGENTS.md\n", repos)[0], lambda f: any("decision 0015" in x for x in f)),
+            ("a ticket without The ticket fails", check("Ticket:\n- how-we-build:notes/page.md#Part two\n", repos)[0], lambda f: any("boots by" in x for x in f)),
+            ("a piece with no repository fails", check(T + "- notes/page.md#Part two\n", repos)[0], lambda f: any("decision 0015" in x for x in f)),
         ]
         for name, result, ok in cases + tickets:
             if ok(result):
