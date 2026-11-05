@@ -247,6 +247,16 @@ def product_faults(entries, repos):
             faults.append(f"'{p}:{f}' is whole: name the passages the job needs (decision 0015)")
         elif not paths(f):
             faults.append(f"no '{p}:{f}#…' piece: name at least the passages the job needs (decision 0015)")
+        for a in paths(f):
+            try:
+                whole = os.path.getsize(locate(p, f, repos))
+                if a and len(piece(f"{p}:{f}#{a}", repos).encode("utf-8")) * 2 > whole:
+                    faults.append(f"'{p}:{f}#{a}' is more than half the file: whole in all but name (decision 0015)")
+            except (LookupError, ValueError, OSError, UnicodeDecodeError):
+                pass
+    for path, a in mine:
+        if os.path.normpath(path).split(os.sep)[0].endswith("-library"):
+            faults.append(f"'{p}:{path}': a product's library is never loaded into a working session; read it at work, as `Added:`")
     try:
         with open(locate(p, "roadmap.json", repos), encoding="utf-8") as f:
             road = json.load(f)
@@ -330,6 +340,8 @@ def selftest():
         open(os.path.join(prod, "PRODUCT.md"), "w").write(
             "# Product\n\n## §5 Prices\n\nFive.\n\n## §50 Other\n\nFifty.\n\n```\n## 6 not a heading\n```\n\n~~~\n## 7 not one either\n~~~\n\n"
             "## Wait for it\n\nA heading.\n\n**Wait** the exact bold one.\n")
+        os.makedirs(os.path.join(prod, "hemz-library"))
+        open(os.path.join(prod, "hemz-library", "paper.md"), "w").write("# Paper\n")
         open(os.path.join(prod, "MAP.md"), "w").write("# Map\n\n| K10 | Take an order | first |\n| K1 | Other | second |\n| Two words | multi | third |\n\n- K7 one\n- K7 two\n")
         json.dump({"_what_this_is": "order", "items": [{"id": "P62", "next": "build"}, {"id": "P6", "next": "no"}, {"id": "D1"}, {"key": "D1"}]},
                   open(os.path.join(prod, "roadmap.json"), "w"))
@@ -388,6 +400,9 @@ def selftest():
             ("roadmap.json whole fails", check(P + "- Hemz-OS:roadmap.json\n", repos)[0], lambda f: any("roadmap.json' is whole" in x for x in f)),
             ("no PRODUCT.md passage fails", check(drop("- Hemz-OS:PRODUCT.md#5"), repos)[0], lambda f: any("no 'Hemz-OS:PRODUCT.md" in x for x in f)),
             ("a roadmap note left off fails", check(drop("- Hemz-OS:roadmap.json#_what_this_is"), repos)[0], lambda f: any("#_what_this_is'" in x for x in f)),
+            ("PRODUCT.md by its title, whole in all but name, fails", check(P + "- Hemz-OS:PRODUCT.md#Product\n", repos)[0], lambda f: any("more than half" in x for x in f)),
+            ("roadmap.json's whole queue by its key fails", check(P + "- Hemz-OS:roadmap.json#items\n", repos)[0], lambda f: any("#items' is more than half" in x for x in f)),
+            ("a product's library paper fails", check(P + "- Hemz-OS:hemz-library/paper.md\n", repos)[0], lambda f: any("library is never loaded" in x for x in f)),
             ("no roadmap item fails", check(drop("- Hemz-OS:roadmap.json#P62"), repos)[0], lambda f: any("item the job builds" in x for x in f)),
             ("a product not given by --repo fails", check(P, {"how-we-build": rule})[0], lambda f: any("no repository named 'Hemz-OS'" in x for x in f)),
             ("this README's map: Hemz-OS live, Myst paused", real, lambda r: r.get("Hemz-OS") is False and r.get("myst") is True),
