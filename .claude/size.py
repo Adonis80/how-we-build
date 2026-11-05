@@ -70,8 +70,9 @@ ALWAYS = ("ToolSearch",)
 WORDS_TOOLS = ("__create_trigger", "__update_trigger")
 FIRE_TOOLS = ("__fire_trigger",)
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 BOOT_OPEN = ("HOW-WE-BUILD.md", "README.md")
+TICKET_RE = re.compile(r"(?m)^\s*Ticket:\s*$")
 BOOT_END_RE = re.compile(r"\A\W*(?:Resumed|Continued|Checkpoint):")
 RULE_PAGE_RE = re.compile(r"(?<![\w.-])(?:\./)?((?:juku-library|library)/[\w./-]*|CHARTER\.md|AGENTS\.md|RICH-DATA\.md)")
 
@@ -133,7 +134,9 @@ def read(transcript_path):
                 continue
             if d.get("type") == "user":
                 content = m.get("content")
-                if guard["first"] is None and _text(content):
+                # the task's words: the first message before any reply that carries a Ticket: line,
+                # so a note or caveat the surface puts first does not hide it
+                if guard["first"] is None and not tool_uses and not seen and TICKET_RE.search(_text(content)):
                     guard["first"] = _text(content)
                 for c in content if isinstance(content, list) else []:
                     if not (isinstance(c, dict) and c.get("type") == "tool_result") or c.get("is_error"):
@@ -451,7 +454,10 @@ def _guard_cases(cases):
     """The guard's cases, on this repository's own ticket.py and pages; True when it holds them."""
     tk = _ticket()
     if tk is None:
-        cases.append(("this repository carries product-reads/ticket.py for the guard", False))
+        # a product's copy: no ticket.py, so the guard is off, and its selftest stays green
+        cases.append(("a repository carrying no ticket.py has no guard",
+                      decide("PreToolUse", "mcp__claude-code-remote__update_trigger", {"prompt": "Build."},
+                             _state([_turn(96_000, "Bash")]), None) is None))
         return True
     U, F, C = "mcp__claude-code-remote__update_trigger", "mcp__claude-code-remote__fire_trigger", "mcp__github__add_issue_comment"
     good = "Words.\nTicket:\n- " + tk.OWN + "\n- how-we-build:.claude/size.py\n\nMore words.\n"
@@ -491,6 +497,10 @@ def _guard_cases(cases):
     cases.append(("after Resumed: went through, a read off the ticket passes", decide("PreToolUse", "Read", {"file_path": lib}, s, tk) is None))
     s = _state(boot + [_call(97_000, C, {"body": "Resumed: clean"}, "r1"), _result("r1", error=True)])
     cases.append(("a refused Resumed: does not end the boot", _denied(decide("PreToolUse", "Read", {"file_path": lib}, s, tk))))
+    s = _state([_first("A note the surface puts first."), _first("Do the job.\n" + good), _turn(96_000, "Bash")])
+    cases.append(("a note before the task's words does not hide its ticket", _denied(decide("PreToolUse", "Read", {"file_path": lib}, s, tk))))
+    s = _state([_first("Do the job, no ticket."), _turn(96_000, "Bash"), _first("Pasted later.\n" + good)])
+    cases.append(("a ticket pasted after the first reply arms nothing", decide("PreToolUse", "Read", {"file_path": lib}, s, tk) is None))
     s = _state([_first("Do the job, no ticket."), _turn(96_000, "Bash")])
     cases.append(("a session with no ticket is not guarded at boot", decide("PreToolUse", "Read", {"file_path": lib}, s, tk) is None))
     return True

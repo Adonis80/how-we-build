@@ -207,8 +207,8 @@ def check(words, repos):
     for e in entries:
         if split(e)[0] != RULEBOOK:
             faults.append(f"'{e}': a ticket names only '{RULEBOOK}:' pieces for now; a product session reads as decision 0015 says")
-        elif split(e)[1].startswith(ARCHIVE):
-            faults.append(f"'{e}': '{ARCHIVE}' is never loaded into a working session (the README); read it at work, as `Added:`")
+        elif (os.path.normpath(split(e)[1]) + "/").startswith(ARCHIVE):
+            faults.append(f"'{e}': '{ARCHIVE}' is never loaded into a working session (library/rulebook-files.md); read it at work, as `Added:`")
     report.append(f"  {total:>7,}  total (cap {CAP:,})")
     if total > CAP:
         faults.append(f"{total:,} tokens is over the {CAP:,} cap: split the job")
@@ -301,6 +301,7 @@ def selftest():
             ("The ticket not first fails", check("Ticket:\n- how-we-build:notes/page.md#Part two\n- " + OWN + "\n", repos)[0], lambda f: any("first" in x for x in f)),
             ("The ticket resolves on this repository's own page", own_page(), lambda r: r.startswith("**The ticket**")),
             ("a piece in the archive fails", check(T + "- how-we-build:juku-library/x.md\n", repos)[0], lambda f: any("never loaded" in x for x in f)),
+            ("a piece in the archive by a dotted path fails", check(T + "- how-we-build:./library/../juku-library/x.md\n", repos)[0], lambda f: any("never loaded" in x for x in f)),
             ("a piece with no repository fails", check(T + "- notes/page.md#Part two\n", repos)[0], lambda f: any("decision 0015" in x for x in f)),
         ]
         for name, result, ok in cases + tickets:
