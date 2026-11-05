@@ -591,6 +591,8 @@ def _guard_cases(cases):
         ("a trigger change without words is not checked", decide("PreToolUse", U, {"enabled": False}, s0, tk) is None),
         ("a fire with no words gone through is refused", _denied(decide("PreToolUse", F, {}, s0, tk))),
         ("a product, carrying no ticket.py, is not guarded", decide("PreToolUse", U, {"prompt": bad}, s0, None) is None),
+        # words are checked against the clones the hook knows: with no product's clone beside it, a product's ticket is refused, never passed unchecked
+        ("a product's ticket written here is refused", _denied(decide("PreToolUse", U, {"prompt": good.replace("\n\nMore", "\n- Hemz-OS:AGENTS.md\n\nMore")}, s0, tk))),
     ]
     s = _state([_turn(96_000, "Bash"), _call(97_000, U, {"prompt": good}, "u1"), _result("u1")])
     cases.append(("a fire after checked words went through passes", decide("PreToolUse", F, {}, s, tk) is None))
@@ -604,6 +606,9 @@ def _guard_cases(cases):
         ("at boot a library page off the ticket is refused to Read", _denied(decide("PreToolUse", "Read", {"file_path": lib}, s, tk))),
         ("at boot the start page is read", decide("PreToolUse", "Read", {"file_path": os.path.join(ROOT, "HOW-WE-BUILD.md")}, s, tk) is None),
         ("at boot a whole-file piece is read", decide("PreToolUse", "Read", {"file_path": os.path.join(ROOT, ".claude", "size.py")}, s, tk) is None),
+        ("at boot a product's whole-file piece opens no file of this repository",
+         _denied(decide("PreToolUse", "Read", {"file_path": os.path.join(ROOT, "AGENTS.md")},
+                        _state([_first("Do the job.\nTicket:\n- " + tk.OWN + "\n- Hemz-OS:AGENTS.md\n"), _turn(96_000, "Bash")]), tk))),
         ("at boot a file outside the repository is read", decide("PreToolUse", "Read", {"file_path": "/tmp/x.txt"}, s, tk) is None),
         ("at boot a search of the repository is refused", _denied(decide("PreToolUse", "Grep", {"pattern": "x"}, s, tk))),
         ("at boot a shell read of a rule page is refused", _denied(decide("PreToolUse", "Bash", {"command": "sed -n 1,9p library/reviewer.md"}, s, tk))),
@@ -642,7 +647,7 @@ def _product_cases(cases, tk, U, F, C):
         alone = os.path.join(up, "alone", "hemz-os")
         os.makedirs(alone)
         os.symlink(home, os.path.join(up, "how-we-build"))
-        words = ("Words.\nTicket:\n- " + tk.OWN + "\n- Hemz-OS:AGENTS.md\n- Hemz-OS:PRODUCT.md#1\n"
+        words = ("Words.\nTicket:\n- " + tk.OWN + "\n- how-we-build:library/carries-sessions.md\n- Hemz-OS:AGENTS.md\n- Hemz-OS:PRODUCT.md#1\n"
                  "- Hemz-OS:roadmap.json#_what_this_is\n- Hemz-OS:roadmap.json#P62\n\nBuild.\n")
         try:
             ROOT = alone
