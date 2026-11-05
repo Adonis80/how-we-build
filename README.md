@@ -2,11 +2,11 @@
 
 The rulebook for every product Dhayan's AI studio builds: **how** we work. Each product's repository says **what** it builds. Public: no secrets, prices or customer data, so any session reads it freely.
 
-**The reading path** is `HOW-WE-BUILD.md` whole, then this page. A library page is opened only when its row below fires, and only that page; nothing is read whole to be safe (his ruling, 25 September 2026). `CHARTER.md` is the reasoning, `AGENTS.md` is the reviewer's brief, and `juku-library/` is the archive of papers and frozen decision records, read like the decision issues: when a rule is about to change or its reason is in question, or when a build must read a paper from GitHub, and never loaded into a working session (`library/rulebook-files.md`).
+**The reading path** is `HOW-WE-BUILD.md` whole, then this page; a session whose task carries a ticket reads that ticket's pieces in this page's place (`library/session-changeover.md`, *The ticket*). A library page is opened only when its row below fires, and only that page; nothing is read whole to be safe (his ruling, 25 September 2026). `CHARTER.md` is the reasoning, `AGENTS.md` is the reviewer's brief, and `juku-library/` is the archive of papers and frozen decision records, read like the decision issues: when a rule is about to change or its reason is in question, or when a build must read a paper from GitHub, and never loaded into a working session (`library/rulebook-files.md`).
 
 ## Products under this rulebook
 
-To read one (decision 0015): its `AGENTS.md` whole; from `PRODUCT.md`, its purpose, the rules it holds across every slice and the passages the task needs, with what they reference; from `roadmap.json`, how its order is set (its `_what_this_is` and order note), money milestones, open items with their `next` lines, the `retired` notes when an ideas review is due, and a `done` item only when its evidence is needed.
+To read one (decision 0015): its `AGENTS.md` whole; from `PRODUCT.md`, its purpose, the rules it holds across every slice and the passages the task needs, with what they reference; from `roadmap.json`, how its order is set (its `_what_this_is` and order note), money milestones, open items with their `next` lines, the `retired` notes when an ideas review is due, and a `done` item only when its evidence is needed. A session whose task carries a ticket reads the ticket's pieces instead, the product's `AGENTS.md` whole among them, which `product-reads/ticket.py` holds.
 
 - **Myst** — `https://github.com/Adonis80/myst` (private; paused 28 Oct 2026, his word). The App for Perfume Collectors: a Personal Nose that learns a person's taste, samples picked for them, and the value on collectors' shelves.
 - **Hemz OS** — `https://github.com/Adonis80/Hemz-OS` (private). The operating system for an alterations business, grown out of Alma's Alterations in Brighton.
@@ -34,7 +34,7 @@ The list, and how a repository makes itself current: `library/carries-sessions.m
 | `library/juku-style.md`: *HyperSolid: the Juku style* | a screen is designed, built or reviewed, or a design brief is written |
 | `library/voice-native.md`: *Voice Native* | work touches a product's assistant or its actions, or a screen's spoken path is mapped or built |
 | `library/carries-sessions.md`: *What every product carries* | starting or stopping a product session, merging, setting up or checking a product's repository or what its checks run, or a slice touches money milestones, evidence or the product's own pages |
-| `library/session-changeover.md`: *Session changeover* | the Juku OS Project's session starts, deciding to stay or start fresh, and before leaving one |
+| `library/session-changeover.md`: *Session changeover* | the Juku OS Project's session starts, a session's task carries a ticket, deciding to stay or start fresh, and before leaving one |
 | `library/two-stacks.md`: *The two stacks* | choosing the lead or its effort, starting, handing over or finishing work in either stack, deciding whether a job needs code mode, or a job that needs hands |
 | `library/max-subagent.md`: *The max subagent* | a lead hands its max piece on, or a product sets up or checks its max subagent file |
 | `library/reviewer.md`: *The independent reviewer* | working out who reviews a change, asking for a read, judging whether a commit is cleared, writing a repository's Review guidelines, checking a product's gate, or changing the review machinery |

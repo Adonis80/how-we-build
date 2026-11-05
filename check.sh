@@ -14,7 +14,8 @@
 # no line to library/upgrade-log.md, and, through product-reads/rules-check.py,
 # a rule change without its Replaces: line or a constitution off its headings,
 # a size hook (.claude/size.py) that no longer holds his 300k/350k lines,
-# and a design brief check (product-reads/brief-check.py) that no longer refuses
+# a ticket check (product-reads/ticket.py) that no longer refuses a ticket that
+# does not resolve or is over its cap, and a design brief check (product-reads/brief-check.py) that no longer refuses
 # a brief that plans the screen, overloads it or skips its slots.
 # Nothing else. A read by anybody the
 # gate does not count is unread, not a shape of its own.
@@ -73,7 +74,7 @@ for f in $allowed; do
     model-registry) [ -d "$f" ] && [ "$(ls -A model-registry | tr '\n' ' ')" = "ask.py context.py registry.json resolve.py " ] || { echo "FAIL: 'model-registry/' holds ask.py, context.py, registry.json and resolve.py, and nothing else."; list_fail=1; } ;;
     # The product read's rules (decision 0013), which say whether a read is asked
     # for and paid, and the rules' own guard (decision 0021). Part of the review gate.
-    product-reads) [ -d "$f" ] && [ "$(LC_ALL=C ls -A product-reads | tr '\n' ' ')" = "ask.py brief-check.py kit reads.py rules-check.py setup.py " ] && [ "$(LC_ALL=C ls -A product-reads/kit | tr '\n' ' ')" = "AGENTS.starter.md gate.yml review-gate.py roadmap.starter.json verify.yml wake.yml " ] || { echo "FAIL: 'product-reads/' holds ask.py, brief-check.py, reads.py, rules-check.py, setup.py and kit/ (the starter kit's six files), and nothing else."; list_fail=1; } ;;
+    product-reads) [ -d "$f" ] && [ "$(LC_ALL=C ls -A product-reads | tr '\n' ' ')" = "ask.py brief-check.py kit reads.py rules-check.py setup.py ticket.py " ] && [ "$(LC_ALL=C ls -A product-reads/kit | tr '\n' ' ')" = "AGENTS.starter.md gate.yml review-gate.py roadmap.starter.json verify.yml wake.yml " ] || { echo "FAIL: 'product-reads/' holds ask.py, brief-check.py, reads.py, rules-check.py, setup.py, ticket.py and kit/ (the starter kit's six files), and nothing else."; list_fail=1; } ;;
     # The rulebook's own library (the Chairman's ruling of 2 October 2026): the
     # papers and frozen records committed verbatim for a build to read from
     # GitHub (#103's amendment): .md pages directly inside, no subfolder,
@@ -278,6 +279,7 @@ python3 -I product-reads/reads.py --selftest || { echo "FAIL: product-reads/read
 python3 -I product-reads/ask.py --selftest || { echo "FAIL: product-reads/ask.py asks for what it should not, or leaves what it should ask for — see the case above."; fail=1; }
 python3 -I product-reads/brief-check.py --selftest || { echo "FAIL: product-reads/brief-check.py no longer refuses a brief that plans, overloads or skips its slots — see the case above."; fail=1; }
 python3 -I product-reads/setup.py --selftest || { echo "FAIL: product-reads/setup.py no longer sets a product up as decision 0013 says — see the case above."; fail=1; }
+python3 -I product-reads/ticket.py --selftest || { echo "FAIL: product-reads/ticket.py no longer refuses a ticket that does not resolve or hands a successor more than its cap — see the case above."; fail=1; }
 python3 -I .claude/size.py --selftest || { echo "FAIL: .claude/size.py no longer holds a session to his 300k/350k lines, or is no longer wired before and after every tool call — see the case above."; fail=1; }
 python3 -I product-reads/kit/review-gate.py --selftest || { echo "FAIL: the starter kit's gate no longer counts what it must — see the case above."; fail=1; }
 fi

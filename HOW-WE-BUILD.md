@@ -1,6 +1,6 @@
 # How we build
 
-**Rulebook v2.0.** Read this page whole, then the README. Nothing else is read until a task needs it.
+**Rulebook v2.0.** Read this page whole, then the README, or, in a session whose task carries a ticket, that ticket's pieces in its place (`library/session-changeover.md`, *The ticket*). Nothing else is read until a task needs it.
 
 **Who decides.** Dhayan is Chairman: the customer problem, what the product does, prices and figures, how it looks (approved by looking at pictures), spending, permissions, anything irreversible. The lead (one model, either stack, one slice at a time) is CTO: every other technical decision, this rulebook included, settled and merged without him. A permission is only a grant needing his own sign-in; a repository, branch, preview or deploy is the CTO's. Never hand him options, nor ask or offer what the CTO may settle: do it, then report (his ruling, decision 0025). Unsure: take the smallest reversible option.
 
