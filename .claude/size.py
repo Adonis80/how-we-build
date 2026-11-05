@@ -44,6 +44,20 @@ a repository that carries `product-reads/ticket.py` (this rulebook):
   piece nor, inside a `ticket.py` command, a piece's file. It does not see a
   recursive search or a read dressed as a ticket read.
 
+The boot measured (his ruling, 5 November 2026, 18:15, on #363, "I agree to
+your upgrade": every fresh session, before any work, posts one line on its
+issue, its starting size split into what the platform loads and what we made
+it read, ours under 30k; over target, the line names the three heaviest
+pieces), in the same repositories as the guard:
+
+- Before a call, the session's first `Resumed:` or `Continued:` comment is
+  refused unless it carries a `Boot:` line whose figures are the hook's own:
+  `ours` is every tool result the session read before it (bytes / 4, a
+  loaded tool's schema excepted), `platform` the rest of its real size; past
+  30k ours, the line names its three heaviest reads. The refusal hands the
+  line to paste, so no session rounds or skips it. A hook cannot post a
+  comment itself; it holds the one the session must post.
+
 An unreadable transcript blocks nothing and says so: a lock that cannot see
 must not brick the session that would write the handover. The words of a
 `create_trigger` or `update_trigger` are checked all the same: they are in
@@ -74,6 +88,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 BOOT_OPEN = ("HOW-WE-BUILD.md", "README.md")
 TICKET_RE = re.compile(r"(?m)^\s*Ticket:\s*$")
 BOOT_END_RE = re.compile(r"\A\W*(?:Resumed|Continued|Checkpoint):")
+BOOT_LINE_RE = re.compile(r"\A\W*(?:Resumed|Continued):")
+BOOT_RE = re.compile(r"(?m)^\W*Boot:.*$")
+OURS_TARGET = 30_000   # what we make a fresh session read (his ruling, 5 November 2026, 18:15)
+OURS_SLACK = 3_000     # a Boot: line's ours figure may sit this far off the hook's
+NOT_OURS = ("ToolSearch",)   # a loaded tool's schema is the platform's
 RULE_PAGE_RE = re.compile(r"(?<![\w.-])(?:\./)?((?:juku-library|library)/[\w./-]*|CHARTER\.md|AGENTS\.md|RICH-DATA\.md)")
 
 CHECKPOINT_RE = re.compile(r"\A\W*Checkpoint:")
@@ -119,8 +138,8 @@ def read(transcript_path):
     checkpointed = False
     tool_uses = 0
     pending = set()   # checkpoint calls made past the line, awaiting their result
-    guard = {"first": None, "booted": False, "words": None}
-    boot_calls, word_calls = set(), {}
+    guard = {"first": None, "booted": False, "words": None, "reads": []}
+    boot_calls, word_calls, labels = set(), {}, {}
     with f:
         for raw in f:
             try:
@@ -139,9 +158,15 @@ def read(transcript_path):
                 if guard["first"] is None and not tool_uses and not seen and TICKET_RE.search(_text(content)):
                     guard["first"] = _text(content)
                 for c in content if isinstance(content, list) else []:
-                    if not (isinstance(c, dict) and c.get("type") == "tool_result") or c.get("is_error"):
+                    if not (isinstance(c, dict) and c.get("type") == "tool_result"):
+                        continue
+                    if c.get("is_error"):
+                        labels.pop(c.get("tool_use_id"), None)
                         continue
                     t = c.get("tool_use_id")
+                    if not guard["booted"] and t in labels:
+                        body = _text(c.get("content")) or json.dumps(c.get("content"))
+                        guard["reads"].append(((len(body.encode("utf-8")) + 3) // 4, labels.pop(t)))
                     checkpointed = checkpointed or t in pending
                     guard["booted"] = guard["booted"] or t in boot_calls
                     if t in word_calls:
@@ -164,6 +189,8 @@ def read(transcript_path):
                     continue
                 tool_uses += 1
                 name, inp = c.get("name") or "", c.get("input") if isinstance(c.get("input"), dict) else {}
+                if not guard["booted"] and name not in NOT_OURS:
+                    labels[c.get("id")] = _label(name, inp)
                 if _ends(name, COMMENT_TOOLS) and BOOT_END_RE.search((inp.get("body") or "").lstrip()):
                     boot_calls.add(c.get("id"))
                 if _ends(name, WORDS_TOOLS) and inp.get("prompt"):
@@ -173,6 +200,46 @@ def read(transcript_path):
     if not seen:
         return None
     return size, checkpointed, tool_uses, guard
+
+
+def _label(name, inp):
+    """A read's name in a Boot: line: its command, file or tool and target."""
+    if name == "Bash":
+        return "`" + (inp.get("command") or "").strip().split("\n")[0][:60] + "`"
+    if inp.get("file_path"):
+        return name + " " + (_rel(inp["file_path"]) or inp["file_path"])
+    short = name.split("__")[-1]
+    target = [str(inp[k]) for k in ("method", "issue_number", "pullNumber") if inp.get(k) is not None]
+    return " ".join([short] + target)
+
+
+def boot_line(state):
+    """The Boot: line the hook's own figures make."""
+    size, reads = state[0], state[3]["reads"]
+    ours = sum(n for n, _ in reads)
+    k = lambda n: f"{round(n / 1000)}k"
+    line = f"Boot: platform {k(size - ours)}, ours {k(ours)} (transcript; ours = what we made it read)"
+    if ours > OURS_TARGET:
+        top = sorted(reads, key=lambda r: -r[0])[:3]
+        line += "; over 30k, heaviest: " + ", ".join(f"{l} {k(n)}" for n, l in top)
+    return line
+
+
+def boot_problem(body, state):
+    """Why a first Resumed:/Continued: comment's Boot: line fails, or None."""
+    want = boot_line(state)
+    line = BOOT_RE.search(body)
+    fig = lambda w, t: re.search(w + r"\s*~?\s*(\d+(?:\.\d+)?)\s*k\b", t)
+    ours = sum(n for n, _ in state[3]["reads"])
+    if line:
+        p, o = fig("platform", line.group(0)), fig("ours", line.group(0))
+        if (p and o and abs(float(p.group(1)) * 1000 - (state[0] - ours)) <= SLACK_K * 1000
+                and abs(float(o.group(1)) * 1000 - ours) <= OURS_SLACK
+                and (ours <= OURS_TARGET or "heaviest" in line.group(0))):
+            return None
+    return ("size hook: a fresh session's first `Resumed:` or `Continued:` carries its boot measured, split "
+            "into the platform's share and ours (his ruling, 5 November 2026, 18:15, #363; "
+            "library/session-changeover.md, *The ticket*). Put this line in it as it stands: " + want)
 
 
 # ---- the guard --------------------------------------------------------------
@@ -290,6 +357,12 @@ def decide(event, tool_name, tool_input, state, tk=None):
         return None
     size, checkpointed, tool_uses = state[:3]
     k = f"{round(size / 1000)}k"
+    if (event == "PreToolUse" and tk is not None and not state[3]["booted"]
+            and _ends(tool_name or "", COMMENT_TOOLS)
+            and BOOT_LINE_RE.search((tool_input.get("body") or "").lstrip())):
+        why = boot_problem(tool_input.get("body") or "", state)
+        if why:
+            return _deny(why)
     if event == "PreToolUse":
         body = checkpoint_body(tool_name, tool_input)
         if body is not None:
@@ -503,6 +576,51 @@ def _guard_cases(cases):
     cases.append(("a ticket pasted after the first reply arms nothing", decide("PreToolUse", "Read", {"file_path": lib}, s, tk) is None))
     s = _state([_first("Do the job, no ticket."), _turn(96_000, "Bash")])
     cases.append(("a session with no ticket is not guarded at boot", decide("PreToolUse", "Read", {"file_path": lib}, s, tk) is None))
+    return _boot_cases(cases, tk, C)
+
+
+def _read_result(id, tokens):
+    return json.dumps({"type": "user", "message": {"content": [
+        {"type": "tool_result", "tool_use_id": id, "content": "x" * (tokens * 4)}]}})
+
+
+def _boot_cases(cases, tk, C):
+    """The boot measured: the first Resumed:/Continued: carries the hook's own Boot: line."""
+    small = [_turn(96_000, "Bash", id="a"), _read_result("a", 5_000),
+             _call(1, "ToolSearch", {}, "ts"), _read_result("ts", 9_000),
+             _call(112_000, "Read", {"file_path": os.path.join(ROOT, "README.md")}, "b"), _read_result("b", 2_000)]
+    s = _state(small)
+    line = boot_line(s)
+    cases += [
+        ("ours is what the session read, a loaded tool's schema excepted", "ours 7k" in line),
+        ("platform is the rest of the real size", "platform 105k" in line),
+        ("under 30k no heaviest list is asked", "heaviest" not in line),
+        ("a Resumed: with no Boot: line is refused, and handed the line",
+         _denied(decide("PreToolUse", C, {"body": "Resumed: clean"}, s, tk)) and
+         line in json.dumps(decide("PreToolUse", C, {"body": "Resumed: clean"}, s, tk))),
+        ("a Resumed: with the hook's line passes", decide("PreToolUse", C, {"body": "Resumed: clean\n" + line}, s, tk) is None),
+        ("a Continued: is held the same", _denied(decide("PreToolUse", C, {"body": "Continued: x"}, s, tk))),
+        ("a guessed ours figure is refused", _denied(decide("PreToolUse", C,
+         {"body": "Resumed: clean\nBoot: platform 105k, ours 1k"}, s, tk))),
+        ("a product, carrying no ticket.py, is not held", decide("PreToolUse", C, {"body": "Resumed: clean"}, s, None) is None),
+    ]
+    big = small[:-2] + [_call(150_000, "Bash", {"command": "cat a"}, "c"), _read_result("c", 20_000),
+                        _call(151_000, "mcp__github__issue_read", {"method": "get_comments", "issue_number": 363}, "d"),
+                        _read_result("d", 9_000)]
+    s = _state(big)
+    line = boot_line(s)
+    cases += [
+        ("over 30k the line names the three heaviest", "heaviest: `cat a` 20k, issue_read get_comments 363 9k" in line),
+        ("over 30k a line without them is refused", _denied(decide("PreToolUse", C,
+         {"body": "Resumed: clean\nBoot: platform 116k, ours 34k"}, s, tk))),
+        ("over 30k the hook's line passes", decide("PreToolUse", C, {"body": "Resumed: clean\n" + line}, s, tk) is None),
+    ]
+    s = _state(big + [_call(152_000, C, {"body": "Resumed: clean\n" + line}, "r"), _result("r"),
+                      _call(153_000, "Bash", {"command": "cat b"}, "e"), _read_result("e", 50_000)])
+    cases += [
+        ("reads after the boot are not ours at boot", sum(n for n, _ in s[3]["reads"]) < 35_000),
+        ("a later Resumed: is not held again", decide("PreToolUse", C, {"body": "Resumed: x"}, s, tk) is None),
+    ]
     return True
 
 
