@@ -15,10 +15,14 @@ and output tokens, as the model's own usage reports them.
 - After a call, at 300,000 or more with no checkpoint written since the line
   was crossed: the session is told, on every call until it writes one, to write
   its handover checkpoint now.
-- Before a call, at 350,000 or more, or once that checkpoint is written past
-  300,000: every call is refused but the checkpoint itself, loading a tool
-  (ToolSearch), and, once the checkpoint is written, starting the successor
-  (`library/session-changeover.md`, *A session starts its own successor*).
+- Before a call, at 350,000 or more: every call is refused but the checkpoint
+  itself, loading a tool (ToolSearch), and, once a checkpoint has gone through
+  past 300,000, starting the successor (`library/session-changeover.md`,
+  *A session starts its own successor*).
+- A checkpoint counts as written only when its call went through: a refused
+  or failed call (its result an error) does not. It is a comment whose first
+  line opens `Checkpoint:`, posted by a comment tool or by `gh`/the API in the
+  shell.
 - Before a call, at any size: a checkpoint comment without a `Size:` line
   whose `end`/`now` figure is within 20k of the real one is refused, with the
   real figure. Head office's `Checkpoint: released` carries none (that page).
@@ -44,8 +48,11 @@ COMMENT_TOOLS = ("__add_issue_comment", "__update_issue_comment")
 SUCCESSOR_TOOLS = ("__create_trigger", "__update_trigger", "__fire_trigger", "__list_triggers")
 ALWAYS = ("ToolSearch",)
 
-CHECKPOINT_RE = re.compile(r"(?m)^\W*Checkpoint:")
-RELEASED_RE = re.compile(r"(?m)^\W*Checkpoint:\s*released")
+CHECKPOINT_RE = re.compile(r"\A\W*Checkpoint:")
+RELEASED_RE = re.compile(r"\A\W*Checkpoint:\s*released")
+SHELL_POST_RE = re.compile(r"\bgh\s+(?:issue|pr)\s+comment\b|/comments\b")
+SHELL_CP_RE = re.compile(r"(?m)(?:^|['\"=])\W*Checkpoint:")
+SHELL_REL_RE = re.compile(r"(?m)(?:^|['\"=])\W*Checkpoint:\s*released")
 SIZE_RE = re.compile(r"(?m)^\W*Size:.*$")
 FIGURE_RE = re.compile(r"\b(?:end|now)\s*~?\s*(\d+(?:\.\d+)?)\s*k\b")
 
@@ -56,9 +63,15 @@ def _ends(name, suffixes):
 
 def checkpoint_body(tool_name, tool_input):
     """The body if this call posts a checkpoint (not a release), else None."""
+    tool_input = tool_input if isinstance(tool_input, dict) else {}
+    if tool_name == "Bash":
+        cmd = tool_input.get("command") or ""
+        if SHELL_POST_RE.search(cmd) and SHELL_CP_RE.search(cmd) and not SHELL_REL_RE.search(cmd):
+            return cmd
+        return None
     if not _ends(tool_name or "", COMMENT_TOOLS):
         return None
-    body = (tool_input or {}).get("body") or ""
+    body = (tool_input.get("body") or "").lstrip()
     if not CHECKPOINT_RE.search(body) or RELEASED_RE.search(body):
         return None
     return body
@@ -74,16 +87,26 @@ def read(transcript_path):
     seen = False
     checkpointed = False
     tool_uses = 0
+    pending = set()   # checkpoint calls made past the line, awaiting their result
     with f:
         for raw in f:
             try:
                 d = json.loads(raw)
             except ValueError:
                 continue
-            if d.get("type") != "assistant" or d.get("isSidechain"):
+            if d.get("isSidechain"):
                 continue
             m = d.get("message")
             if not isinstance(m, dict):
+                continue
+            if d.get("type") == "user":
+                content = m.get("content")
+                for c in content if isinstance(content, list) else []:
+                    if (isinstance(c, dict) and c.get("type") == "tool_result"
+                            and c.get("tool_use_id") in pending and not c.get("is_error")):
+                        checkpointed = True
+                continue
+            if d.get("type") != "assistant":
                 continue
             u = m.get("usage")
             if isinstance(u, dict):
@@ -100,7 +123,7 @@ def read(transcript_path):
                     continue
                 tool_uses += 1
                 if size >= LINE and checkpoint_body(c.get("name"), c.get("input")) is not None:
-                    checkpointed = True
+                    pending.add(c.get("id"))
     if not seen:
         return None
     return size, checkpointed, tool_uses
@@ -134,14 +157,13 @@ def decide(event, tool_name, tool_input, state):
         if body is not None:
             why = size_problem(body, size)
             return _deny(why) if why else None
-        finished = size >= HARD or (size >= LINE and checkpointed)
-        if not finished or tool_name in ALWAYS:
+        if size < HARD or tool_name in ALWAYS:
             return None
         if checkpointed and _ends(tool_name or "", SUCCESSOR_TOOLS):
             return None
         if checkpointed:
-            return _deny(f"size hook: {k}, handover checkpoint written; the only actions left are "
-                         f"starting the successor (create/update/fire_trigger) and ending the turn")
+            return _deny(f"size hook: {k}, past the hard stop of 350k with the checkpoint written; the only "
+                         f"actions left are starting the successor (create/update/fire_trigger) and ending the turn")
         return _deny(f"size hook: {k}, past the hard stop of 350k; every action is refused but writing "
                      f"the handover checkpoint (an issue comment opening `Checkpoint:`, with its `Size:` line)")
     if event == "PostToolUse":
@@ -173,14 +195,20 @@ def newest_transcript():
 
 # ---- selftest ---------------------------------------------------------------
 
-def _turn(n, tool=None, body=None, sidechain=False):
+def _turn(n, tool=None, body=None, sidechain=False, id=None):
     content = []
     if tool:
-        content.append({"type": "tool_use", "name": tool, "input": {"body": body} if body is not None else {}})
+        content.append({"type": "tool_use", "id": id or "t" + str(n), "name": tool,
+                        "input": {"body": body} if body is not None else {}})
     return json.dumps({"type": "assistant", "isSidechain": sidechain, "message": {
         "content": content,
         "usage": {"input_tokens": 2, "cache_creation_input_tokens": 1000,
                   "cache_read_input_tokens": n - 1002 - 10, "output_tokens": 10}}})
+
+
+def _result(id, error=False):
+    return json.dumps({"type": "user", "message": {"content": [
+        {"type": "tool_result", "tool_use_id": id, "is_error": error, "content": "x"}]}})
 
 
 def _state(lines):
@@ -224,12 +252,27 @@ def selftest():
         ("a release needs no Size: line", decide("PreToolUse", C, {"body": "Checkpoint: released — link"}, s) is None),
         ("an ordinary comment is not a checkpoint", decide("PreToolUse", C, {"body": "Resumed: clean"}, s) is None),
     ]
-    s = _state([_turn(96_000, "Bash"), _turn(305_000, "Bash"), _turn(310_000, C, good)])
+    cases += [
+        ("a comment quoting the format is not a checkpoint",
+         decide("PreToolUse", C, {"body": "Round 2.\n- `Checkpoint: boundary — …` is the shape"}, s) is None),
+        ("a checkpoint posted from the shell is one", _denied(decide("PreToolUse", "Bash",
+         {"command": "gh issue comment 363 --body 'Checkpoint: boundary\nSize: end 200k'"}, s))),
+        ("a true one from the shell passes", decide("PreToolUse", "Bash",
+         {"command": "gh issue comment 363 --body-file - <<EOF\nCheckpoint: boundary\n" + good.split("\n")[1] + "\nEOF"}, s) is None),
+    ]
+    s = _state([_turn(96_000, "Bash"), _turn(305_000, "Bash"), _turn(310_000, C, good, id="cp"), _result("cp")])
     cases += [
         ("a checkpoint past the line stops the demand", decide("PostToolUse", "Bash", {}, s) is None),
-        ("after it, work is refused", _denied(decide("PreToolUse", "Bash", {}, s))),
-        ("after it, the successor may start", decide("PreToolUse", "mcp__claude-code-remote__fire_trigger", {}, s) is None),
-        ("after it, a tool may be loaded", decide("PreToolUse", "ToolSearch", {}, s) is None),
+        ("after it, below 350k, work is not refused", decide("PreToolUse", "Bash", {}, s) is None),
+    ]
+    s = _state([_turn(96_000, "Bash"), _turn(305_000, "Bash"), _turn(310_000, C, good, id="cp"), _result("cp", error=True)])
+    cases.append(("a refused or failed checkpoint is not written", s[1] is False and
+                  bool(decide("PostToolUse", "Bash", {}, s))))
+    s = _state([_turn(96_000, "Bash"), _turn(310_000, C, good, id="cp"), _result("cp"), _turn(351_000, "Bash")])
+    cases += [
+        ("past 350k after it, work is refused", _denied(decide("PreToolUse", "Bash", {}, s))),
+        ("past 350k after it, the successor may start", decide("PreToolUse", "mcp__claude-code-remote__fire_trigger", {}, s) is None),
+        ("past 350k after it, a tool may be loaded", decide("PreToolUse", "ToolSearch", {}, s) is None),
     ]
     s = _state([_turn(96_000, C, good), _turn(200_000, "Bash"), _turn(352_000, "Bash")])
     cases += [
