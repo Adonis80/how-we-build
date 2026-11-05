@@ -28,13 +28,32 @@ and output tokens, as the model's own usage reports them.
   whose `end`/`now` figure is within 20k of the real one is refused, with the
   real figure. Head office's `Checkpoint: released` carries none (that page).
 
+The guard (his rulings of 5 November 2026 on #363: "Slim boot. A session loads
+one start page plus only what its job names"; "Locks, not reminders"), only in
+a repository that carries `product-reads/ticket.py` (this rulebook):
+
+- Before a call, a `create_trigger` or `update_trigger` whose words' ticket
+  fails `ticket.py check` is refused, with its faults; a `fire_trigger` is
+  refused until such words have gone through in this session.
+- Before a call, while a session whose first message carries a `Ticket:` is
+  booting (until its `Resumed:`, `Continued:` or `Checkpoint:` comment has gone
+  through), a read off the ticket is refused: a `Read` or `Grep` of a file in
+  this repository other than `HOW-WE-BUILD.md`, `README.md` or a whole-file
+  piece, and a shell command naming a rule page (`library/`, `juku-library/`,
+  `CHARTER.md`, `AGENTS.md`, `RICH-DATA.md`) that is neither a whole-file
+  piece nor, inside a `ticket.py` command, a piece's file. It does not see a
+  recursive search or a read dressed as a ticket read.
+
 An unreadable transcript blocks nothing and says so: a lock that cannot see
-must not brick the session that would write the handover.
+must not brick the session that would write the handover. The words of a
+`create_trigger` or `update_trigger` are checked all the same: they are in
+the call, not the transcript.
 
 `--now [transcript]` prints the real size (newest transcript of this
 directory's project when none is named). `--selftest` runs the cases below and
 checks `.claude/settings.json` still wires both events to this file.
 """
+import importlib.util
 import json
 import os
 import re
@@ -48,6 +67,14 @@ SLACK_K = 20        # a Size: line's figure may sit this many k off the real one
 COMMENT_TOOLS = ("__add_issue_comment", "__update_issue_comment")
 SUCCESSOR_TOOLS = ("__create_trigger", "__update_trigger", "__fire_trigger", "__list_triggers")
 ALWAYS = ("ToolSearch",)
+WORDS_TOOLS = ("__create_trigger", "__update_trigger")
+FIRE_TOOLS = ("__fire_trigger",)
+
+ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+BOOT_OPEN = ("HOW-WE-BUILD.md", "README.md")
+TICKET_RE = re.compile(r"(?m)^\s*Ticket:\s*$")
+BOOT_END_RE = re.compile(r"\A\W*(?:Resumed|Continued|Checkpoint):")
+RULE_PAGE_RE = re.compile(r"(?<![\w.-])(?:\./)?((?:juku-library|library)/[\w./-]*|CHARTER\.md|AGENTS\.md|RICH-DATA\.md)")
 
 CHECKPOINT_RE = re.compile(r"\A\W*Checkpoint:")
 RELEASED_RE = re.compile(r"\A\W*Checkpoint:\s*released")
@@ -70,8 +97,19 @@ def checkpoint_body(tool_name, tool_input):
     return body
 
 
+def _text(content):
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(c.get("text") or "" for c in content
+                         if isinstance(c, dict) and c.get("type") == "text")
+    return ""
+
+
 def read(transcript_path):
-    """(size, checkpointed_past_line, tool_uses) or None when unreadable."""
+    """(size, checkpointed_past_line, tool_uses, guard) or None when unreadable;
+    guard = {"first": the first message's text, "booted": its boot line went
+    through, "words": the newest trigger words that went through}."""
     try:
         f = open(transcript_path, encoding="utf-8")
     except (OSError, TypeError):
@@ -81,6 +119,8 @@ def read(transcript_path):
     checkpointed = False
     tool_uses = 0
     pending = set()   # checkpoint calls made past the line, awaiting their result
+    guard = {"first": None, "booted": False, "words": None}
+    boot_calls, word_calls = set(), {}
     with f:
         for raw in f:
             try:
@@ -94,10 +134,18 @@ def read(transcript_path):
                 continue
             if d.get("type") == "user":
                 content = m.get("content")
+                # the task's words: the first message before any reply that carries a Ticket: line,
+                # so a note or caveat the surface puts first does not hide it
+                if guard["first"] is None and not tool_uses and not seen and TICKET_RE.search(_text(content)):
+                    guard["first"] = _text(content)
                 for c in content if isinstance(content, list) else []:
-                    if (isinstance(c, dict) and c.get("type") == "tool_result"
-                            and c.get("tool_use_id") in pending and not c.get("is_error")):
-                        checkpointed = True
+                    if not (isinstance(c, dict) and c.get("type") == "tool_result") or c.get("is_error"):
+                        continue
+                    t = c.get("tool_use_id")
+                    checkpointed = checkpointed or t in pending
+                    guard["booted"] = guard["booted"] or t in boot_calls
+                    if t in word_calls:
+                        guard["words"] = word_calls[t]
                 continue
             if d.get("type") != "assistant":
                 continue
@@ -115,11 +163,104 @@ def read(transcript_path):
                 if not isinstance(c, dict) or c.get("type") != "tool_use":
                     continue
                 tool_uses += 1
+                name, inp = c.get("name") or "", c.get("input") if isinstance(c.get("input"), dict) else {}
+                if _ends(name, COMMENT_TOOLS) and BOOT_END_RE.search((inp.get("body") or "").lstrip()):
+                    boot_calls.add(c.get("id"))
+                if _ends(name, WORDS_TOOLS) and inp.get("prompt"):
+                    word_calls[c.get("id")] = inp["prompt"]
                 if size >= LINE and checkpoint_body(c.get("name"), c.get("input")) is not None:
                     pending.add(c.get("id"))
     if not seen:
         return None
-    return size, checkpointed, tool_uses
+    return size, checkpointed, tool_uses, guard
+
+
+# ---- the guard --------------------------------------------------------------
+
+def _ticket():
+    """This repository's ticket.py, or None where it carries none (a product)."""
+    p = os.path.join(ROOT, "product-reads", "ticket.py")
+    if not os.path.isfile(p):
+        return None
+    sys.dont_write_bytecode = True   # check.sh admits no __pycache__ beside it
+    try:
+        spec = importlib.util.spec_from_file_location("ticket", p)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+    except Exception:
+        return None
+
+
+def words_faults(words, tk):
+    faults, _ = tk.check(words or "", {tk.RULEBOOK: ROOT})
+    return faults
+
+
+def _rel(path):
+    """A path's place in this repository, or None outside it."""
+    if not path:
+        return None
+    full = os.path.realpath(path if os.path.isabs(path) else os.path.join(os.getcwd(), path))
+    if full != ROOT and os.path.commonpath([ROOT, full]) != ROOT:
+        return None
+    return os.path.relpath(full, ROOT)
+
+
+def off_ticket(tool_name, tool_input, entries, tk):
+    """Why this call reads off the ticket at boot, or None."""
+    pieces = [tk.split(e) for e in entries if tk.split(e)[0] == tk.RULEBOOK]
+    whole = {os.path.normpath(p) for _, p, a in pieces if not a}
+    files = {os.path.normpath(p) for _, p, _ in pieces}
+    open_ = whole | set(BOOT_OPEN)
+    if tool_name == "Read":
+        r = _rel(tool_input.get("file_path"))
+        if r is not None and os.path.normpath(r) not in open_:
+            return r
+    elif tool_name == "Grep":
+        r = _rel(tool_input.get("path") or os.getcwd())
+        if r is not None and os.path.normpath(r) not in open_:
+            return r
+    elif tool_name == "Bash":
+        cmd = tool_input.get("command") or ""
+        for m in RULE_PAGE_RE.finditer(cmd):
+            p = os.path.normpath(m.group(1).rstrip("/.") or m.group(1))
+            if p in whole or ("ticket.py" in cmd and p in files):
+                continue
+            return m.group(1)
+    return None
+
+
+def guard(event, tool_name, tool_input, state, tk):
+    """The guard's refusal, or None."""
+    if tk is None or event != "PreToolUse":
+        return None
+    name = tool_name or ""
+    if _ends(name, WORDS_TOOLS) and "prompt" in tool_input:
+        faults = words_faults(tool_input.get("prompt"), tk)
+        if faults:
+            return _deny("size hook: these task words' ticket fails `product-reads/ticket.py check` "
+                         "(library/session-changeover.md, *The ticket*): " + "; ".join(faults))
+        return None
+    if state is None:
+        return None
+    g = state[3]
+    if _ends(name, FIRE_TOOLS):
+        if g["words"] is None or words_faults(g["words"], tk):
+            return _deny("size hook: a successor is fired only after `update_trigger` has gone through in this "
+                         "session with words whose ticket passes `product-reads/ticket.py check` "
+                         "(library/session-changeover.md, *The ticket*)")
+        return None
+    entries = tk.ticket_lines(g["first"] or "")
+    if entries is None or g["booted"]:
+        return None
+    what = off_ticket(name, tool_input, entries, tk)
+    if what is None:
+        return None
+    return _deny(f"size hook: `{what}` is off this session's ticket. At boot it reads `HOW-WE-BUILD.md`, the README "
+                 f"and its ticket's pieces (`python3 product-reads/ticket.py --repo how-we-build=. read <address>`); "
+                 f"post `Resumed:` first, then take the read and name it in your next checkpoint as "
+                 f"`Added: <address> — <why>` (library/session-changeover.md, *The ticket*)")
 
 
 def size_problem(body, size):
@@ -136,14 +277,18 @@ def size_problem(body, size):
     return None
 
 
-def decide(event, tool_name, tool_input, state):
+def decide(event, tool_name, tool_input, state, tk=None):
     """The hook's JSON answer, or None to stay silent."""
+    tool_input = tool_input if isinstance(tool_input, dict) else {}
+    refused = guard(event, tool_name, tool_input, state, tk)
+    if refused:
+        return refused
     if state is None:
         if event == "PostToolUse":
             return {"hookSpecificOutput": {"hookEventName": "PostToolUse",
                     "additionalContext": "size hook: the transcript could not be read; size unknown, nothing blocked"}}
         return None
-    size, checkpointed, tool_uses = state
+    size, checkpointed, tool_uses = state[:3]
     k = f"{round(size / 1000)}k"
     if event == "PreToolUse":
         body = checkpoint_body(tool_name, tool_input)
@@ -279,6 +424,7 @@ def selftest():
         ("an unreadable transcript blocks nothing", decide("PreToolUse", "Bash", {}, read("/nonexistent")) is None),
         ("and says so", "unknown" in json.dumps(decide("PostToolUse", "Bash", {}, None))),
     ]
+    ok = _guard_cases(cases)
     here = os.path.dirname(os.path.abspath(__file__))
     try:
         hooks = json.load(open(os.path.join(here, "settings.json"))).get("hooks", {})
@@ -294,6 +440,72 @@ def selftest():
     return ok
 
 
+def _first(text):
+    return json.dumps({"type": "user", "isMeta": True, "message": {"content": text}})
+
+
+def _call(n, tool, inp, id):
+    return json.dumps({"type": "assistant", "message": {
+        "content": [{"type": "tool_use", "id": id, "name": tool, "input": inp}],
+        "usage": {"input_tokens": n, "output_tokens": 0}}})
+
+
+def _guard_cases(cases):
+    """The guard's cases, on this repository's own ticket.py and pages; True when it holds them."""
+    tk = _ticket()
+    if tk is None:
+        # a product's copy: no ticket.py, so the guard is off, and its selftest stays green
+        cases.append(("a repository carrying no ticket.py has no guard",
+                      decide("PreToolUse", "mcp__claude-code-remote__update_trigger", {"prompt": "Build."},
+                             _state([_turn(96_000, "Bash")]), None) is None))
+        return True
+    U, F, C = "mcp__claude-code-remote__update_trigger", "mcp__claude-code-remote__fire_trigger", "mcp__github__add_issue_comment"
+    good = "Words.\nTicket:\n- " + tk.OWN + "\n- how-we-build:.claude/size.py\n\nMore words.\n"
+    bad = "Words.\nTicket:\n- " + tk.OWN + "\n- how-we-build:library/session-changeover.md#No such piece\n"
+    s0 = _state([_turn(96_000, "Bash")])
+    cases += [
+        ("task words whose ticket passes go through", decide("PreToolUse", U, {"prompt": good}, s0, tk) is None),
+        ("task words whose ticket fails are refused", _denied(decide("PreToolUse", U, {"prompt": bad}, s0, tk))),
+        ("task words with no ticket are refused", _denied(decide("PreToolUse", U, {"prompt": "Build."}, s0, tk))),
+        ("and refused with an unreadable transcript too", _denied(decide("PreToolUse", U, {"prompt": bad}, None, tk))),
+        ("a trigger change without words is not checked", decide("PreToolUse", U, {"enabled": False}, s0, tk) is None),
+        ("a fire with no words gone through is refused", _denied(decide("PreToolUse", F, {}, s0, tk))),
+        ("a product, carrying no ticket.py, is not guarded", decide("PreToolUse", U, {"prompt": bad}, s0, None) is None),
+    ]
+    s = _state([_turn(96_000, "Bash"), _call(97_000, U, {"prompt": good}, "u1"), _result("u1")])
+    cases.append(("a fire after checked words went through passes", decide("PreToolUse", F, {}, s, tk) is None))
+    s = _state([_turn(96_000, "Bash"), _call(97_000, U, {"prompt": good}, "u1"), _result("u1", error=True)])
+    cases.append(("a fire after a refused rewrite is refused", _denied(decide("PreToolUse", F, {}, s, tk))))
+    boot = [_first("Do the job.\n" + good), _turn(96_000, "Bash")]
+    s = _state(boot)
+    lib = os.path.join(ROOT, "library", "reviewer.md")
+    piece = "python3 product-reads/ticket.py --repo how-we-build=. read '" + tk.OWN + "'"
+    cases += [
+        ("at boot a library page off the ticket is refused to Read", _denied(decide("PreToolUse", "Read", {"file_path": lib}, s, tk))),
+        ("at boot the start page is read", decide("PreToolUse", "Read", {"file_path": os.path.join(ROOT, "HOW-WE-BUILD.md")}, s, tk) is None),
+        ("at boot a whole-file piece is read", decide("PreToolUse", "Read", {"file_path": os.path.join(ROOT, ".claude", "size.py")}, s, tk) is None),
+        ("at boot a file outside the repository is read", decide("PreToolUse", "Read", {"file_path": "/tmp/x.txt"}, s, tk) is None),
+        ("at boot a search of the repository is refused", _denied(decide("PreToolUse", "Grep", {"pattern": "x"}, s, tk))),
+        ("at boot a shell read of a rule page is refused", _denied(decide("PreToolUse", "Bash", {"command": "sed -n 1,9p library/reviewer.md"}, s, tk))),
+        ("at boot the archive is refused", _denied(decide("PreToolUse", "Bash", {"command": "cat juku-library/DECISION-0021.md"}, s, tk))),
+        ("at boot a ticket piece is read with ticket.py", decide("PreToolUse", "Bash", {"command": piece}, s, tk) is None),
+        ("at boot ticket.py off the ticket is refused", _denied(decide("PreToolUse", "Bash",
+         {"command": "python3 product-reads/ticket.py read how-we-build:library/reviewer.md#Who"}, s, tk))),
+        ("at boot a shell read of the start page passes", decide("PreToolUse", "Bash", {"command": "cat HOW-WE-BUILD.md README.md"}, s, tk) is None),
+    ]
+    s = _state(boot + [_call(97_000, C, {"body": "Resumed: clean"}, "r1"), _result("r1")])
+    cases.append(("after Resumed: went through, a read off the ticket passes", decide("PreToolUse", "Read", {"file_path": lib}, s, tk) is None))
+    s = _state(boot + [_call(97_000, C, {"body": "Resumed: clean"}, "r1"), _result("r1", error=True)])
+    cases.append(("a refused Resumed: does not end the boot", _denied(decide("PreToolUse", "Read", {"file_path": lib}, s, tk))))
+    s = _state([_first("A note the surface puts first."), _first("Do the job.\n" + good), _turn(96_000, "Bash")])
+    cases.append(("a note before the task's words does not hide its ticket", _denied(decide("PreToolUse", "Read", {"file_path": lib}, s, tk))))
+    s = _state([_first("Do the job, no ticket."), _turn(96_000, "Bash"), _first("Pasted later.\n" + good)])
+    cases.append(("a ticket pasted after the first reply arms nothing", decide("PreToolUse", "Read", {"file_path": lib}, s, tk) is None))
+    s = _state([_first("Do the job, no ticket."), _turn(96_000, "Bash")])
+    cases.append(("a session with no ticket is not guarded at boot", decide("PreToolUse", "Read", {"file_path": lib}, s, tk) is None))
+    return True
+
+
 def main():
     if sys.argv[1:2] == ["--selftest"]:
         sys.exit(0 if selftest() else 1)
@@ -306,7 +518,8 @@ def main():
         h = json.load(sys.stdin)
     except ValueError:
         return
-    a = decide(h.get("hook_event_name"), h.get("tool_name"), h.get("tool_input"), read(h.get("transcript_path")))
+    a = decide(h.get("hook_event_name"), h.get("tool_name"), h.get("tool_input"),
+               read(h.get("transcript_path")), _ticket())
     if a:
         print(json.dumps(a))
 
