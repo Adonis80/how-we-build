@@ -46,7 +46,7 @@ ALWAYS = ("ToolSearch",)
 
 CHECKPOINT_RE = re.compile(r"(?m)^\W*Checkpoint:")
 RELEASED_RE = re.compile(r"(?m)^\W*Checkpoint:\s*released")
-SIZE_RE = re.compile(r"(?m)^.*\bSize:.*$")
+SIZE_RE = re.compile(r"(?m)^\W*Size:.*$")
 FIGURE_RE = re.compile(r"\b(?:end|now)\s*~?\s*(\d+(?:\.\d+)?)\s*k\b")
 
 
@@ -219,6 +219,8 @@ def selftest():
         ("a guessed Size: figure is refused", _denied(decide("PreToolUse", C, {"body": good.replace("310k", "200k")}, s))),
         ("a Size: line with no figure is refused", _denied(decide("PreToolUse", C, {"body": "Checkpoint: x\nSize: as at 01:45"}, s))),
         ("a true checkpoint passes", decide("PreToolUse", C, {"body": good}, s) is None),
+        ("the Size: line is the one that opens with it, not a mention in prose",
+         decide("PreToolUse", C, {"body": "Checkpoint: x\n- a `Size:` figure is refused\n- `Size: boot 96k now 305k (transcript)`"}, s) is None),
         ("a release needs no Size: line", decide("PreToolUse", C, {"body": "Checkpoint: released — link"}, s) is None),
         ("an ordinary comment is not a checkpoint", decide("PreToolUse", C, {"body": "Resumed: clean"}, s) is None),
     ]
