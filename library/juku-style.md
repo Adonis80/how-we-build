@@ -16,7 +16,7 @@ Every value is in `library/juku-style.css`. If a value is not in that file, the 
 
 ## (a) The feel
 
-Words and figures sit straight on a near-black ground, like a private-bank statement: no cards and no boxes, and only one faint line on the whole screen, above the total. Colour shows up only where it means something: gold for money and for the actions you take, turquoise for what was measured, green for done, red for a stop. Everything else is warm off-white in three shades. Tapping a part makes it the whole screen. The level you came from drops back, blurred and dimmed, so you always know where you are, and the working sits low on the screen within thumb reach.
+Words and figures sit straight on a near-black ground, like a private-bank statement: no cards and no boxes, and no line in the content but one faint hairline above each total. Colour shows up only where it means something: gold for money and for the actions you take, turquoise for what was measured, green for done, red for a stop. Everything else is warm off-white in three shades. Tapping a part makes it the whole screen. The level you came from drops back, blurred and dimmed, so you always know where you are, and the working sits low on the screen within thumb reach.
 
 ## (b) The parts
 
@@ -88,6 +88,8 @@ Words and figures sit straight on a near-black ground, like a private-bank state
 - Never add shadows, glows or gradients to content. The only ones are the bar fade, the deep-level veil and the sheet's shadow.
 - Never round corners past 2px on controls.
 - Never introduce a size, colour, gap or timing that is not in `library/juku-style.css`, save the product's own colours from its constitution and a new part he approved by picture, added here (*What the kit does not draw yet*).
+
+**The style lock** holds the first of these by machine (his ruling, 5 November 2026, 11:07, on [#363](https://github.com/Adonis80/how-we-build/issues/363): *"Style lock. A machine check on every build flags boxes, cards or borders round content (a highlighted control excepted, one hairline above a total); the reviewer compares the rest against the agreed reference build."*). `product-reads/style-lock.py build <paths>`, run by a product's `verify` on every build over its screens' own stylesheets and markup (`library/carries-sessions.md`, *Its machinery*), fails a border, outline, shadow or fill on anything but a control, the page's ground (a fill only) or a top hairline on a total, and a utility class drawing the same on anything but a control, naming the file and line; the kit's own stylesheet, read from here, is not the product's to scan. Everything else on this page, and anything the lock cannot see, the product's reviewer compares against the agreed reference build: the product's saved design (`library/hypersolid.md`, steps 6 and 7), and for the kit itself the formula screen above. `check.sh` runs its cases and `style-lock.py kit`: the stylesheet loads nothing from outside (no `@import`, no `url()` but `data:`), since every product loads it live, and every value table (b) names is in it (#365's advisories). Not yet shown by a run in a product: no product's `verify` carries it yet, and the first that does is its first.
 
 ## (d) How a new screen is made from this
 
