@@ -233,8 +233,32 @@ def clock_in(inp):
     return [k for k in CLOCK_KEYS if inp.get(k)]
 
 
-def _clock_in_result(text):
-    """The clock fields a trigger call's result reports set; [] when it reports both, empty; else None."""
+def _own(text, tid):
+    """The task's own object in a trigger call's result, when the result is JSON and has one with any clock field."""
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return None
+    stack = [data]
+    while stack:
+        x = stack.pop()
+        if isinstance(x, dict):
+            if x.get("id") == tid and any(k in x for k in CLOCK_KEYS):
+                return x
+            stack.extend(x.values())
+        elif isinstance(x, list):
+            stack.extend(x)
+    return None
+
+
+def _clock_in_result(text, tid=None):
+    """The clock fields a trigger call's result reports set; [] when it reports both, empty; else None.
+    The task's own object, where the result has one, decides alone: a field it reports is read, and one it
+    omits is unset, since the platform's result leaves an unset field out (update_trigger, 6 November 2026:
+    `"cron_expression": ""` and no `run_once_at`)."""
+    own = _own(text, tid) if tid else None
+    if own is not None:
+        return [k for k in CLOCK_KEYS if own.get(k)]
     try:
         found = {}
         def walk(x):
@@ -290,7 +314,7 @@ def _task_state(tasks, inp, result):
         m = None if tid else TRIG_RE.search(result)
         tid = tid or (m.group(0) if m else None)
     if tid:
-        shown = _clock_in_result(result)
+        shown = _clock_in_result(result, tid)
         if shown is None and _ends(tool, ("__create_trigger",)):
             shown = clock_in(inp)
         tasks[tid] = shown
@@ -714,10 +738,13 @@ def _clock_cases(cases, U, F, T):
             [_turn(96_000, "Bash"), _call(97_000, U, T, "u"), _trig_result("u", json.dumps({"cron_expression": "0 9 * * *"})),
              _call(98_000, U, T, "v"), _trig_result("v", clear)])) is None),
         ("an unreadable transcript blocks no fire", decide("PreToolUse", F, T, None) is None),
+        ("the platform's own update result (6 November 2026: an empty repeat, no run time) clears the task",
+         decide("PreToolUse", F, T, up({"prompt": "p"}, json.dumps({"trigger": {"id": "trig_X", "cron_expression": "", "enabled": True}}))) is None),
+        ("the task's own object decides, not another one in the result",
+         _denied(decide("PreToolUse", F, T, up({"prompt": "p"}, json.dumps({"trigger": {"id": "trig_X", "cron_expression": "0 9 * * *"},
+                                                                        "previous": {"id": "trig_Y", "cron_expression": None, "run_once_at": None}}))))),
         ("an update whose result is silent on the fields leaves the task unknown, and its fire refused",
          _denied(decide("PreToolUse", F, T, up({"prompt": "p"}, json.dumps({"trigger": {"id": "trig_X", "name": "x"}}))))),
-        ("an update whose result reports one field empty and not the other is not clear",
-         _denied(decide("PreToolUse", F, T, up({"prompt": "p"}, json.dumps({"trigger": {"id": "trig_X", "cron_expression": None}}))))),
         ("a list_triggers entry with both empty clears it", decide("PreToolUse", F, T, _state(
             [_turn(96_000, "Bash"), _call(97_000, L, {}, "l"), _trig_result("l", json.dumps({"triggers": [
                 {"id": "trig_X", "cron_expression": None, "run_once_at": None}]}))])) is None),
