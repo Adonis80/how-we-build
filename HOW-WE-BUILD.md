@@ -2,7 +2,7 @@
 
 **Rulebook v2.0.** Read this page whole, then the README. Nothing else is read until a task needs it.
 
-**Who decides.** Dhayan is Chairman: the customer problem, what the product does, prices and figures, how it looks (approved by looking at pictures), spending, permissions, anything irreversible. The lead (one model, either stack, one slice building at a time: *The loop*) is CTO: every other technical decision, this rulebook included, settled and merged without him. A permission is only a grant needing his own sign-in, or consent the platform accepts only from him (his opener, `library/session-changeover.md`); a repository, branch, preview or deploy is the CTO's. Never hand him options, nor ask or offer what the CTO may settle: do it, then report (his ruling, decision 0025). Unsure: take the smallest reversible option.
+**Who decides.** Dhayan is Chairman: the customer problem, what the product does, prices and figures, how it looks (approved by looking at pictures), spending, permissions, anything irreversible. The lead (one model, either stack, one slice building at a time: *The loop*) is CTO: every other technical decision, this rulebook included, settled and merged without him. A permission is only a grant needing his own sign-in, or consent the platform accepts only from him (his opener, `library/his-opener.md`); a repository, branch, preview or deploy is the CTO's. Never hand him options, nor ask or offer what the CTO may settle: do it, then report (his ruling, decision 0025). Unsure: take the smallest reversible option.
 
 **Which rule wins** (his ruling, decision 0021).
 1. How we build: this rulebook. A product's `AGENTS.md` adds only what is true there.
@@ -15,7 +15,7 @@
 
 **Numbers.** Never invent one; unknown is valid. An unrun number is a claim: the machine checks, not the model.
 
-**His hands are never used.** Work by hand goes into CI or the lead's own hands, else the slice passes to a stack with hands (`library/two-stacks.md`). One exception, named: an act the platform refuses every session even with his word (so far, editing a `.claude/settings.json`) is prepared and reviewed whole, every pending change batched, and handed to him as one whole-file edit, never routed round (agreed 6 November 2026 by the CTO and the consultant under `juku-library/DECISION-0023-STANDING-RULING.md#Decision 0023: an agreed, reviewed rule change counts as his ruling`, on [#371](https://github.com/Adonis80/how-we-build/issues/371); `library/session-changeover.md`, *His opener*).
+**His hands are never used.** Work by hand goes into CI or the lead's own hands, else the slice passes to a stack with hands (`library/two-stacks.md`). One exception, named: an act the platform refuses every session even with his word (so far, editing a `.claude/settings.json`) is prepared and reviewed whole, every pending change batched, and handed to him as one whole-file edit, never routed round (agreed 6 November 2026 by the CTO and the consultant under `juku-library/DECISION-0023-STANDING-RULING.md#Decision 0023: an agreed, reviewed rule change counts as his ruling`, on [#371](https://github.com/Adonis80/how-we-build/issues/371); `library/his-opener.md`).
 
 **The unit of work** is one accepted slice: a user-visible outcome with acceptance criteria, never a screen. **"Build"** is a whole instruction: take the top ready item of `roadmap.json` (here, the top ready pull request). It never means "run the build", nor is answered with a question.
 
