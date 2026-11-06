@@ -97,7 +97,7 @@ BOOT_RE = re.compile(r"(?m)^\W*Boot:.*$")
 OURS_TARGET = 30_000   # what we make a fresh session read (his ruling, 5 November 2026, 18:15)
 OURS_SLACK = 3_000     # a Boot: line's ours figure may sit this far off the hook's
 NOT_OURS = ("ToolSearch",)   # a loaded tool's schema is the platform's
-RULE_PAGE_RE = re.compile(r"(?<![\w.-])(?:\./)?((?:juku-library|library)/[\w./-]*|CHARTER\.md|AGENTS\.md|RICH-DATA\.md"
+RULE_PAGE_RE = re.compile(r"(?<![\w.-])(?:\./)?((?:[\w]+(?:-[\w]+)*-library|library)/[\w./-]*|CHARTER\.md|AGENTS\.md|RICH-DATA\.md"
                           r"|PRODUCT\.md|roadmap\.json|MAP\.md)")
 
 CHECKPOINT_RE = re.compile(r"\A\W*Checkpoint:")
@@ -571,7 +571,23 @@ def _call(n, tool, inp, id):
 
 
 def _guard_cases(cases):
-    """The guard's cases, on this repository's own ticket.py and pages; True when it holds them."""
+    """The guard's cases, on the rulebook's own ticket.py and pages, run with ROOT and the working
+    directory at the rulebook's clone, so a product's copy with the rulebook beside it runs them as the rulebook does; True when
+    it holds them."""
+    global ROOT
+    home, cwd = ROOT, os.getcwd()
+    rb = _rulebook_root()
+    try:
+        if rb is not None:
+            ROOT = os.path.realpath(rb)
+            os.chdir(ROOT)
+        return _guard_cases_here(cases)
+    finally:
+        ROOT = home
+        os.chdir(cwd)
+
+
+def _guard_cases_here(cases):
     tk = _ticket()
     if tk is None:
         # a product's copy: no ticket.py, so the guard is off, and its selftest stays green
@@ -677,6 +693,7 @@ def _product_cases(cases, tk, U, F, C):
                 ("at a product's boot a search of it is refused", _denied(decide("PreToolUse", "Grep", {"pattern": "x"}, boot, ptk))),
                 ("at a product's boot a shell read of roadmap.json is refused", _denied(sh("head -c 4000 roadmap.json"))),
                 ("at a product's boot a shell read of PRODUCT.md is refused", _denied(sh("cat PRODUCT.md"))),
+                ("at a product's boot a shell read of its -library/ paper is refused", _denied(sh("cat hemz-library/x.md"))),
                 ("at a product's boot a piece is read with ticket.py", sh(
                     "python3 ../how-we-build/product-reads/ticket.py --repo Hemz-OS=. read 'Hemz-OS:PRODUCT.md#1'") is None),
                 ("at a product's boot a Resumed: is held to its Boot: line",
