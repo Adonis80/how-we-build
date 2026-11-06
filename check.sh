@@ -4,6 +4,7 @@
 # file that is not on its list or missing from it, a library page unscoped, a
 # link to a page that does not exist,
 # an index row that opens its first page on words that page does not say,
+# compiled Python (a __pycache__ or .pyc) committed anywhere,
 # anything that looks like a secret (naming the place, never the value), a
 # model named anywhere but the registry, a review gate that no longer matches the reviewer's answers or has drifted from
 # the workflows that fetch them, a Roadmap that no longer renders as
@@ -86,6 +87,21 @@ for f in $allowed; do
 done
 [ "$list_fail" -eq 0 ] && echo "ok: file list unchanged"
 [ "$list_fail" -eq 0 ] || fail=1
+
+# 2a. No compiled Python committed anywhere (#363's brief, item 4): a
+# __pycache__ directory or a .pyc/.pyo file is a session's residue, never a
+# source. Tracked files only, so a local run's own bytecode does not fail it;
+# outside a git checkout, the tree as it stands.
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  pyc=$(git ls-files | grep -E '(^|/)__pycache__/|\.py[co]$' || true)
+else
+  pyc=$(find . -path ./.git -prune -o \( -name __pycache__ -o -name '*.pyc' -o -name '*.pyo' \) -print | sed 's|^\./||')
+fi
+if [ -n "$pyc" ]; then
+  echo "FAIL: compiled Python is committed; delete it (run Python with -B):"; printf '  %s\n' $pyc; fail=1
+else
+  echo "ok: no compiled Python committed"
+fi
 
 # 2b. One front-end guide (his ruling, 8 October 2026: "we should be left with
 # only library/hypersolid.md"). It holds the screen law, carried once so every
