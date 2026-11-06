@@ -48,6 +48,17 @@ directory is `Hemz-OS`), beside this repository or the rulebook's clone:
   nor, inside a `ticket.py` command, a piece's file. It does not see a
   recursive search or a read dressed as a ticket read.
 
+The clock lock (#378, agreed on #371, 6 November 2026; his root on #363, "Locks,
+not reminders"; library/session-changeover.md: "A task with a repeat or a run
+time is a clock and never wakes a session"), wherever this file runs:
+
+- Before a call, a `create_trigger` or `update_trigger` carrying a
+  `cron_expression` or `run_once_at` is refused.
+- Before a call, a `fire_trigger` is refused unless this session's newest
+  `create_trigger` or `update_trigger` of that task went through and leaves it
+  with neither: its result's fields where it reports them, since an update
+  that omits them can leave an old schedule standing.
+
 The boot measured (his ruling, 5 November 2026, 18:15, on #363, "I agree to
 your upgrade": every fresh session, before any work, posts one line on its
 issue, its starting size split into what the platform loads and what we made
@@ -87,6 +98,8 @@ SUCCESSOR_TOOLS = ("__create_trigger", "__update_trigger", "__fire_trigger", "__
 ALWAYS = ("ToolSearch",)
 WORDS_TOOLS = ("__create_trigger", "__update_trigger")
 FIRE_TOOLS = ("__fire_trigger",)
+CLOCK_KEYS = ("cron_expression", "run_once_at")
+TRIG_RE = re.compile(r"\btrig_[A-Za-z0-9]+")
 
 ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 BOOT_OPEN = ("HOW-WE-BUILD.md", "README.md")
@@ -143,8 +156,8 @@ def read(transcript_path):
     checkpointed = False
     tool_uses = 0
     pending = set()   # checkpoint calls made past the line, awaiting their result
-    guard = {"first": None, "booted": False, "words": None, "reads": []}
-    boot_calls, word_calls, labels = set(), {}, {}
+    guard = {"first": None, "booted": False, "words": None, "reads": [], "tasks": {}}
+    boot_calls, word_calls, labels, task_calls = set(), {}, {}, {}
     with f:
         for raw in f:
             try:
@@ -176,6 +189,8 @@ def read(transcript_path):
                     guard["booted"] = guard["booted"] or t in boot_calls
                     if t in word_calls:
                         guard["words"] = word_calls[t]
+                    if t in task_calls:
+                        _task_state(guard["tasks"], task_calls.pop(t), _text(c.get("content")) or json.dumps(c.get("content")))
                 continue
             if d.get("type") != "assistant":
                 continue
@@ -198,6 +213,8 @@ def read(transcript_path):
                     labels[c.get("id")] = _label(name, inp)
                 if _ends(name, COMMENT_TOOLS) and BOOT_END_RE.search((inp.get("body") or "").lstrip()):
                     boot_calls.add(c.get("id"))
+                if _ends(name, WORDS_TOOLS):
+                    task_calls[c.get("id")] = inp
                 if _ends(name, WORDS_TOOLS) and inp.get("prompt"):
                     word_calls[c.get("id")] = inp["prompt"]
                 if size >= LINE and checkpoint_body(c.get("name"), c.get("input")) is not None:
@@ -205,6 +222,71 @@ def read(transcript_path):
     if not seen:
         return None
     return size, checkpointed, tool_uses, guard
+
+
+def clock_in(inp):
+    """The clock fields a trigger call's input sets."""
+    return [k for k in CLOCK_KEYS if inp.get(k)]
+
+
+def _clock_in_result(text):
+    """The clock fields a trigger call's result reports set, or None when it reports neither."""
+    try:
+        found = {}
+        def walk(x):
+            if isinstance(x, dict):
+                for k, v in x.items():
+                    if k in CLOCK_KEYS:
+                        found[k] = found.get(k) or bool(v)
+                    walk(v)
+            elif isinstance(x, list):
+                for v in x:
+                    walk(v)
+        walk(json.loads(text))
+        return [k for k, v in found.items() if v] if found else None
+    except ValueError:
+        found = re.findall(r'"?(cron_expression|run_once_at)"?\s*[:=]\s*("[^"]*"|[^,}\s]+)', text)
+        if not found:
+            return None
+        return sorted({k for k, v in found if v.strip('"') not in ("", "null", "None")})
+
+
+def _task_state(tasks, inp, result):
+    """Record a trigger call that went through: its task's clock, from the result where it says, else the input."""
+    tid = inp.get("trigger_id")
+    if not tid:
+        try:
+            tid = json.loads(result).get("trigger", {}).get("id")
+        except (ValueError, AttributeError):
+            tid = None
+        m = None if tid else TRIG_RE.search(result)
+        tid = tid or (m.group(0) if m else None)
+    if tid:
+        shown = _clock_in_result(result)
+        tasks[tid] = clock_in(inp) if shown is None else shown
+
+
+def clock(tool_name, tool_input, state):
+    """The clock lock's refusal, or None."""
+    name = tool_name or ""
+    if _ends(name, WORDS_TOOLS):
+        set_ = clock_in(tool_input)
+        if set_:
+            return _deny(f"size hook: a standing task never carries a clock (`{'`, `'.join(set_)}`): no repeat, no run "
+                         f"time; it is fired with `fire_trigger` (library/session-changeover.md, *A session starts its own "
+                         f"successor*; #378). Drop the field")
+        return None
+    if not _ends(name, FIRE_TOOLS) or state is None:
+        return None
+    tid = tool_input.get("trigger_id")
+    known = state[3]["tasks"].get(tid)
+    if known is None:
+        return _deny(f"size hook: `{tid}` is fired only after this session's `update_trigger` (or `create_trigger`) of it "
+                     f"has gone through showing no `cron_expression` or `run_once_at` (#378)")
+    if known:
+        return _deny(f"size hook: `{tid}` still carries a clock (`{'`, `'.join(known)}`), and a task with one never "
+                     f"wakes a session (library/session-changeover.md; #378). Clear it with `update_trigger` first")
+    return None
 
 
 def _label(name, inp):
@@ -394,6 +476,9 @@ def size_problem(body, size):
 def decide(event, tool_name, tool_input, state, tk=None):
     """The hook's JSON answer, or None to stay silent."""
     tool_input = tool_input if isinstance(tool_input, dict) else {}
+    refused = clock(tool_name, tool_input, state) if event == "PreToolUse" else None
+    if refused:
+        return refused
     refused = guard(event, tool_name, tool_input, state, tk)
     if refused:
         return refused
@@ -524,12 +609,15 @@ def selftest():
     s = _state([_turn(96_000, "Bash"), _turn(305_000, "Bash"), _turn(310_000, C, good, id="cp"), _result("cp", error=True)])
     cases.append(("a refused or failed checkpoint is not written", s[1] is False and
                   bool(decide("PostToolUse", "Bash", {}, s))))
-    s = _state([_turn(96_000, "Bash"), _turn(310_000, C, good, id="cp"), _result("cp"), _turn(351_000, "Bash")])
+    U, F = "mcp__claude-code-remote__update_trigger", "mcp__claude-code-remote__fire_trigger"
+    T = {"trigger_id": "trig_X"}
+    s = _state([_turn(96_000, "Bash"), _turn(310_000, C, good, id="cp"), _result("cp"),
+                _call(312_000, U, T, "u"), _result("u"), _turn(351_000, "Bash")])
     cases += [
         ("past 350k after it, work is refused", _denied(decide("PreToolUse", "Bash", {}, s))),
         ("past 350k a shell command that posts a checkpoint is still refused", _denied(decide("PreToolUse", "Bash",
          {"command": "make && gh issue comment 363 --body 'Checkpoint: x\nSize: end 351k'"}, s))),
-        ("past 350k after it, the successor may start", decide("PreToolUse", "mcp__claude-code-remote__fire_trigger", {}, s) is None),
+        ("past 350k after it, the successor may start", decide("PreToolUse", F, T, s) is None),
         ("past 350k after it, a tool may be loaded", decide("PreToolUse", "ToolSearch", {}, s) is None),
     ]
     s = _state([_turn(96_000, C, good), _turn(200_000, "Bash"), _turn(352_000, "Bash")])
@@ -540,6 +628,7 @@ def selftest():
         ("past 350k the successor waits on the checkpoint", _denied(decide("PreToolUse", "mcp__claude-code-remote__fire_trigger", {}, s))),
         ("past 350k the checkpoint itself passes", decide("PreToolUse", C, {"body": good.replace("310k", "352k")}, s) is None),
     ]
+    _clock_cases(cases, U, F, T)
     cases += [
         ("an unreadable transcript blocks nothing", decide("PreToolUse", "Bash", {}, read("/nonexistent")) is None),
         ("and says so", "unknown" in json.dumps(decide("PostToolUse", "Bash", {}, None))),
@@ -558,6 +647,41 @@ def selftest():
         print(("ok: " if passed else "FAIL: ") + "size hook: " + name)
         ok = ok and passed
     return ok
+
+
+def _trig_result(id, text):
+    return json.dumps({"type": "user", "message": {"content": [
+        {"type": "tool_result", "tool_use_id": id, "content": [{"type": "text", "text": text}]}]}})
+
+
+def _clock_cases(cases, U, F, T):
+    """The clock lock (#378): no standing task carries a repeat or a run time, and none with one is fired."""
+    Cr = "mcp__claude-code-remote__create_trigger"
+    s0 = _state([_turn(96_000, "Bash")])
+    up = lambda inp, res: _state([_turn(96_000, "Bash"), _call(97_000, U, dict(T, **inp), "u"), _trig_result("u", res)])
+    clear = json.dumps({"trigger": {"id": "trig_X", "cron_expression": None, "run_once_at": None}})
+    cases += [
+        ("a create carrying a repeat is refused", _denied(decide("PreToolUse", Cr, {"name": "x", "prompt": "p", "cron_expression": "0 * * * *"}, s0))),
+        ("a create carrying a run time is refused", _denied(decide("PreToolUse", Cr, {"name": "x", "prompt": "p", "run_once_at": "2026-11-07T09:00:00Z"}, s0))),
+        ("an update carrying a repeat is refused", _denied(decide("PreToolUse", U, dict(T, cron_expression="0 9 * * *"), s0))),
+        ("and refused with an unreadable transcript too", _denied(decide("PreToolUse", U, dict(T, run_once_at="2026-11-07T09:00:00Z"), None))),
+        ("a create with neither passes", decide("PreToolUse", Cr, {"name": "x", "prompt": "p"}, s0) is None),
+        ("a fire of a task this session has not updated is refused", _denied(decide("PreToolUse", F, T, s0))),
+        ("a fire after an update whose result shows no clock passes", decide("PreToolUse", F, T, up({"prompt": "p"}, clear)) is None),
+        ("a fire after an update that left an old repeat standing is refused",
+         _denied(decide("PreToolUse", F, T, up({"prompt": "p"}, json.dumps({"trigger": {"id": "trig_X", "cron_expression": "0 9 * * *"}}))))),
+        ("a fire after an update that left an old run time standing is refused, read from prose",
+         _denied(decide("PreToolUse", F, T, up({"prompt": "p"}, "updated trig_X: run_once_at: 2026-11-07T09:00:00Z, enabled")))),
+        ("a fire of another task than the one updated is refused", _denied(decide("PreToolUse", F, {"trigger_id": "trig_Y"}, up({}, clear)))),
+        ("a fire after a refused update is refused", _denied(decide("PreToolUse", F, T, _state(
+            [_turn(96_000, "Bash"), _call(97_000, U, dict(T, prompt="p"), "u"), _result("u", error=True)])))),
+        ("a created task is known by the id its result names", decide("PreToolUse", F, T, _state(
+            [_turn(96_000, "Bash"), _call(97_000, Cr, {"name": "x", "prompt": "p"}, "c"), _trig_result("c", clear)])) is None),
+        ("the newest update decides", decide("PreToolUse", F, T, _state(
+            [_turn(96_000, "Bash"), _call(97_000, U, T, "u"), _trig_result("u", json.dumps({"cron_expression": "0 9 * * *"})),
+             _call(98_000, U, T, "v"), _trig_result("v", clear)])) is None),
+        ("an unreadable transcript blocks no fire", decide("PreToolUse", F, T, None) is None),
+    ]
 
 
 def _first(text):
@@ -610,8 +734,8 @@ def _guard_cases_here(cases):
         # words are checked against the clones the hook knows: with no product's clone beside it, a product's ticket is refused, never passed unchecked
         ("a product's ticket written here is refused", _denied(decide("PreToolUse", U, {"prompt": good.replace("\n\nMore", "\n- Hemz-OS:AGENTS.md\n\nMore")}, s0, tk))),
     ]
-    s = _state([_turn(96_000, "Bash"), _call(97_000, U, {"prompt": good}, "u1"), _result("u1")])
-    cases.append(("a fire after checked words went through passes", decide("PreToolUse", F, {}, s, tk) is None))
+    s = _state([_turn(96_000, "Bash"), _call(97_000, U, {"prompt": good, "trigger_id": "trig_X"}, "u1"), _result("u1")])
+    cases.append(("a fire after checked words went through passes", decide("PreToolUse", F, {"trigger_id": "trig_X"}, s, tk) is None))
     s = _state([_turn(96_000, "Bash"), _call(97_000, U, {"prompt": good}, "u1"), _result("u1", error=True)])
     cases.append(("a fire after a refused rewrite is refused", _denied(decide("PreToolUse", F, {}, s, tk))))
     boot = [_first("Do the job.\n" + good), _turn(96_000, "Bash")]
