@@ -18,7 +18,8 @@ that is not an item.
 
 A ticket names this rulebook's pieces and, for a product's successor, one product's, the
 repository named as the README's *Products under this rulebook* spells it (`Hemz-OS:`),
-never a paused one. Decision 0015's reads, by address: the product's `AGENTS.md` whole;
+never a paused one. Decision 0015's reads, by address: the product's `AGENTS.md` whole; its
+TRUNK (`FOUNDATIONS.md`) whole, read at every boot before any drill-down;
 `PRODUCT.md` and `roadmap.json` never whole, at least one passage of each, none over BIG
 tokens and half its file but a note; each of the roadmap's top-level notes it has (NOTES:
 how its order is set, money milestones), by key; and CARRIES whole, read at every product
@@ -28,6 +29,7 @@ session's start.
   - how-we-build:library/session-changeover.md#The ticket
   - how-we-build:library/carries-sessions.md
   - Hemz-OS:AGENTS.md
+  - Hemz-OS:FOUNDATIONS.md
   - Hemz-OS:PRODUCT.md#1
   - Hemz-OS:roadmap.json#_what_this_is
   - Hemz-OS:roadmap.json#P62
@@ -61,6 +63,7 @@ ITEM = re.compile(r"^\s*[-*]\s+(\S.*?)\s*$")
 MAP_LINE = re.compile(r"^- \*\*[^*]+\*\* — `https://github\.com/Adonis80/([\w.-]+)`\s*(\([^)]*\))?", re.M)
 NOTES = ("_what_this_is", "order_set", "money_milestones")   # a roadmap's top-level notes (decision 0015)
 WHOLE_NEVER = ("PRODUCT.md", "roadmap.json")                    # read by passage, never whole (decision 0015)
+TRUNK = "FOUNDATIONS.md"   # a product's features that can never be forgotten (Hemz-OS#285, 9 November 2026)
 CARRIES = "library/carries-sessions.md"   # "each session reads this list at its start" (that page)
 BIG = 2_000   # a passage this many tokens or fewer is never "whole in all but name": a small file costs nothing
 
@@ -249,6 +252,8 @@ def product_faults(entries, repos):
         faults.append(f"no '{RULEBOOK}:{CARRIES}' piece, whole: each product session reads its list at its start")
     if "" not in paths("AGENTS.md"):
         faults.append(f"'{p}:AGENTS.md' is not on it whole: a product session reads its AGENTS.md whole (decision 0015)")
+    if "" not in paths(TRUNK):
+        faults.append(f"'{p}:{TRUNK}' is not on it whole: the trunk is read at every boot, before any drill-down")
     for f in WHOLE_NEVER:
         if "" in paths(f):
             faults.append(f"'{p}:{f}' is whole: name the passages the job needs (decision 0015)")
@@ -339,6 +344,7 @@ def selftest():
             "# Page\n\nIntro.\n\n**After a wait** (his ruling). Stays subscribed.\n\n"
             "**Afterwards** another.\n\n## Part two\n\nBody two.\n\n### Deeper\n\nStill two.\n\n## Part three\n\nThree.\n")
         open(os.path.join(prod, "AGENTS.md"), "w").write("# Agents\n\nRules.\n")
+        open(os.path.join(prod, TRUNK), "w").write("# Foundations\n\nF1.\n")
         open(os.path.join(rule, "README.md"), "w").write(
             "# Rulebook\n\n## Products under this rulebook\n\nTo read one.\n\n"
             "- **Hemz OS** — `https://github.com/Adonis80/Hemz-OS` (private). Not paused in its words.\n"
@@ -401,7 +407,7 @@ def selftest():
         open(os.path.join(rule, own), "w").write("# Changeover\n\n**The ticket** (his ruling). Reads.\n")
         T = "Ticket:\n- " + OWN + "\n"
         open(os.path.join(rule, CARRIES), "w").write("# What every product carries\n\nThe list.\n")
-        P = T + "- how-we-build:" + CARRIES + "\n- Hemz-OS:AGENTS.md\n- Hemz-OS:PRODUCT.md#5\n- Hemz-OS:roadmap.json#_what_this_is\n- Hemz-OS:roadmap.json#P62\n"
+        P = T + "- how-we-build:" + CARRIES + "\n- Hemz-OS:AGENTS.md\n- Hemz-OS:FOUNDATIONS.md\n- Hemz-OS:PRODUCT.md#5\n- Hemz-OS:roadmap.json#_what_this_is\n- Hemz-OS:roadmap.json#P62\n"
         drop = lambda line: P.replace(line + "\n", "")
         real = products(HERE)
         good = "Ticket:\n- " + OWN + "\n- how-we-build:notes/page.md#After a wait\n- how-we-build:README.md#What every product carries\n\nRest of the words.\n- not an item of the ticket: nope.md\n"
@@ -416,6 +422,8 @@ def selftest():
             ("a repository named outside the map's section fails", check(T + "- gone:AGENTS.md\n", repos)[0], lambda f: any("not a product" in x for x in f)),
             ("a paused product fails", check(T + "- myst:AGENTS.md\n", repos)[0], lambda f: any("paused" in x for x in f)),
             ("two products in one ticket fail", check(P + "- myst:AGENTS.md\n", repos)[0], lambda f: any("one product" in x for x in f)),
+            ("a product ticket without its trunk whole fails", check(drop("- Hemz-OS:" + TRUNK), repos)[0], lambda f: any(TRUNK + "' is not on it whole" in x for x in f)),
+            ("a product ticket with its trunk by passage fails", check(P.replace("- Hemz-OS:" + TRUNK + "\n", "- Hemz-OS:" + TRUNK + "#Foundations\n"), repos)[0], lambda f: any(TRUNK + "' is not on it whole" in x for x in f)),
             ("a product ticket without its AGENTS.md whole fails", check(drop("- Hemz-OS:AGENTS.md"), repos)[0], lambda f: any("AGENTS.md' is not on it whole" in x for x in f)),
             ("PRODUCT.md whole fails", check(P + "- Hemz-OS:PRODUCT.md\n", repos)[0], lambda f: any("PRODUCT.md' is whole" in x for x in f)),
             ("roadmap.json whole fails", check(P + "- Hemz-OS:roadmap.json\n", repos)[0], lambda f: any("roadmap.json' is whole" in x for x in f)),
