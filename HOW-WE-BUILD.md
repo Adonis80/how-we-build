@@ -26,7 +26,7 @@
 4. Prove it: build, tests, the Playwright journey on phone and desktop, a preview. A screenshot is not proof.
 5. Free checks green, self-review, then one cold read by the reviewer, asked once per round, fixes in one push, two rounds at most. No read: the slice parks and the next begins. The gate never opens unread.
 6. Send him the preview, what changed, the journey to try, and "Decision needed: … or none".
-7. Checks green: merge yourself (his standing permission); else another session does, never him. Deploy, smoke-test, roll back on failure. Delete residue. Leave `roadmap.json` fit to start on *build* alone.
+7. Checks green, and his acceptance where a material user-facing change owes it (`CHARTER.md` §12; for a screen built with no picture round, his tap-through of its preview, `library/hypersolid.md`): merge yourself (his standing permission); else another session does, never him. Deploy, smoke-test, roll back on failure. Delete residue. Leave `roadmap.json` fit to start on *build* alone.
 
 **The pull request is the handover**: `Lead stack`, `Reviewed by`, objective, acceptance criteria, done, remaining, checks, evidence, preview, next action, rollback. Kept current when work stops. Truth is the repository and the running product, never conversation.
 
