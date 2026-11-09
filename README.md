@@ -2,16 +2,16 @@
 
 The rulebook for every product Dhayan's AI studio builds: **how** we work. Each product's repository says **what** it builds. Public: no secrets, prices or customer data, so any session reads it freely.
 
-**The reading path** is `HOW-WE-BUILD.md` whole, then this page; a session whose task carries a ticket then boots as that ticket's first piece says, and, in this repository, the size hook refuses its reads off the ticket until it has resumed; a product's session holds its ticket by hand until the hook reaches a product (`library/session-changeover.md`, *The ticket*). A library page is opened only when its row below fires, and only that page; nothing is read whole to be safe (R-2026-09-25aa). `CHARTER.md` is the reasoning, `AGENTS.md` is the reviewer's brief, and `juku-library/` is the archive of papers and frozen decision records, read like the decision issues: when a rule is about to change or its reason is in question, or when a build must read a paper from GitHub, and never loaded into a working session (`library/rulebook-files.md`).
+**The reading path** is `HOW-WE-BUILD.md` whole, then this page; a session whose task carries a ticket then boots as that ticket's first piece says, and, in this repository, the size hook refuses its reads off the ticket until it has resumed; a product's session holds its ticket by hand until the hook reaches a product (`library/session-changeover.md`, *The ticket*). A library page is opened only when its row below fires, and only that page; nothing is read whole to be safe (R-2026-09-25a). `CHARTER.md` is the reasoning, `AGENTS.md` is the reviewer's brief, and `juku-library/` is the archive of papers and frozen decision records, read like the decision issues: when a rule is about to change or its reason is in question, or when a build must read a paper from GitHub, and never loaded into a working session (`library/rulebook-files.md`).
 
 ## Products under this rulebook
 
 To read one (decision 0015): its `AGENTS.md` whole; from `PRODUCT.md`, its purpose, the rules it holds across every slice and the passages the task needs, with what they reference; from `roadmap.json`, how its order is set (its `_what_this_is` and order note), money milestones, open items with their `next` lines, the `retired` notes when an ideas review is due, and a `done` item only when its evidence is needed. A session whose task carries a ticket reads instead only the pieces its ticket names (`library/session-changeover.md`, *The ticket*).
 
-- **Myst** — `https://github.com/Adonis80/myst` (private; paused 28 Oct 2026, R-2026-10-28aa). The App for Perfume Collectors: a Personal Nose that learns a person's taste, samples picked for them, and the value on collectors' shelves.
+- **Myst** — `https://github.com/Adonis80/myst` (private; paused 28 Oct 2026, R-2026-10-28a). The App for Perfume Collectors: a Personal Nose that learns a person's taste, samples picked for them, and the value on collectors' shelves.
 - **Hemz OS** — `https://github.com/Adonis80/Hemz-OS` (private). The operating system for an alterations business, grown out of Alma's Alterations in Brighton.
-- **Phena** — `https://github.com/Adonis80/phena` (private; paused 28 Oct 2026, R-2026-10-28aa). *Documenting the Phenomena*: first-person extraordinary experiences, near-death experiences first, explored through the River, at `phena.juku.pro`.
-- **Fixed** — `https://github.com/Adonis80/fixed` (private; its kit not yet merged; paused 28 Oct 2026, R-2026-10-28aa). A fair-price marketplace for local trades, heating first, at `fixed.juku.pro`. A working name.
+- **Phena** — `https://github.com/Adonis80/phena` (private; paused 28 Oct 2026, R-2026-10-28a). *Documenting the Phenomena*: first-person extraordinary experiences, near-death experiences first, explored through the River, at `phena.juku.pro`.
+- **Fixed** — `https://github.com/Adonis80/fixed` (private; its kit not yet merged; paused 28 Oct 2026, R-2026-10-28a). A fair-price marketplace for local trades, heating first, at `fixed.juku.pro`. A working name.
 
 A repository not listed here is not under this rulebook. Papers for an idea not yet a product live in private `Adonis80/juku-os-papers`; that registers nothing. No session starts work on a paused product.
 
@@ -50,6 +50,7 @@ The list, and how a repository makes itself current: `library/carries-sessions.m
 | `library/deploy.md`: *The deploy, in shape* | building or changing a product's deploy |
 | `library/money.md`: *Money out waits for money in* | anything would cost money or spend a capped allowance, or a product's hosting plan comes up |
 | `library/changing-the-rulebook.md`: *Changing the rulebook* | changing a rule, proposing, prioritising or merging a change to this repository |
+| `library/rulings.md`: *Rulings* | a rule's reason or his exact words are in question, or a ruling of his is added |
 | `library/rulebook-files.md`: *What each file here is for* | asking what a root file or a decision issue is for, or why this repository is public |
 | `library/upgrade-log.md`: *The upgrade log* | proposing an upgrade, or the Chairman asks what changed |
 | `library/system-map.md`: *How Juku OS fits together* | explaining how Juku OS fits together, or finding which part owns what |

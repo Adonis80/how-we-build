@@ -6,7 +6,7 @@ Read this page only when your slice changes what a product learns from, shows ab
 
 ## 1. The goal
 
-Two standing goals, the Chairman's (R-2026-09-17aa):
+Two standing goals, the Chairman's (R-2026-09-17a):
 
 - Juku OS builds world-class software, and always looks to identify and capture rich data that trains and improves AIs over time.
 - Each product is optimised to collect rich data that raises the intelligence of its own AI, so that AI grows ever more intelligent in its domain.

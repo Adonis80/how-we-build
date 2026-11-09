@@ -853,7 +853,7 @@ def _product_cases(cases, tk, U, F, C):
     with tempfile.TemporaryDirectory() as up:
         prod = os.path.join(up, "hemz-os")
         os.makedirs(prod)
-        for name, text in (("AGENTS.md", "# Agents\n"), ("README.md", "# Hemz\n"),
+        for name, text in (("AGENTS.md", "# Agents\n"), ("FOUNDATIONS.md", "# Foundations\n"), ("README.md", "# Hemz\n"),
                            ("PRODUCT.md", "# Product\n\n## 1. What it is\n\nOne.\n\n## 2. Other\n\nTwo.\n"),
                            ("roadmap.json", json.dumps({"_what_this_is": "order", "items": [{"id": "P62"}]}))):
             with open(os.path.join(prod, name), "w") as f:
@@ -861,7 +861,7 @@ def _product_cases(cases, tk, U, F, C):
         alone = os.path.join(up, "alone", "hemz-os")
         os.makedirs(alone)
         os.symlink(home, os.path.join(up, "how-we-build"))
-        words = ("Words.\nTicket:\n- " + tk.OWN + "\n- how-we-build:library/carries-sessions.md\n- Hemz-OS:AGENTS.md\n- Hemz-OS:PRODUCT.md#1\n"
+        words = ("Words.\nTicket:\n- " + tk.OWN + "\n- how-we-build:library/carries-sessions.md\n- Hemz-OS:AGENTS.md\n- Hemz-OS:FOUNDATIONS.md\n- Hemz-OS:PRODUCT.md#1\n"
                  "- Hemz-OS:roadmap.json#_what_this_is\n- Hemz-OS:roadmap.json#P62\n\nBuild.\n")
         try:
             ROOT = alone

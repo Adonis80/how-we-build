@@ -2,7 +2,7 @@
 
 Scope: every product repository. Open when: a lead hands its max piece on, or a product sets up or checks its max subagent file.
 
-The effort ladder is library/two-stacks.md's. This page holds only what carries out its top step (R-2026-09-28ba).
+The effort ladder is library/two-stacks.md's. This page holds only what carries out its top step (R-2026-09-28a).
 
 **The file.** Every product carries `.claude/agents/max-subagent.md`, exactly as below, and makes itself current in its next pull request. `<model>` and `<effort>` are what the registry's `max-subagent` role resolves to, printed from a checkout of this repository by `python3 model-registry/resolve.py model-registry/registry.json max-subagent model`, and then `effort`. So a switch is one edit to the registry, and each product's file follows in its next pull request.
 

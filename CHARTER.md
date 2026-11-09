@@ -74,7 +74,7 @@ protected merge -> deploy -> smoke -> rollback if needed
 
 `Adonis80/how-we-build` contains only global development rules and shared design method. Each product has its own private repository. Products do not depend on one another for project truth.
 
-Do not introduce a general orchestrator, memory database, model registry, scheduler, context compiler, policy engine or autonomous-company layer merely because several providers or products exist. A registry naming which model fills each role is the one exception, and it is his, so that switching a model is easy (R-2026-09-22ab): no larger than [decision 0004](https://github.com/Adonis80/how-we-build/issues/60) names — role, adapter and exact model id, for roles something consumes.
+Do not introduce a general orchestrator, memory database, model registry, scheduler, context compiler, policy engine or autonomous-company layer merely because several providers or products exist. A registry naming which model fills each role is the one exception, and it is his, so that switching a model is easy (R-2026-09-22b): no larger than [decision 0004](https://github.com/Adonis80/how-we-build/issues/60) names — role, adapter and exact model id, for roles something consumes.
 
 ## 5. Interchangeable providers
 
@@ -122,7 +122,7 @@ When a rule, requirement or design changes:
 
 Git history is the archive. Temporary reasoning belongs in the pull request and disappears when the work closes.
 
-No page carries a word limit (R-2026-11-04ac): trimming words to fit a number drops requirements. Every session pays for what it loads, so the rules are a hierarchy, each page opened only when its task needs it (`library/changing-the-rulebook.md`). Semantic duplication and stale text are the problem, not length.
+No page carries a word limit (R-2026-11-04c): trimming words to fit a number drops requirements. Every session pays for what it loads, so the rules are a hierarchy, each page opened only when its task needs it (`library/changing-the-rulebook.md`). Semantic duplication and stale text are the problem, not length.
 
 A new document is justified only when it owns durable information that cannot live clearly in an existing canonical owner.
 
@@ -188,7 +188,7 @@ The lead may never: write directly to protected `main` or force-push it; disable
 
 System changes are expensive because they affect every product. A change is justified by either:
 
-- Dhayan's explicit ruling about how he wants the system to work, which includes a change Astra and the CTO agree and the independent review passes (R-2026-11-04ab); or
+- Dhayan's explicit ruling about how he wants the system to work, which includes a change Astra and the CTO agree and the independent review passes (R-2026-11-04b); or
 - the same material failure in two separate product tasks, or one severe security or data-loss incident, where ordinary product repair is insufficient.
 
 The case is made where the change is made — in the pull request — and carries the evidence of the failure, a cause that could be proved wrong, and why repairing the product would not do. Prefer the smallest reversible intervention; compare it with doing nothing; say what success would look like. One system experiment runs at a time. The lead proposing a major change does not clear it: the independent cold review does. A change that fails is reverted and deleted, never left standing as a dormant layer.
@@ -217,4 +217,4 @@ If maintaining Juku OS begins consuming attention comparable to building the pro
 
 ## 16. Rich data (September 2026)
 
-The Chairman set two standing goals (R-2026-09-17aa): world-class software that captures rich data to train and improve AIs over time, and every product optimised to collect the rich data that makes its own AI smarter in its domain. Rich means granularity, not coverage. That ruling meets the gate in §13. The method that follows from it lives in `RICH-DATA.md`, opened on its README row. Three decisions stayed the Chairman's: Hemz retention beyond the documentation clearing, commercial reuse of staff expertise, and reuse of Myst contributions.
+The Chairman set two standing goals (R-2026-09-17a): world-class software that captures rich data to train and improve AIs over time, and every product optimised to collect the rich data that makes its own AI smarter in its domain. Rich means granularity, not coverage. That ruling meets the gate in §13. The method that follows from it lives in `RICH-DATA.md`, opened on its README row. Three decisions stayed the Chairman's: Hemz retention beyond the documentation clearing, commercial reuse of staff expertise, and reuse of Myst contributions.

@@ -51,7 +51,7 @@ python3 -I product-reads/rules-check.py || { echo "FAIL: see product-reads/rules
 # library/rulings.md, no rule is stated twice, no superseded line stays, no paragraph or
 # section past its size line. The same file, copied, holds each product.
 python3 -I product-reads/coherence.py --selftest || fail=1
-[ ! -f library/rulings.md ] || python3 -I product-reads/coherence.py check . || { echo "FAIL: see product-reads/coherence.py's faults above."; fail=1; }
+python3 -I product-reads/coherence.py check . || { echo "FAIL: see product-reads/coherence.py's faults above."; fail=1; }
 
 # 2. Only these files exist at the root (plus .git and .github).
 list_fail=0

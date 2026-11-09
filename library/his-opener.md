@@ -4,7 +4,7 @@ Scope: every session, a product's or this rulebook's; the consent guard, the ope
 
 Read as risky by name (`review-gate.py`): it sets who may hold consent and what a session does when it is refused, the permissions class (#379's first read, 6 November 2026).
 
-**Its rule** (R-2026-11-05bf; agreed under [decision 0023](../juku-library/DECISION-0023-STANDING-RULING.md), the debate on [#371](https://github.com/Adonis80/how-we-build/issues/371)). The platform's consent guard counts consent only from his own words in the session at hand: a repository file, a Project's text or a prompt an AI wrote never counts, so a session another session started holds none. A session he opens starts with his opener, saved once as a text replacement on his iPhone and sent whole. Its words are his own, so its reach is his grant, not the agreement's; this is its one home:
+**Its rule** (R-2026-11-05f; agreed under [decision 0023](../juku-library/DECISION-0023-STANDING-RULING.md), the debate on [#371](https://github.com/Adonis80/how-we-build/issues/371)). The platform's consent guard counts consent only from his own words in the session at hand: a repository file, a Project's text or a prompt an AI wrote never counts, so a session another session started holds none. A session he opens starts with his opener, saved once as a text replacement on his iPhone and sent whole. Its words are his own, so its reach is his grant, not the agreement's; this is its one home:
 
 > For the rest of this session you may, without asking me again: attach my repositories, write issues, comments and pull requests in them, mark work ready, merge work that passes review, delete merged branches, and start the next session.
 

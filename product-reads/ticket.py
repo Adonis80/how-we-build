@@ -365,11 +365,13 @@ def selftest():
         small = os.path.join(root, "small")
         os.makedirs(small)
         open(os.path.join(small, "AGENTS.md"), "w").write("# A\n")
+        open(os.path.join(small, TRUNK), "w").write("# F\n")
         open(os.path.join(small, "PRODUCT.md"), "w").write("# P\n\n## 5 Prices\n\nFive.\n")
         json.dump({"_what_this_is": "order", "items": [{"id": "P62"}]}, open(os.path.join(small, "roadmap.json"), "w"))
         noted = os.path.join(root, "noted")
         os.makedirs(noted)
         open(os.path.join(noted, "AGENTS.md"), "w").write("# A\n")
+        open(os.path.join(noted, TRUNK), "w").write("# F\n")
         open(os.path.join(noted, "PRODUCT.md"), "w").write("# P\n\n## 5 Prices\n\nFive.\n")
         json.dump({"_what_this_is": "why " * 5000, "items": [{"id": "P62"}]}, open(os.path.join(noted, "roadmap.json"), "w"))
         repos = {"how-we-build": rule, "hemz": prod, "Hemz-OS": prod, "myst": os.path.join(root, "myst"), "gone": prod}

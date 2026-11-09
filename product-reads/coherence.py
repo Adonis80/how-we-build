@@ -8,7 +8,8 @@ and not taken as suggestions"; and "a system that keeps it coherent". Free: it r
     coherence.py check     [--product] [ROOT]     the checks below; exit 1 names each fault
     coherence.py lost      [--product] [ROOT] SNAPSHOT
                                                  every ruling a snapshot (an earlier inventory)
-                                                 found is still in the register, by its words
+                                                 found is still held, by its words: in the
+                                                 register, on a rule page or in a source
     coherence.py --selftest
 
 ROOT defaults to the current directory. Without --product it reads this rulebook; with it, a
@@ -75,7 +76,7 @@ MARKER = re.compile(
 NEAR = 90          # a date this close after a marker dates it
 ID = re.compile(r"\bR-20\d\d-\d\d-\d\d[a-z]{1,2}\b")
 ENTRY = re.compile(r"^##\s+(R-20\d\d-\d\d-\d\d[a-z]{1,2})\b.*$", re.M)
-QUOTE = re.compile(r"[\"“]([^\"”]{12,}?)[\"”]")
+QUOTE = re.compile(r"[\"“]([^\"”\n]{3,}?)[\"”]")
 SUPERSEDED = re.compile(
     r"\bsupersed\w*|\bstood here before\b|\bformerly\b|\bpreviously\b|\bno longer\b|\bused to be\b"
     r"|\buntil now\b|\bwas replaced\b|\bin part by\b|\bthe old rule\b|\bretired (?:rule|line|wording)\b", re.I)
@@ -279,12 +280,14 @@ def check(root, cfg):
 
 
 def lost(root, cfg, snapshot):
-    """Rulings an earlier inventory found whose words are no longer in the register."""
+    """Rulings an earlier inventory found whose words are now nowhere: not in the register,
+    not on a rule page, not in a source."""
     reg_path = os.path.join(root, cfg["register"])
     if not os.path.isfile(reg_path):
         return ["the register '%s' is missing" % cfg["register"]]
-    with open(reg_path, encoding="utf-8") as fh:
-        held = " ".join(words(fh.read()))
+    # Held: in the register, or still on a rule page or in a source (evidence is never rewritten).
+    files = [cfg["register"]] + expand(root, cfg["pages"], cfg["not_pages"]) + expand(root, cfg["sources"])
+    held = " ".join(" ".join(words(read(root, f))) for f in dict.fromkeys(files))
     out = []
     with open(snapshot, encoding="utf-8") as fh:
         for raw in fh:
@@ -294,7 +297,7 @@ def lost(root, cfg, snapshot):
                 continue
             pieces = [p for p in re.split(r"…|\.\.\.|\[[^\]]*\]", q) if len(words(p)) >= 4]
             if any(" ".join(words(p)) not in held for p in pieces):
-                out.append("%s:%s (%s, %s): \"%s\" is not in %s" %
+                out.append("%s:%s (%s, %s): \"%s\" is in neither %s, a rule page nor a source" %
                            (item["file"], item["line"], item["marker"], item["date"], q[:90], cfg["register"]))
     return out
 
@@ -345,6 +348,7 @@ def selftest():
             fh.write("\n".join(json.dumps(i) for i in inv))
         if not any(i["quote"] and "smallest version" in i["quote"] for i in inv):
             bad.append("the inventory misses a dated, quoted ruling: %s" % inv)
+        put("PRODUCT.md", "# P\n\nThe first sale is the smallest shop's plan.\n")
         if not lost(d, cfg, snap):
             bad.append("a ruling whose words left the pages and never reached the register is not reported lost")
         put("RULINGS.md", reg + "\n## R-2026-10-28a · first sale\nSource: z\nHome: spent: moved\n"
