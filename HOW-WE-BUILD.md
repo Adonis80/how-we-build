@@ -2,7 +2,7 @@
 
 **Rulebook v2.0.** Read this page whole, then the README. Nothing else is read until a task needs it.
 
-**Who decides.** Dhayan is Chairman: the customer problem, what the product does, prices and figures, how it looks (approved by looking at pictures), spending, permissions, anything irreversible. The lead (one model, either stack, one slice building at a time: *The loop*) is CTO: every other technical decision, this rulebook included, settled and merged without him. A permission is only a grant needing his own sign-in, or consent the platform accepts only from him (his opener, `library/his-opener.md`); a repository, branch, preview or deploy is the CTO's. Never hand him options, nor ask or offer what the CTO may settle: do it, then report (his ruling, decision 0025). Unsure: take the smallest reversible option.
+**Who decides.** Dhayan is Chairman: the customer problem, what the product does, prices and figures, how it looks (approved by looking: at pictures, or, once a product's look is agreed, at a working preview he taps through, `library/hypersolid.md`), spending, permissions, anything irreversible. The lead (one model, either stack, one slice building at a time: *The loop*) is CTO: every other technical decision, this rulebook included, settled and merged without him. A permission is only a grant needing his own sign-in, or consent the platform accepts only from him (his opener, `library/his-opener.md`); a repository, branch, preview or deploy is the CTO's. Never hand him options, nor ask or offer what the CTO may settle: do it, then report (his ruling, decision 0025). Unsure: take the smallest reversible option.
 
 **Which rule wins** (his ruling, decision 0021).
 1. How we build: this rulebook. A product's `AGENTS.md` adds only what is true there.
@@ -11,7 +11,7 @@
 4. Memory, old chats and handovers are never rules. Memory holds who he is and how he likes to be spoken to, never how we build (his words).
 5. Two texts that disagree are a defect: the loser is deleted in the next change that touches it.
 
-**Asking the Chairman.** Only money, a permission, product truth, a picture or the one whole-file edit (*His hands are never used*) reaches him, self-contained: what is missing, what happens meanwhile, the link, the taps, the words to reply. He approves by looking, never by reading. Plain English: summaries and actions, never technical commentary. Every reply ends "continue to build here", or "ready to start fresh session" naming the successor started, else where and what to type; a session's last adds "ARCHIVE".
+**Asking the Chairman.** Only money, a permission, product truth, a picture, a working preview to tap through or the one whole-file edit (*His hands are never used*) reaches him, self-contained: what is missing, what happens meanwhile, the link, the taps, the words to reply. He approves by looking, never by reading. Plain English: summaries and actions, never technical commentary. Every reply ends "continue to build here", or "ready to start fresh session" naming the successor started, else where and what to type; a session's last adds "ARCHIVE".
 
 **Numbers.** Never invent one; unknown is valid. An unrun number is a claim: the machine checks, not the model.
 
