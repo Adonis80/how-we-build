@@ -5,7 +5,10 @@ His word, 9 November 2026 (Hemz-OS#285): "use machine checks to ensure that rule
 and not taken as suggestions"; and "a system that keeps it coherent". Free: it reads files.
 
     coherence.py inventory [--product] [ROOT]     every dated ruling of his found, as JSON lines
-    coherence.py check     [--product] [ROOT]     the checks below; exit 1 names each fault
+    coherence.py check     [--product] [--except PAGE ...] [ROOT]
+                                                 the checks below; exit 1 names each fault;
+                                                 --except holds back a page a staged change
+                                                 has not reached yet
     coherence.py lost      [--product] [ROOT] SNAPSHOT
                                                  every ruling a snapshot (an earlier inventory)
                                                  found is still held, by its words: in the
@@ -81,6 +84,8 @@ SUPERSEDED = re.compile(
     r"\bsupersed\w*|\bstood here before\b|\bformerly\b|\bpreviously\b|\bno longer\b|\bused to be\b"
     r"|\buntil now\b|\bwas replaced\b|\bin part by\b|\bthe old rule\b|\bretired (?:rule|line|wording)\b", re.I)
 FENCE = re.compile(r"^```.*?^```\s*$", re.M | re.S)
+CODE = re.compile(r"`[^`\n]*`")   # a field name or a path is not prose
+HEADING = re.compile(r"^#{1,6}\s.*$", re.M)   # an address other files name; it stays as named
 
 
 def words(text):
@@ -202,9 +207,12 @@ def register_entries(text):
     return entries, faults
 
 
-def check(root, cfg):
+def check(root, cfg, held_back=()):
+    """held_back: pages a staged change has not reached yet, named in check.sh where it runs
+    this; they are not read, and a Home on one is not followed. Each is a line someone
+    must delete, never a standing exception."""
     faults = []
-    pages = expand(root, cfg["pages"], cfg["not_pages"])
+    pages = [p for p in expand(root, cfg["pages"], cfg["not_pages"]) if p not in held_back]
     reg = cfg["register"]
     if not os.path.isfile(os.path.join(root, reg)):
         return ["the register '%s' is missing: it is the one home of his words" % reg]
@@ -219,6 +227,8 @@ def check(root, cfg):
         if re.match(r"(?i)^(spent:\s*\S|kept until his word)", home):
             continue
         target = home.split("#", 1)[0].strip().strip("`")
+        if target in held_back:
+            continue
         if target not in texts and target not in homes:
             faults.append("%s: its Home '%s' is not a rule page, a roadmap, 'spent: <why>' or 'kept until his word'" % (rid, home))
         elif rid not in (texts.get(target) or homes.get(target)):
@@ -244,7 +254,7 @@ def check(root, cfg):
             quoted.setdefault(r, rid)
     for p, t in texts.items():
         for line, para in paragraphs(t):
-            hit = next((quoted[r] for r in runs(words(para), QUOTE_RUN) if r in quoted), None)
+            hit = next((quoted[r] for r in runs(words(HEADING.sub("", para)), QUOTE_RUN) if r in quoted), None)
             if hit:
                 faults.append("%s:%d repeats words of %s; they live in %s alone, cite the id" % (p, line, hit, reg))
 
@@ -266,7 +276,7 @@ def check(root, cfg):
     # 5. No superseded lines. 6. Size line, on prose pages.
     for p, t in texts.items():
         for line, para in paragraphs(t):
-            m = SUPERSEDED.search(para)
+            m = SUPERSEDED.search(CODE.sub("", para))
             if m:
                 faults.append("%s:%d says '%s': delete what was replaced, git keeps it" % (p, line, m.group(0)))
             if p in prose and len(para.encode()) > PARA and not para.lstrip().startswith("|"):
@@ -330,6 +340,13 @@ def selftest():
             got = check(d, cfg)
             if not any(want in g for g in got):
                 bad.append("expected '%s', got %s" % (want, got))
+        put("FOUNDATIONS.md", "# F\n\nF3 (R-2026-11-09a). Records are marked `superseded`, a status.\n")
+        if check(d, cfg):
+            bad.append("a status name in code marks fails as superseded wording: %s" % check(d, cfg))
+        put("PRODUCT.md", "# P\n\nVoice (his ruling, 9 November 2026).\n")
+        if check(d, cfg, ("PRODUCT.md",)) or not check(d, cfg):
+            bad.append("--except does not hold back exactly the page it names")
+        os.remove(os.path.join(d, "PRODUCT.md"))
         put("FOUNDATIONS.md", "# F\n\nF3 (R-2026-11-09a).\n")
         twice = "a shop sets its own hourly rate minimum charges and extras through the product with no code at all"
         put("AGENTS.md", "# A\n\n" + twice + ".\n")
@@ -369,13 +386,14 @@ def main(argv):
         return 2
     cmd, rest = argv[0], argv[1:]
     cfg = PRODUCT if "--product" in rest else RULEBOOK
-    rest = [a for a in rest if a != "--product"]
+    held_back = tuple(rest[i + 1] for i, a in enumerate(rest[:-1]) if a == "--except")
+    rest = [a for i, a in enumerate(rest) if a not in ("--product", "--except") and (i == 0 or rest[i - 1] != "--except")]
     root = rest[0] if rest and cmd != "lost" or len(rest) > 1 else "."
     if cmd == "inventory":
         for item in inventory(root, cfg):
             print(json.dumps(item, ensure_ascii=False))
         return 0
-    faults = check(root, cfg) if cmd == "check" else lost(root, cfg, rest[-1])
+    faults = check(root, cfg, held_back) if cmd == "check" else lost(root, cfg, rest[-1])
     for f in faults:
         print("FAIL:", f)
     print("coherence.py %s: %s" % (cmd, "ok" if not faults else "%d fault(s)" % len(faults)))
