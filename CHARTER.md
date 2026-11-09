@@ -2,7 +2,7 @@
 
 **Status:** Current charter, 12 September 2026. Read for rationale, not as routine build context.
 **Primary outcome:** Dhayan can move between interchangeable AI development stacks while GitHub preserves the work, and each stack can ship accepted software with minimal founder coordination.
-**Supersedes:** Earlier development-system blueprints, control planes, orchestration proposals, permanent model assignments and instruction stacks.
+**Replaces:** earlier development-system blueprints, control planes, orchestration proposals, permanent model assignments and instruction stacks; none of them binds.
 
 `HOW-WE-BUILD.md` is the short operating rule. This Charter explains **why**. Product repositories define **what** each product is. Where they disagree, `HOW-WE-BUILD.md`'s *Which rule wins* settles it; this document governs only why.
 
@@ -74,7 +74,7 @@ protected merge -> deploy -> smoke -> rollback if needed
 
 `Adonis80/how-we-build` contains only global development rules and shared design method. Each product has its own private repository. Products do not depend on one another for project truth.
 
-Do not introduce a general orchestrator, memory database, model registry, scheduler, context compiler, policy engine or autonomous-company layer merely because several providers or products exist. A registry naming which model fills each role is the one exception, and it is his (his ruling, 22 September 2026: switching a model must be easy): no larger than [decision 0004](https://github.com/Adonis80/how-we-build/issues/60) names — role, adapter and exact model id, for roles something consumes.
+Do not introduce a general orchestrator, memory database, model registry, scheduler, context compiler, policy engine or autonomous-company layer merely because several providers or products exist. A registry naming which model fills each role is the one exception, and it is his, so that switching a model is easy (R-2026-09-22ab): no larger than [decision 0004](https://github.com/Adonis80/how-we-build/issues/60) names — role, adapter and exact model id, for roles something consumes.
 
 ## 5. Interchangeable providers
 
@@ -104,7 +104,7 @@ Normal execution starts from:
 - source, tests and live runtime;
 - relevant open pull requests.
 
-Provider memory, old chats, old model explanations, copied project files, standalone handovers, restart notes and superseded specifications are not sources of truth.
+Provider memory, old chats, old model explanations, copied project files, standalone handovers, restart notes and replaced specifications are not sources of truth.
 
 A fresh session reads progressively and stops when it knows enough. Large product documents are searched for the subject being changed; they are not reread in full by default.
 
@@ -116,13 +116,13 @@ When a rule, requirement or design changes:
 
 1. find the existing owner of the subject;
 2. understand the current relevant wording;
-3. replace, consolidate or delete what is superseded;
+3. replace, consolidate or delete what the change replaces;
 4. search active files and code for conflicting copies;
 5. update executable tests where applicable.
 
 Git history is the archive. Temporary reasoning belongs in the pull request and disappears when the work closes.
 
-No page carries a word limit (his ruling, 4 November 2026, decision 0026): trimming words to fit a number drops requirements. Every session pays for what it loads, so the rules are a hierarchy, each page opened only when its task needs it (`library/changing-the-rulebook.md`). Semantic duplication and stale text are the problem, not length.
+No page carries a word limit (R-2026-11-04ac): trimming words to fit a number drops requirements. Every session pays for what it loads, so the rules are a hierarchy, each page opened only when its task needs it (`library/changing-the-rulebook.md`). Semantic duplication and stale text are the problem, not length.
 
 A new document is justified only when it owns durable information that cannot live clearly in an existing canonical owner.
 
@@ -166,7 +166,7 @@ Handle failure in this order:
 4. add the smallest regression test;
 5. shrink the slice if needed;
 6. change method after two materially identical failures;
-7. restore the last safe state if completion is no longer credible.
+7. restore the last safe state if completion has stopped being credible.
 
 Do not answer an isolated failure by inventing a new agent, document or rule.
 
@@ -188,14 +188,14 @@ The lead may never: write directly to protected `main` or force-push it; disable
 
 System changes are expensive because they affect every product. A change is justified by either:
 
-- Dhayan's explicit ruling about how he wants the system to work, which since 4 November 2026 includes a change Astra and the CTO agree and the independent review passes (his standing ruling, `juku-library/DECISION-0023-STANDING-RULING.md`); or
+- Dhayan's explicit ruling about how he wants the system to work, which includes a change Astra and the CTO agree and the independent review passes (R-2026-11-04ab); or
 - the same material failure in two separate product tasks, or one severe security or data-loss incident, where ordinary product repair is insufficient.
 
 The case is made where the change is made — in the pull request — and carries the evidence of the failure, a cause that could be proved wrong, and why repairing the product would not do. Prefer the smallest reversible intervention; compare it with doing nothing; say what success would look like. One system experiment runs at a time. The lead proposing a major change does not clear it: the independent cold review does. A change that fails is reverted and deleted, never left standing as a dormant layer.
 
 Removing a rule, or correcting wording, needs none of this.
 
-Most importantly: **change the existing system, do not layer around it.** Read the canonical owner, replace or remove superseded rules, and check the surrounding architecture still makes sense.
+Most importantly: **change the existing system, do not layer around it.** Read the canonical owner, replace or remove the rules the change overrides, and check the surrounding architecture still makes sense.
 
 A provider-specific problem should normally change only that provider adapter. A product-specific problem should normally stay in that product. Global rules should remain genuinely global.
 
@@ -217,4 +217,4 @@ If maintaining Juku OS begins consuming attention comparable to building the pro
 
 ## 16. Rich data (September 2026)
 
-On 17 September 2026 the Chairman set two standing goals: Juku OS builds world-class software and always looks to identify and capture rich data for training and improving AIs over time; and every product is optimised for collecting rich data that raises the intelligence of that product's own AI in its domain. He defined rich as granularity, not coverage. That ruling meets the gate in §13. The method that follows from it lives in `RICH-DATA.md`, opened on its README row. Three decisions stayed the Chairman's: Hemz retention beyond the documentation clearing, commercial reuse of staff expertise, and reuse of Myst contributions.
+The Chairman set two standing goals (R-2026-09-17aa): world-class software that captures rich data to train and improve AIs over time, and every product optimised to collect the rich data that makes its own AI smarter in its domain. Rich means granularity, not coverage. That ruling meets the gate in §13. The method that follows from it lives in `RICH-DATA.md`, opened on its README row. Three decisions stayed the Chairman's: Hemz retention beyond the documentation clearing, commercial reuse of staff expertise, and reuse of Myst contributions.

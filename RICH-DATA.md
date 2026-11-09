@@ -6,11 +6,10 @@ Read this page only when your slice changes what a product learns from, shows ab
 
 ## 1. The goal
 
-The Chairman's ruling, 17 September 2026:
+Two standing goals, the Chairman's (R-2026-09-17aa):
 
-> Juku OS goals are to develop world class software, and to always look to identify and capture rich data for training and improving AIs over time.
-
-> Each project is optimised for collecting rich data, that can be used for increasing the intelligence of the project native AI. so the project AI becomes more and more intelligent in that domain over time.
+- Juku OS builds world-class software, and always looks to identify and capture rich data that trains and improves AIs over time.
+- Each product is optimised to collect rich data that raises the intelligence of its own AI, so that AI grows ever more intelligent in its domain.
 
 **Rich means granularity, not coverage.** Existing databases in every domain collect one-dimensional verdicts on finished things: a rating for a perfume, a price for an alteration. We collect a far finer understanding of each individual: which qualities, in which combinations, under which conditions, at which point in time, and how sure we may be.
 
@@ -79,7 +78,7 @@ Seven properties, roughly in order of power.
 | Catalogue | What things are made of, and the shared vocabulary of a domain | A versioned belief, added to and never overwritten |
 | Derived | Strengths with ranges, profiles, patterns | Plain arithmetic, rebuilt on demand, disposable, invalidated before serving |
 
-**One line per thing that happened.** Never edited; a correction is a new line that supersedes the old. Each line carries its origin (a person's statement, a recorded observation, a derived result), who recorded it, when, and the version of the notice and terms in force at capture; in Hemz, also the shop and its agreement version. The notice stamp is where the record came from, not permission: the purpose and the legal ground that permits it must be traceable, and where consent is relied on, the choice and any withdrawal are recorded. Current restrictions govern current use of old records.
+**One line per thing that happened.** Never edited; a correction is a new line that overrides the old. Each line carries its origin (a person's statement, a recorded observation, a derived result), who recorded it, when, and the version of the notice and terms in force at capture; in Hemz, also the shop and its agreement version. The notice stamp is where the record came from, not permission: the purpose and the legal ground that permits it must be traceable, and where consent is relied on, the choice and any withdrawal are recorded. Current restrictions govern current use of old records.
 
 **A line points at the exact thing.** Variant, concentration, batch or year where known, because a reformulation under the same name is a different thing. It does not copy the thing's parts; those are joined when strengths are computed, so a better catalogue improves every old line. The line carries only what cannot be looked up later, and a missing amount, site, batch or perspective is left missing, never invented.
 
@@ -124,10 +123,15 @@ Each product keeps a fixed never-infer list, and only approved fields and values
 These are the controller's responsibilities, taken with legal advice. Technical consensus grants none of them.
 
 - Each product completes its impact assessment before the first real-person processing it covers, assessing the actual profiling, learning and evaluation operations; unresolved high risks are recorded and the required steps taken before proceeding.
+
 - The notice describes the operations actually performed: storing reactions, calculating a personal profile, evaluating recommendations, and improving recommendations for other people only where approved and lawful. It never calls retrieval "training" and never promises there is no training when numbers are fitted from evidence. The language model itself is not fine-tuned on people's data; that is a separate, deferred decision.
+
 - Wider commercialisation, external model training or any materially new use returns as its own proposal with its own notice and legal ground. No speculative field is kept to preserve the option.
+
 - In Hemz, for processing done solely on a shop's documented instructions, the shop decides why the data is used (it is the controller) and we act only on its instructions (we are its processor); that is a legal assessment, not settled here, and learning for our own improvement purpose needs its own role and legal-ground assessment, even within one shop. Any accounting or legal retention the shop must keep stays segregated and never becomes learning evidence. Staff receive clear written information before any timing begins: purpose, access, use and retention. Notice or agreement is not by itself a legal ground for monitoring.
+
 - Myst's 18+ intention needs a proportionate assessment of whether children are likely to use it and what follows; a declaration alone does not settle it.
+
 - Removing a name does not make a record anonymous. With two or three workers, aggregation guarantees nothing. Any retained summary in Hemz is treated as staff personal data unless shown otherwise, and any retained job line is minimised personal data for a stated purpose and period, never "anonymised".
 
 ## 10. What every product page carries
