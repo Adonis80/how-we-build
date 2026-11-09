@@ -10,9 +10,12 @@ Scope: every Project under this rulebook, the consultant's too. Open when: setti
 How we build: https://github.com/Adonis80/how-we-build — read HOW-WE-BUILD.md first.
 GitHub is the one source of truth; nothing here is a rule.
 
-What we build: https://github.com/Adonis80/<repo> (private) — read its AGENTS.md,
-PRODUCT.md and roadmap.json live.
+What we build: https://github.com/Adonis80/<repo> (private) — read as the
+how-we-build README says: a task's ticket names its pieces; else AGENTS.md whole,
+PRODUCT.md and roadmap.json by passage.
 ```
+
+The pointer names the reads the README's *Products under this rulebook* sets, never whole files: decision 0015 (`juku-library/DECISION-0015-JUKU-OS-AUDIT.md#Decision 0015 — the Juku OS audit: one owner per truth, fewer texts, read less (6 October 2026)`, item 6: *"`AGENTS.md` whole; the passages of `PRODUCT.md` and `roadmap.json` the task needs; no data moved"*), and for a session whose task carries a ticket, his ruling of 5 November 2026 on [#363](https://github.com/Adonis80/how-we-build/issues/363): *"A session loads one start page plus only what its job names"* (`library/session-changeover.md`, *The ticket*).
 
 A session that finds its product's Project holding more than the pointer first moves anything true only of that product (its fallback when attaching fails, say) to its `AGENTS.md` or `README.md` by pull request, then sets the pointer; otherwise it changes a Claude Project's text only when the pointer itself is wrong (a renamed repository, a blank, a typo), and never asks him to. **The Juku OS Project is the exception, by his choice** (4 November 2026, above, said of that Project): its text is his own and may hold more than a pointer; no session checks it against this page or rewrites it, and where it and this repository differ, this repository wins (*Which rule wins*). The Juku OS Project reads this repository and uses the README's map as the whole register, opening a product repository only for live detail; each product's Project reads its own repository and this one (his ruling, 11 September 2026). Reuse this register; never start a second map.
 
