@@ -16,7 +16,7 @@
 :root{
   /* ground and surfaces */
   --j-ground:#08090a;                 /* [--ground] the screen */
-  --j-panel:#0e0f11;                  /* [--panel] fill of a bordered control (.j-btn) */
+  --j-panel:#0e0f11;                  /* [--panel] no control's fill: a bordered control sits on the ground (his ruling, 12 Nov 2026) */
   --j-panel-2:#131417;                /* [--panel-2] the (i) explainer sheet */
   /* ink */
   --j-ink:#FFFDF7;                    /* [--ink] names, figures, title */
@@ -187,7 +187,7 @@ html{-webkit-text-size-adjust:100%;color-scheme:dark}
 
 /* ─── 4. CONTROLS ───────────────────────────────────────────────────────── */
 /* bordered control / choice [.tbtn] and its selected state [.tbtn.on] */
-.j-btn{background:var(--j-panel);border:1px solid var(--j-line);border-radius:var(--j-r-control);color:var(--j-mute);padding:8px 11px;cursor:pointer;
+.j-btn{background:transparent;border:1px solid var(--j-line);border-radius:var(--j-r-control);color:var(--j-mute);padding:8px 11px;cursor:pointer;
   font-size:var(--j-fs-ctl);font-weight:var(--j-fw-medium);letter-spacing:var(--j-ls-ctl);white-space:nowrap;
   min-height:var(--j-target);display:inline-flex;align-items:center;
   transition:color var(--j-t-fast) var(--j-ease),border-color var(--j-t-fast) var(--j-ease),background var(--j-t-fast) var(--j-ease)}
