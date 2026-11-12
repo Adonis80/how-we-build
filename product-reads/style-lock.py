@@ -21,7 +21,7 @@ and pictures, never the build) and the kit's own stylesheet, which a product rea
 from this repository and never copies. It flags, naming file, line and rule:
   - a border, outline or box-shadow declared in a stylesheet or an inline style on
     anything that is not a control, or the hairline: a top border on a total (a
-    selector naming .j-sum or "total");
+    rule whose styled element names .j-sum or "total");
   - a background fill on anything but the page's ground (html, body, :root,
     .j-page, .j-screen) and the (i) sheet (.j-info): a control's fill included,
     save a press's flash (:active) and a line it draws (::before, ::after);
@@ -34,7 +34,9 @@ from this repository and never copies. It flags, naming file, line and rule:
 A control is button, input, select, textarea, option, an element whose role is a
 control's, the kit's .j-btn, .j-pick, .j-icon-btn, .j-field, .j-tab and .j-tabs
 (the tabs' hairline is the control's own), and a :focus or :focus-visible,
-aria-pressed, aria-selected or aria-checked state. Zero, none and transparent draw
+aria-pressed, aria-selected or aria-checked state. A selector is judged by the
+element it styles, its last compound, never by a control it sits in, beside, or
+names in :not() or :has(). Zero, none and transparent draw
 nothing and pass. What the lock cannot see (a box drawn by an
 image, a canvas, a script's style) is the reviewer's, against the agreed
 reference build. Exit 0 passes; 1 names each fault.
@@ -67,9 +69,9 @@ DRESS_CLASSES = CHOICE_CLASSES | {"j-field"}
 TYPED_INPUTS = {"", "text", "number", "email", "tel", "search", "url", "password", "date", "time", "datetime-local", "month", "week"}
 CONTROL_ROLE = re.compile(r"^(button|tab|switch|radio|checkbox|option|slider|menuitem\w*|combobox|spinbutton)$")
 UTILITY = re.compile(r"^(border(-[trblxyse])?(-\d+|-\[[^\]]+\])?|border-(solid|dashed|dotted|double)"
-                     r"|border(-[trblxyse])?-[a-z]+(-\d+)?(/\d+)?|ring(-\d+|-\[[^\]]+\]|-[a-z]+(-\d+)?)?"
-                     r"|shadow(-[a-z0-9]+|-\[[^\]]+\])?|outline(-\d+|-[a-z]+(-\d+)?)?|divide-[xy](-\d+)?"
-                     r"|bg-.+)$")
+                     r"|border(-[trblxyse])?-(?!(collapse|separate|spacing\S*)$)[a-z]+(-\d+)?(/\d+)?|ring(?!-offset)(-\d+|-\[[^\]]+\]|-[a-z]+(-\d+)?)?"
+                     r"|shadow(-[a-z0-9]+|-\[[^\]]+\])?|outline(?!-offset)(-\d+|-[a-z]+(-\d+)?)?|divide-[xy](-\d+)?"
+                     r"|bg-(?!(cover|contain|auto|center|top|bottom|left|right|no-repeat|repeat\S*|fixed|local|scroll|clip-\S+|origin-\S+|blend-\S+)$).+)$")
 UTILITY_NOTHING = re.compile(r"^(border(-[trblxyse])?-(0|none|transparent)|ring-0|shadow-none|outline-none|outline-0"
                              r"|divide-none|bg-(transparent|none|inherit))$")
 
@@ -88,12 +90,48 @@ def _blank_comments(text, kind):
     return text
 
 
+def _split_top(text, seps):
+    """Split on any of seps outside brackets and parentheses."""
+    out, depth, cur = [], 0, ""
+    for c in text:
+        depth += c in "([" and 1 or (c in ")]" and -1 or 0)
+        if depth == 0 and c in seps:
+            out.append(cur)
+            cur = ""
+        else:
+            cur += c
+    out.append(cur)
+    return [x.strip() for x in out]
+
+
+def _subject(sel):
+    """The compound a rule styles: the selector's last, past every combinator, with
+    :not(), :has() and :focus-within dropped, since none of them names what is styled."""
+    last = [x for x in _split_top(sel, " >+~") if x][-1:] or [""]
+    out, i, s = "", 0, last[0]
+    while i < len(s):
+        m = re.match(r":(not|has)\(", s[i:])
+        if m:
+            depth, j = 0, i
+            while j < len(s):
+                depth += s[j] == "(" and 1 or (s[j] == ")" and -1 or 0)
+                j += 1
+                if depth == 0 and s[j - 1] == ")":
+                    break
+            i = j
+            continue
+        out += s[i]
+        i += 1
+    return out.replace(":focus-within", "")
+
+
 def _decl_faults(prop, value, selector):
-    """The fault a declaration makes on that selector, or None."""
+    """The fault a declaration makes on that selector, or None. Each selector in a list
+    is judged by its subject alone, the element the rule draws on."""
     prop = prop.strip().lower()
     if not DRAWS.match(prop) or NOT_DRAWN.search(prop) or NOTHING.match(value):
         return None
-    parts = [s.strip() for s in selector.split(",") if s.strip()]
+    parts = [_subject(s) for s in _split_top(selector, ",") if s]
     if FILL.match(prop):
         if parts and all(GROUND.match(s) for s in parts):
             return None
@@ -298,6 +336,14 @@ def selftest():
     expect("a control's panel fill", css("button{background:#0e0f11}"), 1)
     expect("a press's flash and the tabs' gold line", css("button.j-row:active{background:var(--j-line-soft)}.j-tabs::after{background:var(--j-gold)}"), 0)
     expect("inside @media", css("@media (min-width:600px){.c{border:1px solid}}"), 1)
+    expect("content inside a control", css("button .card{border:1px solid}"), 1)
+    expect("content beside a choice", css(".j-pick + .note{background:#111}"), 1)
+    expect("a container of a focused control", css(".panel:focus-within{outline:1px solid}"), 1)
+    expect("content named by :not(button)", css(".card:not(button){border:1px solid}"), 1)
+    expect("content that has an input", css(".row:has(input){border:1px solid}"), 1)
+    expect("a box inside a total", css(".total .card{border-top:1px solid}"), 1)
+    expect("a control inside content", css(".card button{border:1px solid}"), 0)
+    expect("the kit's press", css(".j-screen button:not(:disabled):active{background:var(--j-line-soft)}"), 0)
     expect("the kit's class overridden", css(".j-row{border-bottom:1px solid}"), 1)
     expect("a line number", css("\n\n.c{\n  border:1px solid}"), 1)
     if css("\n\n.c{\n  border:1px solid}") and not css("\n\n.c{\n  border:1px solid}")[0].startswith("t.css:4:"):
@@ -319,6 +365,7 @@ def selftest():
     expect("a radio choice", mk('<input type="radio" class="j-pick">'), 0)
     expect("a tab", mk('<div class="j-tabs" role="tablist"><button role="tab" class="j-tab">'), 0)
     expect("a role=button control", mk('<div role="button" className="border">'), 0)
+    expect("utilities that draw nothing", mk('<div className="bg-cover bg-center bg-no-repeat bg-clip-text border-collapse outline-offset-2 ring-offset-2">'), 0)
     expect("utility nothing", mk('<div className="border-0 bg-transparent shadow-none">'), 0)
     expect("an inline border", mk('<div style="border:1px solid red">'), 1)
     expect("an inline JSX border", mk("<div style={{ border: '1px solid', color: 'red' }}>"), 1)
