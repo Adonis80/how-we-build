@@ -13,7 +13,7 @@
 # machinery while the newest canary on main is red, or a change to what runs that adds
 # no line to library/upgrade-log.md, and, through product-reads/rules-check.py,
 # a rule change without its Replaces: line or a constitution off its headings,
-# a size hook (.claude/size.py) that no longer holds his 300k/350k lines,
+# a size hook (.claude/size.py) that no longer holds his lines (library/session-changeover.md),
 # a ticket check (product-reads/ticket.py) that no longer refuses a ticket that
 # does not resolve or is over its cap, and a design brief check (product-reads/brief-check.py) that no longer refuses
 # a brief that plans the screen, overloads it or skips its slots.
@@ -61,7 +61,7 @@ done < <(ls -A)
 for f in $allowed; do
   case "$f" in
     # The size hook (his rulings of 5 November 2026, #363): the settings that
-    # run it before and after every tool call, and the hook, nothing else.
+    # run it, and the hook, nothing else; how they are wired is held by the hook's selftest.
     .claude) [ -d "$f" ] && [ "$(LC_ALL=C ls -A .claude | tr '\n' ' ')" = "settings.json size.py " ] || { echo "FAIL: '.claude/' holds settings.json and size.py (the size hook), and nothing else."; list_fail=1; } ;;
     # The Roadmap (decision 0007): its gate's three files and the build that renders it, and nothing else. No roadmap data lives here.
     board) { [ -d "$f" ] && [ "$(ls -A board | tr '\n' ' ')" = "build.py middleware.js robots.txt vercel.json " ]; } || { echo "FAIL: 'board/' holds only build.py, middleware.js, robots.txt and vercel.json."; list_fail=1; } ;;
@@ -280,7 +280,7 @@ python3 -I product-reads/ask.py --selftest || { echo "FAIL: product-reads/ask.py
 python3 -I product-reads/brief-check.py --selftest || { echo "FAIL: product-reads/brief-check.py no longer refuses a brief that plans, overloads or skips its slots — see the case above."; fail=1; }
 python3 -I product-reads/setup.py --selftest || { echo "FAIL: product-reads/setup.py no longer sets a product up as decision 0013 says — see the case above."; fail=1; }
 python3 -I product-reads/ticket.py --selftest || { echo "FAIL: product-reads/ticket.py no longer refuses a ticket that does not resolve or hands a successor more than its cap — see the case above."; fail=1; }
-python3 -I .claude/size.py --selftest || { echo "FAIL: .claude/size.py no longer holds a session to his 300k/350k lines, or is no longer wired before and after every tool call — see the case above."; fail=1; }
+python3 -I .claude/size.py --selftest || { echo "FAIL: .claude/size.py no longer holds a session to his lines (library/session-changeover.md), or is no longer wired as its selftest names — see the case above."; fail=1; }
 python3 -I product-reads/kit/review-gate.py --selftest || { echo "FAIL: the starter kit's gate no longer counts what it must — see the case above."; fail=1; }
 fi
 # WHICH EVENTS THE GATE RUNS ON, WRITTEN AS WHAT IT SKIPS RATHER THAN WHAT IT
