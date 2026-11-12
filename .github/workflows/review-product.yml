@@ -1297,15 +1297,34 @@ jobs:
           head -c 60000 "$t/verdict.md" > "$t/short.md"
           jq -n --arg c "$conclusion" --arg t "$title" --rawfile s "$t/short.md" \
              '{status:"completed", conclusion:$c, output:{title:$t, summary:$s}}' > "$t/close.json"
-          curl -sS -X PATCH -H "Authorization: token $TOKEN" -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/$REPO/check-runs/$RUN" -d @"$t/close.json" > /dev/null
+          # The signing write is checked too: an answer other than 200 is a
+          # verdict that never reached the page, said as that, not as a mismatch.
+          code=$(curl -sS -o "$t/closed.json" -w '%{http_code}' -X PATCH -H "Authorization: token $TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/check-runs/$RUN" -d @"$t/close.json") || code="unreachable"
+          if [ "$code" != "200" ]; then
+            echo "::error::the verdict was not signed (HTTP $code): $(jq -r '.message // "no message"' "$t/closed.json" 2>/dev/null)"
+            exit 1
+          fi
           # CHECKED, NOT PRINTED, for review.yml's reason: what it holds is what
           # the product's gate reads — the App, the name, the commit, the
           # verdict — and a run that reads back otherwise is not this verdict.
-          back=$(curl -sS -H "Authorization: token $TOKEN" -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/$REPO/check-runs/$RUN" \
-            | jq -r '[(.app.id|tostring), .name, .head_sha, .status, .conclusion] | @tsv')
+          # A run just signed can read back as still open for a moment
+          # (Hemz-OS#310 at 827037c, 9 November 2026, 18:52 UTC: signed success,
+          # read back in_progress half a second later, so the job went red and
+          # a clean read was closed as "did not read"). Only an answer that
+          # still reads as open or empty is asked again, five times at most;
+          # one that names anything else is checked as it stands.
           want=$(printf '%s\t%s\t%s\t%s\t%s' "$REVIEWER_APP_ID" "juku-reviewer" "$SHA" "completed" "$conclusion")
+          for try in 1 2 3 4 5; do
+            back=$(curl -sS -H "Authorization: token $TOKEN" -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$REPO/check-runs/$RUN" \
+              | jq -r '[(.app.id|tostring), .name, .head_sha, .status, .conclusion] | @tsv')
+            case "$(printf '%s' "$back" | cut -f4)" in
+              completed) break ;;
+            esac
+            sleep 3
+          done
           if [ "$back" != "$want" ]; then
             echo "::error::the check run read back as [$back] and was signed as [$want] — the verdict on the page is not the one this job decided"
             exit 1

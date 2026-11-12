@@ -5,19 +5,38 @@ His rulings of 5 November 2026 (issue #363, "Locks, not reminders"): "Hard stop
 at 350,000 tokens, by machine. A hook reads the session's own transcript usage
 (the real figure, not an estimate) after every tool call: at 300,000 it
 requires the handover checkpoint; at 350,000 it blocks every action except
-writing that checkpoint. Every checkpoint carries a size line."
+writing that checkpoint. Every checkpoint carries a size line." His word of
+12 November 2026, 00:19:58 UTC, agreeing the lead builder's fixes for a monitor
+that "sometimes fires and sometimes doesn't fire" (Adonis80/Hemz-OS#333, comment
+6810454648, item 4): "I agree with all of your suggestions": the checkpoint line
+at 280k, a warn band from 250k, a look at the end of every turn, and blind fails
+closed.
 
 `.claude/settings.json` runs this file before (PreToolUse) and after
-(PostToolUse) every tool call. The size is the context of the newest
+(PostToolUse) every tool call, and at the end of every turn (Stop), so a turn
+that makes no tool call is measured too. The size is the context of the newest
 main-thread model turn in the transcript: its input, cache-write, cache-read
 and output tokens, as the model's own usage reports them.
 
-- After a call, at 300,000 or more with no checkpoint written since the line
+- After a call, from 250,000: the session is warned, on every call, that the
+  line is near. At 280,000 or more with no checkpoint written since the line
   was crossed: the session is told, on every call until it writes one, to write
   its handover checkpoint now.
+- At the end of a turn, the same: past 280,000 with no checkpoint the turn is
+  kept going to write it (once: a turn already kept going ends, so a checkpoint
+  that cannot be posted never loops), and from 250,000 the person is warned.
+- The successor lock (his word, 12 November 2026, about 09:25 UTC: "Yes, I agree
+  to all of your fixes implement them now while I evaluate the app", after a
+  session checkpointed at 280k on Adonis80/Hemz-OS#333 and ended starting none):
+  once a checkpoint has gone through past 280,000, a turn's end is kept going,
+  once, until a successor start has gone through after it (`fire_trigger`, or
+  `create_session`) or a checkpoint past the line carrying
+  `Successor: none — <reason>` has, the reason being nothing ready, the platform
+  refused (naming what), or blind. Before a call, at any size, a checkpoint
+  whose `Successor:` line gives any other reason is refused.
 - Before a call, at 350,000 or more: every call is refused but the checkpoint
   itself, loading a tool (ToolSearch), and, once a checkpoint has gone through
-  past 300,000, starting the successor (`library/session-changeover.md`,
+  past 280,000, starting the successor (`library/session-changeover.md`,
   *A session starts its own successor*).
 - A checkpoint counts as written only when its call went through: a refused
   or failed call (its result an error) does not. It is a comment whose first
@@ -48,6 +67,20 @@ directory is `Hemz-OS`), beside this repository or the rulebook's clone:
   nor, inside a `ticket.py` command, a piece's file. It does not see a
   recursive search or a read dressed as a ticket read.
 
+The clock lock (#378, agreed on #371, 6 November 2026; his root on #363, "Locks,
+not reminders"; library/session-changeover.md: "A task with a repeat or a run
+time is a clock and never wakes a session"), wherever this file runs:
+
+- Before a call, a `create_trigger` or `update_trigger` carrying a
+  `cron_expression` or `run_once_at` is refused.
+- Before a call, a `fire_trigger` is refused unless the newest thing this
+  session saw of that task shows it with neither: a `create_trigger` that went
+  through (its input, or its result where that reports the fields), an
+  `update_trigger` whose result reports both fields empty, or a
+  `list_triggers` entry for it with both empty. An update's input is never
+  evidence, since an update that omits the fields can leave an old schedule
+  standing; one whose result is silent on them leaves the task unknown.
+
 The boot measured (his ruling, 5 November 2026, 18:15, on #363, "I agree to
 your upgrade": every fresh session, before any work, posts one line on its
 issue, its starting size split into what the platform loads and what we made
@@ -62,14 +95,29 @@ pieces), in the same repositories as the guard:
   line to paste, so no session rounds or skips it. A hook cannot post a
   comment itself; it holds the one the session must post.
 
-An unreadable transcript blocks nothing and says so: a lock that cannot see
-must not brick the session that would write the handover. The words of a
+The size is read from the transcript the platform names in each call's own
+`transcript_path`, never found by the working directory, which a session can
+leave. A session it cannot measure (no `transcript_path`, a file that will not
+open, one with no usage in it, or a hook that raises) fails closed: before a call,
+everything is refused until it can see but the checkpoint, loading a tool, and
+the repair of the hook itself (reading or editing `.claude/size.py` or
+`.claude/settings.json`, or a command that is a run of `.claude/size.py` and
+nothing else; the hook runs from the working tree, so a repair there lets the
+same session see again). A hook that cannot run at all (a file that will not
+compile, or input that is not a JSON object) fails open: the platform runs the
+call, so a broken repair is caught by `--selftest` before anything is pushed. Starting a successor is refused too: it would
+be as blind, so a blindness every session shares stops at one checkpoint for the
+person to see, never a chain. After every call and at the end of a turn it tells
+the session, and the person, that it is blind and why. A call's own turn is in
+the transcript before its hook runs (shown on 12 November 2026), so a fresh
+session's first call is measured, not blind. The words of a
 `create_trigger` or `update_trigger` are checked all the same: they are in
 the call, not the transcript.
 
-`--now [transcript]` prints the real size (newest transcript of this
-directory's project when none is named). `--selftest` runs the cases below and
-checks `.claude/settings.json` still wires both events to this file.
+`--now [transcript]` prints the real size (when none is named, the transcript
+the hook was last given, which the hook's own call for that command records);
+when it cannot measure, it says why and exits 1. `--selftest` runs the cases below and
+checks `.claude/settings.json` still wires all three events to this file.
 """
 import importlib.util
 import json
@@ -78,16 +126,22 @@ import re
 import sys
 import tempfile
 
-LINE = 300_000      # the handover checkpoint is required
+WARN = 250_000      # the session and the person are warned
+LINE = 280_000      # the handover checkpoint is required
 HARD = 350_000      # everything but the checkpoint is refused
 SLACK_K = 20        # a Size: line's figure may sit this many k off the real one
 
 COMMENT_TOOLS = ("__add_issue_comment", "__update_issue_comment")
+START_TOOLS = ("__fire_trigger", "__create_session")   # a successor start, for the successor lock
 SUCCESSOR_TOOLS = ("__create_trigger", "__update_trigger", "__fire_trigger", "__list_triggers")
 ALWAYS = ("ToolSearch",)
 WORDS_TOOLS = ("__create_trigger", "__update_trigger")
+LIST_TOOLS = ("__list_triggers",)
 FIRE_TOOLS = ("__fire_trigger",)
+CLOCK_KEYS = ("cron_expression", "run_once_at")
+TRIG_RE = re.compile(r"\btrig_[A-Za-z0-9]+")
 
+NOTE = os.path.join(os.path.expanduser("~"), ".claude", "size-hook-transcript")   # the last transcript_path given
 ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 BOOT_OPEN = ("HOW-WE-BUILD.md", "README.md")
 TICKET_RE = re.compile(r"(?m)^\s*Ticket:\s*$")
@@ -103,6 +157,8 @@ RULE_PAGE_RE = re.compile(r"(?<![\w.-])(?:\./)?((?:[\w]+(?:-[\w]+)*-library|libr
 CHECKPOINT_RE = re.compile(r"\A\W*Checkpoint:")
 RELEASED_RE = re.compile(r"\A\W*Checkpoint:\s*released")
 SIZE_RE = re.compile(r"(?m)^\W*Size:.*$")
+SUCCESSOR_RE = re.compile(r"(?m)^\W*Successor:.*$")
+NONE_RE = re.compile(r"\A\W*Successor:\s*none\s*[—–-]+\s*(?:nothing ready\b|(?:the )?platform refused\s+\w|blind\b)", re.I)
 FIGURE_RE = re.compile(r"\b(?:end|now)\s*~?\s*(\d+(?:\.\d+)?)\s*k\b")
 
 
@@ -121,6 +177,22 @@ def checkpoint_body(tool_name, tool_input):
     return body
 
 
+def successor_problem(body):
+    """Why a checkpoint body's Successor: line fails, or None (no line, or a good one)."""
+    line = SUCCESSOR_RE.search(body)
+    if line is None or NONE_RE.search(line.group(0)):
+        return None
+    return ("size hook: a checkpoint's `Successor:` line says why none starts: `Successor: none — nothing ready`, "
+            "`Successor: none — the platform refused <what>`, or `Successor: none — blind` "
+            "(library/session-changeover.md, *A session starts its own successor*); a started successor needs no line")
+
+
+def names_none(body):
+    """True when a checkpoint body carries a good `Successor: none — <reason>` line."""
+    line = SUCCESSOR_RE.search(body or "")
+    return line is not None and NONE_RE.search(line.group(0)) is not None
+
+
 def _text(content):
     if isinstance(content, str):
         return content
@@ -131,7 +203,9 @@ def _text(content):
 
 
 def read(transcript_path):
-    """(size, checkpointed_past_line, tool_uses, guard) or None when unreadable;
+    """(size, checkpointed_past_line, tool_uses, guard, succeeded) or None when unreadable;
+    succeeded: after that checkpoint, a successor start went through, or a checkpoint past the line
+    carrying `Successor: none — <reason>` did;
     guard = {"first": the first message's text, "booted": its boot line went
     through, "words": the newest trigger words that went through}."""
     try:
@@ -143,8 +217,10 @@ def read(transcript_path):
     checkpointed = False
     tool_uses = 0
     pending = set()   # checkpoint calls made past the line, awaiting their result
-    guard = {"first": None, "booted": False, "words": None, "reads": []}
-    boot_calls, word_calls, labels = set(), {}, {}
+    succeeded = False
+    starts = set()    # successor starts after it, and checkpoints naming none, awaiting their result
+    guard = {"first": None, "booted": False, "words": None, "reads": [], "tasks": {}}
+    boot_calls, word_calls, labels, task_calls = set(), {}, {}, {}
     with f:
         for raw in f:
             try:
@@ -173,9 +249,12 @@ def read(transcript_path):
                         body = _text(c.get("content")) or json.dumps(c.get("content"))
                         guard["reads"].append(((len(body.encode("utf-8")) + 3) // 4, labels.pop(t)))
                     checkpointed = checkpointed or t in pending
+                    succeeded = succeeded or t in starts
                     guard["booted"] = guard["booted"] or t in boot_calls
                     if t in word_calls:
                         guard["words"] = word_calls[t]
+                    if t in task_calls:
+                        _task_state(guard["tasks"], task_calls.pop(t), _text(c.get("content")) or json.dumps(c.get("content")))
                 continue
             if d.get("type") != "assistant":
                 continue
@@ -198,13 +277,136 @@ def read(transcript_path):
                     labels[c.get("id")] = _label(name, inp)
                 if _ends(name, COMMENT_TOOLS) and BOOT_END_RE.search((inp.get("body") or "").lstrip()):
                     boot_calls.add(c.get("id"))
+                if _ends(name, WORDS_TOOLS + LIST_TOOLS):
+                    task_calls[c.get("id")] = dict(inp, _tool=name)
                 if _ends(name, WORDS_TOOLS) and inp.get("prompt"):
                     word_calls[c.get("id")] = inp["prompt"]
                 if size >= LINE and checkpoint_body(c.get("name"), c.get("input")) is not None:
                     pending.add(c.get("id"))
+                    if names_none(checkpoint_body(c.get("name"), c.get("input"))):
+                        starts.add(c.get("id"))
+                if (checkpointed or pending) and _ends(name, START_TOOLS):   # after the checkpoint, or beside it in one turn
+                    starts.add(c.get("id"))
     if not seen:
         return None
-    return size, checkpointed, tool_uses, guard
+    return size, checkpointed, tool_uses, guard, succeeded
+
+
+def clock_in(inp):
+    """The clock fields a trigger call's input sets."""
+    return [k for k in CLOCK_KEYS if inp.get(k)]
+
+
+def _own(text, tid):
+    """The task's own object in a trigger call's result, when the result is JSON and has one with any clock field."""
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return None
+    stack = [data]
+    while stack:
+        x = stack.pop()
+        if isinstance(x, dict):
+            if x.get("id") == tid and any(k in x for k in CLOCK_KEYS):
+                return x
+            stack.extend(x.values())
+        elif isinstance(x, list):
+            stack.extend(x)
+    return None
+
+
+def _clock_in_result(text, tid=None):
+    """The clock fields a trigger call's result reports set; [] when it reports both, empty; else None.
+    The task's own object, where the result has one, decides alone: a field it reports is read, and one it
+    omits is unset, since the platform's result leaves an unset field out (update_trigger, 6 November 2026:
+    `"cron_expression": ""` and no `run_once_at`)."""
+    own = _own(text, tid) if tid else None
+    if own is not None:
+        return [k for k in CLOCK_KEYS if own.get(k)]
+    try:
+        found = {}
+        def walk(x):
+            if isinstance(x, dict):
+                for k, v in x.items():
+                    if k in CLOCK_KEYS:
+                        found[k] = found.get(k) or bool(v)
+                    walk(v)
+            elif isinstance(x, list):
+                for v in x:
+                    walk(v)
+        walk(json.loads(text))
+    except ValueError:
+        found = {}
+        for k, v in re.findall(r'"?(cron_expression|run_once_at)"?\s*[:=]\s*("[^"]*"|[^,}\s]+)', text):
+            found[k] = found.get(k) or v.strip('"') not in ("", "null", "None")
+    set_ = sorted(k for k, v in found.items() if v)
+    # a clock reported set is a clock; clear only when both are reported, and empty
+    return set_ if set_ or len(found) == len(CLOCK_KEYS) else None
+
+
+def _listed(tasks, result):
+    """Each task a list_triggers result shows, with the clock fields it reports."""
+    try:
+        data = json.loads(result)
+    except ValueError:
+        return
+    def walk(x):
+        if isinstance(x, dict):
+            if isinstance(x.get("id"), str) and x["id"].startswith("trig_") and all(k in x for k in CLOCK_KEYS):
+                tasks[x["id"]] = [k for k in CLOCK_KEYS if x.get(k)]
+            for v in x.values():
+                walk(v)
+        elif isinstance(x, list):
+            for v in x:
+                walk(v)
+    walk(data)
+
+
+def _task_state(tasks, inp, result):
+    """Record a trigger call that went through: its task's clock where the call shows it, else unknown (None).
+    A create's input is the whole task; an update's is not, so only its result counts."""
+    tool = inp.get("_tool") or ""
+    if _ends(tool, LIST_TOOLS):
+        _listed(tasks, result)
+        return
+    tid = inp.get("trigger_id")
+    if not tid:
+        try:
+            tid = json.loads(result).get("trigger", {}).get("id")
+        except (ValueError, AttributeError):
+            tid = None
+        m = None if tid else TRIG_RE.search(result)
+        tid = tid or (m.group(0) if m else None)
+    if tid:
+        shown = _clock_in_result(result, tid)
+        if shown is None and _ends(tool, ("__create_trigger",)):
+            shown = clock_in(inp)
+        tasks[tid] = shown
+
+
+def clock(tool_name, tool_input, state):
+    """The clock lock's refusal, or None."""
+    name = tool_name or ""
+    if _ends(name, WORDS_TOOLS):
+        set_ = clock_in(tool_input)
+        if set_:
+            return _deny(f"size hook: a standing task never carries a clock (`{'`, `'.join(set_)}`): no repeat, no run "
+                         f"time; it is fired with `fire_trigger` (library/session-changeover.md, *A session starts its own "
+                         f"successor*; #378). Drop the field")
+        return None
+    if not _ends(name, FIRE_TOOLS) or state is None:
+        return None
+    tid = tool_input.get("trigger_id")
+    known = state[3]["tasks"].get(tid)
+    if known is None:
+        return _deny(f"size hook: `{tid}` is fired only once this session has seen it carry no `cron_expression` or "
+                     f"`run_once_at`: an `update_trigger` result reporting both empty, or a `list_triggers` entry for it "
+                     f"showing both empty (an update's own words are no evidence: one that omits them leaves an old "
+                     f"schedule standing; #378)")
+    if known:
+        return _deny(f"size hook: `{tid}` still carries a clock (`{'`, `'.join(known)}`), and a task with one never "
+                     f"wakes a session (library/session-changeover.md; #378). Clear it with `update_trigger` first")
+    return None
 
 
 def _label(name, inp):
@@ -391,17 +593,22 @@ def size_problem(body, size):
     return None
 
 
-def decide(event, tool_name, tool_input, state, tk=None):
+def decide(event, tool_name, tool_input, state, tk=None, blind=None):
     """The hook's JSON answer, or None to stay silent."""
     tool_input = tool_input if isinstance(tool_input, dict) else {}
+    refused = clock(tool_name, tool_input, state) if event == "PreToolUse" else None
+    if refused:
+        return refused
     refused = guard(event, tool_name, tool_input, state, tk)
     if refused:
         return refused
     if state is None:
+        msg = blind_message(blind or "the transcript could not be read")
+        if event == "PreToolUse":
+            return None if blind_allows(tool_name, tool_input) else _deny(msg)
         if event == "PostToolUse":
-            return {"hookSpecificOutput": {"hookEventName": "PostToolUse",
-                    "additionalContext": "size hook: the transcript could not be read; size unknown, nothing blocked"}}
-        return None
+            return {"decision": "block", "reason": msg, "systemMessage": msg}
+        return {"systemMessage": msg} if event == "Stop" else None
     size, checkpointed, tool_uses = state[:3]
     k = f"{round(size / 1000)}k"
     if (event == "PreToolUse" and tk is not None and not state[3]["booted"]
@@ -413,7 +620,7 @@ def decide(event, tool_name, tool_input, state, tk=None):
     if event == "PreToolUse":
         body = checkpoint_body(tool_name, tool_input)
         if body is not None:
-            why = size_problem(body, size)
+            why = size_problem(body, size) or successor_problem(body)
             return _deny(why) if why else None
         if size < HARD or tool_name in ALWAYS:
             return None
@@ -424,16 +631,60 @@ def decide(event, tool_name, tool_input, state, tk=None):
                          f"actions left are starting the successor (create/update/fire_trigger) and ending the turn")
         return _deny(f"size hook: {k}, past the hard stop of 350k; every action is refused but writing "
                      f"the handover checkpoint, posted with the issue-comment tool (`add_issue_comment`), its first line `Checkpoint:`, with its `Size:` line")
+    demand = (f"size hook: {k}, past the 280k line. Write the handover checkpoint now "
+              f"(`Checkpoint:`, `Size: ... end {k} (transcript) ...`, `Planned:`, the session's link), "
+              f"then start the successor. At 350k every other action is refused.")
+    warn = f"size hook: {k}, in the warn band from 250k; the checkpoint is due at 280k: bring the work to a boundary."
+    if event == "Stop":
+        if size >= LINE and not checkpointed and not tool_input.get("stop_hook_active"):
+            return {"decision": "block", "reason": demand}
+        if checkpointed and not state[4] and not tool_input.get("stop_hook_active"):
+            return {"decision": "block", "reason": (
+                f"size hook: {k}, the checkpoint is written but no successor has started. Start it now "
+                f"(`update_trigger` with its words, then `fire_trigger`: library/session-changeover.md, *A session "
+                f"starts its own successor*), or post a checkpoint whose `Successor:` line says why none starts: "
+                f"`Successor: none — nothing ready`, `— the platform refused <what>`, or `— blind`")}
+        return {"systemMessage": warn} if WARN <= size < LINE else None
     if event == "PostToolUse":
         if size >= LINE and not checkpointed:
-            return {"decision": "block",
-                    "reason": (f"size hook: {k}, past the 300k line. Write the handover checkpoint now "
-                               f"(`Checkpoint:`, `Size: ... end {k} (transcript) ...`, `Planned:`, the session's link), "
-                               f"then start the successor. At 350k every other action is refused.")}
+            return {"decision": "block", "reason": demand}
+        if size >= WARN and not checkpointed:
+            return {"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": warn}}
         if tool_uses <= 1:
             return {"hookSpecificOutput": {"hookEventName": "PostToolUse",
                     "additionalContext": f"size hook: live; boot {k} (transcript)"}}
     return None
+
+
+def blind_message(why):
+    return (f"size hook: blind, {why}; this session's size is unknown, so every call is refused but a `Checkpoint:` "
+            f"comment (its Size: source `unknown`, naming the blindness), loading a tool, and repairing the hook "
+            f"(reading or editing `.claude/size.py` or `.claude/settings.json`, or a command that only runs `.claude/size.py`). No successor: it would be blind too.")
+
+
+HOOK_FILES = (".claude/size.py", ".claude/settings.json")
+
+
+# A run of the hook and nothing else: `python3 [dir/].claude/size.py [args]`, no second
+# command, redirect, substitution or comment riding along on it.
+RUN_HOOK = re.compile(r"python3? +(?:[\w./~-]*/)?\.claude/size\.py(?: +[\w./=~-]+)*")
+
+
+def blind_allows(tool_name, tool_input):
+    """What a blind session may still do: the checkpoint, loading a tool, and repairing the hook."""
+    tool_input = tool_input if isinstance(tool_input, dict) else {}
+    tool_name = tool_name if isinstance(tool_name, str) else ""
+    body = tool_input.get("body")
+    return (tool_name in ALWAYS or repairs(tool_input) or (
+        _ends(tool_name, COMMENT_TOOLS) and CHECKPOINT_RE.search((body if isinstance(body, str) else "").lstrip()) is not None))
+
+
+def repairs(tool_input):
+    """True when a call edits or reads the hook's own files, or runs the hook itself: the one way out of a blindness."""
+    path = tool_input.get("file_path") or ""
+    cmd = tool_input.get("command")
+    return (isinstance(path, str) and path.endswith(HOOK_FILES)) or (
+        isinstance(cmd, str) and RUN_HOOK.fullmatch(cmd.strip()) is not None)
 
 
 def _deny(reason):
@@ -441,14 +692,36 @@ def _deny(reason):
             "permissionDecision": "deny", "permissionDecisionReason": reason}}
 
 
-def newest_transcript():
-    slug = re.sub(r"[^A-Za-z0-9]", "-", os.getcwd())
-    d = os.path.join(os.path.expanduser("~"), ".claude", "projects", slug)
+def failed(h, e):
+    """A hook that raised: blind, refusing all but what blind lets through."""
+    msg = blind_message(f"the hook failed ({type(e).__name__})")
+    return (_deny(msg) if h.get("hook_event_name") == "PreToolUse" and not blind_allows(h.get("tool_name"), h.get("tool_input"))
+            else {"systemMessage": msg})
+
+
+def answer(h, note=NOTE):
+    """The hook's answer to one call's input, measured from the call's own transcript_path."""
+    path = h.get("transcript_path")
+    state, why = None, "the hook was given no transcript_path"
+    if isinstance(path, str) and path:
+        try:
+            with open(note, "w", encoding="utf-8") as f:
+                f.write(path)
+        except OSError:
+            pass
+        state = read(path)
+        why = f"{path} could not be opened" if not os.path.isfile(path) else f"{path} carries no usage"
+    event = h.get("hook_event_name")
+    inp = {"stop_hook_active": h.get("stop_hook_active")} if event == "Stop" else h.get("tool_input")
+    return decide(event, h.get("tool_name"), inp, state, _ticket(), why)
+
+
+def remembered(note=NOTE):
     try:
-        files = [os.path.join(d, f) for f in os.listdir(d) if f.endswith(".jsonl")]
+        with open(note, encoding="utf-8") as f:
+            return f.read().strip() or None
     except OSError:
         return None
-    return max(files, key=os.path.getmtime) if files else None
 
 
 # ---- selftest ---------------------------------------------------------------
@@ -499,7 +772,7 @@ def selftest():
     s = _state([_turn(96_000, "Bash"), _turn(305_000, "Bash")])
     post = decide("PostToolUse", "Bash", {}, s)
     cases += [
-        ("past 300k without a checkpoint, the checkpoint is demanded", bool(post) and post.get("decision") == "block"),
+        ("past the line without a checkpoint, the checkpoint is demanded", bool(post) and post.get("decision") == "block"),
         ("between the lines work is not refused", decide("PreToolUse", "Bash", {}, s) is None),
         ("a checkpoint with no Size: line is refused", _denied(decide("PreToolUse", C, {"body": "Checkpoint: boundary"}, s))),
         ("a guessed Size: figure is refused", _denied(decide("PreToolUse", C, {"body": good.replace("310k", "200k")}, s))),
@@ -524,12 +797,16 @@ def selftest():
     s = _state([_turn(96_000, "Bash"), _turn(305_000, "Bash"), _turn(310_000, C, good, id="cp"), _result("cp", error=True)])
     cases.append(("a refused or failed checkpoint is not written", s[1] is False and
                   bool(decide("PostToolUse", "Bash", {}, s))))
-    s = _state([_turn(96_000, "Bash"), _turn(310_000, C, good, id="cp"), _result("cp"), _turn(351_000, "Bash")])
+    U, F = "mcp__claude-code-remote__update_trigger", "mcp__claude-code-remote__fire_trigger"
+    CLEAR = json.dumps({"trigger": {"id": "trig_X", "cron_expression": None, "run_once_at": None}})
+    T = {"trigger_id": "trig_X"}
+    s = _state([_turn(96_000, "Bash"), _turn(310_000, C, good, id="cp"), _result("cp"),
+                _call(312_000, U, T, "u"), _trig_result("u", CLEAR), _turn(351_000, "Bash")])
     cases += [
         ("past 350k after it, work is refused", _denied(decide("PreToolUse", "Bash", {}, s))),
         ("past 350k a shell command that posts a checkpoint is still refused", _denied(decide("PreToolUse", "Bash",
          {"command": "make && gh issue comment 363 --body 'Checkpoint: x\nSize: end 351k'"}, s))),
-        ("past 350k after it, the successor may start", decide("PreToolUse", "mcp__claude-code-remote__fire_trigger", {}, s) is None),
+        ("past 350k after it, the successor may start", decide("PreToolUse", F, T, s) is None),
         ("past 350k after it, a tool may be loaded", decide("PreToolUse", "ToolSearch", {}, s) is None),
     ]
     s = _state([_turn(96_000, C, good), _turn(200_000, "Bash"), _turn(352_000, "Bash")])
@@ -540,24 +817,100 @@ def selftest():
         ("past 350k the successor waits on the checkpoint", _denied(decide("PreToolUse", "mcp__claude-code-remote__fire_trigger", {}, s))),
         ("past 350k the checkpoint itself passes", decide("PreToolUse", C, {"body": good.replace("310k", "352k")}, s) is None),
     ]
+    _clock_cases(cases, U, F, T)
     cases += [
-        ("an unreadable transcript blocks nothing", decide("PreToolUse", "Bash", {}, read("/nonexistent")) is None),
-        ("and says so", "unknown" in json.dumps(decide("PostToolUse", "Bash", {}, None))),
+        ("blind, a call is refused until it can see", _denied(decide("PreToolUse", "Bash", {}, read("/nonexistent")))),
+        ("blind, an edit is refused", _denied(decide("PreToolUse", "Edit", {}, None))),
+        ("blind, the checkpoint goes through", decide("PreToolUse", C, {"body": "Checkpoint: x\nSize: source unknown"}, None) is None),
+        ("blind, an ordinary comment is refused", _denied(decide("PreToolUse", C, {"body": "Round 2."}, None))),
+        ("blind, a tool may be loaded", decide("PreToolUse", "ToolSearch", {}, None) is None),
+        ("blind, no successor starts: it would be blind too", _denied(decide("PreToolUse", "mcp__claude-code-remote__fire_trigger", {"trigger_id": "trig_X"}, None))),
+        ("blind, the hook may be read", decide("PreToolUse", "Read", {"file_path": "/r/.claude/size.py"}, None) is None),
+        ("blind, the hook may be edited", decide("PreToolUse", "Edit", {"file_path": "/r/.claude/size.py"}, None) is None),
+        ("blind, its wiring may be edited", decide("PreToolUse", "Edit", {"file_path": "/r/.claude/settings.json"}, None) is None),
+        ("blind, the hook may be run", decide("PreToolUse", "Bash", {"command": "python3 .claude/size.py --selftest"}, None) is None),
+        ("blind, the hook may be run by its path", decide("PreToolUse", "Bash", {"command": "python3 /r/.claude/size.py --now"}, None) is None),
+        ("blind, a command that only mentions the hook is refused",
+         _denied(decide("PreToolUse", "Bash", {"command": "gh pr merge 1 # .claude/size.py"}, None))),
+        ("blind, a command chained after a run of the hook is refused",
+         _denied(decide("PreToolUse", "Bash", {"command": "python3 .claude/size.py --selftest; gh pr merge 1"}, None))),
+        ("blind, a command that reads the hook through the shell is refused",
+         _denied(decide("PreToolUse", "Bash", {"command": "cat .claude/settings.json"}, None))),
+        ("blind, a substitution riding on a run of the hook is refused",
+         _denied(decide("PreToolUse", "Bash", {"command": "python3 .claude/size.py $(gh pr merge 1)"}, None))),
+        ("blind, another file may not be edited", _denied(decide("PreToolUse", "Edit", {"file_path": "/r/.claude/size.py.bak"}, None))),
+        ("and says so, loud, to the session and the person", (lambda a: a.get("decision") == "block" and
+         "blind" in a.get("reason", "") and "blind" in a.get("systemMessage", ""))(decide("PostToolUse", "Bash", {}, None))),
+        ("and at a turn's end", "blind" in json.dumps(decide("Stop", None, {}, None))),
     ]
+    _band_cases(cases, C, good)
+    _successor_cases(cases, C, good)
+    _path_cases(cases)
     ok = _guard_cases(cases)
     here = os.path.dirname(os.path.abspath(__file__))
     try:
         hooks = json.load(open(os.path.join(here, "settings.json"))).get("hooks", {})
         wired = all(any(h.get("matcher", "") in ("", "*") and
                         any("size.py" in (x.get("command") or "") for x in h.get("hooks", []))
-                        for h in hooks.get(ev, [])) for ev in ("PreToolUse", "PostToolUse"))
+                        for h in hooks.get(ev, [])) for ev in ("PreToolUse", "PostToolUse", "Stop"))
     except (OSError, ValueError, AttributeError):
         wired = False
-    cases.append((".claude/settings.json runs this file before and after every tool call", wired))
+    cases.append((".claude/settings.json runs this file before and after every tool call, and at every turn's end", wired))
     for name, passed in cases:
         print(("ok: " if passed else "FAIL: ") + "size hook: " + name)
         ok = ok and passed
     return ok
+
+
+def _trig_result(id, text):
+    return json.dumps({"type": "user", "message": {"content": [
+        {"type": "tool_result", "tool_use_id": id, "content": [{"type": "text", "text": text}]}]}})
+
+
+def _clock_cases(cases, U, F, T):
+    """The clock lock (#378): no standing task carries a repeat or a run time, and none with one is fired."""
+    Cr, L = "mcp__claude-code-remote__create_trigger", "mcp__claude-code-remote__list_triggers"
+    s0 = _state([_turn(96_000, "Bash")])
+    up = lambda inp, res: _state([_turn(96_000, "Bash"), _call(97_000, U, dict(T, **inp), "u"), _trig_result("u", res)])
+    clear = json.dumps({"trigger": {"id": "trig_X", "cron_expression": None, "run_once_at": None}})
+    cases += [
+        ("a create carrying a repeat is refused", _denied(decide("PreToolUse", Cr, {"name": "x", "prompt": "p", "cron_expression": "0 * * * *"}, s0))),
+        ("a create carrying a run time is refused", _denied(decide("PreToolUse", Cr, {"name": "x", "prompt": "p", "run_once_at": "2026-11-07T09:00:00Z"}, s0))),
+        ("an update carrying a repeat is refused", _denied(decide("PreToolUse", U, dict(T, cron_expression="0 9 * * *"), s0))),
+        ("and refused with an unreadable transcript too", _denied(decide("PreToolUse", U, dict(T, run_once_at="2026-11-07T09:00:00Z"), None))),
+        ("a create with neither passes", decide("PreToolUse", Cr, {"name": "x", "prompt": "p"}, s0) is None),
+        ("a fire of a task this session has not updated is refused", _denied(decide("PreToolUse", F, T, s0))),
+        ("a fire after an update whose result shows no clock passes", decide("PreToolUse", F, T, up({"prompt": "p"}, clear)) is None),
+        ("a fire after an update that left an old repeat standing is refused",
+         _denied(decide("PreToolUse", F, T, up({"prompt": "p"}, json.dumps({"trigger": {"id": "trig_X", "cron_expression": "0 9 * * *"}}))))),
+        ("a fire after an update that left an old run time standing is refused, read from prose",
+         _denied(decide("PreToolUse", F, T, up({"prompt": "p"}, "updated trig_X: run_once_at: 2026-11-07T09:00:00Z, enabled")))),
+        ("a fire of another task than the one updated is refused", _denied(decide("PreToolUse", F, {"trigger_id": "trig_Y"}, up({}, clear)))),
+        ("a fire after a refused update is refused", _denied(decide("PreToolUse", F, T, _state(
+            [_turn(96_000, "Bash"), _call(97_000, U, dict(T, prompt="p"), "u"), _result("u", error=True)])))),
+        ("a created task is known by the id its result names", decide("PreToolUse", F, T, _state(
+            [_turn(96_000, "Bash"), _call(97_000, Cr, {"name": "x", "prompt": "p"}, "c"), _trig_result("c", clear)])) is None),
+        ("the newest update decides", decide("PreToolUse", F, T, _state(
+            [_turn(96_000, "Bash"), _call(97_000, U, T, "u"), _trig_result("u", json.dumps({"cron_expression": "0 9 * * *"})),
+             _call(98_000, U, T, "v"), _trig_result("v", clear)])) is None),
+        ("an unreadable transcript refuses a fire: its successor would be blind too", _denied(decide("PreToolUse", F, T, None))),
+        ("the platform's own update result (6 November 2026: an empty repeat, no run time) clears the task",
+         decide("PreToolUse", F, T, up({"prompt": "p"}, json.dumps({"trigger": {"id": "trig_X", "cron_expression": "", "enabled": True}}))) is None),
+        ("the task's own object decides, not another one in the result",
+         _denied(decide("PreToolUse", F, T, up({"prompt": "p"}, json.dumps({"trigger": {"id": "trig_X", "cron_expression": "0 9 * * *"},
+                                                                        "previous": {"id": "trig_Y", "cron_expression": None, "run_once_at": None}}))))),
+        ("an update whose result is silent on the fields leaves the task unknown, and its fire refused",
+         _denied(decide("PreToolUse", F, T, up({"prompt": "p"}, json.dumps({"trigger": {"id": "trig_X", "name": "x"}}))))),
+        ("a list_triggers entry with both empty clears it", decide("PreToolUse", F, T, _state(
+            [_turn(96_000, "Bash"), _call(97_000, L, {}, "l"), _trig_result("l", json.dumps({"triggers": [
+                {"id": "trig_X", "cron_expression": None, "run_once_at": None}]}))])) is None),
+        ("a list_triggers entry with a repeat is refused", _denied(decide("PreToolUse", F, T, _state(
+            [_turn(96_000, "Bash"), _call(97_000, L, {}, "l"), _trig_result("l", json.dumps({"triggers": [
+                {"id": "trig_X", "cron_expression": "0 9 * * *", "run_once_at": None}]}))])))),
+        ("a list after a clearing update decides", _denied(decide("PreToolUse", F, T, _state(
+            [_turn(96_000, "Bash"), _call(97_000, U, T, "u"), _trig_result("u", clear),
+             _call(98_000, L, {}, "l"), _trig_result("l", json.dumps([{"id": "trig_X", "cron_expression": None, "run_once_at": "2026-11-07T09:00:00Z"}]))])))),
+    ]
 
 
 def _first(text):
@@ -610,8 +963,9 @@ def _guard_cases_here(cases):
         # words are checked against the clones the hook knows: with no product's clone beside it, a product's ticket is refused, never passed unchecked
         ("a product's ticket written here is refused", _denied(decide("PreToolUse", U, {"prompt": good.replace("\n\nMore", "\n- Hemz-OS:AGENTS.md\n\nMore")}, s0, tk))),
     ]
-    s = _state([_turn(96_000, "Bash"), _call(97_000, U, {"prompt": good}, "u1"), _result("u1")])
-    cases.append(("a fire after checked words went through passes", decide("PreToolUse", F, {}, s, tk) is None))
+    s = _state([_turn(96_000, "Bash"), _call(97_000, U, {"prompt": good, "trigger_id": "trig_X"}, "u1"),
+                _trig_result("u1", json.dumps({"cron_expression": None, "run_once_at": None}))])
+    cases.append(("a fire after checked words went through passes", decide("PreToolUse", F, {"trigger_id": "trig_X"}, s, tk) is None))
     s = _state([_turn(96_000, "Bash"), _call(97_000, U, {"prompt": good}, "u1"), _result("u1", error=True)])
     cases.append(("a fire after a refused rewrite is refused", _denied(decide("PreToolUse", F, {}, s, tk))))
     boot = [_first("Do the job.\n" + good), _turn(96_000, "Bash")]
@@ -704,6 +1058,136 @@ def _product_cases(cases, tk, U, F, C):
             os.chdir(cwd)
 
 
+def _band_cases(cases, C, good):
+    """The warn band from 250k, the line at 280k, and the end of a turn (his word, 12 November 2026)."""
+    s = _state([_turn(96_000, "Bash"), _turn(240_000, "Bash")])
+    cases += [("below 250k no warning", decide("PostToolUse", "Bash", {}, s) is None),
+              ("below 250k a turn ends quietly", decide("Stop", None, {}, s) is None)]
+    s = _state([_turn(96_000, "Bash"), _turn(260_000, "Bash")])
+    post = decide("PostToolUse", "Bash", {}, s) or {}
+    cases += [
+        ("from 250k every call is warned", "warn band" in json.dumps(post) and post.get("decision") is None),
+        ("from 250k a turn's end warns the person", "warn band" in decide("Stop", None, {}, s).get("systemMessage", "")),
+        ("from 250k nothing is refused", decide("PreToolUse", "Bash", {}, s) is None),
+    ]
+    s = _state([_turn(96_000, "Bash"), _turn(285_000, "Bash")])
+    cases += [
+        ("past 280k the checkpoint is demanded after a call", (decide("PostToolUse", "Bash", {}, s) or {}).get("decision") == "block"),
+        ("past 280k a turn with no checkpoint is kept going to write it", (decide("Stop", None, {}, s) or {}).get("decision") == "block"),
+        ("but only once, so it never loops", decide("Stop", None, {"stop_hook_active": True}, s) is None),
+        ("a checkpoint at 285k carries its figure", decide("PreToolUse", C, {"body": good.replace("310k", "285k")}, s) is None),
+    ]
+    s = _state([_turn(96_000, "Bash"), _turn(285_000, C, good.replace("310k", "285k"), id="cp"), _result("cp"), _turn(290_000, "Bash")])
+    cases += [("after the checkpoint a turn ends once it has said so", decide("Stop", None, {"stop_hook_active": True}, s) is None),
+              ("after the checkpoint no call is nagged", decide("PostToolUse", "Bash", {}, s) is None)]
+
+
+def _successor_cases(cases, C, good):
+    """The successor lock (his word, 12 November 2026): a checkpoint past the line is followed by a start, or says why none."""
+    F, S = "mcp__claude-code-remote__fire_trigger", "mcp__claude-code-remote__create_session"
+    cp = [_turn(96_000, "Bash"), _turn(285_000, C, good.replace("310k", "285k"), id="cp"), _result("cp")]
+    none = lambda why: good.replace("310k", "286k") + "\nSuccessor: none — " + why
+    end = lambda lines, **i: (decide("Stop", None, i, _state(lines)) or {}).get("decision") == "block"
+    cases += [
+        ("a checkpoint past the line with no successor keeps the turn going", end(cp)),
+        ("and says how to end it", "Successor: none" in json.dumps(decide("Stop", None, {}, _state(cp)))),
+        ("but only once, so it never loops", not end(cp, stop_hook_active=True)),
+        ("a fire after the checkpoint lets the turn end", not end(cp + [_call(286_000, F, {"trigger_id": "trig_X"}, "f"), _result("f")])),
+        ("a create_session after it lets the turn end", not end(cp + [_call(286_000, S, {"prompt": "p"}, "n"), _result("n")])),
+        ("a refused fire does not", end(cp + [_call(286_000, F, {"trigger_id": "trig_X"}, "f"), _result("f", error=True)])),
+        ("a fire beside the checkpoint in one turn lets the turn end, whichever result comes first",
+         all(not end(cp[:1] + [_pair(285_000, C, good.replace("310k", "285k"), F)] + r) for r in
+             ([_result("cp"), _result("f")], [_result("f"), _result("cp")]))),
+        ("a fire beside a refused checkpoint still leaves the checkpoint owed",
+         end(cp[:1] + [_pair(285_000, C, good.replace("310k", "285k"), F), _result("cp", error=True), _result("f")])),
+        ("a fire before the checkpoint does not", end(cp[:1] + [_call(282_000, F, {"trigger_id": "trig_X"}, "f"), _result("f")] + cp[1:])),
+        ("`Successor: none — nothing ready` lets the turn end",
+         not end(cp + [_turn(286_000, C, none("nothing ready"), id="n"), _result("n")])),
+        ("`Successor: none — the platform refused <what>` lets the turn end",
+         not end(cp + [_turn(286_000, C, none("the platform refused fire_trigger (no task tools)"), id="n"), _result("n")])),
+        ("`Successor: none — blind` lets the turn end", not end(cp + [_turn(286_000, C, none("blind"), id="n"), _result("n")])),
+        ("the line in the first checkpoint itself lets the turn end",
+         not end(cp[:1] + [_turn(286_000, C, none("nothing ready"), id="n"), _result("n")])),
+        ("a refused checkpoint naming none does not", end(cp + [_turn(286_000, C, none("nothing ready"), id="n"), _result("n", error=True)])),
+        ("a checkpoint naming another reason is refused",
+         _denied(decide("PreToolUse", C, {"body": none("the next session takes over")}, _state(cp)))),
+        ("the platform refused, unnamed, is refused", _denied(decide("PreToolUse", C, {"body": none("the platform refused")}, _state(cp)))),
+        ("a checkpoint naming a good reason passes", decide("PreToolUse", C, {"body": none("nothing ready")}, _state(cp)) is None),
+        ("below the line a checkpoint does not hold the turn",
+         not end([_turn(96_000, "Bash"), _turn(150_000, C, good.replace("310k", "150k"), id="cp"), _result("cp")])),
+    ]
+
+
+def _pair(n, C, body, F):
+    """One model turn that posts a checkpoint (id cp) and fires a successor (id f) together."""
+    return json.dumps({"type": "assistant", "message": {"content": [
+        {"type": "tool_use", "id": "cp", "name": C, "input": {"body": body}},
+        {"type": "tool_use", "id": "f", "name": F, "input": {"trigger_id": "trig_X"}}],
+        "usage": {"input_tokens": n, "output_tokens": 0}}})
+
+
+def _path_cases(cases):
+    """The size is read from the call's own transcript_path, whatever the working directory; blind is loud."""
+    import subprocess
+    with tempfile.TemporaryDirectory() as d:
+        t, note = os.path.join(d, "s.jsonl"), os.path.join(d, "note")
+        with open(t, "w") as f:
+            f.write(_turn(96_000, "Bash") + "\n" + _turn(305_000, "Bash") + "\n")
+        cwd = os.getcwd()
+        os.chdir(d)   # a working directory with no project of its own, as after a session's cd
+        try:
+            post = lambda **h: answer(dict(hook_event_name="PostToolUse", tool_name="Bash", tool_input={}, **h), note) or {}
+            hit = post(transcript_path=t)
+            cases += [
+                ("the size is the transcript_path's, whatever the cwd", "305k, past the 280k line" in hit.get("reason", "")),
+                ("the hook records the transcript_path it was given", remembered(note) == t),
+                ("no transcript_path is blind, and says so", "blind, the hook was given no transcript_path" in post().get("reason", "")),
+                ("a transcript_path that will not open is blind, naming it",
+                 "blind, %s could not be opened" % os.path.join(d, "gone") in post(transcript_path=os.path.join(d, "gone")).get("reason", "")),
+            ]
+            with open(os.path.join(d, "empty.jsonl"), "w") as f:
+                f.write("{}\n")
+            cases.append(("a transcript with no usage is blind, not a silent pass",
+                          "carries no usage" in post(transcript_path=os.path.join(d, "empty.jsonl")).get("reason", "")))
+            env = dict(os.environ, HOME=d)
+            os.makedirs(os.path.join(d, ".claude"))
+            me = os.path.realpath(__file__)
+            now = lambda: subprocess.run([sys.executable, "-I", me, "--now"], env=env, capture_output=True, text=True)
+            r = now()
+            cases.append(("--now with nothing recorded says why and fails", r.returncode == 1 and "recorded none" in r.stderr))
+            with open(os.path.join(d, ".claude", "size-hook-transcript"), "w") as f:
+                f.write(t)
+            r = now()
+            cases.append(("--now reads the transcript the hook was last given", (r.returncode, r.stdout) == (0, "305k (transcript)\n")))
+            r = subprocess.run([sys.executable, "-I", me], input="not json", env=env, capture_output=True, text=True)
+            cases.append(("input that is not JSON is blind, and says so", "blind" in r.stdout))
+            pre = lambda **h: answer(dict(hook_event_name="PreToolUse", **h), note)
+            cases += [("blind through the real ticket, a call is refused", _denied(pre(tool_name="Bash", tool_input={"command": "ls"}))),
+                      ("blind through the real ticket, a task's words are still checked, not a crash",
+                       _denied(pre(tool_name="mcp__claude-code-remote__update_trigger", tool_input={"trigger_id": "trig_X", "prompt": "x"})))]
+            r = subprocess.run([sys.executable, "-I", me], input=json.dumps({"hook_event_name": "PreToolUse", "tool_name": 5,
+                               "tool_input": {"command": "ls"}, "transcript_path": t}), env=env, capture_output=True, text=True)
+            cases.append(("a hook that fails refuses the call, never a silent pass",
+                          _denied(json.loads(r.stdout or "{}")) and "the hook failed" in r.stdout))
+            boom = lambda name, inp: failed({"hook_event_name": "PreToolUse", "tool_name": name, "tool_input": inp}, ValueError())
+            cases += [
+                ("a hook that fails lets the checkpoint through",
+                 not _denied(boom("mcp__github__add_issue_comment", {"body": "Checkpoint: x\nSize: source unknown"}))),
+                ("a hook that fails lets a tool be loaded", not _denied(boom("ToolSearch", {}))),
+                ("a hook that fails lets the hook be run", not _denied(boom("Bash", {"command": "python3 .claude/size.py --selftest"}))),
+                ("a hook that fails still refuses an ordinary comment", _denied(boom("mcp__github__add_issue_comment", {"body": "Round 2."}))),
+                ("a hook that fails, given input that is not an object, refuses rather than crashing", _denied(boom("Bash", ["ls"]))),
+                ("a hook that fails, given a name that is not a string, refuses rather than crashing", _denied(boom(5, "x"))),
+            ]
+            stop = lambda **h: answer(dict(hook_event_name="Stop", **h), note) or {}
+            cases += [
+                ("a turn's end with no tool call is measured from its transcript_path", stop(transcript_path=t).get("decision") == "block"),
+                ("a turn already kept going is let end", stop(transcript_path=t, stop_hook_active=True) == {}),
+            ]
+        finally:
+            os.chdir(cwd)
+
+
 def _read_result(id, tokens):
     return json.dumps({"type": "user", "message": {"content": [
         {"type": "tool_result", "tool_use_id": id, "content": "x" * (tokens * 4)}]}})
@@ -753,16 +1237,23 @@ def main():
     if sys.argv[1:2] == ["--selftest"]:
         sys.exit(0 if selftest() else 1)
     if sys.argv[1:2] == ["--now"]:
-        p = sys.argv[2] if len(sys.argv) > 2 else newest_transcript()
+        p = sys.argv[2] if len(sys.argv) > 2 else remembered()
         st = read(p) if p else None
-        print("unknown" if st is None else f"{round(st[0] / 1000)}k (transcript)")
+        if st is None:
+            sys.exit("size hook: unknown, " + (f"{p} could not be read" if p else "no transcript named, and the hook has recorded none"))
+        print(f"{round(st[0] / 1000)}k (transcript)")
         return
     try:
         h = json.load(sys.stdin)
     except ValueError:
+        h = None
+    if not isinstance(h, dict):
+        print(json.dumps({"systemMessage": blind_message("its input was not a JSON object, so no call can be named or refused")}))
         return
-    a = decide(h.get("hook_event_name"), h.get("tool_name"), h.get("tool_input"),
-               read(h.get("transcript_path")), _ticket())
+    try:
+        a = answer(h)
+    except Exception as e:   # a hook that raises is blind and refuses; one that cannot run fails open
+        a = failed(h, e)
     if a:
         print(json.dumps(a))
 

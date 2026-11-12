@@ -84,9 +84,8 @@ QUICK_LOOKS_FOR = timedelta(minutes=60)
 # the product's own gate also needs `verify` passed, and nothing here can see that
 # gate, so each product is named with where its gate was shown to. A product joins
 # by a pull request here, which the reviewer reads; no name, no early read.
-EARLY = {
-    "Adonis80/Hemz-OS": "Adonis80/Hemz-OS#260, merged 2 November 2026: its gate needs verify passed",
-}
+# None is named: Hemz OS left on Hemz-OS#329 (item 12), so its read waits for verify.
+EARLY = {}
 # The reviewer's job is held to 55 minutes. A run still in progress an hour
 # after it started has lost its runner and will not sign.
 STALE = timedelta(minutes=60)
@@ -666,15 +665,16 @@ def _selftest():
     q = lambda **kw: _run(name=QUICK, **kw)
     v = lambda **kw: _run(name=VERIFY, **kw)
     going = dict(status="in_progress", conclusion=None)
-    E = "Adonis80/Hemz-OS"
-    early = lambda answer: _asks(verified, answer, HEAD, None, E)
     want("each product read early named exactly, beside where its gate was shown to need verify",
-         E in EARLY and all(isinstance(why, str) and why for why in EARLY.values()) and all(REPO.match(r) for r in EARLY), True)
+         all(isinstance(why, str) and why for why in EARLY.values()) and all(REPO.match(r) for r in EARLY), True)
+    E = "Adonis80/early-example"   # a product named for these cases alone
+    EARLY[E] = "the selftest's own"
+    early = lambda answer: _asks(verified, answer, HEAD, None, E)
     want("checks passed, verify still running", early({"check_runs": [q(ago=9), v(ago=8, **going)]}), "ok")
     want("checks passed, verify not begun", early({"check_runs": [q(ago=9)]}), "ok")
     want("checks passed, verify passed", early({"check_runs": [q(ago=30), v(ago=9)]}), "ok")
     want("the two answers given apart, as the callers give them", early([q(ago=9), v(ago=8, **going)]), "ok")
-    for who in (None, "Adonis80/myst", "Adonis80/hemz-os", "Evil/Hemz-OS"):
+    for who in (None, "Adonis80/Hemz-OS", "Adonis80/myst", "Adonis80/early-Example", "Evil/early-example"):
         refuses("%s: checks passed, verify still running, its gate unknown" % who, verified,
                 {"check_runs": [q(ago=9), v(ago=8, **going)]}, HEAD, None, who)
         refuses("%s: checks passed, verify not begun, its gate unknown" % who, verified, {"check_runs": [q(ago=9)]}, HEAD, None, who)
@@ -708,6 +708,7 @@ def _selftest():
         except Refused as why:
             if "is still running on this commit" in str(why):
                 bad.append("%s: still earns quick looks" % what)
+    EARLY.pop(E)
 
     # Has it been read: every state, and who may ask again.
     def state(*runs):
@@ -775,7 +776,7 @@ def _selftest():
         want("cli: verified", cli("verify", "Adonis80/alpha", put("v", green), HEAD)[0], 0)
         want("cli: not verified", cli("verify", "Adonis80/alpha", put("v2", {"check_runs": []}), HEAD)[0], 1)
         early_ = [put("q", {"check_runs": [_run(name=QUICK, ago=0)]}), put("v3", {"check_runs": []})]
-        want("cli: checks passed, read early where EARLY names the product", cli("verify", "Adonis80/Hemz-OS", *early_, HEAD)[0], 0)
+        want("cli: Hemz OS, checks passed, waits for verify (Hemz-OS#329, item 12)", cli("verify", "Adonis80/Hemz-OS", *early_, HEAD)[0], 1)
         want("cli: checks passed, verify awaited where it does not", cli("verify", "Adonis80/alpha", *early_, HEAD)[0], 1)
         want("cli: no product named", cli("verify", put("v4", green), HEAD)[0], 2)
         want("cli: a product named with a path", cli("verify", "Adonis80/Hemz-OS/../x", put("v5", green), HEAD)[0], 2)
