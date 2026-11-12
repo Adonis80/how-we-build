@@ -14,7 +14,7 @@ Every value is in `library/juku-style.css`. If a value is not in that file, the 
 
 **Not covered by his approval** (decision 0024: it covers what the screens show). The stylesheet's values marked as not drawn in those screens (`--j-r-surface`, `--j-t`) and its light and midnight themes are not used until he approves them by picture; the midnight theme also gives done and measured one colour (`--j-green` and `--j-turq` both `#5FD3C4`), a clash to settle then.
 
-**His picks of 12 November 2026: *"Button B · Field B · Choice E"*** ([#408](https://github.com/Adonis80/how-we-build/pull/408#issuecomment-6823795113)), made by tapping through the live control studies (https://claude.ai/artifact/Pj5Z34NK82jpBdnQcdiPim), after he said of the approved formula screen's Done that it *"looks cleaner without having a translucent background when selected"*. The choice control, the typed line and the row of choices are drawn as those studies drew them, values included; for these three the studies, not the 4 November screens, are the source, and the screens' panel fill and gold fill under a selected choice are superseded. The other studies' letters are not approved.
+**His picks of 12 November 2026: *"Button B · Field B · Choice E"*** ([#408](https://github.com/Adonis80/how-we-build/pull/408#issuecomment-6823795113)), made by tapping through the live control studies (https://claude.ai/artifact/Pj5Z34NK82jpBdnQcdiPim), after he said of the approved formula screen's Done (https://claude.ai/artifact/85YmnKiJdRTG3saj96mJKh), set beside the Hemz builder's filled choice, that it *"looks cleaner without having a translucent background when selected"* (12 November 2026, to the CTO session, recorded on [#408](https://github.com/Adonis80/how-we-build/pull/408#issuecomment-6823795113)). The choice control, the typed line and the row of choices are drawn as those studies drew them, values included; for these three the studies, not the 4 November screens, are the source, and the screens' panel fill and gold fill under a selected choice are superseded. The other studies' letters are not approved.
 
 ## (a) The feel
 
@@ -68,7 +68,7 @@ Words and figures sit straight on a near-black ground, like a private-bank state
 
 **Always**
 - Put content straight on the ground.
-- Draw a hairline above each total and nowhere else in the content. The top bar's rule is the only other line.
+- Draw a hairline above each total and nowhere else in the content. The top bar's rule is the only other line, save the lines that are part of a control: a choice's border, the typed line's underline (`.j-field`) and the tabs' hairline with its gold line (`.j-tabs`).
 - On a level that adds something up, lay rows out as one equation, left to right: operator, name, figure, ›. Keep the operator column there even when it is empty, so the names line up.
 - Push the equation to the bottom of the level (`.j-foot`), so the screen's whole height is used. The title gets the space above it, and the thumb reaches the rows.
 - Keep sections clearly apart, each under its band heading (`.j-band-row`), never by a line or a box.
@@ -98,19 +98,19 @@ Words and figures sit straight on a near-black ground, like a private-bank state
 1. **Load the kit.** Load `library/juku-style.css` read from this repository at a pinned rulebook commit by the product's build, never a copy kept or edited in the product (`library/carries-sessions.md`, *Its pages*: "read from this repository, never copied down"); the product's own stylesheet sets every one of the kit's colour tokens from its constitution, its own approved themes included, so no product shows Hemz's colours by default. No product build does this yet: the first to do it shows it working. Put `.j-page` on the body and `.j-screen` on the root, and leave `data-theme` unset: light and midnight wait for his picture (above).
 2. **Build the frame.** `.j-stage` holds one `.j-level` per level, with `.is-deep` on every level below the top one. `.j-bar` sits after the stage and contains back or brand, then `.j-bar-rule`, the (i) and Done. `.j-info` is optional and opens from the (i).
 3. **Map the content from the product's map.** Each level gets `.j-head` (crumb, title, lead) and then a `.j-eqn.j-foot` of `.j-row`s in the map's order. Each row's operator comes from the maths, and each figure is coloured by its meaning. Every subtotal and total is a `.j-sum`.
-4. **Use only `.j-` classes.** Write no inline styles and no new values. If something has no class here, it is a design question: it goes to the designer by HyperSolid's steps 3 to 6, and don't invent a fix (*What the kit does not draw yet*).
-5. **Wire the drill-in.** Tapping a row sets the levels to `.is-on`, `.is-behind-1` or `.is-behind-2` (`.is-off` for anything else) and puts `.is-forward` on the screen. Back drops the class from the screen and sets the leaving level to `.is-off`. Mark each arriving row `.j-in` with `--i`. Make the levels behind `inert`.
+4. **Use only `.j-` classes.** Write no inline styles (save step 5's `--i`, `--j-tab-x` and `--j-tab-w`) and no new values. If something has no class here, it is a design question: it goes to the designer by HyperSolid's steps 3 to 6, and don't invent a fix (*What the kit does not draw yet*).
+5. **Wire the drill-in.** Tapping a row sets the levels to `.is-on`, `.is-behind-1` or `.is-behind-2` (`.is-off` for anything else) and puts `.is-forward` on the screen. Back drops the class from the screen and sets the leaving level to `.is-off`. Mark each arriving row `.j-in` with `--i`. Make the levels behind `inert`. On a row of choices, set `--j-tab-x` and `--j-tab-w` on `.j-tabs` to the chosen tab's left offset and width, so the gold line slides under it.
 
 ## (e) Self-check: answer yes to all eleven
 
 1. Is every piece of content sitting on the ground, with no boxes, cards, borders or row dividers?
-2. Is there exactly one hairline per total, directly above it, and no other line in the content?
+2. Is there exactly one hairline per total, directly above it, and no other line in the content but a control's own (a choice's border, a typed line, the tabs' line)?
 3. Does each money figure appear in the money colour and each measured figure and its unit in the measure colour (on Hemz, gold and turquoise), with neither used for anything else, save the action colour where his picture shares it with money (Hemz's gold)?
 4. Is the serif used only for the hero money?
 5. On a level that adds up, do the operators sit in one 22px column, with the names lined up even where there is no operator?
 6. Do the working rows sit at the bottom of the screen, within thumb reach, with every target at least 44px?
 7. Are the crumbs, bands and total labels in spaced capitals, and only the title in sentence case?
-8. Are back, add and selected shown as text in the action colour (on Hemz, gold), with no flat button in it anywhere?
+8. Are back, add and a selected choice shown as text in the action colour (on Hemz, gold), and a chosen tab as ink over the gold line, with no flat button in it anywhere?
 9. Does tapping a part make it the whole view, with the parent blurred behind and Back naming the parent, and does it simply switch with no movement when reduced motion is on?
-10. Is every size, colour, gap and timing on the screen one of the values in `library/juku-style.css` (colours, the product's own), with no inline styles save each arriving row's `--i` stagger index (step (d)5)?
+10. Is every size, colour, gap and timing on the screen one of the values in `library/juku-style.css` (colours, the product's own), with no inline styles save each arriving row's `--i` stagger index and a row of choices' `--j-tab-x` and `--j-tab-w` (step (d)5)?
 11. Is the spacing never squeezed to fit more, with a part that has contents of its own opening by the drill-in, and any level that holds more than its screen taken back to the map?
