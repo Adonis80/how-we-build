@@ -89,11 +89,14 @@ pieces), in the same repositories as the guard:
 The size is read from the transcript the platform names in each call's own
 `transcript_path`, never found by the working directory, which a session can
 leave. A session it cannot measure (no `transcript_path`, a file that will not
-open, one with no usage in it, or a hook that fails) fails closed: before a call,
+open, one with no usage in it, or a hook that raises) fails closed: before a call,
 everything is refused until it can see but the checkpoint, loading a tool, and
-the repair of the hook itself (reading, editing or running `.claude/size.py` or
-`.claude/settings.json`; the hook runs from the working tree, so a repair there
-lets the same session see again). Starting a successor is refused too: it would
+the repair of the hook itself (reading or editing `.claude/size.py` or
+`.claude/settings.json`, or a command that is a run of `.claude/size.py` and
+nothing else; the hook runs from the working tree, so a repair there lets the
+same session see again). A hook that cannot run at all (a file that will not
+compile, or input that is not a JSON object) fails open: the platform runs the
+call, so a broken repair is caught by `--selftest` before anything is pushed. Starting a successor is refused too: it would
 be as blind, so a blindness every session shares stops at one checkpoint for the
 person to see, never a chain. After every call and at the end of a turn it tells
 the session, and the person, that it is blind and why. A call's own turn is in
@@ -616,17 +619,23 @@ def decide(event, tool_name, tool_input, state, tk=None, blind=None):
 def blind_message(why):
     return (f"size hook: blind, {why}; this session's size is unknown, so every call is refused but a `Checkpoint:` "
             f"comment (its Size: source `unknown`, naming the blindness), loading a tool, and repairing the hook "
-            f"(reading, editing or running `.claude/size.py` or `.claude/settings.json`). No successor: it would be blind too.")
+            f"(reading or editing `.claude/size.py` or `.claude/settings.json`, or a command that only runs `.claude/size.py`). No successor: it would be blind too.")
 
 
 HOOK_FILES = (".claude/size.py", ".claude/settings.json")
 
 
+# A run of the hook and nothing else: `python3 [dir/].claude/size.py [args]`, no second
+# command, redirect, substitution or comment riding along on it.
+RUN_HOOK = re.compile(r"python3? +(?:[\w./~-]*/)?\.claude/size\.py(?: +[\w./=~-]+)*")
+
+
 def repairs(tool_input):
-    """True when a call's input names the hook's own files: the one way out of a blindness."""
+    """True when a call edits or reads the hook's own files, or runs the hook itself: the one way out of a blindness."""
     path = tool_input.get("file_path") or ""
-    return (isinstance(path, str) and path.endswith(HOOK_FILES)) or any(
-        f in (tool_input.get("command") or "") for f in HOOK_FILES)
+    cmd = tool_input.get("command")
+    return (isinstance(path, str) and path.endswith(HOOK_FILES)) or (
+        isinstance(cmd, str) and RUN_HOOK.fullmatch(cmd.strip()) is not None)
 
 
 def _deny(reason):
@@ -764,6 +773,15 @@ def selftest():
         ("blind, the hook may be edited", decide("PreToolUse", "Edit", {"file_path": "/r/.claude/size.py"}, None) is None),
         ("blind, its wiring may be edited", decide("PreToolUse", "Edit", {"file_path": "/r/.claude/settings.json"}, None) is None),
         ("blind, the hook may be run", decide("PreToolUse", "Bash", {"command": "python3 .claude/size.py --selftest"}, None) is None),
+        ("blind, the hook may be run by its path", decide("PreToolUse", "Bash", {"command": "python3 /r/.claude/size.py --now"}, None) is None),
+        ("blind, a command that only mentions the hook is refused",
+         _denied(decide("PreToolUse", "Bash", {"command": "gh pr merge 1 # .claude/size.py"}, None))),
+        ("blind, a command chained after a run of the hook is refused",
+         _denied(decide("PreToolUse", "Bash", {"command": "python3 .claude/size.py --selftest; gh pr merge 1"}, None))),
+        ("blind, a command that reads the hook through the shell is refused",
+         _denied(decide("PreToolUse", "Bash", {"command": "cat .claude/settings.json"}, None))),
+        ("blind, a substitution riding on a run of the hook is refused",
+         _denied(decide("PreToolUse", "Bash", {"command": "python3 .claude/size.py $(gh pr merge 1)"}, None))),
         ("blind, another file may not be edited", _denied(decide("PreToolUse", "Edit", {"file_path": "/r/.claude/size.py.bak"}, None))),
         ("and says so, loud, to the session and the person", (lambda a: a.get("decision") == "block" and
          "blind" in a.get("reason", "") and "blind" in a.get("systemMessage", ""))(decide("PostToolUse", "Bash", {}, None))),
@@ -1123,7 +1141,7 @@ def main():
         return
     try:
         a = answer(h)
-    except Exception as e:   # a hook that fails is blind, never a silent pass
+    except Exception as e:   # a hook that raises is blind and refuses; one that cannot run fails open
         msg = blind_message(f"the hook failed ({type(e).__name__})")
         a = (_deny(msg) if h.get("hook_event_name") == "PreToolUse" and not repairs(h.get("tool_input") or {})
              else {"systemMessage": msg})
