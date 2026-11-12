@@ -57,7 +57,7 @@ Words and figures sit straight on a near-black ground, like a private-bank state
 | Confirmation | green tick 16px and a 13.5px ink sentence, indented 32px | `.j-ok` |
 | Add | gold 11.5px / 500 text with a + icon, no fill, indented 32px | `.j-add` `.j-add-row` |
 | Choice / pick | `#0e0f11` fill, 1px border, 2px corners, 11.5px `#E0DCCE`; full-width pick is 52px tall at 13.5px | `.j-btn` `.j-pick` |
-| Selected choice | gold text, gold border at 50%, fill `rgba(255,176,31,.2)` | `.j-btn.is-on` |
+| Selected choice | gold text, gold border at 50%, no fill, read like Done: it "looks cleaner without having a translucent background when selected" (his word, 12 November 2026) | `.j-btn.is-on` |
 | Drill-in motion | 420ms `cubic-bezier(.22,1,.36,1)` on size, fade and blur; arriving rows rise 12px over .5s, 45ms apart | `.j-level` `.j-in` |
 
 ## (c) Always / Never
