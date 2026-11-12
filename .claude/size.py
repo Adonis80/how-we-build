@@ -25,6 +25,15 @@ and output tokens, as the model's own usage reports them.
 - At the end of a turn, the same: past 280,000 with no checkpoint the turn is
   kept going to write it (once: a turn already kept going ends, so a checkpoint
   that cannot be posted never loops), and from 250,000 the person is warned.
+- The successor lock (his word, 12 November 2026, about 09:25 UTC: "Yes, I agree
+  to all of your fixes implement them now while I evaluate the app", after a
+  session checkpointed at 280k on Adonis80/Hemz-OS#333 and ended starting none):
+  once a checkpoint has gone through past 280,000, a turn's end is kept going,
+  once, until a successor start has gone through after it (`fire_trigger`, or
+  `create_session`) or a checkpoint past the line carrying
+  `Successor: none — <reason>` has, the reason being nothing ready, the platform
+  refused (naming what), or blind. Before a call, at any size, a checkpoint
+  whose `Successor:` line gives any other reason is refused.
 - Before a call, at 350,000 or more: every call is refused but the checkpoint
   itself, loading a tool (ToolSearch), and, once a checkpoint has gone through
   past 280,000, starting the successor (`library/session-changeover.md`,
@@ -123,6 +132,7 @@ HARD = 350_000      # everything but the checkpoint is refused
 SLACK_K = 20        # a Size: line's figure may sit this many k off the real one
 
 COMMENT_TOOLS = ("__add_issue_comment", "__update_issue_comment")
+START_TOOLS = ("__fire_trigger", "__create_session")   # a successor start, for the successor lock
 SUCCESSOR_TOOLS = ("__create_trigger", "__update_trigger", "__fire_trigger", "__list_triggers")
 ALWAYS = ("ToolSearch",)
 WORDS_TOOLS = ("__create_trigger", "__update_trigger")
@@ -147,6 +157,8 @@ RULE_PAGE_RE = re.compile(r"(?<![\w.-])(?:\./)?((?:[\w]+(?:-[\w]+)*-library|libr
 CHECKPOINT_RE = re.compile(r"\A\W*Checkpoint:")
 RELEASED_RE = re.compile(r"\A\W*Checkpoint:\s*released")
 SIZE_RE = re.compile(r"(?m)^\W*Size:.*$")
+SUCCESSOR_RE = re.compile(r"(?m)^\W*Successor:.*$")
+NONE_RE = re.compile(r"\A\W*Successor:\s*none\s*[—–-]+\s*(?:nothing ready\b|(?:the )?platform refused\s+\w|blind\b)", re.I)
 FIGURE_RE = re.compile(r"\b(?:end|now)\s*~?\s*(\d+(?:\.\d+)?)\s*k\b")
 
 
@@ -165,6 +177,22 @@ def checkpoint_body(tool_name, tool_input):
     return body
 
 
+def successor_problem(body):
+    """Why a checkpoint body's Successor: line fails, or None (no line, or a good one)."""
+    line = SUCCESSOR_RE.search(body)
+    if line is None or NONE_RE.search(line.group(0)):
+        return None
+    return ("size hook: a checkpoint's `Successor:` line says why none starts: `Successor: none — nothing ready`, "
+            "`Successor: none — the platform refused <what>`, or `Successor: none — blind` "
+            "(library/session-changeover.md, *A session starts its own successor*); a started successor needs no line")
+
+
+def names_none(body):
+    """True when a checkpoint body carries a good `Successor: none — <reason>` line."""
+    line = SUCCESSOR_RE.search(body or "")
+    return line is not None and NONE_RE.search(line.group(0)) is not None
+
+
 def _text(content):
     if isinstance(content, str):
         return content
@@ -175,7 +203,9 @@ def _text(content):
 
 
 def read(transcript_path):
-    """(size, checkpointed_past_line, tool_uses, guard) or None when unreadable;
+    """(size, checkpointed_past_line, tool_uses, guard, succeeded) or None when unreadable;
+    succeeded: after that checkpoint, a successor start went through, or a checkpoint past the line
+    carrying `Successor: none — <reason>` did;
     guard = {"first": the first message's text, "booted": its boot line went
     through, "words": the newest trigger words that went through}."""
     try:
@@ -187,6 +217,8 @@ def read(transcript_path):
     checkpointed = False
     tool_uses = 0
     pending = set()   # checkpoint calls made past the line, awaiting their result
+    succeeded = False
+    starts = set()    # successor starts after it, and checkpoints naming none, awaiting their result
     guard = {"first": None, "booted": False, "words": None, "reads": [], "tasks": {}}
     boot_calls, word_calls, labels, task_calls = set(), {}, {}, {}
     with f:
@@ -217,6 +249,7 @@ def read(transcript_path):
                         body = _text(c.get("content")) or json.dumps(c.get("content"))
                         guard["reads"].append(((len(body.encode("utf-8")) + 3) // 4, labels.pop(t)))
                     checkpointed = checkpointed or t in pending
+                    succeeded = succeeded or t in starts
                     guard["booted"] = guard["booted"] or t in boot_calls
                     if t in word_calls:
                         guard["words"] = word_calls[t]
@@ -250,9 +283,13 @@ def read(transcript_path):
                     word_calls[c.get("id")] = inp["prompt"]
                 if size >= LINE and checkpoint_body(c.get("name"), c.get("input")) is not None:
                     pending.add(c.get("id"))
+                    if names_none(checkpoint_body(c.get("name"), c.get("input"))):
+                        starts.add(c.get("id"))
+                if (checkpointed or pending) and _ends(name, START_TOOLS):   # after the checkpoint, or beside it in one turn
+                    starts.add(c.get("id"))
     if not seen:
         return None
-    return size, checkpointed, tool_uses, guard
+    return size, checkpointed, tool_uses, guard, succeeded
 
 
 def clock_in(inp):
@@ -583,7 +620,7 @@ def decide(event, tool_name, tool_input, state, tk=None, blind=None):
     if event == "PreToolUse":
         body = checkpoint_body(tool_name, tool_input)
         if body is not None:
-            why = size_problem(body, size)
+            why = size_problem(body, size) or successor_problem(body)
             return _deny(why) if why else None
         if size < HARD or tool_name in ALWAYS:
             return None
@@ -601,6 +638,12 @@ def decide(event, tool_name, tool_input, state, tk=None, blind=None):
     if event == "Stop":
         if size >= LINE and not checkpointed and not tool_input.get("stop_hook_active"):
             return {"decision": "block", "reason": demand}
+        if checkpointed and not state[4] and not tool_input.get("stop_hook_active"):
+            return {"decision": "block", "reason": (
+                f"size hook: {k}, the checkpoint is written but no successor has started. Start it now "
+                f"(`update_trigger` with its words, then `fire_trigger`: library/session-changeover.md, *A session "
+                f"starts its own successor*), or post a checkpoint whose `Successor:` line says why none starts: "
+                f"`Successor: none — nothing ready`, `— the platform refused <what>`, or `— blind`")}
         return {"systemMessage": warn} if WARN <= size < LINE else None
     if event == "PostToolUse":
         if size >= LINE and not checkpointed:
@@ -801,6 +844,7 @@ def selftest():
         ("and at a turn's end", "blind" in json.dumps(decide("Stop", None, {}, None))),
     ]
     _band_cases(cases, C, good)
+    _successor_cases(cases, C, good)
     _path_cases(cases)
     ok = _guard_cases(cases)
     here = os.path.dirname(os.path.abspath(__file__))
@@ -1034,8 +1078,52 @@ def _band_cases(cases, C, good):
         ("a checkpoint at 285k carries its figure", decide("PreToolUse", C, {"body": good.replace("310k", "285k")}, s) is None),
     ]
     s = _state([_turn(96_000, "Bash"), _turn(285_000, C, good.replace("310k", "285k"), id="cp"), _result("cp"), _turn(290_000, "Bash")])
-    cases += [("after the checkpoint a turn ends", decide("Stop", None, {}, s) is None),
+    cases += [("after the checkpoint a turn ends once it has said so", decide("Stop", None, {"stop_hook_active": True}, s) is None),
               ("after the checkpoint no call is nagged", decide("PostToolUse", "Bash", {}, s) is None)]
+
+
+def _successor_cases(cases, C, good):
+    """The successor lock (his word, 12 November 2026): a checkpoint past the line is followed by a start, or says why none."""
+    F, S = "mcp__claude-code-remote__fire_trigger", "mcp__claude-code-remote__create_session"
+    cp = [_turn(96_000, "Bash"), _turn(285_000, C, good.replace("310k", "285k"), id="cp"), _result("cp")]
+    none = lambda why: good.replace("310k", "286k") + "\nSuccessor: none — " + why
+    end = lambda lines, **i: (decide("Stop", None, i, _state(lines)) or {}).get("decision") == "block"
+    cases += [
+        ("a checkpoint past the line with no successor keeps the turn going", end(cp)),
+        ("and says how to end it", "Successor: none" in json.dumps(decide("Stop", None, {}, _state(cp)))),
+        ("but only once, so it never loops", not end(cp, stop_hook_active=True)),
+        ("a fire after the checkpoint lets the turn end", not end(cp + [_call(286_000, F, {"trigger_id": "trig_X"}, "f"), _result("f")])),
+        ("a create_session after it lets the turn end", not end(cp + [_call(286_000, S, {"prompt": "p"}, "n"), _result("n")])),
+        ("a refused fire does not", end(cp + [_call(286_000, F, {"trigger_id": "trig_X"}, "f"), _result("f", error=True)])),
+        ("a fire beside the checkpoint in one turn lets the turn end, whichever result comes first",
+         all(not end(cp[:1] + [_pair(285_000, C, good.replace("310k", "285k"), F)] + r) for r in
+             ([_result("cp"), _result("f")], [_result("f"), _result("cp")]))),
+        ("a fire beside a refused checkpoint still leaves the checkpoint owed",
+         end(cp[:1] + [_pair(285_000, C, good.replace("310k", "285k"), F), _result("cp", error=True), _result("f")])),
+        ("a fire before the checkpoint does not", end(cp[:1] + [_call(282_000, F, {"trigger_id": "trig_X"}, "f"), _result("f")] + cp[1:])),
+        ("`Successor: none — nothing ready` lets the turn end",
+         not end(cp + [_turn(286_000, C, none("nothing ready"), id="n"), _result("n")])),
+        ("`Successor: none — the platform refused <what>` lets the turn end",
+         not end(cp + [_turn(286_000, C, none("the platform refused fire_trigger (no task tools)"), id="n"), _result("n")])),
+        ("`Successor: none — blind` lets the turn end", not end(cp + [_turn(286_000, C, none("blind"), id="n"), _result("n")])),
+        ("the line in the first checkpoint itself lets the turn end",
+         not end(cp[:1] + [_turn(286_000, C, none("nothing ready"), id="n"), _result("n")])),
+        ("a refused checkpoint naming none does not", end(cp + [_turn(286_000, C, none("nothing ready"), id="n"), _result("n", error=True)])),
+        ("a checkpoint naming another reason is refused",
+         _denied(decide("PreToolUse", C, {"body": none("the next session takes over")}, _state(cp)))),
+        ("the platform refused, unnamed, is refused", _denied(decide("PreToolUse", C, {"body": none("the platform refused")}, _state(cp)))),
+        ("a checkpoint naming a good reason passes", decide("PreToolUse", C, {"body": none("nothing ready")}, _state(cp)) is None),
+        ("below the line a checkpoint does not hold the turn",
+         not end([_turn(96_000, "Bash"), _turn(150_000, C, good.replace("310k", "150k"), id="cp"), _result("cp")])),
+    ]
+
+
+def _pair(n, C, body, F):
+    """One model turn that posts a checkpoint (id cp) and fires a successor (id f) together."""
+    return json.dumps({"type": "assistant", "message": {"content": [
+        {"type": "tool_use", "id": "cp", "name": C, "input": {"body": body}},
+        {"type": "tool_use", "id": "f", "name": F, "input": {"trigger_id": "trig_X"}}],
+        "usage": {"input_tokens": n, "output_tokens": 0}}})
 
 
 def _path_cases(cases):
