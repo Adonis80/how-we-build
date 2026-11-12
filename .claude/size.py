@@ -568,10 +568,7 @@ def decide(event, tool_name, tool_input, state, tk=None, blind=None):
     if state is None:
         msg = blind_message(blind or "the transcript could not be read")
         if event == "PreToolUse":
-            if (tool_name in ALWAYS or repairs(tool_input)
-                    or (_ends(tool_name or "", COMMENT_TOOLS) and CHECKPOINT_RE.search((tool_input.get("body") or "").lstrip()))):
-                return None
-            return _deny(msg)
+            return None if blind_allows(tool_name, tool_input) else _deny(msg)
         if event == "PostToolUse":
             return {"decision": "block", "reason": msg, "systemMessage": msg}
         return {"systemMessage": msg} if event == "Stop" else None
@@ -630,6 +627,15 @@ HOOK_FILES = (".claude/size.py", ".claude/settings.json")
 RUN_HOOK = re.compile(r"python3? +(?:[\w./~-]*/)?\.claude/size\.py(?: +[\w./=~-]+)*")
 
 
+def blind_allows(tool_name, tool_input):
+    """What a blind session may still do: the checkpoint, loading a tool, and repairing the hook."""
+    tool_input = tool_input if isinstance(tool_input, dict) else {}
+    tool_name = tool_name if isinstance(tool_name, str) else ""
+    body = tool_input.get("body")
+    return (tool_name in ALWAYS or repairs(tool_input) or (
+        _ends(tool_name, COMMENT_TOOLS) and CHECKPOINT_RE.search((body if isinstance(body, str) else "").lstrip()) is not None))
+
+
 def repairs(tool_input):
     """True when a call edits or reads the hook's own files, or runs the hook itself: the one way out of a blindness."""
     path = tool_input.get("file_path") or ""
@@ -641,6 +647,13 @@ def repairs(tool_input):
 def _deny(reason):
     return {"hookSpecificOutput": {"hookEventName": "PreToolUse",
             "permissionDecision": "deny", "permissionDecisionReason": reason}}
+
+
+def failed(h, e):
+    """A hook that raised: blind, refusing all but what blind lets through."""
+    msg = blind_message(f"the hook failed ({type(e).__name__})")
+    return (_deny(msg) if h.get("hook_event_name") == "PreToolUse" and not blind_allows(h.get("tool_name"), h.get("tool_input"))
+            else {"systemMessage": msg})
 
 
 def answer(h, note=NOTE):
@@ -1068,6 +1081,16 @@ def _path_cases(cases):
                                "tool_input": {"command": "ls"}, "transcript_path": t}), env=env, capture_output=True, text=True)
             cases.append(("a hook that fails refuses the call, never a silent pass",
                           _denied(json.loads(r.stdout or "{}")) and "the hook failed" in r.stdout))
+            boom = lambda name, inp: failed({"hook_event_name": "PreToolUse", "tool_name": name, "tool_input": inp}, ValueError())
+            cases += [
+                ("a hook that fails lets the checkpoint through",
+                 not _denied(boom("mcp__github__add_issue_comment", {"body": "Checkpoint: x\nSize: source unknown"}))),
+                ("a hook that fails lets a tool be loaded", not _denied(boom("ToolSearch", {}))),
+                ("a hook that fails lets the hook be run", not _denied(boom("Bash", {"command": "python3 .claude/size.py --selftest"}))),
+                ("a hook that fails still refuses an ordinary comment", _denied(boom("mcp__github__add_issue_comment", {"body": "Round 2."}))),
+                ("a hook that fails, given input that is not an object, refuses rather than crashing", _denied(boom("Bash", ["ls"]))),
+                ("a hook that fails, given a name that is not a string, refuses rather than crashing", _denied(boom(5, "x"))),
+            ]
             stop = lambda **h: answer(dict(hook_event_name="Stop", **h), note) or {}
             cases += [
                 ("a turn's end with no tool call is measured from its transcript_path", stop(transcript_path=t).get("decision") == "block"),
@@ -1142,9 +1165,7 @@ def main():
     try:
         a = answer(h)
     except Exception as e:   # a hook that raises is blind and refuses; one that cannot run fails open
-        msg = blind_message(f"the hook failed ({type(e).__name__})")
-        a = (_deny(msg) if h.get("hook_event_name") == "PreToolUse" and not repairs(h.get("tool_input") or {})
-             else {"systemMessage": msg})
+        a = failed(h, e)
     if a:
         print(json.dumps(a))
 
