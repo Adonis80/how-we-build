@@ -16,7 +16,9 @@
 # a size hook (.claude/size.py) that no longer holds his 300k/350k lines,
 # a ticket check (product-reads/ticket.py) that no longer refuses a ticket that
 # does not resolve or is over its cap, and a design brief check (product-reads/brief-check.py) that no longer refuses
-# a brief that plans the screen, overloads it or skips its slots.
+# a brief that plans the screen, overloads it or skips its slots, and a style lock
+# (product-reads/style-lock.py) that no longer flags a box round content, or a kit
+# that loads from outside or whose page names a value its stylesheet lacks.
 # Nothing else. A read by anybody the
 # gate does not count is unread, not a shape of its own.
 # A third shape, "read clean by a reviewer the rulebook does not allow to
@@ -74,7 +76,7 @@ for f in $allowed; do
     model-registry) [ -d "$f" ] && [ "$(ls -A model-registry | tr '\n' ' ')" = "ask.py context.py registry.json resolve.py " ] || { echo "FAIL: 'model-registry/' holds ask.py, context.py, registry.json and resolve.py, and nothing else."; list_fail=1; } ;;
     # The product read's rules (decision 0013), which say whether a read is asked
     # for and paid, and the rules' own guard (decision 0021). Part of the review gate.
-    product-reads) [ -d "$f" ] && [ "$(LC_ALL=C ls -A product-reads | tr '\n' ' ')" = "ask.py brief-check.py kit look-check.py reads.py rules-check.py setup.py ticket.py " ] && [ "$(LC_ALL=C ls -A product-reads/kit | tr '\n' ' ')" = "AGENTS.starter.md gate.yml review-gate.py roadmap.starter.json verify.yml wake.yml " ] || { echo "FAIL: 'product-reads/' holds ask.py, brief-check.py, look-check.py, reads.py, rules-check.py, setup.py, ticket.py and kit/ (the starter kit's six files), and nothing else."; list_fail=1; } ;;
+    product-reads) [ -d "$f" ] && [ "$(LC_ALL=C ls -A product-reads | tr '\n' ' ')" = "ask.py brief-check.py kit look-check.py reads.py rules-check.py setup.py style-lock.py ticket.py " ] && [ "$(LC_ALL=C ls -A product-reads/kit | tr '\n' ' ')" = "AGENTS.starter.md gate.yml review-gate.py roadmap.starter.json verify.yml wake.yml " ] || { echo "FAIL: 'product-reads/' holds ask.py, brief-check.py, look-check.py, reads.py, rules-check.py, setup.py, style-lock.py, ticket.py and kit/ (the starter kit's six files), and nothing else."; list_fail=1; } ;;
     # The rulebook's own library (the Chairman's ruling of 2 October 2026): the
     # papers and frozen records committed verbatim for a build to read from
     # GitHub (#103's amendment): .md pages directly inside, no subfolder,
@@ -164,6 +166,9 @@ done
 for f in $named; do
   [ -f "$f" ] || { echo "FAIL: the README names '$f', which does not exist."; lib_fail=1; }
 done
+# The look's page and its stylesheet stand together: deleting the stylesheet would
+# leave every product's build and the style lock pointing at nothing (#365's advisory).
+[ ! -f library/juku-style.md ] || [ -f library/juku-style.css ] || { echo "FAIL: library/juku-style.md stands without its stylesheet, library/juku-style.css."; lib_fail=1; }
 while IFS= read -r hit; do
   f=${hit##*:}
   # A frozen record in juku-library/ may still link a retired guide page (2b)
@@ -281,6 +286,11 @@ python3 -I product-reads/ask.py --selftest || { echo "FAIL: product-reads/ask.py
 # where a browser can be launched, and say plainly where none can.
 python3 -I product-reads/look-check.py --selftest || { echo "FAIL: product-reads/look-check.py no longer fails a rendered box, a stray line, a colour off its meaning or a missing (i), crumb, foot or zoom — see the case above."; fail=1; }
 python3 -I product-reads/brief-check.py --selftest || { echo "FAIL: product-reads/brief-check.py no longer refuses a brief that plans, overloads or skips its slots — see the case above."; fail=1; }
+# The style lock (his ruling, 5 November 2026, on #363): its own cases, and the kit
+# it reads beside it, which products load live, so it loads nothing from outside and
+# its page's table (b) names only values the stylesheet holds.
+python3 -I product-reads/style-lock.py --selftest || { echo "FAIL: product-reads/style-lock.py no longer flags a box, card or border round content, or flags a control or the hairline — see the case above."; fail=1; }
+python3 -I product-reads/style-lock.py kit . || { echo "FAIL: the Juku style kit loads something from outside, or its page names a value its stylesheet does not hold — see above."; fail=1; }
 python3 -I product-reads/setup.py --selftest || { echo "FAIL: product-reads/setup.py no longer sets a product up as decision 0013 says — see the case above."; fail=1; }
 python3 -I product-reads/ticket.py --selftest || { echo "FAIL: product-reads/ticket.py no longer refuses a ticket that does not resolve or hands a successor more than its cap — see the case above."; fail=1; }
 python3 -I .claude/size.py --selftest || { echo "FAIL: .claude/size.py no longer holds a session to his 300k/350k lines, or is no longer wired before and after every tool call — see the case above."; fail=1; }
