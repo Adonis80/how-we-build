@@ -192,7 +192,7 @@ html{-webkit-text-size-adjust:100%;color-scheme:dark}
   min-height:var(--j-target);display:inline-flex;align-items:center;
   transition:color var(--j-t-fast) var(--j-ease),border-color var(--j-t-fast) var(--j-ease),background var(--j-t-fast) var(--j-ease)}
 .j-btn:hover{color:var(--j-ink);border-color:var(--j-line-strong);background:var(--j-line-soft)}
-.j-btn.is-on{color:var(--j-gold);border-color:var(--j-gold-edge)}  /* selected: gold text + border, no fill: "looks cleaner without having a translucent background when selected" (his word, 12 Nov 2026) */
+.j-btn.is-on{color:var(--j-gold);border-color:var(--j-gold-edge)}  /* selected: gold text + border, no fill: "the selection does not have a tinted background" (his ruling, 12 Nov 2026, #408) */
 /* Done [.tbtn.pf-done] — green text and green edge */
 .j-done{gap:6px;color:var(--j-green);border-color:var(--j-green-edge)}
 .j-done svg{width:14px;height:14px}           /* path "M5 12.5l4.5 4.5L19 7.5", stroke 2.6 */
