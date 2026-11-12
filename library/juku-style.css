@@ -5,7 +5,8 @@
    and from the shared sheet both screens load (hemz-library/design/whole-day/
    2026-10-30-R6-style.css): its tokens, themes, base rules and the classes the
    screens use from it (.r6, .tbtn, .mutebtn, .brand, .rule, .turq/.gold/...).
-   Every value is verbatim. Where a value was written inline in the screens
+   Every value is verbatim, save the choice control, the typed line and the row of choices, which follow his
+   picks of 12 November 2026 from the control studies (library/juku-style.md). Where a value was written inline in the screens
    (style="...") it is turned into a class here and marked INLINE. Where the two
    screens disagree, the comment says which one this kit follows.
    Source names are in brackets: [--ground], [.pf-row].
@@ -16,7 +17,7 @@
 :root{
   /* ground and surfaces */
   --j-ground:#08090a;                 /* [--ground] the screen */
-  --j-panel:#0e0f11;                  /* [--panel] was the fill of a bordered control; .j-btn carries none since 12 Nov 2026 */
+  --j-panel:#0e0f11;                  /* [--panel] kept as history only: no rule uses it; .j-btn carries no fill since 12 Nov 2026 */
   --j-panel-2:#131417;                /* [--panel-2] the (i) explainer sheet */
   /* ink */
   --j-ink:#FFFDF7;                    /* [--ink] names, figures, title */
@@ -25,7 +26,7 @@
   --j-ghost:#9C9686;                  /* [--ghost] the › that says "opens" */
   /* meanings — one each */
   --j-gold:#FFB01F;                   /* [--brass] money, director's word, selected, back, add — as text */
-  --j-gold-dim:rgba(255,176,31,.2);   /* [--brass-dim] translucent gold; a selected control carries no fill (12 Nov 2026) */
+  --j-gold-dim:rgba(255,176,31,.2);   /* [--brass-dim] kept as history only: no rule uses it, and no control carries a fill (12 Nov 2026) */
   --j-turq:#3DF2DC;                   /* [--measure] a measured figure and its unit */
   --j-green:#4DFFA3;                  /* [--signal] done */
   --j-red:#FF6A5A;                    /* [--alert] a stop */
@@ -203,12 +204,13 @@ html{-webkit-text-size-adjust:100%;color-scheme:dark}
 /* Done [.tbtn.pf-done] — green text and green edge */
 .j-done{gap:6px;color:var(--j-green);border-color:var(--j-green-edge)}
 .j-done svg{width:14px;height:14px}           /* path "M5 12.5l4.5 4.5L19 7.5", stroke 2.6 */
-/* a typed line — Field B, his pick of 12 Nov 2026: no box, a faint line under it that turns gold while typing */
+/* a typed line — Field B, his pick of 12 Nov 2026: no box, a faint line under it that turns gold while it has focus */
 .j-field{width:100%;background:none;border:0;border-bottom:1px solid var(--j-line);border-radius:0;padding:0;min-height:var(--j-field-h);
   font:inherit;font-size:var(--j-fs-name);color:var(--j-ink);caret-color:var(--j-gold);outline:none;
   transition:border-color var(--j-t-field) var(--j-study-ease)}
 .j-field::placeholder{color:var(--j-ghost)}
-.j-field:focus{border-bottom-color:var(--j-gold-edge)}
+.j-field:focus{border-bottom-color:var(--j-gold-edge)}   /* the study's :focus: gold from the moment it has focus */
+.j-screen .j-field:focus-visible,.j-field:focus-visible{outline:none}   /* the underline is its focus mark, as in the study (beats .j-screen input:focus-visible) */
 /* a row of choices — Choice E, his pick of 12 Nov 2026: tabs; the chosen word in ink, the rest ghosted, a gold line
    slides under the chosen word along a hairline. Script sets --j-tab-x and --j-tab-w on .j-tabs from the chosen tab. */
 .j-tabs{position:relative;display:flex;gap:var(--j-tab-gap);border-bottom:1px solid var(--j-line-soft)}
