@@ -108,9 +108,11 @@ compile, or input that is not a JSON object) fails open: the platform runs the
 call, so a broken repair is caught by `--selftest` before anything is pushed. Starting a successor is refused too: it would
 be as blind, so a blindness every session shares stops at one checkpoint for the
 person to see, never a chain. After every call and at the end of a turn it tells
-the session, and the person, that it is blind and why. A call's own turn is in
-the transcript before its hook runs (shown on 12 November 2026), so a fresh
-session's first call is measured, not blind. The words of a
+the session, and the person, that it is blind and why. A fresh session's first
+call runs before its first model turn is written (shown on 12 November 2026,
+#416: this repository's session and two of Hemz OS's were refused their first
+calls): a transcript that opens holding the session's first message and no
+model turn at all is a session at its start, read as size 0, not blind. The words of a
 `create_trigger` or `update_trigger` are checked all the same: they are in
 the call, not the transcript.
 
@@ -214,6 +216,8 @@ def read(transcript_path):
         return None
     size = 0
     seen = False
+    spoke = False     # a main-thread model turn is in the transcript, with usage or without
+    asked = False     # the session's own first message is
     checkpointed = False
     tool_uses = 0
     pending = set()   # checkpoint calls made past the line, awaiting their result
@@ -233,6 +237,7 @@ def read(transcript_path):
             if not isinstance(m, dict):
                 continue
             if d.get("type") == "user":
+                asked = True
                 content = m.get("content")
                 # the task's words: the first message before any reply that carries a Ticket: line,
                 # so a note or caveat the surface puts first does not hide it
@@ -258,6 +263,7 @@ def read(transcript_path):
                 continue
             if d.get("type") != "assistant":
                 continue
+            spoke = True
             u = m.get("usage")
             if isinstance(u, dict):
                 n = sum(int(u.get(k) or 0) for k in
@@ -287,7 +293,7 @@ def read(transcript_path):
                         starts.add(c.get("id"))
                 if (checkpointed or pending) and _ends(name, START_TOOLS):   # after the checkpoint, or beside it in one turn
                     starts.add(c.get("id"))
-    if not seen:
+    if not seen and (spoke or not asked):
         return None
     return size, checkpointed, tool_uses, guard, succeeded
 
@@ -842,6 +848,11 @@ def selftest():
         ("and says so, loud, to the session and the person", (lambda a: a.get("decision") == "block" and
          "blind" in a.get("reason", "") and "blind" in a.get("systemMessage", ""))(decide("PostToolUse", "Bash", {}, None))),
         ("and at a turn's end", "blind" in json.dumps(decide("Stop", None, {}, None))),
+        ("a transcript holding no model turn yet is a session at its start, not blind",
+         (lambda st: st is not None and st[0] == 0 and decide("PreToolUse", "Bash", {}, st) is None)(
+             _state([json.dumps({"type": "user", "message": {"content": "build"}})]))),
+        ("a model turn carrying no usage is still blind",
+         _state([json.dumps({"type": "assistant", "message": {"content": [], "usage": {}}})]) is None),
     ]
     _band_cases(cases, C, good)
     _successor_cases(cases, C, good)
