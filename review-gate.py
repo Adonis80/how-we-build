@@ -6384,7 +6384,6 @@ PRODUCT_LOOSENINGS = (
     ("a draft refused again", lambda t: t.replace('          rm -f "$pr"\n', '          [ "$(jq -r .draft "$pr")" = false ] || exit 1\n          rm -f "$pr"\n', 1)),
     ("the ready mark never checked", lambda t: t.replace("product-reads/reads.py ready", "true", 1)),
     ("the product's own check never checked", lambda t: t.replace("product-reads/reads.py verify", "true", 1)),
-    ("every product read early, whatever its gate", lambda t: t.replace('verify "$REPO" "$t/checks.json"', 'verify Adonis80/Hemz-OS "$t/checks.json"', 1)),
     ("its own check asked for by another name", lambda t: t.replace("check_name=verify", "check_name=check", 1)),
     ("whether it was read never asked", lambda t: t.replace("product-reads/reads.py state", "true", 2)),
     ("any App's read counted", lambda t: t.replace("&app_id=$REVIEWER_APP_ID", "", 1)),
@@ -7520,11 +7519,12 @@ def _preflight_cases(reads):
                 read=[run(conclusion="failure", sha="e" * 40)]), {}, True),
         ("its own check never run", P, routes(verify=[]), {}, False),
         ("its own check failed", P, routes(verify=[run(name="verify", conclusion="failure")]), {}, False),
-        # A read alongside the tests (2 November 2026): the quick checks passed, verify still running,
-        # for a product reads.EARLY names; any other waits for its verify (#299's read).
-        ("its quick checks passed, verify still running, its gate named as needing verify", P,
+        # A read alongside the tests (2 November 2026) is only for a product reads.EARLY names, and
+        # none is (Hemz-OS#329, item 12): Hemz OS waits for its verify like any other (#299's read).
+        # The loosenings that named a product in place of $REPO return when one joins EARLY.
+        ("Hemz OS: its quick checks passed, verify still running", P,
          routes(checks=[run(name="checks", ago=9)], verify=[run(name="verify", status="in_progress", conclusion=None, ago=8)]),
-         {"REPO": "Adonis80/Hemz-OS"}, True),
+         {"REPO": "Adonis80/Hemz-OS"}, False),
         ("its quick checks passed, verify still running, its gate not named", P,
          routes(checks=[run(name="checks", ago=9)], verify=[run(name="verify", status="in_progress", conclusion=None, ago=8)]), {}, False),
         ("its quick checks passed, verify failed", P,
@@ -7587,7 +7587,6 @@ PREFLIGHT_LOOSENINGS = (
     ("a fork let through", lambda t: t.replace('[ "$from" = "$REPO" ]', "true", 1)),
     ("the ready mark never asked", lambda t: t.replace("product-reads/reads.py ready", "true", 1)),
     ("the product's own check never asked", lambda t: t.replace("product-reads/reads.py verify", "true", 1)),
-    ("every product read early", lambda t: t.replace('verify "$REPO" "$t/checks.json"', 'verify Adonis80/Hemz-OS "$t/checks.json"', 1)),
     ("whether it was read never asked", lambda t: t.replace("product-reads/reads.py state", "true", 2)),
     ("the latest run of a name only", lambda t: t.replace("&filter=all&per_page=100\" > \"$t/read.json\"", "&per_page=100\" > \"$t/read.json\"", 1)),
     ("a failed answer taken for an answer", lambda t: t.replace("curl -fsS", "curl -sS", 1)),
