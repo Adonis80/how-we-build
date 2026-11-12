@@ -76,13 +76,18 @@ pieces), in the same repositories as the guard:
   line to paste, so no session rounds or skips it. A hook cannot post a
   comment itself; it holds the one the session must post.
 
-An unreadable transcript blocks nothing and says so: a lock that cannot see
-must not brick the session that would write the handover. The words of a
+The size is read from the transcript the platform names in each call's own
+`transcript_path`, never found by the working directory, which a session can
+leave. A session it cannot measure (no `transcript_path`, a file that will not
+open, one with no usage in it) blocks nothing, since a lock that cannot see must
+not brick the session that would write the handover, but it is loud: after every
+call it tells the session, and the person, that it is blind and why. The words of a
 `create_trigger` or `update_trigger` are checked all the same: they are in
 the call, not the transcript.
 
-`--now [transcript]` prints the real size (newest transcript of this
-directory's project when none is named). `--selftest` runs the cases below and
+`--now [transcript]` prints the real size (when none is named, the transcript
+the hook was last given, which the hook's own call for that command records);
+when it cannot measure, it says why and exits 1. `--selftest` runs the cases below and
 checks `.claude/settings.json` still wires both events to this file.
 """
 import importlib.util
@@ -105,6 +110,7 @@ FIRE_TOOLS = ("__fire_trigger",)
 CLOCK_KEYS = ("cron_expression", "run_once_at")
 TRIG_RE = re.compile(r"\btrig_[A-Za-z0-9]+")
 
+NOTE = os.path.join(os.path.expanduser("~"), ".claude", "size-hook-transcript")   # the last transcript_path given
 ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 BOOT_OPEN = ("HOW-WE-BUILD.md", "README.md")
 TICKET_RE = re.compile(r"(?m)^\s*Ticket:\s*$")
@@ -529,7 +535,7 @@ def size_problem(body, size):
     return None
 
 
-def decide(event, tool_name, tool_input, state, tk=None):
+def decide(event, tool_name, tool_input, state, tk=None, blind=None):
     """The hook's JSON answer, or None to stay silent."""
     tool_input = tool_input if isinstance(tool_input, dict) else {}
     refused = clock(tool_name, tool_input, state) if event == "PreToolUse" else None
@@ -540,8 +546,10 @@ def decide(event, tool_name, tool_input, state, tk=None):
         return refused
     if state is None:
         if event == "PostToolUse":
-            return {"hookSpecificOutput": {"hookEventName": "PostToolUse",
-                    "additionalContext": "size hook: the transcript could not be read; size unknown, nothing blocked"}}
+            msg = (f"size hook: BLIND, {blind or 'the transcript could not be read'}; this session's size is unknown "
+                   f"and the 300k line is not watched. Nothing is refused for it: read your own size, and write "
+                   f"source `unknown` in your Size: line.")
+            return {"decision": "block", "reason": msg, "systemMessage": msg}
         return None
     size, checkpointed, tool_uses = state[:3]
     k = f"{round(size / 1000)}k"
@@ -582,14 +590,27 @@ def _deny(reason):
             "permissionDecision": "deny", "permissionDecisionReason": reason}}
 
 
-def newest_transcript():
-    slug = re.sub(r"[^A-Za-z0-9]", "-", os.getcwd())
-    d = os.path.join(os.path.expanduser("~"), ".claude", "projects", slug)
+def answer(h, note=NOTE):
+    """The hook's answer to one call's input, measured from the call's own transcript_path."""
+    path = h.get("transcript_path")
+    state, why = None, "the hook was given no transcript_path"
+    if isinstance(path, str) and path:
+        try:
+            with open(note, "w", encoding="utf-8") as f:
+                f.write(path)
+        except OSError:
+            pass
+        state = read(path)
+        why = f"{path} could not be opened" if not os.path.isfile(path) else f"{path} carries no usage"
+    return decide(h.get("hook_event_name"), h.get("tool_name"), h.get("tool_input"), state, _ticket(), why)
+
+
+def remembered(note=NOTE):
     try:
-        files = [os.path.join(d, f) for f in os.listdir(d) if f.endswith(".jsonl")]
+        with open(note, encoding="utf-8") as f:
+            return f.read().strip() or None
     except OSError:
         return None
-    return max(files, key=os.path.getmtime) if files else None
 
 
 # ---- selftest ---------------------------------------------------------------
@@ -688,8 +709,10 @@ def selftest():
     _clock_cases(cases, U, F, T)
     cases += [
         ("an unreadable transcript blocks nothing", decide("PreToolUse", "Bash", {}, read("/nonexistent")) is None),
-        ("and says so", "unknown" in json.dumps(decide("PostToolUse", "Bash", {}, None))),
+        ("and says so, loud, to the session and the person", (lambda a: a.get("decision") == "block" and
+         "BLIND" in a.get("reason", "") and "BLIND" in a.get("systemMessage", ""))(decide("PostToolUse", "Bash", {}, None))),
     ]
+    _path_cases(cases)
     ok = _guard_cases(cases)
     here = os.path.dirname(os.path.abspath(__file__))
     try:
@@ -902,6 +925,45 @@ def _product_cases(cases, tk, U, F, C):
             os.chdir(cwd)
 
 
+def _path_cases(cases):
+    """The size is read from the call's own transcript_path, whatever the working directory; blind is loud."""
+    import subprocess
+    with tempfile.TemporaryDirectory() as d:
+        t, note = os.path.join(d, "s.jsonl"), os.path.join(d, "note")
+        with open(t, "w") as f:
+            f.write(_turn(96_000, "Bash") + "\n" + _turn(305_000, "Bash") + "\n")
+        cwd = os.getcwd()
+        os.chdir(d)   # a working directory with no project of its own, as after a session's cd
+        try:
+            post = lambda **h: answer(dict(hook_event_name="PostToolUse", tool_name="Bash", tool_input={}, **h), note) or {}
+            hit = post(transcript_path=t)
+            cases += [
+                ("the size is the transcript_path's, whatever the cwd", "305k, past the 300k line" in hit.get("reason", "")),
+                ("the hook records the transcript_path it was given", remembered(note) == t),
+                ("no transcript_path is blind, and says so", "BLIND, the hook was given no transcript_path" in post().get("reason", "")),
+                ("a transcript_path that will not open is blind, naming it",
+                 "BLIND, %s could not be opened" % os.path.join(d, "gone") in post(transcript_path=os.path.join(d, "gone")).get("reason", "")),
+            ]
+            with open(os.path.join(d, "empty.jsonl"), "w") as f:
+                f.write("{}\n")
+            cases.append(("a transcript with no usage is blind, not a silent pass",
+                          "carries no usage" in post(transcript_path=os.path.join(d, "empty.jsonl")).get("reason", "")))
+            env = dict(os.environ, HOME=d)
+            os.makedirs(os.path.join(d, ".claude"))
+            me = os.path.realpath(__file__)
+            now = lambda: subprocess.run([sys.executable, "-I", me, "--now"], env=env, capture_output=True, text=True)
+            r = now()
+            cases.append(("--now with nothing recorded says why and fails", r.returncode == 1 and "recorded none" in r.stderr))
+            with open(os.path.join(d, ".claude", "size-hook-transcript"), "w") as f:
+                f.write(t)
+            r = now()
+            cases.append(("--now reads the transcript the hook was last given", (r.returncode, r.stdout) == (0, "305k (transcript)\n")))
+            r = subprocess.run([sys.executable, "-I", me], input="not json", env=env, capture_output=True, text=True)
+            cases.append(("input that is not JSON is blind, and says so", "BLIND" in r.stdout))
+        finally:
+            os.chdir(cwd)
+
+
 def _read_result(id, tokens):
     return json.dumps({"type": "user", "message": {"content": [
         {"type": "tool_result", "tool_use_id": id, "content": "x" * (tokens * 4)}]}})
@@ -951,16 +1013,20 @@ def main():
     if sys.argv[1:2] == ["--selftest"]:
         sys.exit(0 if selftest() else 1)
     if sys.argv[1:2] == ["--now"]:
-        p = sys.argv[2] if len(sys.argv) > 2 else newest_transcript()
+        p = sys.argv[2] if len(sys.argv) > 2 else remembered()
         st = read(p) if p else None
-        print("unknown" if st is None else f"{round(st[0] / 1000)}k (transcript)")
+        if st is None:
+            sys.exit("size hook: unknown, " + (f"{p} could not be read" if p else "no transcript named, and the hook has recorded none"))
+        print(f"{round(st[0] / 1000)}k (transcript)")
         return
     try:
         h = json.load(sys.stdin)
     except ValueError:
+        h = None
+    if not isinstance(h, dict):
+        print(json.dumps({"systemMessage": "size hook: BLIND, its input was not a JSON object; size unknown"}))
         return
-    a = decide(h.get("hook_event_name"), h.get("tool_name"), h.get("tool_input"),
-               read(h.get("transcript_path")), _ticket())
+    a = answer(h)
     if a:
         print(json.dumps(a))
 
