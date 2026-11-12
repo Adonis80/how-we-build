@@ -10,11 +10,14 @@ the design ... dont dictate the visuals").
   brief-check.py brief FILE        a first brief
   brief-check.py correction FILE   one correction after a design came back
   brief-check.py frames FILE       the frames ask, once the look is accepted
+  brief-check.py builder FILE      a builder's brief (library/hypersolid.md, *Every handoff*):
+                                   it names the kit and the approved reference screen
   brief-check.py --selftest
 
 Text in double quotes is exempt from the word list (his own words, or a name as
 it stands on screen), never from the word count. Exit 0 passes; 1 names each fault.
 """
+import os
 import re
 import sys
 
@@ -159,7 +162,38 @@ def check_frames(text):
     return faults
 
 
-CHECKS = {"brief": check_brief, "correction": check_correction, "frames": check_frames}
+# The approved reference screen is the one library/juku-style.md records as the
+# approved formula screen; read from the page beside this script, never restated.
+KIT_PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "library", "juku-style.md")
+REFERENCE = re.compile(r"approved formula screen[^()]{0,20}\((https://claude\.ai/artifact/[\w-]+)\)")
+SAVED = re.compile(r"[\w-]+-library/design/\S+")
+
+
+def reference(page=None):
+    try:
+        text = page if page is not None else open(KIT_PAGE, encoding="utf-8").read()
+    except OSError:
+        return None
+    m = REFERENCE.search(text)
+    return m.group(1) if m else None
+
+
+def check_builder(text, page=None):
+    """A builder's brief names the kit and the approved reference screen, so the
+    builder holds the screen he approved beside its own preview (the CTO's audit of
+    12 November 2026: nine misses on Hemz's price screen, built without it)."""
+    faults = []
+    ref = reference(page)
+    if not ref:
+        return ["library/juku-style.md records no approved formula screen's link; the check cannot name the reference"]
+    if not KIT.search(text):
+        faults.append("the brief does not name the kit (library/juku-style.md and its stylesheet)")
+    if ref not in text:
+        faults.append(f"the brief does not name the approved reference screen, {ref} (library/juku-style.md)")
+    return faults
+
+
+CHECKS = {"brief": check_brief, "correction": check_correction, "frames": check_frames, "builder": check_builder}
 
 GOOD_BRIEF = ("Design one phone screen for Hemz OS. Who: the owner. The job: set up a new shop. "
               "What matters most: where setup stands; the next thing to give. "
@@ -201,7 +235,24 @@ def selftest():
         # The frames ask draws states (step 4), as the desktop frame asks.
         ("frames", "One more frame, after the others:\n1. The opening moment on a 1280-wide desktop: same things, same order, same states", True),
     ]
+    page = "with the approved formula screen (https://claude.ai/artifact/Ref1); and more"
+    builder = [
+        ("Build the price screen from library/juku-style.md and its CSS; the approved reference screen is https://claude.ai/artifact/Ref1, beside hemz-library/design/price/note.md.", True),
+        ("Build the price screen from library/juku-style.md; match hemz-library/design/price/note.md.", False),
+        ("Build the price screen; the approved reference screen is https://claude.ai/artifact/Ref1.", False),
+        ("Build it from juku-style; reference https://claude.ai/artifact/Other.", False),
+    ]
     bad = 0
+    for text, ok in builder:
+        if (not check_builder(text, page)) != ok:
+            bad += 1
+            print(f"SELFTEST FAIL: builder expected {'pass' if ok else 'fail'}: {text[:70]!r}")
+    if check_builder("juku-style https://claude.ai/artifact/Ref1", "no link here") == []:
+        bad += 1
+        print("SELFTEST FAIL: builder passed with no reference recorded")
+    if not reference():
+        bad += 1
+        print("SELFTEST FAIL: library/juku-style.md records no approved formula screen's link")
     for kind, text, ok in cases:
         got = not CHECKS[kind](text)
         if got != ok:
