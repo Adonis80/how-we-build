@@ -16,7 +16,7 @@
 :root{
   /* ground and surfaces */
   --j-ground:#08090a;                 /* [--ground] the screen */
-  --j-panel:#0e0f11;                  /* [--panel] no control's fill: a bordered control sits on the ground (his ruling, 12 Nov 2026) */
+  --j-panel:#0e0f11;                  /* [--panel] no control's fill: a bordered control sits on the ground (his ruling, 12 Nov 2026, #413) */
   --j-panel-2:#131417;                /* [--panel-2] the (i) explainer sheet */
   /* ink */
   --j-ink:#FFFDF7;                    /* [--ink] names, figures, title */

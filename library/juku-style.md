@@ -56,7 +56,7 @@ Words and figures sit straight on a near-black ground, like a private-bank state
 | Opened-level line | at least 76px, 14px top and bottom; figure 30px / 500, label 12.5px pushed right | `.j-line` `.j-fig` `.j-line-label` |
 | Confirmation | green tick 16px and a 13.5px ink sentence, indented 32px | `.j-ok` |
 | Add | gold 11.5px / 500 text with a + icon, no fill, indented 32px | `.j-add` `.j-add-row` |
-| Choice / pick | no fill, the ground showing through in every theme (his ruling, 12 November 2026: *"keep the background of an unselected button black or in other colour themes matching the background"*), 1px border, 2px corners, 11.5px `#E0DCCE`; full-width pick is 52px tall at 13.5px | `.j-btn` `.j-pick` |
+| Choice / pick | no fill, the ground showing through in every theme (his ruling, 12 November 2026: *"keep the background of an unselected button black or in other colour themes matching the background"*, [#413](https://github.com/Adonis80/how-we-build/pull/413#issuecomment-6826332922)), 1px border, 2px corners, 11.5px `#E0DCCE`; full-width pick is 52px tall at 13.5px | `.j-btn` `.j-pick` |
 | Selected choice | gold text, gold border at 50%, no fill, like Done: his pick of *Outline only* in the control studies (https://claude.ai/artifact/Pj5Z34NK82jpBdnQcdiPim), *"the selection does not have a tinted background. Instead, the border is highlighted in the same color as the text on the button"* (his ruling, 12 November 2026, [#408](https://github.com/Adonis80/how-we-build/pull/408#issuecomment-6826125971)) | `.j-btn.is-on` |
 | Drill-in motion | 420ms `cubic-bezier(.22,1,.36,1)` on size, fade and blur; arriving rows rise 12px over .5s, 45ms apart | `.j-level` `.j-in` |
 
