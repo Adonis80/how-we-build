@@ -74,7 +74,7 @@ for f in $allowed; do
     model-registry) [ -d "$f" ] && [ "$(ls -A model-registry | tr '\n' ' ')" = "ask.py context.py registry.json resolve.py " ] || { echo "FAIL: 'model-registry/' holds ask.py, context.py, registry.json and resolve.py, and nothing else."; list_fail=1; } ;;
     # The product read's rules (decision 0013), which say whether a read is asked
     # for and paid, and the rules' own guard (decision 0021). Part of the review gate.
-    product-reads) [ -d "$f" ] && [ "$(LC_ALL=C ls -A product-reads | tr '\n' ' ')" = "ask.py brief-check.py kit reads.py rules-check.py setup.py ticket.py " ] && [ "$(LC_ALL=C ls -A product-reads/kit | tr '\n' ' ')" = "AGENTS.starter.md gate.yml review-gate.py roadmap.starter.json verify.yml wake.yml " ] || { echo "FAIL: 'product-reads/' holds ask.py, brief-check.py, reads.py, rules-check.py, setup.py, ticket.py and kit/ (the starter kit's six files), and nothing else."; list_fail=1; } ;;
+    product-reads) [ -d "$f" ] && [ "$(LC_ALL=C ls -A product-reads | tr '\n' ' ')" = "ask.py brief-check.py kit look-check.py reads.py rules-check.py setup.py ticket.py " ] && [ "$(LC_ALL=C ls -A product-reads/kit | tr '\n' ' ')" = "AGENTS.starter.md gate.yml review-gate.py roadmap.starter.json verify.yml wake.yml " ] || { echo "FAIL: 'product-reads/' holds ask.py, brief-check.py, look-check.py, reads.py, rules-check.py, setup.py, ticket.py and kit/ (the starter kit's six files), and nothing else."; list_fail=1; } ;;
     # The rulebook's own library (the Chairman's ruling of 2 October 2026): the
     # papers and frozen records committed verbatim for a build to read from
     # GitHub (#103's amendment): .md pages directly inside, no subfolder,
@@ -277,6 +277,9 @@ python3 -I product-reads/reads.py --selftest || { echo "FAIL: product-reads/read
 # The asker and the setup script, each run against a GitHub kept in memory, and the
 # starter kit's own gate, which a new product runs as `verify`.
 python3 -I product-reads/ask.py --selftest || { echo "FAIL: product-reads/ask.py asks for what it should not, or leaves what it should ask for — see the case above."; fail=1; }
+# The look check (the kit's self-check on a rendered preview): its cases render the kit
+# where a browser can be launched, and say plainly where none can.
+python3 -I product-reads/look-check.py --selftest || { echo "FAIL: product-reads/look-check.py no longer fails a rendered box, a stray line, a colour off its meaning or a missing (i), crumb, foot or zoom — see the case above."; fail=1; }
 python3 -I product-reads/brief-check.py --selftest || { echo "FAIL: product-reads/brief-check.py no longer refuses a brief that plans, overloads or skips its slots — see the case above."; fail=1; }
 python3 -I product-reads/setup.py --selftest || { echo "FAIL: product-reads/setup.py no longer sets a product up as decision 0013 says — see the case above."; fail=1; }
 python3 -I product-reads/ticket.py --selftest || { echo "FAIL: product-reads/ticket.py no longer refuses a ticket that does not resolve or hands a successor more than its cap — see the case above."; fail=1; }
