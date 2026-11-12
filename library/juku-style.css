@@ -5,7 +5,8 @@
    and from the shared sheet both screens load (hemz-library/design/whole-day/
    2026-10-30-R6-style.css): its tokens, themes, base rules and the classes the
    screens use from it (.r6, .tbtn, .mutebtn, .brand, .rule, .turq/.gold/...).
-   Every value is verbatim. Where a value was written inline in the screens
+   Every value is verbatim, save the choice control, the typed line and the row of choices, which follow his
+   picks of 12 November 2026 from the control studies (library/juku-style.md). Where a value was written inline in the screens
    (style="...") it is turned into a class here and marked INLINE. Where the two
    screens disagree, the comment says which one this kit follows.
    Source names are in brackets: [--ground], [.pf-row].
@@ -16,7 +17,7 @@
 :root{
   /* ground and surfaces */
   --j-ground:#08090a;                 /* [--ground] the screen */
-  --j-panel:#0e0f11;                  /* [--panel] fill of a bordered control (.j-btn) */
+  --j-panel:#0e0f11;                  /* [--panel] kept as history only: no rule uses it; .j-btn carries no fill since 12 Nov 2026 */
   --j-panel-2:#131417;                /* [--panel-2] the (i) explainer sheet */
   /* ink */
   --j-ink:#FFFDF7;                    /* [--ink] names, figures, title */
@@ -25,7 +26,7 @@
   --j-ghost:#9C9686;                  /* [--ghost] the › that says "opens" */
   /* meanings — one each */
   --j-gold:#FFB01F;                   /* [--brass] money, director's word, selected, back, add — as text */
-  --j-gold-dim:rgba(255,176,31,.2);   /* [--brass-dim] fill under a selected control */
+  --j-gold-dim:rgba(255,176,31,.2);   /* [--brass-dim] kept as history only: no rule uses it, and no control carries a fill (12 Nov 2026) */
   --j-turq:#3DF2DC;                   /* [--measure] a measured figure and its unit */
   --j-green:#4DFFA3;                  /* [--signal] done */
   --j-red:#FF6A5A;                    /* [--alert] a stop */
@@ -115,6 +116,13 @@
   --j-rise:.5s;                       /* row rise-in */
   --j-rise-step:45ms;                 /* stagger between rows */
   --j-rise-y:12px;
+  /* field and tabs: his picks of 12 Nov 2026 (Field B, Choice E), values as the studies drew them */
+  --j-field-h:48px;                   /* a typed line's height */
+  --j-tab-gap:28px;                   /* between tab words */
+  --j-tab-pad:12px;                   /* word to hairline */
+  --j-study-ease:cubic-bezier(.2,.7,.2,1);
+  --j-t-field:180ms;                  /* field line and tab word colour */
+  --j-t-tab:250ms;                    /* the tab line sliding */
 }
 
 /* light — porcelain, from the shared sheet, verbatim */
@@ -187,15 +195,30 @@ html{-webkit-text-size-adjust:100%;color-scheme:dark}
 
 /* ─── 4. CONTROLS ───────────────────────────────────────────────────────── */
 /* bordered control / choice [.tbtn] and its selected state [.tbtn.on] */
-.j-btn{background:var(--j-panel);border:1px solid var(--j-line);border-radius:var(--j-r-control);color:var(--j-mute);padding:8px 11px;cursor:pointer;
-  font-size:var(--j-fs-ctl);font-weight:var(--j-fw-medium);letter-spacing:var(--j-ls-ctl);white-space:nowrap;
+.j-btn{background:none;border:1px solid var(--j-line);border-radius:var(--j-r-control);color:var(--j-mute);padding:8px var(--j-gutter);cursor:pointer;
+  font-size:var(--j-fs-body);font-weight:var(--j-fw-medium);letter-spacing:var(--j-ls-ctl);white-space:nowrap;
   min-height:var(--j-target);display:inline-flex;align-items:center;
-  transition:color var(--j-t-fast) var(--j-ease),border-color var(--j-t-fast) var(--j-ease),background var(--j-t-fast) var(--j-ease)}
-.j-btn:hover{color:var(--j-ink);border-color:var(--j-line-strong);background:var(--j-line-soft)}
-.j-btn.is-on{color:var(--j-gold);border-color:var(--j-gold-edge);background:var(--j-gold-dim)}  /* selected: gold text + border on translucent gold */
+  transition:color var(--j-t-fast) var(--j-ease),border-color var(--j-t-fast) var(--j-ease)}
+.j-btn:hover{color:var(--j-ink);border-color:var(--j-line-strong)}
+.j-btn.is-on{color:var(--j-gold);border-color:var(--j-gold-edge)}  /* Button B, his pick of 12 Nov 2026: outline only, 13.5px, no fill resting or selected */
 /* Done [.tbtn.pf-done] — green text and green edge */
 .j-done{gap:6px;color:var(--j-green);border-color:var(--j-green-edge)}
 .j-done svg{width:14px;height:14px}           /* path "M5 12.5l4.5 4.5L19 7.5", stroke 2.6 */
+/* a typed line — Field B, his pick of 12 Nov 2026: no box, a faint line under it that turns gold while it has focus */
+.j-field{width:100%;background:none;border:0;border-bottom:1px solid var(--j-line);border-radius:0;padding:0;min-height:var(--j-field-h);
+  font:inherit;font-size:var(--j-fs-name);color:var(--j-ink);caret-color:var(--j-gold);outline:none;
+  transition:border-color var(--j-t-field) var(--j-study-ease)}
+.j-field::placeholder{color:var(--j-ghost)}
+.j-field:focus{border-bottom-color:var(--j-gold-edge)}   /* the study's :focus: gold from the moment it has focus */
+.j-screen .j-field:focus-visible,.j-field:focus-visible{outline:none}   /* the underline is its focus mark, as in the study (beats .j-screen input:focus-visible) */
+/* a row of choices — Choice E, his pick of 12 Nov 2026: tabs; the chosen word in ink, the rest ghosted, a gold line
+   slides under the chosen word along a hairline. Script sets --j-tab-x and --j-tab-w on .j-tabs from the chosen tab. */
+.j-tabs{position:relative;display:flex;gap:var(--j-tab-gap);border-bottom:1px solid var(--j-line-soft)}
+.j-tab{background:none;border:0;padding:0 0 var(--j-tab-pad);min-height:var(--j-target);cursor:pointer;
+  font:inherit;font-size:var(--j-fs-name);font-weight:var(--j-fw-medium);color:var(--j-ghost);transition:color var(--j-t-field) var(--j-study-ease)}
+.j-tab.is-on{color:var(--j-ink)}
+.j-tabs::after{content:"";position:absolute;bottom:-1px;left:var(--j-tab-x,0);width:var(--j-tab-w,0);height:1px;background:var(--j-gold);
+  transition:left var(--j-t-tab) var(--j-study-ease),width var(--j-t-tab) var(--j-study-ease)}
 /* full-width choice at the foot of an opened level [.tbtn.pf-pick] */
 .j-pick{justify-content:center;width:100%;min-height:var(--j-step-h);font-size:var(--j-fs-body)}
 /* add — gold text with a plus, never a filled button [.pf-add] */
