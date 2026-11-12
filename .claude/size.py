@@ -249,7 +249,7 @@ def read(transcript_path):
                         body = _text(c.get("content")) or json.dumps(c.get("content"))
                         guard["reads"].append(((len(body.encode("utf-8")) + 3) // 4, labels.pop(t)))
                     checkpointed = checkpointed or t in pending
-                    succeeded = succeeded or (checkpointed and t in starts)
+                    succeeded = succeeded or t in starts
                     guard["booted"] = guard["booted"] or t in boot_calls
                     if t in word_calls:
                         guard["words"] = word_calls[t]
@@ -285,7 +285,7 @@ def read(transcript_path):
                     pending.add(c.get("id"))
                     if names_none(checkpoint_body(c.get("name"), c.get("input"))):
                         starts.add(c.get("id"))
-                if checkpointed and _ends(name, START_TOOLS):
+                if (checkpointed or pending) and _ends(name, START_TOOLS):   # after the checkpoint, or beside it in one turn
                     starts.add(c.get("id"))
     if not seen:
         return None
@@ -1095,6 +1095,11 @@ def _successor_cases(cases, C, good):
         ("a fire after the checkpoint lets the turn end", not end(cp + [_call(286_000, F, {"trigger_id": "trig_X"}, "f"), _result("f")])),
         ("a create_session after it lets the turn end", not end(cp + [_call(286_000, S, {"prompt": "p"}, "n"), _result("n")])),
         ("a refused fire does not", end(cp + [_call(286_000, F, {"trigger_id": "trig_X"}, "f"), _result("f", error=True)])),
+        ("a fire beside the checkpoint in one turn lets the turn end, whichever result comes first",
+         all(not end(cp[:1] + [_pair(285_000, C, good.replace("310k", "285k"), F)] + r) for r in
+             ([_result("cp"), _result("f")], [_result("f"), _result("cp")]))),
+        ("a fire beside a refused checkpoint still leaves the checkpoint owed",
+         end(cp[:1] + [_pair(285_000, C, good.replace("310k", "285k"), F), _result("cp", error=True), _result("f")])),
         ("a fire before the checkpoint does not", end(cp[:1] + [_call(282_000, F, {"trigger_id": "trig_X"}, "f"), _result("f")] + cp[1:])),
         ("`Successor: none — nothing ready` lets the turn end",
          not end(cp + [_turn(286_000, C, none("nothing ready"), id="n"), _result("n")])),
@@ -1111,6 +1116,14 @@ def _successor_cases(cases, C, good):
         ("below the line a checkpoint does not hold the turn",
          not end([_turn(96_000, "Bash"), _turn(150_000, C, good.replace("310k", "150k"), id="cp"), _result("cp")])),
     ]
+
+
+def _pair(n, C, body, F):
+    """One model turn that posts a checkpoint (id cp) and fires a successor (id f) together."""
+    return json.dumps({"type": "assistant", "message": {"content": [
+        {"type": "tool_use", "id": "cp", "name": C, "input": {"body": body}},
+        {"type": "tool_use", "id": "f", "name": F, "input": {"trigger_id": "trig_X"}}],
+        "usage": {"input_tokens": n, "output_tokens": 0}}})
 
 
 def _path_cases(cases):
