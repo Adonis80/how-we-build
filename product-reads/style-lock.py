@@ -6,7 +6,8 @@ compares the rest against the agreed reference build").
 
 Its rule's one home is library/juku-style.md, *Always / Never*: content on the
 ground, never in boxes, cards, panels, borders or row dividers; the only filled
-things are controls and the (i) sheet, which the kit draws.
+thing is the (i) sheet, and controls carry none (his picks of 12 November 2026,
+#408: a selected choice is gold text and a gold edge, no fill).
 
   style-lock.py build PATH...   a product's screens: its own stylesheets and markup
   style-lock.py kit [ROOT]      the kit itself: library/juku-style.css loads nothing
@@ -18,16 +19,23 @@ things are controls and the (i) sheet, which the kit draws.
 .astro), skipping node_modules, .git, build output, a `*-library/` folder (papers
 and pictures, never the build) and the kit's own stylesheet, which a product reads
 from this repository and never copies. It flags, naming file, line and rule:
-  - a border, outline, box-shadow or background fill declared in a stylesheet or
-    an inline style on anything that is not a control, the page's ground (html,
-    body, :root, .j-page, .j-screen: a fill only), or the hairline: a top border
-    on a total (a selector naming .j-sum or "total");
-  - a utility class drawing the same (border, ring, shadow, outline, divide, bg-)
-    on an element that is not a control.
+  - a border, outline or box-shadow declared in a stylesheet or an inline style on
+    anything that is not a control, or the hairline: a top border on a total (a
+    selector naming .j-sum or "total");
+  - a background fill on anything but the page's ground (html, body, :root,
+    .j-page, .j-screen) and the (i) sheet (.j-info): a control's fill included,
+    save a press's flash (:active) and a line it draws (::before, ::after);
+  - a utility class drawing the same (border, ring, shadow, outline, divide on
+    anything but a control; bg- on anything);
+  - an element dressed as a control it is not: the kit's choice classes (.j-btn,
+    .j-pick, .j-icon-btn, .j-tab) or its typed line (.j-field) on an element that
+    is no control, and a choice class on a typed field (a text input or a
+    textarea), which is drawn as .j-field.
 A control is button, input, select, textarea, option, an element whose role is a
-control's, the kit's .j-btn, .j-pick and .j-icon-btn, and a :focus or
-:focus-visible, aria-pressed, aria-selected or aria-checked state. Zero, none and
-transparent draw nothing and pass. What the lock cannot see (a box drawn by an
+control's, the kit's .j-btn, .j-pick, .j-icon-btn, .j-field, .j-tab and .j-tabs
+(the tabs' hairline is the control's own), and a :focus or :focus-visible,
+aria-pressed, aria-selected or aria-checked state. Zero, none and transparent draw
+nothing and pass. What the lock cannot see (a box drawn by an
 image, a canvas, a script's style) is the reviewer's, against the agreed
 reference build. Exit 0 passes; 1 names each fault.
 """
@@ -46,13 +54,17 @@ NOTHING = re.compile(r"^\s*(0|0px|none|transparent|inherit|initial|unset|revert|
 CONTROL = re.compile(
     r"(^|[\s>+~(,])(button|input|select|textarea|option)\b"
     r"|\[role=['\"]?(button|tab|switch|radio|checkbox|option|slider|menuitem\w*|combobox|spinbutton)\b"
-    r"|\.j-(btn|pick|icon-btn)\b"
+    r"|\.j-(btn|pick|icon-btn|field|tabs?)\b"
     r"|:focus(-visible|-within)?\b"
     r"|\[aria-(pressed|selected|checked)")
-GROUND = re.compile(r"^\s*(html|body|:root|\.j-page|\.j-screen|\[data-theme[^\]]*\]|:root\[data-theme[^\]]*\])\s*$")
+GROUND = re.compile(r"^\s*(html|body|:root|\.j-page|\.j-screen|\.j-info|\[data-theme[^\]]*\]|:root\[data-theme[^\]]*\])\s*$")
+PASSING = re.compile(r":active\b|::?(before|after)\b")  # a press's flash, a control's drawn line
 TOTAL = re.compile(r"\.j-sum\b|total", re.I)
 HAIRLINE = re.compile(r"^border-(top|block-start)(-(width|style|color))?$")
 CONTROL_TAGS = {"button", "input", "select", "textarea", "option"}
+CHOICE_CLASSES = {"j-btn", "j-pick", "j-icon-btn", "j-tab"}
+DRESS_CLASSES = CHOICE_CLASSES | {"j-field"}
+TYPED_INPUTS = {"", "text", "number", "email", "tel", "search", "url", "password", "date", "time", "datetime-local", "month", "week"}
 CONTROL_ROLE = re.compile(r"^(button|tab|switch|radio|checkbox|option|slider|menuitem\w*|combobox|spinbutton)$")
 UTILITY = re.compile(r"^(border(-[trblxyse])?(-\d+|-\[[^\]]+\])?|border-(solid|dashed|dotted|double)"
                      r"|border(-[trblxyse])?-[a-z]+(-\d+)?(/\d+)?|ring(-\d+|-\[[^\]]+\]|-[a-z]+(-\d+)?)?"
@@ -82,9 +94,14 @@ def _decl_faults(prop, value, selector):
     if not DRAWS.match(prop) or NOT_DRAWN.search(prop) or NOTHING.match(value):
         return None
     parts = [s.strip() for s in selector.split(",") if s.strip()]
-    if parts and all(CONTROL.search(s) for s in parts):
-        return None
-    if FILL.match(prop) and parts and all(GROUND.match(s) for s in parts):
+    if FILL.match(prop):
+        if parts and all(GROUND.match(s) for s in parts):
+            return None
+        if parts and any(CONTROL.search(s) and not PASSING.search(s) for s in parts):
+            return f"a fill on a control ({prop}: {value.strip()} on '{selector.strip()}'); controls carry none"
+        if parts and all(CONTROL.search(s) for s in parts):
+            return None
+    elif parts and all(CONTROL.search(s) for s in parts):
         return None
     if HAIRLINE.match(prop) and parts and all(TOTAL.search(s) for s in parts):
         return None
@@ -124,6 +141,7 @@ ATTR = lambda n: re.compile(r"(?:^|\s)" + n + r"\s*=\s*(\"[^\"]*\"|'[^']*'|\{(?:
 CLASS_ATTR = ATTR(r"(?:class|className)")
 STYLE_ATTR = ATTR("style")
 ROLE_ATTR = ATTR("role")
+TYPE_ATTR = ATTR("type")
 JS_KEY = re.compile(r"\b(border\w*|outline\w*|boxShadow|background(?:Color|Image)?)\s*:\s*(\"[^\"]*\"|'[^']*'|`[^`]*`|[\w.]+)")
 
 
@@ -146,15 +164,24 @@ def lock_markup(text, name):
                 pad = "\n" * (_lineno(text, m.end()) - 1)
                 faults += lock_css(pad + body, name)
             continue
-        if control:
-            continue
         line = _lineno(text, m.start())
         cl = CLASS_ATTR.search(attrs)
-        if cl:
-            for tok in re.findall(r"[\w:\[\]/.#%()-]+", cl.group(1)):
-                base = tok.split(":")[-1]
-                if UTILITY.match(base) and not UTILITY_NOTHING.match(base):
-                    faults.append(f"{name}:{line}: a box drawn by a utility class ('{tok}' on <{tag}>)")
+        toks = re.findall(r"[\w:\[\]/.#%()-]+", cl.group(1)) if cl else []
+        dressed = sorted(DRESS_CLASSES & set(toks))
+        if dressed and not control:
+            faults.append(f"{name}:{line}: <{tag}> dressed as a control it is not ('{' '.join(dressed)}'); a choice is a button, a typed line an input")
+        chose = sorted(CHOICE_CLASSES & set(toks))
+        if control and chose:
+            ty = TYPE_ATTR.search(attrs)
+            ty = ty.group(1).strip("\"'{}` ").lower() if ty else ""
+            if tag == "textarea" or (tag == "input" and ty in TYPED_INPUTS):
+                faults.append(f"{name}:{line}: a typed field drawn as a choice ('{' '.join(chose)}' on <{tag}>); a typed line is .j-field")
+        for tok in toks:
+            base = tok.split(":")[-1]
+            if UTILITY.match(base) and not UTILITY_NOTHING.match(base) and (not control or base.startswith("bg-")):
+                faults.append(f"{name}:{line}: {'a fill on a control' if control else 'a box drawn'} by a utility class ('{tok}' on <{tag}>)")
+        if control:
+            continue
         st = STYLE_ATTR.search(attrs)
         if st:
             raw = st.group(1)
@@ -245,7 +272,10 @@ def selftest():
     # Passes: tokens only, controls, the hairline, the ground, nothing drawn.
     expect("tokens only", css(":root{--j-gold:#ffb01f;--j-ground:#08090a}"), 0)
     expect("a control's border", css("button{border:1px solid var(--j-line)}"), 0)
-    expect("the kit's selected choice", css(".j-btn.is-on{background:var(--j-gold-dim);border-color:var(--j-gold-edge)}"), 0)
+    expect("the kit's selected choice", css(".j-btn.is-on{color:var(--j-gold);border-color:var(--j-gold-edge)}"), 0)
+    expect("the typed line", css(".j-field{border-bottom:1px solid var(--j-line)}.j-field:focus{border-bottom-color:var(--j-gold-edge)}"), 0)
+    expect("the tabs' hairline", css(".j-tabs{border-bottom:1px solid var(--j-line)}"), 0)
+    expect("the (i) sheet's fill", css(".j-info{background:var(--j-surface)}"), 0)
     expect("a focus ring", css(".j-screen button:focus-visible{outline:1px solid var(--j-gold)}"), 0)
     expect("a role=tab", css("[role=tab][aria-selected=true]{border-bottom:1px solid}"), 0)
     expect("the hairline on .j-sum", css(".j-sum{border-top:1px solid var(--j-line-soft)}"), 0)
@@ -264,6 +294,9 @@ def selftest():
     expect("an outline on content", css("div{outline:1px solid}"), 1)
     expect("a top border off a total", css(".x{border-top:1px solid}"), 1)
     expect("a mixed list", css(".a, button{border:1px solid}"), 1)
+    expect("a fill under a selected choice", css(".j-btn.is-on{background:rgba(255,176,31,.2)}"), 1)
+    expect("a control's panel fill", css("button{background:#0e0f11}"), 1)
+    expect("a press's flash and the tabs' gold line", css("button.j-row:active{background:var(--j-line-soft)}.j-tabs::after{background:var(--j-gold)}"), 0)
     expect("inside @media", css("@media (min-width:600px){.c{border:1px solid}}"), 1)
     expect("the kit's class overridden", css(".j-row{border-bottom:1px solid}"), 1)
     expect("a line number", css("\n\n.c{\n  border:1px solid}"), 1)
@@ -274,7 +307,17 @@ def selftest():
     expect("a utility card", mk('<div className="rounded-lg border p-4">'), 1)
     expect("a utility fill and shadow", mk('<section class="bg-zinc-900 shadow-md">'), 2)
     expect("a hover-only border", mk('<li className="hover:border-white/10">'), 1)
-    expect("a utility control", mk('<button className="border bg-zinc-900">'), 0)
+    expect("a utility control's border", mk('<button className="border">'), 0)
+    expect("a utility control's fill", mk('<button className="border bg-zinc-900">'), 1)
+    expect("a div dressed as a choice", mk('<div class="j-btn j-pick">Hem</div>'), 1)
+    expect("a span dressed as a typed line", mk('<span className="j-field">'), 1)
+    expect("a text box drawn as a choice", mk('<input class="j-btn j-pick" type="text">'), 1)
+    expect("an untyped input drawn as a choice", mk('<input className="j-btn j-pick">'), 1)
+    expect("a textarea drawn as a choice", mk('<textarea class="j-pick">'), 1)
+    expect("a typed line", mk('<input class="j-field" type="number" inputmode="decimal">'), 0)
+    expect("a choice", mk('<button class="j-btn is-on">Hem</button>'), 0)
+    expect("a radio choice", mk('<input type="radio" class="j-pick">'), 0)
+    expect("a tab", mk('<div class="j-tabs" role="tablist"><button role="tab" class="j-tab">'), 0)
     expect("a role=button control", mk('<div role="button" className="border">'), 0)
     expect("utility nothing", mk('<div className="border-0 bg-transparent shadow-none">'), 0)
     expect("an inline border", mk('<div style="border:1px solid red">'), 1)
