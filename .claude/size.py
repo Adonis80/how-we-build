@@ -89,9 +89,13 @@ pieces), in the same repositories as the guard:
 The size is read from the transcript the platform names in each call's own
 `transcript_path`, never found by the working directory, which a session can
 leave. A session it cannot measure (no `transcript_path`, a file that will not
-open, one with no usage in it) fails closed: before a call, everything is refused
-but what the handover needs (a checkpoint comment, loading a tool, starting the
-successor), until it can see; after every call and at the end of a turn it tells
+open, one with no usage in it, or a hook that fails) fails closed: before a call,
+everything is refused until it can see but the checkpoint, loading a tool, and
+the repair of the hook itself (reading, editing or running `.claude/size.py` or
+`.claude/settings.json`; the hook runs from the working tree, so a repair there
+lets the same session see again). Starting a successor is refused too: it would
+be as blind, so a blindness every session shares stops at one checkpoint for the
+person to see, never a chain. After every call and at the end of a turn it tells
 the session, and the person, that it is blind and why. A call's own turn is in
 the transcript before its hook runs (shown on 12 November 2026), so a fresh
 session's first call is measured, not blind. The words of a
@@ -559,11 +563,9 @@ def decide(event, tool_name, tool_input, state, tk=None, blind=None):
     if refused:
         return refused
     if state is None:
-        msg = (f"size hook: blind, {blind or 'the transcript could not be read'}; this session's size is unknown, "
-               f"so every call is refused but the handover: a `Checkpoint:` comment (its Size: source `unknown`), "
-               f"loading a tool, and starting the successor.")
+        msg = blind_message(blind or "the transcript could not be read")
         if event == "PreToolUse":
-            if (tool_name in ALWAYS or _ends(tool_name or "", SUCCESSOR_TOOLS)
+            if (tool_name in ALWAYS or repairs(tool_input)
                     or (_ends(tool_name or "", COMMENT_TOOLS) and CHECKPOINT_RE.search((tool_input.get("body") or "").lstrip()))):
                 return None
             return _deny(msg)
@@ -609,6 +611,22 @@ def decide(event, tool_name, tool_input, state, tk=None, blind=None):
             return {"hookSpecificOutput": {"hookEventName": "PostToolUse",
                     "additionalContext": f"size hook: live; boot {k} (transcript)"}}
     return None
+
+
+def blind_message(why):
+    return (f"size hook: blind, {why}; this session's size is unknown, so every call is refused but a `Checkpoint:` "
+            f"comment (its Size: source `unknown`, naming the blindness), loading a tool, and repairing the hook "
+            f"(reading, editing or running `.claude/size.py` or `.claude/settings.json`). No successor: it would be blind too.")
+
+
+HOOK_FILES = (".claude/size.py", ".claude/settings.json")
+
+
+def repairs(tool_input):
+    """True when a call's input names the hook's own files: the one way out of a blindness."""
+    path = tool_input.get("file_path") or ""
+    return (isinstance(path, str) and path.endswith(HOOK_FILES)) or any(
+        f in (tool_input.get("command") or "") for f in HOOK_FILES)
 
 
 def _deny(reason):
@@ -689,7 +707,7 @@ def selftest():
     s = _state([_turn(96_000, "Bash"), _turn(305_000, "Bash")])
     post = decide("PostToolUse", "Bash", {}, s)
     cases += [
-        ("past 300k without a checkpoint, the checkpoint is demanded", bool(post) and post.get("decision") == "block"),
+        ("past the line without a checkpoint, the checkpoint is demanded", bool(post) and post.get("decision") == "block"),
         ("between the lines work is not refused", decide("PreToolUse", "Bash", {}, s) is None),
         ("a checkpoint with no Size: line is refused", _denied(decide("PreToolUse", C, {"body": "Checkpoint: boundary"}, s))),
         ("a guessed Size: figure is refused", _denied(decide("PreToolUse", C, {"body": good.replace("310k", "200k")}, s))),
@@ -741,7 +759,12 @@ def selftest():
         ("blind, the checkpoint goes through", decide("PreToolUse", C, {"body": "Checkpoint: x\nSize: source unknown"}, None) is None),
         ("blind, an ordinary comment is refused", _denied(decide("PreToolUse", C, {"body": "Round 2."}, None))),
         ("blind, a tool may be loaded", decide("PreToolUse", "ToolSearch", {}, None) is None),
-        ("blind, the successor may start", decide("PreToolUse", "mcp__claude-code-remote__fire_trigger", {"trigger_id": "trig_X"}, None) is None),
+        ("blind, no successor starts: it would be blind too", _denied(decide("PreToolUse", "mcp__claude-code-remote__fire_trigger", {"trigger_id": "trig_X"}, None))),
+        ("blind, the hook may be read", decide("PreToolUse", "Read", {"file_path": "/r/.claude/size.py"}, None) is None),
+        ("blind, the hook may be edited", decide("PreToolUse", "Edit", {"file_path": "/r/.claude/size.py"}, None) is None),
+        ("blind, its wiring may be edited", decide("PreToolUse", "Edit", {"file_path": "/r/.claude/settings.json"}, None) is None),
+        ("blind, the hook may be run", decide("PreToolUse", "Bash", {"command": "python3 .claude/size.py --selftest"}, None) is None),
+        ("blind, another file may not be edited", _denied(decide("PreToolUse", "Edit", {"file_path": "/r/.claude/size.py.bak"}, None))),
         ("and says so, loud, to the session and the person", (lambda a: a.get("decision") == "block" and
          "blind" in a.get("reason", "") and "blind" in a.get("systemMessage", ""))(decide("PostToolUse", "Bash", {}, None))),
         ("and at a turn's end", "blind" in json.dumps(decide("Stop", None, {}, None))),
@@ -795,7 +818,7 @@ def _clock_cases(cases, U, F, T):
         ("the newest update decides", decide("PreToolUse", F, T, _state(
             [_turn(96_000, "Bash"), _call(97_000, U, T, "u"), _trig_result("u", json.dumps({"cron_expression": "0 9 * * *"})),
              _call(98_000, U, T, "v"), _trig_result("v", clear)])) is None),
-        ("an unreadable transcript blocks no fire", decide("PreToolUse", F, T, None) is None),
+        ("an unreadable transcript refuses a fire: its successor would be blind too", _denied(decide("PreToolUse", F, T, None))),
         ("the platform's own update result (6 November 2026: an empty repeat, no run time) clears the task",
          decide("PreToolUse", F, T, up({"prompt": "p"}, json.dumps({"trigger": {"id": "trig_X", "cron_expression": "", "enabled": True}}))) is None),
         ("the task's own object decides, not another one in the result",
@@ -1018,7 +1041,15 @@ def _path_cases(cases):
             r = now()
             cases.append(("--now reads the transcript the hook was last given", (r.returncode, r.stdout) == (0, "305k (transcript)\n")))
             r = subprocess.run([sys.executable, "-I", me], input="not json", env=env, capture_output=True, text=True)
-            cases.append(("input that is not JSON is blind, and says so", "BLIND" in r.stdout))
+            cases.append(("input that is not JSON is blind, and says so", "blind" in r.stdout))
+            pre = lambda **h: answer(dict(hook_event_name="PreToolUse", **h), note)
+            cases += [("blind through the real ticket, a call is refused", _denied(pre(tool_name="Bash", tool_input={"command": "ls"}))),
+                      ("blind through the real ticket, a task's words are still checked, not a crash",
+                       _denied(pre(tool_name="mcp__claude-code-remote__update_trigger", tool_input={"trigger_id": "trig_X", "prompt": "x"})))]
+            r = subprocess.run([sys.executable, "-I", me], input=json.dumps({"hook_event_name": "PreToolUse", "tool_name": 5,
+                               "tool_input": {"command": "ls"}, "transcript_path": t}), env=env, capture_output=True, text=True)
+            cases.append(("a hook that fails refuses the call, never a silent pass",
+                          _denied(json.loads(r.stdout or "{}")) and "the hook failed" in r.stdout))
             stop = lambda **h: answer(dict(hook_event_name="Stop", **h), note) or {}
             cases += [
                 ("a turn's end with no tool call is measured from its transcript_path", stop(transcript_path=t).get("decision") == "block"),
@@ -1088,9 +1119,14 @@ def main():
     except ValueError:
         h = None
     if not isinstance(h, dict):
-        print(json.dumps({"systemMessage": "size hook: BLIND, its input was not a JSON object; size unknown"}))
+        print(json.dumps({"systemMessage": blind_message("its input was not a JSON object, so no call can be named or refused")}))
         return
-    a = answer(h)
+    try:
+        a = answer(h)
+    except Exception as e:   # a hook that fails is blind, never a silent pass
+        msg = blind_message(f"the hook failed ({type(e).__name__})")
+        a = (_deny(msg) if h.get("hook_event_name") == "PreToolUse" and not repairs(h.get("tool_input") or {})
+             else {"systemMessage": msg})
     if a:
         print(json.dumps(a))
 
