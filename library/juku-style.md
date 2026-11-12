@@ -81,7 +81,7 @@ Words and figures sit straight on a near-black ground, like a private-bank state
 
 **Never**
 - Never put content in boxes, cards, panels, borders or row dividers. The only filled things are controls and the (i) sheet.
-- Never use a flat gold button or a gold background behind words. Gold is for text, and the only gold fill is the translucent one under a selected choice.
+- Never use a flat gold button or a gold background behind words. Gold is for text and edges; nothing carries a gold fill, a selected choice included (his word of 12 November 2026, above; the screens it was lifted from showed one, and his later word supersedes them there).
 - Never use a colour without its meaning. Turquoise is never money, and gold is never a measurement.
 - Never put the serif on anything except the hero money.
 - Never put explanations on the screen. They go behind the (i).
