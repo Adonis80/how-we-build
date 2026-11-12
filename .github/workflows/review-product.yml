@@ -914,8 +914,12 @@ jobs:
 
           # The brief is the product's AGENTS.md from its protected branch,
           # whole, then the rulebook's operating page from this repository's
-          # main, which that brief's first line sends a reader to, then the
-          # standing instruction — review.yml's, line for line.
+          # main, which that brief's first line sends a reader to, then, when
+          # the change touches a screen's stylesheet, markup or script, the
+          # kit's page from main, which that page makes the look (*Which rule
+          # wins* 2), then the standing instruction — review.yml's, line for line.
+          screen=no
+          grep -qzaiE '\.(css|scss|html?|jsx?|tsx?|vue|svelte|astro)$' "$t/changed.txt" && screen=yes
           {
             cat "$t/brief.txt"
             echo
@@ -923,6 +927,16 @@ jobs:
             echo
             cat HOW-WE-BUILD.md
             echo
+            if [ "$screen" = yes ]; then
+              echo "This change touches a screen's stylesheet, markup or script. The look is the kit's,"
+              echo "library/juku-style.md, below, from the rulebook's main (HOW-WE-BUILD.md, Which rule wins 2):"
+              echo "judge every screen this change draws against its parts, its Always / Never and its"
+              echo "self-check, whatever the product's own pages say of style; a product page that makes the"
+              echo "kit optional is void there, not a reason to pass a departure."
+              echo
+              cat library/juku-style.md
+              echo
+            fi
             echo "You are the independent reviewer named in the rulebook above. Read COLD:"
             echo "form your view from the diff alone, against those rules, before any account"
             echo "the pull request gives of itself. Address the CTO. Most serious finding"
