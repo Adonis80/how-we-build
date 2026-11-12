@@ -284,7 +284,7 @@ python3 -I product-reads/reads.py --selftest || { echo "FAIL: product-reads/read
 python3 -I product-reads/ask.py --selftest || { echo "FAIL: product-reads/ask.py asks for what it should not, or leaves what it should ask for — see the case above."; fail=1; }
 # The look check (the kit's self-check on a rendered preview): its cases render the kit
 # where a browser can be launched, and say plainly where none can.
-python3 -I product-reads/look-check.py --selftest || { echo "FAIL: product-reads/look-check.py no longer fails a rendered box, a stray line, a colour off its meaning or a missing (i), crumb, foot or zoom — see the case above."; fail=1; }
+python3 -I product-reads/look-check.py --selftest || { echo "FAIL: product-reads/look-check.py no longer passes its cases (the rendered ones where a browser launches; on a runner without Playwright, its unit case alone, which it says) — see the case above."; fail=1; }
 python3 -I product-reads/brief-check.py --selftest || { echo "FAIL: product-reads/brief-check.py no longer refuses a brief that plans, overloads or skips its slots — see the case above."; fail=1; }
 # The style lock (his ruling, 5 November 2026, on #363): its own cases, and the kit
 # it reads beside it, which products load live, so it loads nothing from outside and

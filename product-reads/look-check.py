@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """The look check: the kit's self-check run on a rendered preview (library/juku-style.md,
-(e); the look-lock queue on how-we-build#409, item 2).
+(e); his ruling of 5 November 2026 on how-we-build#363, the style lock, held
+on the rendered build: "Locks, not reminders.").
 
 The style lock reads a product's source; this reads what a phone and a desktop are
 actually shown. It opens a preview in Playwright's Chromium, phone (390 x 844) and
-desktop (1280 x 800), saves a screenshot of each for the reviewer, and fails, naming
+desktop (1280 x 800), saves a screenshot of each in DIR for the builder (nothing yet sends
+them to the reviewer), and fails, naming
 each fault, where the rendered screen breaks the kit:
 
   - a box: an element in the content (inside .j-stage) that is no control and not
@@ -207,7 +209,7 @@ def main(argv):
     faults = look(args[0], args[1], [n for n in never if n])
     for f in faults:
         print("FAIL:", f)
-    print("ok" if not faults else f"{len(faults)} fault(s); screenshots in {args[1]} for the reviewer")
+    print("ok" if not faults else f"{len(faults)} fault(s); screenshots in {args[1]}")
     return 1 if faults else 0
 
 
