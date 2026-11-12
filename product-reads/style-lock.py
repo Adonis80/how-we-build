@@ -54,9 +54,9 @@ NOT_DRAWN = re.compile(r"radius|collapse|spacing|^background-(position|size|repe
 FILL = re.compile(r"^background(-color|-image)?$")
 NOTHING = re.compile(r"^\s*(0|0px|none|transparent|inherit|initial|unset|revert|0\s+none|none\s+0)\s*(!important)?\s*$", re.I)
 CONTROL = re.compile(
-    r"(^|[\s>+~(,])(button|input|select|textarea|option)\b"
+    r"(^|[\s>+~(,])(button|input|select|textarea|option)(?![\w-])"
     r"|\[role=['\"]?(button|tab|switch|radio|checkbox|option|slider|menuitem\w*|combobox|spinbutton)\b"
-    r"|\.j-(btn|pick|icon-btn|field|tabs?)\b"
+    r"|\.j-(btn|pick|icon-btn|field|tabs?)(?![\w-])"
     r"|:focus(-visible|-within)?\b"
     r"|\[aria-(pressed|selected|checked)")
 GROUND = re.compile(r"^\s*(html|body|:root|\.j-page|\.j-screen|\.j-info|\[data-theme[^\]]*\]|:root\[data-theme[^\]]*\])\s*$")
@@ -344,6 +344,8 @@ def selftest():
     expect("a box inside a total", css(".total .card{border-top:1px solid}"), 1)
     expect("a control inside content", css(".card button{border:1px solid}"), 0)
     expect("the kit's press", css(".j-screen button:not(:disabled):active{background:var(--j-line-soft)}"), 0)
+    expect("a kit-named panel, not a control", css(".j-tab-panel{border:1px solid #333}.j-field-group{border:1px solid}"), 2)
+    expect("a tag-named group, not a control", css("button-group{border:1px solid}"), 1)
     expect("the kit's class overridden", css(".j-row{border-bottom:1px solid}"), 1)
     expect("a line number", css("\n\n.c{\n  border:1px solid}"), 1)
     if css("\n\n.c{\n  border:1px solid}") and not css("\n\n.c{\n  border:1px solid}")[0].startswith("t.css:4:"):
