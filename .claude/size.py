@@ -114,7 +114,7 @@ session's first call is measured, not blind. The words of a
 `create_trigger` or `update_trigger` are checked all the same: they are in
 the call, not the transcript.
 
-`--now [transcript]` prints the real size (when none is named, the transcript
+`--install` wires this file at user level (a link at `~/.claude/size.py`, the three events in `~/.claude/settings.json`), for the environment's setup script, so it runs whatever the working directory; `--user` is that wiring's run, quiet where the project already wires the hook. `--now [transcript]` prints the real size (when none is named, the transcript
 the hook was last given, which the hook's own call for that command records);
 when it cannot measure, it says why and exits 1. `--selftest` runs the cases below and
 checks `.claude/settings.json` still wires all three events to this file.
@@ -1186,6 +1186,46 @@ def _path_cases(cases):
             ]
         finally:
             os.chdir(cwd)
+    _user_cases(cases)
+
+
+def _user_cases(cases):
+    """Wired at user level by the environment's setup: measured whatever the working directory (#408's checkpoint:
+    a session restarted at /home/user ran to 453k unmeasured, the project's wiring unloaded)."""
+    import subprocess
+    with tempfile.TemporaryDirectory() as d:
+        t = os.path.join(d, "s.jsonl")
+        with open(t, "w") as f:
+            f.write(_turn(96_000, "Bash") + "\n" + _turn(305_000, "Bash") + "\n")
+        link, settings = os.path.join(d, ".claude", "size.py"), os.path.join(d, ".claude", "settings.json")
+        os.makedirs(os.path.dirname(settings))
+        other = {"type": "command", "command": "other.sh"}
+        with open(settings, "w") as f:
+            json.dump({"keep": 1, "hooks": {"Stop": [{"hooks": [other]}]}}, f)
+        install(link, settings)
+        install(link, settings)
+        cfg = json.load(open(settings))
+        runs = lambda ev: sum("size.py" in x.get("command", "") for h in cfg["hooks"].get(ev, []) for x in h.get("hooks", []))
+        cases += [
+            ("--install wires all three events once, run twice", all(runs(ev) == 1 for ev in EVENTS)),
+            ("--install keeps the settings it found", cfg.get("keep") == 1 and any(other in h["hooks"] for h in cfg["hooks"]["Stop"])),
+            ("--install's stable path is this file", os.path.realpath(link) == os.path.realpath(__file__)),
+        ]
+        out = os.path.join(d, "out")   # a working directory outside any repository
+        os.makedirs(out)
+        hook = lambda project, inp: subprocess.run(
+            [sys.executable, "-I", link, "--user"], input=json.dumps(inp), cwd=out, capture_output=True, text=True,
+            env=dict(os.environ, HOME=d, CLAUDE_PROJECT_DIR=project))
+        post = {"hook_event_name": "PostToolUse", "tool_name": "Bash", "tool_input": {}, "cwd": out, "transcript_path": t}
+        r = hook(out, post)
+        cases += [
+            ("a hook input whose cwd is outside any repo, with transcript_path given, is still measured",
+             "305k, past the 280k line" in r.stdout),
+            ("the user-level run is quiet where the project already wires the hook", hook(ROOT, post).stdout == ""),
+            ("through the stable path the guard still finds ticket.py", _denied(json.loads(hook(out, {
+                "hook_event_name": "PreToolUse", "tool_name": "mcp__claude-code-remote__update_trigger",
+                "tool_input": {"trigger_id": "trig_X", "prompt": "x"}, "cwd": out, "transcript_path": t}).stdout or "{}"))),
+        ]
 
 
 def _read_result(id, tokens):
@@ -1233,9 +1273,60 @@ def _boot_cases(cases, tk, C):
     return True
 
 
+USER_LINK = os.path.join(os.path.expanduser("~"), ".claude", "size.py")
+USER_SETTINGS = os.path.join(os.path.expanduser("~"), ".claude", "settings.json")
+EVENTS = ("PreToolUse", "PostToolUse", "Stop")
+
+
+def install(link=USER_LINK, settings=USER_SETTINGS):
+    """Wire the hook at user level, so it runs whatever the working directory (his word, 12 November 2026,
+    Hemz-OS#333 item 4: "in the environment's setup"). The stable path is a link to this checkout's file, so
+    the hook still finds the rulebook (and ticket.py) beside the file it really is; other settings are kept."""
+    os.makedirs(os.path.dirname(link), exist_ok=True)
+    tmp = link + ".new"
+    if os.path.lexists(tmp):
+        os.unlink(tmp)
+    os.symlink(os.path.realpath(__file__), tmp)
+    os.replace(tmp, link)
+    try:
+        with open(settings, encoding="utf-8") as f:
+            cfg = json.load(f)
+    except (OSError, ValueError):
+        cfg = {}
+    cfg = cfg if isinstance(cfg, dict) else {}
+    hooks = cfg.setdefault("hooks", {})
+    cmd = f'python3 -I "{link}" --user'
+    for ev in EVENTS:
+        kept = [h for h in hooks.get(ev, []) if not any("size.py" in (x.get("command") or "") for x in h.get("hooks", []))]
+        entry = {"hooks": [{"type": "command", "command": cmd}]}
+        if ev != "Stop":
+            entry = {"matcher": "", **entry}
+        hooks[ev] = kept + [entry]
+    with open(settings + ".new", "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=2)
+    os.replace(settings + ".new", settings)
+
+
+def project_wires(project):
+    """True when a project's own .claude/settings.json already runs size.py, so the user-level run stays quiet."""
+    try:
+        with open(os.path.join(project or "", ".claude", "settings.json"), encoding="utf-8") as f:
+            hooks = json.load(f).get("hooks", {})
+        return all(any("size.py" in (x.get("command") or "") for h in hooks.get(ev, []) for x in h.get("hooks", []))
+                   for ev in EVENTS)
+    except (OSError, ValueError, AttributeError, TypeError):
+        return False
+
+
 def main():
     if sys.argv[1:2] == ["--selftest"]:
         sys.exit(0 if selftest() else 1)
+    if sys.argv[1:2] == ["--install"]:
+        install()
+        print(f"size hook: wired at user level, {USER_LINK} -> {os.path.realpath(__file__)}")
+        return
+    if sys.argv[1:2] == ["--user"] and project_wires(os.environ.get("CLAUDE_PROJECT_DIR")):
+        return   # the project's own wiring runs it; once is enough
     if sys.argv[1:2] == ["--now"]:
         p = sys.argv[2] if len(sys.argv) > 2 else remembered()
         st = read(p) if p else None
