@@ -18,7 +18,7 @@ Every value is in `library/juku-style.css`. If a value is not in that file, the 
 
 ## (a) The feel
 
-Words and figures sit straight on a near-black ground, like a private-bank statement: no cards and no boxes, and only one faint line on the whole screen, above the total. Colour shows up only where it means something: gold for money and for the actions you take, turquoise for what was measured, green for done, red for a stop. Everything else is warm off-white in three shades. Tapping a part makes it the whole screen. The level you came from drops back, blurred and dimmed, so you always know where you are, and the working sits low on the screen within thumb reach.
+Words and figures sit straight on a near-black ground, like a private-bank statement: no cards and no boxes, and no line in the content but one faint hairline above each total and the lines a control draws (a choice's edge, the typed line, the tabs' line). Colour shows up only where it means something: gold for money and for the actions you take, the edge of what you chose or are typing in included, turquoise for what was measured, green for done, red for a stop. Everything else is warm off-white in three shades. Tapping a part makes it the whole screen. The level you came from drops back, blurred and dimmed, so you always know where you are, and the working sits low on the screen within thumb reach.
 
 ## (b) The parts
 
@@ -77,7 +77,7 @@ Words and figures sit straight on a near-black ground, like a private-bank state
 - Write crumbs, bands, the brand and total labels in widely spaced capitals. Only the level title is in sentence case.
 - Make every tap target at least 44px tall: rows 68px, steps 52px, picks 52px.
 - Keep 14px gutters on both sides and 76px clear under the bar.
-- Use the action colour as text for back, add and selected (on Hemz, gold, which its approved screen shares with money; another product, the colour its constitution gives actions). Back names the level it goes back to.
+- Use the action colour as text for back, add and a selected choice (`.j-btn.is-on`; a chosen tab is ink over the gold line, `.j-tabs`) (on Hemz, gold, which its approved screen shares with money; another product, the colour its constitution gives actions). Back names the level it goes back to.
 - Make a tapped part the whole view, with at most two levels showing behind it, blurred. With reduced motion, the screen just changes, with no movement.
 - Put the › only on rows that open.
 - Give each level its title, a line saying what it adds up to, and its parts, as the map gives them. A part with contents of its own opens by the drill-in (`library/hypersolid.md`, Screen law 9), so detail is never crammed underneath. When a level holds more than its screen, the spacing is never shrunk: it goes back to the map, which alone decides what earns a level (`library/hypersolid.md`, step 2 and Spatial layer 1).
