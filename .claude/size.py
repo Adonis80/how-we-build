@@ -5,19 +5,29 @@ His rulings of 5 November 2026 (issue #363, "Locks, not reminders"): "Hard stop
 at 350,000 tokens, by machine. A hook reads the session's own transcript usage
 (the real figure, not an estimate) after every tool call: at 300,000 it
 requires the handover checkpoint; at 350,000 it blocks every action except
-writing that checkpoint. Every checkpoint carries a size line."
+writing that checkpoint. Every checkpoint carries a size line." His word of
+12 November 2026, 00:19:58 UTC, agreeing the lead builder's fixes for a monitor
+that "sometimes fires and sometimes doesn't fire" (Adonis80/Hemz-OS#333, comment
+6810454648, item 4): "I agree with all of your suggestions": the checkpoint line
+at 280k, a warn band from 250k, a look at the end of every turn, and blind fails
+closed.
 
 `.claude/settings.json` runs this file before (PreToolUse) and after
-(PostToolUse) every tool call. The size is the context of the newest
+(PostToolUse) every tool call, and at the end of every turn (Stop), so a turn
+that makes no tool call is measured too. The size is the context of the newest
 main-thread model turn in the transcript: its input, cache-write, cache-read
 and output tokens, as the model's own usage reports them.
 
-- After a call, at 300,000 or more with no checkpoint written since the line
+- After a call, from 250,000: the session is warned, on every call, that the
+  line is near. At 280,000 or more with no checkpoint written since the line
   was crossed: the session is told, on every call until it writes one, to write
   its handover checkpoint now.
+- At the end of a turn, the same: past 280,000 with no checkpoint the turn is
+  kept going to write it (once: a turn already kept going ends, so a checkpoint
+  that cannot be posted never loops), and from 250,000 the person is warned.
 - Before a call, at 350,000 or more: every call is refused but the checkpoint
   itself, loading a tool (ToolSearch), and, once a checkpoint has gone through
-  past 300,000, starting the successor (`library/session-changeover.md`,
+  past 280,000, starting the successor (`library/session-changeover.md`,
   *A session starts its own successor*).
 - A checkpoint counts as written only when its call went through: a refused
   or failed call (its result an error) does not. It is a comment whose first
@@ -79,16 +89,19 @@ pieces), in the same repositories as the guard:
 The size is read from the transcript the platform names in each call's own
 `transcript_path`, never found by the working directory, which a session can
 leave. A session it cannot measure (no `transcript_path`, a file that will not
-open, one with no usage in it) blocks nothing, since a lock that cannot see must
-not brick the session that would write the handover, but it is loud: after every
-call it tells the session, and the person, that it is blind and why. The words of a
+open, one with no usage in it) fails closed: before a call, everything is refused
+but what the handover needs (a checkpoint comment, loading a tool, starting the
+successor), until it can see; after every call and at the end of a turn it tells
+the session, and the person, that it is blind and why. A call's own turn is in
+the transcript before its hook runs (shown on 12 November 2026), so a fresh
+session's first call is measured, not blind. The words of a
 `create_trigger` or `update_trigger` are checked all the same: they are in
 the call, not the transcript.
 
 `--now [transcript]` prints the real size (when none is named, the transcript
 the hook was last given, which the hook's own call for that command records);
 when it cannot measure, it says why and exits 1. `--selftest` runs the cases below and
-checks `.claude/settings.json` still wires both events to this file.
+checks `.claude/settings.json` still wires all three events to this file.
 """
 import importlib.util
 import json
@@ -97,7 +110,8 @@ import re
 import sys
 import tempfile
 
-LINE = 300_000      # the handover checkpoint is required
+WARN = 250_000      # the session and the person are warned
+LINE = 280_000      # the handover checkpoint is required
 HARD = 350_000      # everything but the checkpoint is refused
 SLACK_K = 20        # a Size: line's figure may sit this many k off the real one
 
@@ -545,12 +559,17 @@ def decide(event, tool_name, tool_input, state, tk=None, blind=None):
     if refused:
         return refused
     if state is None:
+        msg = (f"size hook: blind, {blind or 'the transcript could not be read'}; this session's size is unknown, "
+               f"so every call is refused but the handover: a `Checkpoint:` comment (its Size: source `unknown`), "
+               f"loading a tool, and starting the successor.")
+        if event == "PreToolUse":
+            if (tool_name in ALWAYS or _ends(tool_name or "", SUCCESSOR_TOOLS)
+                    or (_ends(tool_name or "", COMMENT_TOOLS) and CHECKPOINT_RE.search((tool_input.get("body") or "").lstrip()))):
+                return None
+            return _deny(msg)
         if event == "PostToolUse":
-            msg = (f"size hook: BLIND, {blind or 'the transcript could not be read'}; this session's size is unknown "
-                   f"and the 300k line is not watched. Nothing is refused for it: read your own size, and write "
-                   f"source `unknown` in your Size: line.")
             return {"decision": "block", "reason": msg, "systemMessage": msg}
-        return None
+        return {"systemMessage": msg} if event == "Stop" else None
     size, checkpointed, tool_uses = state[:3]
     k = f"{round(size / 1000)}k"
     if (event == "PreToolUse" and tk is not None and not state[3]["booted"]
@@ -573,12 +592,19 @@ def decide(event, tool_name, tool_input, state, tk=None, blind=None):
                          f"actions left are starting the successor (create/update/fire_trigger) and ending the turn")
         return _deny(f"size hook: {k}, past the hard stop of 350k; every action is refused but writing "
                      f"the handover checkpoint, posted with the issue-comment tool (`add_issue_comment`), its first line `Checkpoint:`, with its `Size:` line")
+    demand = (f"size hook: {k}, past the 280k line. Write the handover checkpoint now "
+              f"(`Checkpoint:`, `Size: ... end {k} (transcript) ...`, `Planned:`, the session's link), "
+              f"then start the successor. At 350k every other action is refused.")
+    warn = f"size hook: {k}, in the warn band from 250k; the checkpoint is due at 280k: bring the work to a boundary."
+    if event == "Stop":
+        if size >= LINE and not checkpointed and not tool_input.get("stop_hook_active"):
+            return {"decision": "block", "reason": demand}
+        return {"systemMessage": warn} if WARN <= size < LINE else None
     if event == "PostToolUse":
         if size >= LINE and not checkpointed:
-            return {"decision": "block",
-                    "reason": (f"size hook: {k}, past the 300k line. Write the handover checkpoint now "
-                               f"(`Checkpoint:`, `Size: ... end {k} (transcript) ...`, `Planned:`, the session's link), "
-                               f"then start the successor. At 350k every other action is refused.")}
+            return {"decision": "block", "reason": demand}
+        if size >= WARN and not checkpointed:
+            return {"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": warn}}
         if tool_uses <= 1:
             return {"hookSpecificOutput": {"hookEventName": "PostToolUse",
                     "additionalContext": f"size hook: live; boot {k} (transcript)"}}
@@ -602,7 +628,9 @@ def answer(h, note=NOTE):
             pass
         state = read(path)
         why = f"{path} could not be opened" if not os.path.isfile(path) else f"{path} carries no usage"
-    return decide(h.get("hook_event_name"), h.get("tool_name"), h.get("tool_input"), state, _ticket(), why)
+    event = h.get("hook_event_name")
+    inp = {"stop_hook_active": h.get("stop_hook_active")} if event == "Stop" else h.get("tool_input")
+    return decide(event, h.get("tool_name"), inp, state, _ticket(), why)
 
 
 def remembered(note=NOTE):
@@ -708,10 +736,17 @@ def selftest():
     ]
     _clock_cases(cases, U, F, T)
     cases += [
-        ("an unreadable transcript blocks nothing", decide("PreToolUse", "Bash", {}, read("/nonexistent")) is None),
+        ("blind, a call is refused until it can see", _denied(decide("PreToolUse", "Bash", {}, read("/nonexistent")))),
+        ("blind, an edit is refused", _denied(decide("PreToolUse", "Edit", {}, None))),
+        ("blind, the checkpoint goes through", decide("PreToolUse", C, {"body": "Checkpoint: x\nSize: source unknown"}, None) is None),
+        ("blind, an ordinary comment is refused", _denied(decide("PreToolUse", C, {"body": "Round 2."}, None))),
+        ("blind, a tool may be loaded", decide("PreToolUse", "ToolSearch", {}, None) is None),
+        ("blind, the successor may start", decide("PreToolUse", "mcp__claude-code-remote__fire_trigger", {"trigger_id": "trig_X"}, None) is None),
         ("and says so, loud, to the session and the person", (lambda a: a.get("decision") == "block" and
-         "BLIND" in a.get("reason", "") and "BLIND" in a.get("systemMessage", ""))(decide("PostToolUse", "Bash", {}, None))),
+         "blind" in a.get("reason", "") and "blind" in a.get("systemMessage", ""))(decide("PostToolUse", "Bash", {}, None))),
+        ("and at a turn's end", "blind" in json.dumps(decide("Stop", None, {}, None))),
     ]
+    _band_cases(cases, C, good)
     _path_cases(cases)
     ok = _guard_cases(cases)
     here = os.path.dirname(os.path.abspath(__file__))
@@ -719,10 +754,10 @@ def selftest():
         hooks = json.load(open(os.path.join(here, "settings.json"))).get("hooks", {})
         wired = all(any(h.get("matcher", "") in ("", "*") and
                         any("size.py" in (x.get("command") or "") for x in h.get("hooks", []))
-                        for h in hooks.get(ev, [])) for ev in ("PreToolUse", "PostToolUse"))
+                        for h in hooks.get(ev, [])) for ev in ("PreToolUse", "PostToolUse", "Stop"))
     except (OSError, ValueError, AttributeError):
         wired = False
-    cases.append((".claude/settings.json runs this file before and after every tool call", wired))
+    cases.append((".claude/settings.json runs this file before and after every tool call, and at every turn's end", wired))
     for name, passed in cases:
         print(("ok: " if passed else "FAIL: ") + "size hook: " + name)
         ok = ok and passed
@@ -925,6 +960,30 @@ def _product_cases(cases, tk, U, F, C):
             os.chdir(cwd)
 
 
+def _band_cases(cases, C, good):
+    """The warn band from 250k, the line at 280k, and the end of a turn (his word, 12 November 2026)."""
+    s = _state([_turn(96_000, "Bash"), _turn(240_000, "Bash")])
+    cases += [("below 250k no warning", decide("PostToolUse", "Bash", {}, s) is None),
+              ("below 250k a turn ends quietly", decide("Stop", None, {}, s) is None)]
+    s = _state([_turn(96_000, "Bash"), _turn(260_000, "Bash")])
+    post = decide("PostToolUse", "Bash", {}, s) or {}
+    cases += [
+        ("from 250k every call is warned", "warn band" in json.dumps(post) and post.get("decision") is None),
+        ("from 250k a turn's end warns the person", "warn band" in decide("Stop", None, {}, s).get("systemMessage", "")),
+        ("from 250k nothing is refused", decide("PreToolUse", "Bash", {}, s) is None),
+    ]
+    s = _state([_turn(96_000, "Bash"), _turn(285_000, "Bash")])
+    cases += [
+        ("past 280k the checkpoint is demanded after a call", (decide("PostToolUse", "Bash", {}, s) or {}).get("decision") == "block"),
+        ("past 280k a turn with no checkpoint is kept going to write it", (decide("Stop", None, {}, s) or {}).get("decision") == "block"),
+        ("but only once, so it never loops", decide("Stop", None, {"stop_hook_active": True}, s) is None),
+        ("a checkpoint at 285k carries its figure", decide("PreToolUse", C, {"body": good.replace("310k", "285k")}, s) is None),
+    ]
+    s = _state([_turn(96_000, "Bash"), _turn(285_000, C, good.replace("310k", "285k"), id="cp"), _result("cp"), _turn(290_000, "Bash")])
+    cases += [("after the checkpoint a turn ends", decide("Stop", None, {}, s) is None),
+              ("after the checkpoint no call is nagged", decide("PostToolUse", "Bash", {}, s) is None)]
+
+
 def _path_cases(cases):
     """The size is read from the call's own transcript_path, whatever the working directory; blind is loud."""
     import subprocess
@@ -938,11 +997,11 @@ def _path_cases(cases):
             post = lambda **h: answer(dict(hook_event_name="PostToolUse", tool_name="Bash", tool_input={}, **h), note) or {}
             hit = post(transcript_path=t)
             cases += [
-                ("the size is the transcript_path's, whatever the cwd", "305k, past the 300k line" in hit.get("reason", "")),
+                ("the size is the transcript_path's, whatever the cwd", "305k, past the 280k line" in hit.get("reason", "")),
                 ("the hook records the transcript_path it was given", remembered(note) == t),
-                ("no transcript_path is blind, and says so", "BLIND, the hook was given no transcript_path" in post().get("reason", "")),
+                ("no transcript_path is blind, and says so", "blind, the hook was given no transcript_path" in post().get("reason", "")),
                 ("a transcript_path that will not open is blind, naming it",
-                 "BLIND, %s could not be opened" % os.path.join(d, "gone") in post(transcript_path=os.path.join(d, "gone")).get("reason", "")),
+                 "blind, %s could not be opened" % os.path.join(d, "gone") in post(transcript_path=os.path.join(d, "gone")).get("reason", "")),
             ]
             with open(os.path.join(d, "empty.jsonl"), "w") as f:
                 f.write("{}\n")
@@ -960,6 +1019,11 @@ def _path_cases(cases):
             cases.append(("--now reads the transcript the hook was last given", (r.returncode, r.stdout) == (0, "305k (transcript)\n")))
             r = subprocess.run([sys.executable, "-I", me], input="not json", env=env, capture_output=True, text=True)
             cases.append(("input that is not JSON is blind, and says so", "BLIND" in r.stdout))
+            stop = lambda **h: answer(dict(hook_event_name="Stop", **h), note) or {}
+            cases += [
+                ("a turn's end with no tool call is measured from its transcript_path", stop(transcript_path=t).get("decision") == "block"),
+                ("a turn already kept going is let end", stop(transcript_path=t, stop_hook_active=True) == {}),
+            ]
         finally:
             os.chdir(cwd)
 
