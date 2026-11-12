@@ -61,7 +61,7 @@ done < <(ls -A)
 for f in $allowed; do
   case "$f" in
     # The size hook (his rulings of 5 November 2026, #363): the settings that
-    # run it, and the hook, nothing else; its selftest holds when they run it.
+    # run it, and the hook, nothing else; how they are wired is held by the hook's selftest.
     .claude) [ -d "$f" ] && [ "$(LC_ALL=C ls -A .claude | tr '\n' ' ')" = "settings.json size.py " ] || { echo "FAIL: '.claude/' holds settings.json and size.py (the size hook), and nothing else."; list_fail=1; } ;;
     # The Roadmap (decision 0007): its gate's three files and the build that renders it, and nothing else. No roadmap data lives here.
     board) { [ -d "$f" ] && [ "$(ls -A board | tr '\n' ' ')" = "build.py middleware.js robots.txt vercel.json " ]; } || { echo "FAIL: 'board/' holds only build.py, middleware.js, robots.txt and vercel.json."; list_fail=1; } ;;
