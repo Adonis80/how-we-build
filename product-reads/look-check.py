@@ -53,7 +53,9 @@ PROBE = r"""
     document.body.appendChild(s); const c = getComputedStyle(s).color; s.remove(); return c; };
   const gold = probe(root.getPropertyValue('--j-gold').trim() || 'rgb(1,2,3)');
   const turq = probe(root.getPropertyValue('--j-turq').trim() || 'rgb(1,2,3)');
-  const isControl = (el) => !!el.closest('button,input,select,textarea,option,[role=button],[role=tab],[role=switch],[role=radio],[role=checkbox],[role=option],.j-btn,.j-pick,.j-icon-btn,.j-field,.j-tabs,.j-info');
+  // A row that drills in is a button, but it is content: it and all inside it are checked.
+  const isControl = (el) => { const c = el.closest('button,input,select,textarea,option,[role=button],[role=tab],[role=switch],[role=radio],[role=checkbox],[role=option],.j-btn,.j-pick,.j-icon-btn,.j-field,.j-tabs,.j-info');
+    return !!c && !c.classList.contains('j-row'); };
   const visible = (el) => { const r = el.getBoundingClientRect(); const s = getComputedStyle(el);
     return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
   const name = (el) => el.tagName.toLowerCase() + (el.className && typeof el.className === 'string' ? '.' + el.className.trim().split(/\s+/).join('.') : '');
@@ -63,7 +65,7 @@ PROBE = r"""
     const s = getComputedStyle(el);
     const top = parseFloat(s.borderTopWidth) > 0 && s.borderTopStyle !== 'none';
     const sides = ['Right', 'Bottom', 'Left'].some(k => parseFloat(s['border' + k + 'Width']) > 0 && s['border' + k + 'Style'] !== 'none');
-    const fill = s.backgroundColor !== 'rgba(0, 0, 0, 0)' && s.backgroundColor !== 'transparent';
+    const fill = s.backgroundColor !== 'rgba(0, 0, 0, 0)' && s.backgroundColor !== 'transparent' && !el.classList.contains('j-level');  // a deeper level's veil is the ground
     const shade = s.boxShadow && s.boxShadow !== 'none';
     const outline = parseFloat(s.outlineWidth) > 0 && s.outlineStyle !== 'none';
     if (sides || fill || shade || outline) faults.push(`a box round content: <${name(el)}> drawn with ${[sides && 'a border', fill && 'a fill', shade && 'a shadow', outline && 'an outline'].filter(Boolean).join(', ')}`);
@@ -74,13 +76,20 @@ PROBE = r"""
     const s = getComputedStyle(el);
     if (!(parseFloat(s.borderTopWidth) > 0 && s.borderTopStyle !== 'none')) faults.push(`a total without its hairline: <${name(el)}>`);
   }
+  // A figure is an element whose own text holds a digit; its unit may be a child (.j-val-unit,
+  // .j-big-unit), so the figure is read with its unit children, and each of those is checked too.
+  const own = (el) => [...el.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join('');
+  const units = (el) => [...el.children].filter(c => [...c.classList].some(k => /-unit$/.test(k)));
   for (const el of level.querySelectorAll('*')) {
-    if (!visible(el) || el.children.length) continue;
-    const t = (el.textContent || '').trim();
-    if (!/\d/.test(t)) continue;
-    const c = getComputedStyle(el).color;
-    if ([...currency].some(ch => t.includes(ch)) && c !== gold) faults.push(`money off its colour: "${t}" is ${c}, not the money colour ${gold}`);
-    else if (unit.test(t) && c !== turq) faults.push(`a measure off its colour: "${t}" is ${c}, not the measure colour ${turq}`);
+    if (!visible(el) || !/\d/.test(own(el))) continue;
+    const us = units(el);
+    const t = (own(el) + ' ' + us.map(u => u.textContent).join(' ')).replace(/\s+/g, ' ').trim();
+    const want = [...currency].some(ch => t.includes(ch)) ? ['money', gold] : (unit.test(t) ? ['measure', turq] : null);
+    if (!want) continue;
+    for (const x of [el, ...us]) {
+      const c = getComputedStyle(x).color;
+      if (c !== want[1]) faults.push(`${want[0] === 'money' ? 'money' : 'a measure'} off its colour: "${t}" (<${name(x)}>) is ${c}, not the ${want[0]} colour ${want[1]}`);
+    }
   }
   const bar = document.querySelector('.j-bar');
   const info = bar && [...bar.querySelectorAll('button,[role=button],a')].some(b => /^\(?i\)?$|info/i.test((b.getAttribute('aria-label') || b.textContent || '').trim()));
@@ -143,10 +152,10 @@ GOOD = """<!doctype html><html><head><meta charset=utf-8><style>{css}</style></h
 <body class="j-page"><div class="j-screen"><div class="j-stage">
 <section class="j-level is-on"><div class="j-head"><p class="j-crumb">THE FORMULA</p><h1 class="j-title">Hem</h1></div>
 <div class="j-eqn j-foot">
-<button class="j-row" onclick="document.querySelector('.j-level').className='j-level is-behind-1';document.querySelectorAll('.j-level')[1].className='j-level is-on'"><span class="j-name">Length</span><span class="j-turq">12 cm</span></button>
+<button class="j-row" onclick="document.querySelector('.j-level').className='j-level is-behind-1';document.querySelectorAll('.j-level')[1].className='j-level is-deep is-on'"><span class="j-name">Length</span><span class="j-val j-turq">12<span class="j-val-unit j-turq"> cm</span></span></button>
 <div class="j-row j-sum"><span class="j-name">Total</span><span class="j-gold">£24.00</span></div>
 </div></section>
-<section class="j-level is-off"><div class="j-head"><p class="j-crumb">THE FORMULA · LENGTH</p></div><div class="j-eqn j-foot"><div class="j-row">x</div></div></section>
+<section class="j-level is-deep is-off"><div class="j-head"><p class="j-crumb">THE FORMULA · LENGTH</p></div><div class="j-eqn j-foot"><div class="j-row">x</div></div></section>
 </div><div class="j-bar"><span class="j-bar-rule"></span><button class="j-icon-btn" aria-label="info">i</button></div></div></body></html>"""
 
 
@@ -171,8 +180,11 @@ def selftest():
         ("the kit's own screen", GOOD, 0),
         ("a card", GOOD.replace('<div class="j-row j-sum">', '<div style="border:1px solid red"><div class="j-row j-sum">').replace("</div>\n</div></section>", "</div></div>\n</div></section>", 1), "some"),
         ("a divider", GOOD.replace('<div class="j-row j-sum">', '<div class="j-row" style="border-top:1px solid #333">y</div><div class="j-row j-sum">'), "some"),
+        ("a box on a row that drills in", GOOD.replace('<button class="j-row"', '<button class="j-row" style="border:1px solid #333"'), "some"),
+        ("a deeper level, shown", GOOD.replace("is-on\"><div class=\"j-head\"><p class=\"j-crumb\">THE FORMULA</p>", "is-off\"><div class=\"j-head\"><p class=\"j-crumb\">THE FORMULA</p>").replace("j-level is-deep is-off", "j-level is-deep is-on", 1), 0),
+        ("a figure's unit off its colour", GOOD.replace('<span class="j-val-unit j-turq">', '<span class="j-val-unit j-gold">'), 1),
         ("money in turquoise", GOOD.replace('class="j-gold">£24.00', 'class="j-turq">£24.00'), 1),
-        ("a measure in gold", GOOD.replace('class="j-turq">12 cm', 'class="j-gold">12 cm'), 1),
+        ("a measure in gold", GOOD.replace('class="j-val j-turq">12', 'class="j-val j-gold">12'), 1),
         ("no (i)", GOOD.replace('<button class="j-icon-btn" aria-label="info">i</button>', ''), 1),
         ("a forbidden phrase", GOOD.replace(">Hem<", ">Tell Hemzy<"), 1),
         ("no crumb", GOOD.replace('<p class="j-crumb">THE FORMULA</p>', ''), 1),

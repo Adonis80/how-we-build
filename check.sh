@@ -18,7 +18,8 @@
 # does not resolve or is over its cap, and a design brief check (product-reads/brief-check.py) that no longer refuses
 # a brief that plans the screen, overloads it or skips its slots, and a style lock
 # (product-reads/style-lock.py) that no longer flags a box round content, or a kit
-# that loads from outside or whose page names a value its stylesheet lacks.
+# that loads from outside or whose page names a value its stylesheet lacks, and a
+# look check (product-reads/look-check.py) that no longer passes its cases.
 # Nothing else. A read by anybody the
 # gate does not count is unread, not a shape of its own.
 # A third shape, "read clean by a reviewer the rulebook does not allow to
