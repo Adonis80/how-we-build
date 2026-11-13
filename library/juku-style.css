@@ -156,7 +156,10 @@ html{-webkit-text-size-adjust:100%;color-scheme:dark}
   font-size:var(--j-fs-body);line-height:var(--j-lh-body);font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
 /* page wash [body::before]. In the source boards the screen's own ground covers it. */
 .j-page::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;background:var(--j-wash)}
-.j-page input,.j-page button,.j-page textarea,.j-page select{font-family:inherit;font-size:inherit;letter-spacing:inherit}
+/* controls take the page's type, not the browser's. Inside :where() the rule weighs nothing, so each control's own
+   class below sets its size and spacing (.j-add 11.5px, .j-field and .j-tab 16px, .j-btn and .j-add .02em); outside it,
+   it outranked them all and every control drew 13.5px with no spacing (the exam of 13 Nov 2026). */
+:where(.j-page input,.j-page button,.j-page textarea,.j-page select){font-family:inherit;font-size:inherit;letter-spacing:inherit}
 
 /* the screen [.r6.pf] — boards are 390 × 844; a build may let it fill the viewport (generalised) */
 .j-screen{width:390px;height:844px;position:relative;overflow:hidden;background:var(--j-ground);color:var(--j-ink);
