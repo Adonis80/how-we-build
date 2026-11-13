@@ -106,7 +106,8 @@ pieces), in the same repositories as the guard:
 The size is read from the transcript the platform names in each call's own
 `transcript_path`, never found by the working directory, which a session can
 leave. A session it cannot measure (no `transcript_path`, a file that will not
-open, one with no usage in it, or a hook that raises) fails closed: before a call,
+open, one holding no message, one whose model turns carry no usage, or a hook
+that raises; never a session at its start, below) fails closed: before a call,
 everything is refused until it can see but the checkpoint, loading a tool, and
 the repair of the hook itself (reading or editing `.claude/size.py` or
 `.claude/settings.json`, or a command that is a run of `.claude/size.py` and
@@ -668,7 +669,8 @@ def decide(event, tool_name, tool_input, state, tk=None, blind=None):
     if (event == "PreToolUse" and tk is not None and not state[3]["booted"]
             and _ends(tool_name or "", COMMENT_TOOLS)
             and BOOT_LINE_RE.search((tool_input.get("body") or "").lstrip())):
-        why = boot_problem(tool_input.get("body") or "", state)
+        why = ("size hook: this session's first model turn is not in the transcript yet, so its boot cannot be "
+               "measured; make one other call first, then post this") if not size else boot_problem(tool_input.get("body") or "", state)
         if why:
             return _deny(why)
     if event == "PreToolUse":
@@ -910,8 +912,11 @@ def selftest():
         ("a transcript holding no model turn yet is a session at its start, not blind",
          (lambda st: st is not None and st[0] == 0 and decide("PreToolUse", "Bash", {}, st) is None)(
              _state([json.dumps({"type": "user", "message": {"content": "build"}})]))),
-        ("a model turn carrying no usage is still blind",
-         _state([json.dumps({"type": "assistant", "message": {"content": [], "usage": {}}})]) is None),
+        ("a model turn carrying no usage is still blind, after the session's first message too",
+         _state([json.dumps({"type": "user", "message": {"content": "build"}}),
+                 json.dumps({"type": "assistant", "message": {"content": [], "usage": {}}})]) is None),
+        ("a transcript holding no message at all is blind",
+         _state([json.dumps({"type": "system", "subtype": "init"})]) is None),
     ]
     _band_cases(cases, C, good)
     _successor_cases(cases, C, good)
@@ -1358,6 +1363,9 @@ def _boot_cases(cases, tk, C):
         ("a guessed ours figure is refused", _denied(decide("PreToolUse", C,
          {"body": "Resumed: clean\nBoot: platform 105k, ours 1k"}, s, tk))),
         ("a product, carrying no ticket.py, is not held", decide("PreToolUse", C, {"body": "Resumed: clean"}, s, None) is None),
+        ("at a session's start, before any model turn, no boot line passes: 0k would be a false boot",
+         (lambda st: st[0] == 0 and _denied(decide("PreToolUse", C, {"body": "Resumed: clean\n" + boot_line(st)}, st, tk)))(
+             _state([json.dumps({"type": "user", "message": {"content": "build"}})]))),
     ]
     big = small[:-2] + [_call(150_000, "Bash", {"command": "cat a"}, "c"), _read_result("c", 20_000),
                         _call(151_000, "mcp__github__issue_read", {"method": "get_comments", "issue_number": 363}, "d"),

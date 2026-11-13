@@ -11,8 +11,10 @@ thing is the (i) sheet, and controls carry none (his picks of 12 November 2026,
 
   style-lock.py build PATH...   a product's screens: its own stylesheets and markup
   style-lock.py kit [ROOT]      the kit itself: library/juku-style.css loads nothing
-                                from outside, and every value table (b) of
-                                library/juku-style.md names is in it
+                                from outside, every value table (b) of
+                                library/juku-style.md names is in it, and no rule
+                                on a bare element outranks the kit's own classes
+                                on text size or letter spacing
   style-lock.py --selftest
 
 `build` reads each file under PATH (.css .scss .html .htm .jsx .tsx .vue .svelte
@@ -268,6 +270,29 @@ def build(paths):
 VALUE = re.compile(r"#[0-9a-fA-F]{3,8}\b|rgba\([^)]*\)|cubic-bezier\([^)]*\)|-?\d*\.?\d+(?:px|ms|em|s)\b")
 
 
+TYPE_PROPS = {"font", "font-size", "letter-spacing"}
+WHERE = re.compile(r":where\((?:[^()]|\([^()]*\))*\)")
+
+
+def _outranks(bare):
+    """A kit rule that sets text size or letter spacing on a bare element (button, input) from under a
+    class: it outranks every one-class rule of the kit's own (.j-add, .j-field, .j-tab), whatever the
+    order, so the screen draws the bare rule's value and not the class's (the exam of 13 November 2026:
+    Add at 13.5px where the kit says 11.5px). Inside :where() it weighs nothing and the classes win."""
+    faults = []
+    for m in re.finditer(r"([^{};]+)\{([^{}]*)\}", bare):
+        props = {d.partition(":")[0].strip().lower() for d in m.group(2).split(";") if ":" in d}
+        if not props & TYPE_PROPS:
+            continue
+        for sel in _split_top(m.group(1), ","):
+            weighed = WHERE.sub("", sel)
+            if re.search(r"[.#\[]", weighed) and re.fullmatch(r"[a-zA-Z][\w-]*", _subject(weighed)):
+                faults.append(f"library/juku-style.css:{_lineno(bare, m.start(1) + len(m.group(1)) - len(m.group(1).lstrip()))}: "
+                              f"'{sel}' sets {', '.join(sorted(props & TYPE_PROPS))} on a bare element from under a class, "
+                              f"so it outranks the kit's own classes; put the selector in :where()")
+    return faults
+
+
 def kit(page_text, css_text):
     """The kit loads nothing from outside, and its page's table (b) repeats only its values."""
     faults = []
@@ -277,6 +302,7 @@ def kit(page_text, css_text):
     for u in re.findall(r"url\(\s*['\"]?([^)'\"]*)", bare, re.I):
         if not u.startswith("data:") and not u.startswith("#"):
             faults.append(f"library/juku-style.css: url({u}); the kit loads nothing from outside (products load it live)")
+    faults += _outranks(bare)
     if "## (b) The parts" not in page_text or "## (c)" not in page_text:
         return faults + ["library/juku-style.md: no '## (b) The parts' table before '## (c)'"]
     table = page_text.split("## (b) The parts", 1)[1].split("## (c)", 1)[0]
@@ -396,6 +422,9 @@ def selftest():
         expect("an @import in the kit", kit(p, s + "\n@import url(x.css);"), 2)
         expect("a url() in the kit", kit(p, s + "\n.a{background:url(https://example.com/k?)}"), 1)
         expect("a data: url in the kit", kit(p, s + "\n.a{background:url(data:image/png;base64,AA)}"), 0)
+        expect("a bare-element rule that outranks the kit's classes", kit(p, s + "\n.j-page button,.j-add{font-size:inherit}"), 1)
+        expect("the same inside :where()", kit(p, s + "\n:where(.j-page) button{font-size:inherit}:where(.j-page button){letter-spacing:inherit}"), 0)
+        expect("a bare element's box, not its type", kit(p, s + "\n.j-back svg{width:18px}.j-screen button:active{transform:none}"), 0)
         expect("a table value off the sheet", kit(p.replace("| 64px tall", "| 65px tall", 1), s), 1)
     else:
         bad += 1
