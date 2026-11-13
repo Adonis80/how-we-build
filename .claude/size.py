@@ -34,6 +34,14 @@ and output tokens, as the model's own usage reports them.
   `Successor: none — <reason>` has, the reason being nothing ready, the platform
   refused (naming what), or blind. Before a call, at any size, a checkpoint
   whose `Successor:` line gives any other reason is refused.
+- Each of the two is asked once in a run of kept-going ends, by the hook's own
+  record of what it asked there (`~/.claude/size-hook-stops`, per transcript),
+  not by the platform's `stop_hook_active`, which is one flag for every stop
+  hook: a turn kept going to write its checkpoint, or by another hook, is still
+  asked for its successor (Adonis80/Hemz-OS#363's read: the shared flag let a
+  checkpoint first written in a kept-going turn end with no successor). Kept
+  going, it asks only what it has first recorded, so nothing is asked twice;
+  where the record cannot be read or kept, a turn already kept going ends.
 - Before a call, at 350,000 or more: every call is refused but the checkpoint
   itself, loading a tool (ToolSearch), and, once a checkpoint has gone through
   past 280,000, starting the successor (`library/session-changeover.md`,
@@ -144,6 +152,7 @@ CLOCK_KEYS = ("cron_expression", "run_once_at")
 TRIG_RE = re.compile(r"\btrig_[A-Za-z0-9]+")
 
 NOTE = os.path.join(os.path.expanduser("~"), ".claude", "size-hook-transcript")   # the last transcript_path given
+STOPS = os.path.join(os.path.expanduser("~"), ".claude", "size-hook-stops")   # per transcript, what its run of kept-going ends was asked
 ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 BOOT_OPEN = ("HOW-WE-BUILD.md", "README.md")
 TICKET_RE = re.compile(r"(?m)^\s*Ticket:\s*$")
@@ -599,6 +608,45 @@ def size_problem(body, size):
     return None
 
 
+def owed(state, kept=False, asked=None):
+    """What a turn's end is kept going for: "checkpoint", "successor" or None. Each is asked once in a
+    run of kept-going ends, by the hook's own record of what it has asked there (`asked`), never by
+    the platform's one flag for every stop hook (`kept`): a turn kept going to write its checkpoint,
+    or by another hook, has not yet been asked for its successor. Kept going with no record,
+    everything counts as asked, so nothing loops."""
+    size, checkpointed = state[:2]
+    want = "checkpoint" if size >= LINE and not checkpointed else "successor" if checkpointed and not state[4] else None
+    return None if kept and (not isinstance(asked, list) or want in asked) else want
+
+
+def asked_at(path, stops=STOPS):
+    """What the hook has asked in the run of kept-going ends this transcript is in, or None with no record."""
+    try:
+        with open(stops, encoding="utf-8") as f:
+            a = json.load(f).get(path)
+    except (OSError, ValueError, AttributeError):
+        return None
+    return a if isinstance(a, list) else None
+
+
+def keep_asked(path, asked, stops=STOPS):
+    """Record it, newest last, twenty transcripts at most; False when it could not be kept."""
+    try:
+        with open(stops, encoding="utf-8") as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        d = {}
+    d = {p: a for p, a in d.items() if p != path} if isinstance(d, dict) else {}
+    d[path] = asked
+    try:
+        with open(stops + ".new", "w", encoding="utf-8") as f:
+            json.dump(dict(list(d.items())[-20:]), f)
+        os.replace(stops + ".new", stops)
+    except OSError:
+        return False
+    return True
+
+
 def decide(event, tool_name, tool_input, state, tk=None, blind=None):
     """The hook's JSON answer, or None to stay silent."""
     tool_input = tool_input if isinstance(tool_input, dict) else {}
@@ -642,12 +690,14 @@ def decide(event, tool_name, tool_input, state, tk=None, blind=None):
               f"then start the successor. At 350k every other action is refused.")
     warn = f"size hook: {k}, in the warn band from 250k; the checkpoint is due at 280k: bring the work to a boundary."
     if event == "Stop":
-        if size >= LINE and not checkpointed and not tool_input.get("stop_hook_active"):
+        ask = owed(state, tool_input.get("stop_hook_active"), tool_input.get("asked"))
+        if ask == "checkpoint":
             return {"decision": "block", "reason": demand}
-        if checkpointed and not state[4] and not tool_input.get("stop_hook_active"):
+        if ask == "successor":
             return {"decision": "block", "reason": (
                 f"size hook: {k}, the checkpoint is written but no successor has started. Start it now "
-                f"(`update_trigger` with its words, then `fire_trigger`: library/session-changeover.md, *A session "
+                f"(`update_trigger` with its words, then `fire_trigger`, or `create_session` where the surface allows it: "
+                f"library/session-changeover.md, *A session "
                 f"starts its own successor*), or post a checkpoint whose `Successor:` line says why none starts: "
                 f"`Successor: none — nothing ready`, `— the platform refused <what>`, or `— blind`")}
         return {"systemMessage": warn} if WARN <= size < LINE else None
@@ -705,7 +755,7 @@ def failed(h, e):
             else {"systemMessage": msg})
 
 
-def answer(h, note=NOTE):
+def answer(h, note=NOTE, stops=STOPS):
     """The hook's answer to one call's input, measured from the call's own transcript_path."""
     path = h.get("transcript_path")
     state, why = None, "the hook was given no transcript_path"
@@ -718,8 +768,17 @@ def answer(h, note=NOTE):
         state = read(path)
         why = f"{path} could not be opened" if not os.path.isfile(path) else f"{path} carries no usage"
     event = h.get("hook_event_name")
-    inp = {"stop_hook_active": h.get("stop_hook_active")} if event == "Stop" else h.get("tool_input")
-    return decide(event, h.get("tool_name"), inp, state, _ticket(), why)
+    if event != "Stop":
+        return decide(event, h.get("tool_name"), h.get("tool_input"), state, _ticket(), why)
+    kept = bool(h.get("stop_hook_active"))
+    asked = [] if not kept else asked_at(path, stops) if state else None   # a turn's first end opens a new run
+    a = decide(event, None, {"stop_hook_active": kept, "asked": asked}, state, _ticket(), why)
+    if state is None or asked is None:
+        return a
+    ask = owed(state, kept, asked)
+    recorded = keep_asked(path, asked + [ask] if ask else asked, stops)
+    # kept going, a turn is asked only what the record now holds, so an ask that cannot be kept is never made twice
+    return None if kept and ask and not recorded else a
 
 
 def remembered(note=NOTE):
@@ -1126,7 +1185,40 @@ def _successor_cases(cases, C, good):
         ("a checkpoint naming a good reason passes", decide("PreToolUse", C, {"body": none("nothing ready")}, _state(cp)) is None),
         ("below the line a checkpoint does not hold the turn",
          not end([_turn(96_000, "Bash"), _turn(150_000, C, good.replace("310k", "150k"), id="cp"), _result("cp")])),
+        # Adonis80/Hemz-OS#363's read: the two asks shared the platform's one flag, so the first used up the second
+        ("a turn kept going for the checkpoint, which then writes it, is still asked for its successor",
+         end(cp, stop_hook_active=True, asked=["checkpoint"])),
+        ("a turn kept going by another hook is still asked for its successor", end(cp, stop_hook_active=True, asked=[])),
+        ("and for its checkpoint", end(cp[:1] + [_turn(285_000, "Bash")], stop_hook_active=True, asked=[])),
+        ("each is asked once in a run: the successor", not end(cp, stop_hook_active=True, asked=["checkpoint", "successor"])),
+        ("each is asked once in a run: the checkpoint",
+         not end(cp[:1] + [_turn(285_000, "Bash")], stop_hook_active=True, asked=["checkpoint"])),
     ]
+    with tempfile.TemporaryDirectory() as d:
+        t, stops = os.path.join(d, "s.jsonl"), os.path.join(d, "stops")
+        say = lambda lines: open(t, "w").write("\n".join(lines) + "\n")
+        stop = lambda kept=False, s=stops: (answer({"hook_event_name": "Stop", "transcript_path": t, "stop_hook_active": kept},
+                                                   os.path.join(d, "note"), s) or {}).get("decision") == "block"
+        say(cp[:1] + [_turn(285_000, "Bash")])
+        first = stop()
+        say(cp)   # the checkpoint is first written in the turn the hook kept going
+        second, third = stop(kept=True), stop(kept=True)
+        say(cp[:1] + [_turn(285_000, "Bash")])
+        nowhere = os.path.join(d, "gone", "stops")   # a record that cannot be kept
+        stuck = os.path.join(d, "stuck")             # one that can be read and no longer written
+        keep_asked(t, [], stuck)
+        os.mkdir(stuck + ".new")
+        cases += [
+            ("through the hook: past the line a turn's end is kept going for its checkpoint", first),
+            ("through the hook: the checkpoint first written in that kept-going turn, its end is kept going for the successor", second),
+            ("through the hook: and then it ends, so it never loops", not third),
+            ("through the hook: with no record a turn already kept going ends", stop() and not stop(kept=True, s=os.path.join(d, "other"))),
+            ("through the hook: a record that cannot be kept asks at a turn's first end and never after",
+             stop(s=nowhere) and not stop(kept=True, s=nowhere)),
+            ("through the hook: kept going, an ask that cannot be recorded is not made, so it cannot be made twice",
+             asked_at(t, stuck) == [] and not stop(kept=True, s=stuck)),
+            ("through the hook: one transcript's record is not another's", asked_at(os.path.join(d, "else.jsonl"), stops) is None),
+        ]
 
 
 def _pair(n, C, body, F):
@@ -1190,7 +1282,7 @@ def _path_cases(cases):
                 ("a hook that fails, given input that is not an object, refuses rather than crashing", _denied(boom("Bash", ["ls"]))),
                 ("a hook that fails, given a name that is not a string, refuses rather than crashing", _denied(boom(5, "x"))),
             ]
-            stop = lambda **h: answer(dict(hook_event_name="Stop", **h), note) or {}
+            stop = lambda **h: answer(dict(hook_event_name="Stop", **h), note, os.path.join(d, "stops")) or {}
             cases += [
                 ("a turn's end with no tool call is measured from its transcript_path", stop(transcript_path=t).get("decision") == "block"),
                 ("a turn already kept going is let end", stop(transcript_path=t, stop_hook_active=True) == {}),
@@ -1233,9 +1325,12 @@ def _user_cases(cases):
             ("a hook input whose cwd is outside any repo, with transcript_path given, is still measured",
              "305k, past the 280k line" in r.stdout),
             ("the user-level run is quiet where the project already wires the hook", hook(ROOT, post).stdout == ""),
-            ("through the stable path the guard still finds ticket.py", _denied(json.loads(hook(out, {
+            # a product's copy with no rulebook beside it (its CI) reaches no ticket.py and so has no guard: there the
+            # same call goes through, and the selftest stays green (Hemz-OS#362: it was red on every such run)
+            ("through the stable path the guard still finds ticket.py, where one is reachable", _denied(json.loads(hook(out, {
                 "hook_event_name": "PreToolUse", "tool_name": "mcp__claude-code-remote__update_trigger",
-                "tool_input": {"trigger_id": "trig_X", "prompt": "x"}, "cwd": out, "transcript_path": t}).stdout or "{}"))),
+                "tool_input": {"trigger_id": "trig_X", "prompt": "x"}, "cwd": out, "transcript_path": t}).stdout or "{}"))
+             == (_ticket() is not None)),
         ]
 
 
