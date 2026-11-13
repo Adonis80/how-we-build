@@ -1222,9 +1222,12 @@ def _user_cases(cases):
             ("a hook input whose cwd is outside any repo, with transcript_path given, is still measured",
              "305k, past the 280k line" in r.stdout),
             ("the user-level run is quiet where the project already wires the hook", hook(ROOT, post).stdout == ""),
-            ("through the stable path the guard still finds ticket.py", _denied(json.loads(hook(out, {
+            # a product's copy with no rulebook beside it (its CI) reaches no ticket.py and so has no guard: there the
+            # same call goes through, and the selftest stays green (Hemz-OS#362: it was red on every such run)
+            ("through the stable path the guard still finds ticket.py, where one is reachable", _denied(json.loads(hook(out, {
                 "hook_event_name": "PreToolUse", "tool_name": "mcp__claude-code-remote__update_trigger",
-                "tool_input": {"trigger_id": "trig_X", "prompt": "x"}, "cwd": out, "transcript_path": t}).stdout or "{}"))),
+                "tool_input": {"trigger_id": "trig_X", "prompt": "x"}, "cwd": out, "transcript_path": t}).stdout or "{}"))
+             == (_ticket() is not None)),
         ]
 
 
