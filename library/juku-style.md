@@ -25,6 +25,7 @@ Words and figures sit straight on a near-black ground, like a private-bank state
 | Element | What it looks like | Class |
 |---|---|---|
 | Ground | `#08090a`, ink `#FFFDF7`, sans 13.5px / 1.45, tabular figures | `.j-page` `.j-screen` |
+| Screen that fills the window (draft, not yet approved by him) | the window's full height, its width up to 390px, centred on anything wider | `.j-screen.is-fill` |
 | Top bar | 64px tall, 14px sides, 9px gaps; solid ground fading to clear below 62% | `.j-bar` |
 | Back | gold 13.5px / 500, ‹ icon 18px, names the parent level, at least 44px tall | `.j-back` |
 | Brand (top level only) | 9.5px / 600 capitals, .2em, `#BFB9A9` | `.j-brand` |
