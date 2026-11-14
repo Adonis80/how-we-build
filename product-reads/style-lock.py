@@ -267,6 +267,7 @@ def lock_script(text, name):
     .style.border). An element the same file makes with createElement is judged as that tag, a name
     made twice by the nearest make above the use, and a made input as a typed field unless the script
     sets its type to a choice's; any other is unknown, and only a fill is flagged on it."""
+    text = re.sub(r"(?m)^[ \t]*//[^\n]*", lambda m: " " * len(m.group(0)), text)   # a whole-line // comment
     faults = lock_markup(text.replace('\\"', ' "').replace("\\'", " '"), name)   # an escaped quote, same length
     text = _blank_comments(text, "css")
     makes = _makes(text)
@@ -279,6 +280,8 @@ def lock_script(text, name):
         tag, prop = _made(makes, m.group(1), m.start())[0], _camel(m.group(2))
         if (tag is None or tag in CONTROL_TAGS) and not FILL.match(prop):
             continue   # a control's border passes; an unknown element's is the reviewer's
+        if not m.group(3)[1:-1].strip():
+            continue   # an empty value clears a style; it draws nothing
         why = _decl_faults(prop, m.group(3)[1:-1], tag or "an element a script styles")
         if why:
             faults.append(f"{name}:{_lineno(text, m.start())}: a script's style, {why}")
@@ -512,6 +515,9 @@ def selftest():
     expect("a made radio, its type set by attribute", js("const i = document.createElement('input'); i.className = 'j-pick'; i.setAttribute('type', 'radio');"), 0)
     expect("a made input as the typed line", js('const i = document.createElement("input"); i.className = "j-field";'), 0)
     expect("a reused name: one input's type is not the next one's", js('let i = document.createElement("input"); i.type = "checkbox"; i.className = "j-pick";\ni = document.createElement("input"); i.className = "j-pick";'), 1)
+    expect("a style a script clears", js('const d = document.createElement("div"); d.style.border = ""; el.style.background = "";'), 0)
+    expect("a script's commented-out line", js('// root.innerHTML = `<div class="border">`;\n  // d.style.background = "#111";'), 0)
+    expect("a // inside a string is no comment", js('a.href = "https://x.test"; root.innerHTML = `<div class="border">`;'), 1)
     expect("the kit's own classes written by a script", js('root.innerHTML = `<button class="j-row"><span class="j-name">${n}</span></button><div class="j-row j-sum">`;'), 0)
     expect("script that compares, not markup", js('if (a < b && c > d) { x = "border"; }\n/* <div class="border"> */'), 0)
     if js('\n\nroot.innerHTML = `\n<div class="border">`;') != ['t.js:4: a box drawn by a utility class (\'border\' on <div>)']:
