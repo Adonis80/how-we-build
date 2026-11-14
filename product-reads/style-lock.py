@@ -42,7 +42,9 @@ names in :not() or :has(). Zero, none and transparent draw
 nothing and pass. A script is read for the markup it writes: the tags in its
 strings and template strings (JSX in a .js file too), judged as markup, and the
 classes and styles it puts on an element it makes with createElement (className,
-classList.add, setAttribute("class"), .style.border), judged as that tag; on an
+classList.add, setAttribute("class"), .style.border), judged as that tag (a name
+made twice, by the nearest make above the use; a made input as a typed field
+unless the script sets its type to a choice's); on an
 element it did not make, which the lock cannot name, only a fill is flagged. What
 the lock cannot see (a box drawn by an image or a canvas, a class name a script
 computes, a border a script puts on an element it did not make) is the
@@ -226,23 +228,55 @@ CLASS_SETS = (re.compile(JS_VAR + r"\.className\s*\+?=\s*" + JS_STR),
               re.compile(JS_VAR + r"\.setAttribute\(\s*['\"`]class['\"`]\s*,\s*" + JS_STR),
               re.compile(JS_VAR + r"\.classList\.(?:add|toggle)\(([^)]*)\)"))
 STYLE_SET = re.compile(JS_VAR + r"\.style\.(border\w*|outline\w*|boxShadow|background(?:Color|Image)?)\s*=\s*" + JS_STR)
+TYPE_SETS = (re.compile(JS_VAR + r"\.type\s*=\s*" + JS_STR),
+             re.compile(JS_VAR + r"\.setAttribute\(\s*['\"`]type['\"`]\s*,\s*" + JS_STR))
+
+
+def _makes(text):
+    """Each createElement a script assigns to a name, in order: the name, the tag, where its reach
+    starts and ends (the next createElement of that name, or the file's end), and for an input the
+    type the script sets on it within that reach ("" when it sets none: a text field)."""
+    found = [(m.start(), m.group(1), m.group(2).lower()) for m in MADE.finditer(text)]
+    makes = {}
+    for at, var, tag in found:
+        if var in makes:
+            makes[var][-1][2] = at
+        makes.setdefault(var, []).append([at, tag, len(text), ""])
+    for pat in TYPE_SETS:
+        for m in pat.finditer(text):
+            for make in makes.get(m.group(1), []):
+                if make[0] <= m.start() < make[2]:
+                    make[3] = m.group(2)[1:-1].strip().lower()
+    return makes
+
+
+def _made(makes, var, at):
+    """What a name is at a use: the nearest createElement of that name above it, else the first below
+    (a use written above its make). (tag, typed), or (None, False) for a name the file never makes."""
+    mine = makes.get(var)
+    if not mine:
+        return None, False
+    above = [k for k in mine if k[0] <= at]
+    _, tag, _, ty = above[-1] if above else mine[0]
+    return tag, tag == "textarea" or (tag == "input" and ty in TYPED_INPUTS)
 
 
 def lock_script(text, name):
     """A script: the markup it writes in its strings (and JSX in a .js file), read as markup, then the
     classes and styles it puts on an element by name (className, classList.add, setAttribute("class"),
-    .style.border). An element the same file makes with createElement is judged as that tag; any other
-    is unknown, and only a fill is flagged on it."""
+    .style.border). An element the same file makes with createElement is judged as that tag, a name
+    made twice by the nearest make above the use, and a made input as a typed field unless the script
+    sets its type to a choice's; any other is unknown, and only a fill is flagged on it."""
     faults = lock_markup(text.replace('\\"', ' "').replace("\\'", " '"), name)   # an escaped quote, same length
     text = _blank_comments(text, "css")
-    made = {m.group(1): m.group(2).lower() for m in MADE.finditer(text)}
+    makes = _makes(text)
     for pat in CLASS_SETS:
         for m in pat.finditer(text):
-            tag = made.get(m.group(1))
+            tag, typed = _made(makes, m.group(1), m.start())
             toks = [t for lit in re.findall(JS_STR, m.group(2)) for t in _tokens(lit[1:-1])]
-            faults += _class_faults(name, _lineno(text, m.start()), tag, tag in CONTROL_TAGS, tag == "textarea", toks)
+            faults += _class_faults(name, _lineno(text, m.start()), tag, tag in CONTROL_TAGS, typed, toks)
     for m in STYLE_SET.finditer(text):
-        tag, prop = made.get(m.group(1)), _camel(m.group(2))
+        tag, prop = _made(makes, m.group(1), m.start())[0], _camel(m.group(2))
         if (tag is None or tag in CONTROL_TAGS) and not FILL.match(prop):
             continue   # a control's border passes; an unknown element's is the reviewer's
         why = _decl_faults(prop, m.group(3)[1:-1], tag or "an element a script styles")
@@ -469,6 +503,15 @@ def selftest():
     expect("a made button's border", js('const b = document.createElement("button"); b.className = "j-btn is-on border"; b.style.border = "1px solid";'), 0)
     expect("a made button's fill", js('const b = document.createElement("button"); b.className = "bg-zinc-900";'), 1)
     expect("a made textarea drawn as a choice", js('const t = document.createElement("textarea"); t.className = "j-pick";'), 1)
+    expect("a reused name: the div's border is not judged as the later button's", js("function a() { const el = document.createElement('div'); el.className = 'card border'; }\nfunction b() { const el = document.createElement('button'); el.className = 'j-btn border'; }"), 1)
+    expect("a reused name: the button's border is not judged as the later div's", js("function a() { const el = document.createElement('button'); el.className = 'j-btn border'; el.style.border = '1px solid'; }\nfunction b() { const el = document.createElement('div'); }"), 0)
+    expect("a use above its only make is still judged as that tag", js("function dress() { d.className = 'border'; }\nconst d = document.createElement('div');"), 1)
+    expect("a made input drawn as a choice", js('const i = document.createElement("input"); i.className = "j-btn j-pick";'), 1)
+    expect("a made number input drawn as a choice", js('const i = document.createElement("input"); i.type = "number"; i.classList.add("j-pick");'), 1)
+    expect("a made checkbox drawn as a choice", js('const i = document.createElement("input"); i.type = "checkbox"; i.className = "j-pick";'), 0)
+    expect("a made radio, its type set by attribute", js("const i = document.createElement('input'); i.className = 'j-pick'; i.setAttribute('type', 'radio');"), 0)
+    expect("a made input as the typed line", js('const i = document.createElement("input"); i.className = "j-field";'), 0)
+    expect("a reused name: one input's type is not the next one's", js('let i = document.createElement("input"); i.type = "checkbox"; i.className = "j-pick";\ni = document.createElement("input"); i.className = "j-pick";'), 1)
     expect("the kit's own classes written by a script", js('root.innerHTML = `<button class="j-row"><span class="j-name">${n}</span></button><div class="j-row j-sum">`;'), 0)
     expect("script that compares, not markup", js('if (a < b && c > d) { x = "border"; }\n/* <div class="border"> */'), 0)
     if js('\n\nroot.innerHTML = `\n<div class="border">`;') != ['t.js:4: a box drawn by a utility class (\'border\' on <div>)']:
