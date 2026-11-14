@@ -47,7 +47,9 @@ made twice, by the nearest make above the use; a made input as a typed field
 unless the script sets its type to a choice's); on an
 element it did not make, which the lock cannot name, only a fill is flagged. What
 the lock cannot see (a box drawn by an image or a canvas, a class name a script
-computes, a border a script puts on an element it did not make) is the
+computes, a border a script puts on an element it did not make, a style a script
+sets any way but .style.<property> = "a string": cssText, setAttribute("style"),
+setProperty, Object.assign, a computed value) is the
 reviewer's, against the agreed reference build. Exit 0 passes; 1 names each fault.
 """
 import os
