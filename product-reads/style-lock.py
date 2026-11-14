@@ -11,12 +11,14 @@ thing is the (i) sheet, and controls carry none (his picks of 12 November 2026,
 
   style-lock.py build PATH...   a product's screens: its own stylesheets and markup
   style-lock.py kit [ROOT]      the kit itself: library/juku-style.css loads nothing
-                                from outside, and every value table (b) of
-                                library/juku-style.md names is in it
+                                from outside, every value table (b) of
+                                library/juku-style.md names is in it, and no rule
+                                on a bare element outranks the kit's own classes
+                                on text size or letter spacing
   style-lock.py --selftest
 
 `build` reads each file under PATH (.css .scss .html .htm .jsx .tsx .vue .svelte
-.astro), skipping node_modules, .git, build output, a `*-library/` folder (papers
+.astro, and a script: .js .mjs .cjs .ts), skipping node_modules, .git, build output, a `*-library/` folder (papers
 and pictures, never the build) and the kit's own stylesheet, which a product reads
 from this repository and never copies. It flags, naming file, line and rule:
   - a border, outline or box-shadow declared in a stylesheet or an inline style on
@@ -37,15 +39,25 @@ control's, the kit's .j-btn, .j-pick, .j-icon-btn, .j-field, .j-tab and .j-tabs
 aria-pressed, aria-selected or aria-checked state. A selector is judged by the
 element it styles, its last compound, never by a control it sits in, beside, or
 names in :not() or :has(). Zero, none and transparent draw
-nothing and pass. What the lock cannot see (a box drawn by an
-image, a canvas, a script's style) is the reviewer's, against the agreed
-reference build. Exit 0 passes; 1 names each fault.
+nothing and pass. A script is read for the markup it writes: the tags in its
+strings and template strings (JSX in a .js file too), judged as markup, and the
+classes and styles it puts on an element it makes with createElement (className,
+classList.add, setAttribute("class"), .style.border), judged as that tag (a name
+made twice, by the nearest make above the use; a made input as a typed field
+unless the script sets its type to a choice's); on an
+element it did not make, which the lock cannot name, only a fill is flagged. What
+the lock cannot see (a box drawn by an image or a canvas, a class name a script
+computes, a border a script puts on an element it did not make, a style a script
+sets any way but .style.<property> = "a string": cssText, setAttribute("style"),
+setProperty, Object.assign, a computed value) is the
+reviewer's, against the agreed reference build. Exit 0 passes; 1 names each fault.
 """
 import os
 import re
 import sys
 
-EXTS = (".css", ".scss", ".html", ".htm", ".jsx", ".tsx", ".vue", ".svelte", ".astro")
+SCRIPT_EXTS = (".js", ".mjs", ".cjs", ".ts")
+EXTS = (".css", ".scss", ".html", ".htm", ".jsx", ".tsx", ".vue", ".svelte", ".astro") + SCRIPT_EXTS
 SKIP_DIRS = {"node_modules", ".git", "dist", "build", "out", ".next", ".svelte-kit", "coverage"}
 KIT_FILE = "juku-style.css"
 
@@ -187,6 +199,97 @@ def _camel(k):
     return re.sub(r"[A-Z]", lambda m: "-" + m.group(0).lower(), k)
 
 
+def _tokens(classes):
+    return re.findall(r"[\w:\[\]/.#%()-]+", classes)
+
+
+def _class_faults(name, line, tag, control, typed, toks):
+    """The faults a class list makes on one element. tag None is an element a script dresses without
+    making it: what it is cannot be read, so only a fill, a fault on anything, is flagged."""
+    faults = []
+    known = tag is not None
+    dressed = sorted(DRESS_CLASSES & set(toks))
+    if known and dressed and not control:
+        faults.append(f"{name}:{line}: <{tag}> dressed as a control it is not ('{' '.join(dressed)}'); a choice is a button, a typed line an input")
+    chose = sorted(CHOICE_CLASSES & set(toks))
+    if control and chose and typed:
+        faults.append(f"{name}:{line}: a typed field drawn as a choice ('{' '.join(chose)}' on <{tag}>); a typed line is .j-field")
+    on = f"<{tag}>" if known else "an element a script dresses"
+    for tok in toks:
+        base = tok.split(":")[-1]
+        if UTILITY.match(base) and not UTILITY_NOTHING.match(base) and ((known and not control) or base.startswith("bg-")):
+            what = "a fill on a control" if control else "a box drawn" if known else "a fill"
+            faults.append(f"{name}:{line}: {what} by a utility class ('{tok}' on {on})")
+    return faults
+
+
+JS_STR = r"(\"[^\"\n]*\"|'[^'\n]*'|`[^`]*`)"
+JS_VAR = r"\b([A-Za-z_$][\w$]*)"
+MADE = re.compile(JS_VAR + r"\s*=\s*document\.createElement\(\s*['\"`]([\w-]+)['\"`]")
+CLASS_SETS = (re.compile(JS_VAR + r"\.className\s*\+?=\s*" + JS_STR),
+              re.compile(JS_VAR + r"\.setAttribute\(\s*['\"`]class['\"`]\s*,\s*" + JS_STR),
+              re.compile(JS_VAR + r"\.classList\.(?:add|toggle)\(([^)]*)\)"))
+STYLE_SET = re.compile(JS_VAR + r"\.style\.(border\w*|outline\w*|boxShadow|background(?:Color|Image)?)\s*=\s*" + JS_STR)
+TYPE_SETS = (re.compile(JS_VAR + r"\.type\s*=\s*" + JS_STR),
+             re.compile(JS_VAR + r"\.setAttribute\(\s*['\"`]type['\"`]\s*,\s*" + JS_STR))
+
+
+def _makes(text):
+    """Each createElement a script assigns to a name, in order: the name, the tag, where its reach
+    starts and ends (the next createElement of that name, or the file's end), and for an input the
+    type the script sets on it within that reach ("" when it sets none: a text field)."""
+    found = [(m.start(), m.group(1), m.group(2).lower()) for m in MADE.finditer(text)]
+    makes = {}
+    for at, var, tag in found:
+        if var in makes:
+            makes[var][-1][2] = at
+        makes.setdefault(var, []).append([at, tag, len(text), ""])
+    for pat in TYPE_SETS:
+        for m in pat.finditer(text):
+            for make in makes.get(m.group(1), []):
+                if make[0] <= m.start() < make[2]:
+                    make[3] = m.group(2)[1:-1].strip().lower()
+    return makes
+
+
+def _made(makes, var, at):
+    """What a name is at a use: the nearest createElement of that name above it, else the first below
+    (a use written above its make). (tag, typed), or (None, False) for a name the file never makes."""
+    mine = makes.get(var)
+    if not mine:
+        return None, False
+    above = [k for k in mine if k[0] <= at]
+    _, tag, _, ty = above[-1] if above else mine[0]
+    return tag, tag == "textarea" or (tag == "input" and ty in TYPED_INPUTS)
+
+
+def lock_script(text, name):
+    """A script: the markup it writes in its strings (and JSX in a .js file), read as markup, then the
+    classes and styles it puts on an element by name (className, classList.add, setAttribute("class"),
+    .style.border). An element the same file makes with createElement is judged as that tag, a name
+    made twice by the nearest make above the use, and a made input as a typed field unless the script
+    sets its type to a choice's; any other is unknown, and only a fill is flagged on it."""
+    text = re.sub(r"(?m)^[ \t]*//[^\n]*", lambda m: " " * len(m.group(0)), text)   # a whole-line // comment
+    faults = lock_markup(text.replace('\\"', ' "').replace("\\'", " '"), name)   # an escaped quote, same length
+    text = _blank_comments(text, "css")
+    makes = _makes(text)
+    for pat in CLASS_SETS:
+        for m in pat.finditer(text):
+            tag, typed = _made(makes, m.group(1), m.start())
+            toks = [t for lit in re.findall(JS_STR, m.group(2)) for t in _tokens(lit[1:-1])]
+            faults += _class_faults(name, _lineno(text, m.start()), tag, tag in CONTROL_TAGS, typed, toks)
+    for m in STYLE_SET.finditer(text):
+        tag, prop = _made(makes, m.group(1), m.start())[0], _camel(m.group(2))
+        if (tag is None or tag in CONTROL_TAGS) and not FILL.match(prop):
+            continue   # a control's border passes; an unknown element's is the reviewer's
+        if not m.group(3)[1:-1].strip():
+            continue   # an empty value clears a style; it draws nothing
+        why = _decl_faults(prop, m.group(3)[1:-1], tag or "an element a script styles")
+        if why:
+            faults.append(f"{name}:{_lineno(text, m.start())}: a script's style, {why}")
+    return faults
+
+
 def lock_markup(text, name):
     faults = []
     text = _blank_comments(text, "markup")
@@ -204,20 +307,10 @@ def lock_markup(text, name):
             continue
         line = _lineno(text, m.start())
         cl = CLASS_ATTR.search(attrs)
-        toks = re.findall(r"[\w:\[\]/.#%()-]+", cl.group(1)) if cl else []
-        dressed = sorted(DRESS_CLASSES & set(toks))
-        if dressed and not control:
-            faults.append(f"{name}:{line}: <{tag}> dressed as a control it is not ('{' '.join(dressed)}'); a choice is a button, a typed line an input")
-        chose = sorted(CHOICE_CLASSES & set(toks))
-        if control and chose:
-            ty = TYPE_ATTR.search(attrs)
-            ty = ty.group(1).strip("\"'{}` ").lower() if ty else ""
-            if tag == "textarea" or (tag == "input" and ty in TYPED_INPUTS):
-                faults.append(f"{name}:{line}: a typed field drawn as a choice ('{' '.join(chose)}' on <{tag}>); a typed line is .j-field")
-        for tok in toks:
-            base = tok.split(":")[-1]
-            if UTILITY.match(base) and not UTILITY_NOTHING.match(base) and (not control or base.startswith("bg-")):
-                faults.append(f"{name}:{line}: {'a fill on a control' if control else 'a box drawn'} by a utility class ('{tok}' on <{tag}>)")
+        ty = TYPE_ATTR.search(attrs)
+        ty = ty.group(1).strip("\"'{}` ").lower() if ty else ""
+        typed = tag == "textarea" or (tag == "input" and ty in TYPED_INPUTS)
+        faults += _class_faults(name, line, tag, control, typed, _tokens(cl.group(1)) if cl else [])
         if control:
             continue
         st = STYLE_ATTR.search(attrs)
@@ -241,6 +334,8 @@ def lock_markup(text, name):
 def lock_file(path, text):
     if path.endswith((".css", ".scss")):
         return lock_css(text, path)
+    if path.endswith(SCRIPT_EXTS):
+        return lock_script(text, path)
     return lock_markup(text, path)
 
 
@@ -268,6 +363,29 @@ def build(paths):
 VALUE = re.compile(r"#[0-9a-fA-F]{3,8}\b|rgba\([^)]*\)|cubic-bezier\([^)]*\)|-?\d*\.?\d+(?:px|ms|em|s)\b")
 
 
+TYPE_PROPS = {"font", "font-size", "letter-spacing"}
+WHERE = re.compile(r":where\((?:[^()]|\([^()]*\))*\)")
+
+
+def _outranks(bare):
+    """A kit rule that sets text size or letter spacing on a bare element (button, input) from under a
+    class: it outranks every one-class rule of the kit's own (.j-add, .j-field, .j-tab), whatever the
+    order, so the screen draws the bare rule's value and not the class's (the exam of 13 November 2026:
+    Add at 13.5px where the kit says 11.5px). Inside :where() it weighs nothing and the classes win."""
+    faults = []
+    for m in re.finditer(r"([^{};]+)\{([^{}]*)\}", bare):
+        props = {d.partition(":")[0].strip().lower() for d in m.group(2).split(";") if ":" in d}
+        if not props & TYPE_PROPS:
+            continue
+        for sel in _split_top(m.group(1), ","):
+            weighed = WHERE.sub("", sel)
+            if re.search(r"[.#\[]", weighed) and re.fullmatch(r"[a-zA-Z][\w-]*", _subject(weighed)):
+                faults.append(f"library/juku-style.css:{_lineno(bare, m.start(1) + len(m.group(1)) - len(m.group(1).lstrip()))}: "
+                              f"'{sel}' sets {', '.join(sorted(props & TYPE_PROPS))} on a bare element from under a class, "
+                              f"so it outranks the kit's own classes; put the selector in :where()")
+    return faults
+
+
 def kit(page_text, css_text):
     """The kit loads nothing from outside, and its page's table (b) repeats only its values."""
     faults = []
@@ -277,6 +395,7 @@ def kit(page_text, css_text):
     for u in re.findall(r"url\(\s*['\"]?([^)'\"]*)", bare, re.I):
         if not u.startswith("data:") and not u.startswith("#"):
             faults.append(f"library/juku-style.css: url({u}); the kit loads nothing from outside (products load it live)")
+    faults += _outranks(bare)
     if "## (b) The parts" not in page_text or "## (c)" not in page_text:
         return faults + ["library/juku-style.md: no '## (b) The parts' table before '## (c)'"]
     table = page_text.split("## (b) The parts", 1)[1].split("## (c)", 1)[0]
@@ -372,20 +491,55 @@ def selftest():
     expect("an inline JSX nothing", mk("<div style={{ borderWidth: 0 }}>"), 0)
     expect("a <style> card", mk("<html>\n<style>\n.card{border:1px solid}\n</style>"), 1)
     expect("a markup comment", mk('<!-- <div class="border"> --><p>x</p>'), 0)
+    # Scripts: the markup a script writes, and the classes and styles it puts on what it makes.
+    js = lambda t: lock_file("t.js", t)
+    expect("a card in a template string", js('root.innerHTML = `<div class="card border p-4">${x}</div>`;'), 1)
+    expect("a card in an escaped string", js('el.innerHTML = "<section class=\\"bg-zinc-900\\">";'), 1)
+    expect("JSX in a .js file", js('export const A = () => <div className="rounded border">x</div>;'), 1)
+    expect("a div dressed as a choice by a script", js("html += '<div class=\"j-btn j-pick\">Hem</div>';"), 1)
+    expect("an inline border a script writes", js('row.innerHTML = `<p style="border:1px solid red">`;'), 1)
+    expect("a <style> block a script writes", js('head.innerHTML = `<style>.card{border:1px solid}</style>`;'), 1)
+    expect("a made div given a border class", js('const d = document.createElement("div");\nd.className = "card border";'), 1)
+    expect("a made div given classes one by one", js("const d = document.createElement('div');\nd.classList.add('p-4', 'shadow-md', 'bg-zinc-900');"), 2)
+    expect("a made span dressed as a typed line", js('var s = document.createElement("span"); s.setAttribute("class", "j-field");'), 1)
+    expect("a made div's style", js('const d = document.createElement("div"); d.style.border = "1px solid"; d.style.boxShadow = "none";'), 1)
+    expect("a fill on an element the script did not make", js('el.classList.add("bg-zinc-900"); el.style.background = "#111";'), 2)
+    expect("a border on an element the script did not make is the reviewer's", js('el.className = "border"; el.style.border = "1px solid";'), 0)
+    expect("a made button's border", js('const b = document.createElement("button"); b.className = "j-btn is-on border"; b.style.border = "1px solid";'), 0)
+    expect("a made button's fill", js('const b = document.createElement("button"); b.className = "bg-zinc-900";'), 1)
+    expect("a made textarea drawn as a choice", js('const t = document.createElement("textarea"); t.className = "j-pick";'), 1)
+    expect("a reused name: the div's border is not judged as the later button's", js("function a() { const el = document.createElement('div'); el.className = 'card border'; }\nfunction b() { const el = document.createElement('button'); el.className = 'j-btn border'; }"), 1)
+    expect("a reused name: the button's border is not judged as the later div's", js("function a() { const el = document.createElement('button'); el.className = 'j-btn border'; el.style.border = '1px solid'; }\nfunction b() { const el = document.createElement('div'); }"), 0)
+    expect("a use above its only make is still judged as that tag", js("function dress() { d.className = 'border'; }\nconst d = document.createElement('div');"), 1)
+    expect("a made input drawn as a choice", js('const i = document.createElement("input"); i.className = "j-btn j-pick";'), 1)
+    expect("a made number input drawn as a choice", js('const i = document.createElement("input"); i.type = "number"; i.classList.add("j-pick");'), 1)
+    expect("a made checkbox drawn as a choice", js('const i = document.createElement("input"); i.type = "checkbox"; i.className = "j-pick";'), 0)
+    expect("a made radio, its type set by attribute", js("const i = document.createElement('input'); i.className = 'j-pick'; i.setAttribute('type', 'radio');"), 0)
+    expect("a made input as the typed line", js('const i = document.createElement("input"); i.className = "j-field";'), 0)
+    expect("a reused name: one input's type is not the next one's", js('let i = document.createElement("input"); i.type = "checkbox"; i.className = "j-pick";\ni = document.createElement("input"); i.className = "j-pick";'), 1)
+    expect("a style a script clears", js('const d = document.createElement("div"); d.style.border = ""; el.style.background = "";'), 0)
+    expect("a script's commented-out line", js('// root.innerHTML = `<div class="border">`;\n  // d.style.background = "#111";'), 0)
+    expect("a // inside a string is no comment", js('a.href = "https://x.test"; root.innerHTML = `<div class="border">`;'), 1)
+    expect("the kit's own classes written by a script", js('root.innerHTML = `<button class="j-row"><span class="j-name">${n}</span></button><div class="j-row j-sum">`;'), 0)
+    expect("script that compares, not markup", js('if (a < b && c > d) { x = "border"; }\n/* <div class="border"> */'), 0)
+    if js('\n\nroot.innerHTML = `\n<div class="border">`;') != ['t.js:4: a box drawn by a utility class (\'border\' on <div>)']:
+        bad += 1
+        print("FAIL selftest: a script's fault does not name its line:", js('\n\nroot.innerHTML = `\n<div class="border">`;'))
     # The walk: the kit's own file, node_modules and a product's library are not the build.
     import tempfile
     with tempfile.TemporaryDirectory() as d:
         for rel, body in {"src/app.css": ".j-sum{border-top:1px solid}", "src/juku-style.css": ".card{border:1px solid}",
                           "node_modules/x/a.css": ".card{border:1px solid}", "hemz-library/design/a.html": '<div class="border">',
-                          "src/A.tsx": '<div className="card border">'}.items():
+                          "src/A.tsx": '<div className="card border">',
+                          "src/draw.js": "root.innerHTML = '<p class=\"j-name\">x</p>';"}.items():
             os.makedirs(os.path.join(d, os.path.dirname(rel)), exist_ok=True)
             with open(os.path.join(d, rel), "w") as fh:
                 fh.write(body)
         f, seen = build([d])
         expect("the walk", f, 1)
-        if seen != 2:
+        if seen != 3:
             bad += 1
-            print(f"FAIL selftest: the walk read {seen} files, not 2")
+            print(f"FAIL selftest: the walk read {seen} files, not 3 (a script is read)")
     # The kit: nothing from outside; table (b) holds only the stylesheet's values.
     here = os.path.dirname(os.path.abspath(__file__))
     page = os.path.join(here, "..", "library", "juku-style.md")
@@ -396,6 +550,9 @@ def selftest():
         expect("an @import in the kit", kit(p, s + "\n@import url(x.css);"), 2)
         expect("a url() in the kit", kit(p, s + "\n.a{background:url(https://example.com/k?)}"), 1)
         expect("a data: url in the kit", kit(p, s + "\n.a{background:url(data:image/png;base64,AA)}"), 0)
+        expect("a bare-element rule that outranks the kit's classes", kit(p, s + "\n.j-page button,.j-add{font-size:inherit}"), 1)
+        expect("the same inside :where()", kit(p, s + "\n:where(.j-page) button{font-size:inherit}:where(.j-page button){letter-spacing:inherit}"), 0)
+        expect("a bare element's box, not its type", kit(p, s + "\n.j-back svg{width:18px}.j-screen button:active{transform:none}"), 0)
         expect("a table value off the sheet", kit(p.replace("| 64px tall", "| 65px tall", 1), s), 1)
     else:
         bad += 1

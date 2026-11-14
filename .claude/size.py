@@ -106,7 +106,8 @@ pieces), in the same repositories as the guard:
 The size is read from the transcript the platform names in each call's own
 `transcript_path`, never found by the working directory, which a session can
 leave. A session it cannot measure (no `transcript_path`, a file that will not
-open, one with no usage in it, or a hook that raises) fails closed: before a call,
+open, one holding no message, one whose model turns carry no usage, or a hook
+that raises; never a session at its start, below) fails closed: before a call,
 everything is refused until it can see but the checkpoint, loading a tool, and
 the repair of the hook itself (reading or editing `.claude/size.py` or
 `.claude/settings.json`, or a command that is a run of `.claude/size.py` and
@@ -116,9 +117,11 @@ compile, or input that is not a JSON object) fails open: the platform runs the
 call, so a broken repair is caught by `--selftest` before anything is pushed. Starting a successor is refused too: it would
 be as blind, so a blindness every session shares stops at one checkpoint for the
 person to see, never a chain. After every call and at the end of a turn it tells
-the session, and the person, that it is blind and why. A call's own turn is in
-the transcript before its hook runs (shown on 12 November 2026), so a fresh
-session's first call is measured, not blind. The words of a
+the session, and the person, that it is blind and why. A fresh session's first
+call runs before its first model turn is written (shown on 12 November 2026,
+#416: this repository's session and two of Hemz OS's were refused their first
+calls): a transcript that opens holding the session's first message and no
+model turn at all is a session at its start, read as size 0, not blind. The words of a
 `create_trigger` or `update_trigger` are checked all the same: they are in
 the call, not the transcript.
 
@@ -223,6 +226,8 @@ def read(transcript_path):
         return None
     size = 0
     seen = False
+    spoke = False     # a main-thread model turn is in the transcript, with usage or without
+    asked = False     # the session's own first message is
     checkpointed = False
     tool_uses = 0
     pending = set()   # checkpoint calls made past the line, awaiting their result
@@ -242,6 +247,7 @@ def read(transcript_path):
             if not isinstance(m, dict):
                 continue
             if d.get("type") == "user":
+                asked = True
                 content = m.get("content")
                 # the task's words: the first message before any reply that carries a Ticket: line,
                 # so a note or caveat the surface puts first does not hide it
@@ -267,6 +273,7 @@ def read(transcript_path):
                 continue
             if d.get("type") != "assistant":
                 continue
+            spoke = True
             u = m.get("usage")
             if isinstance(u, dict):
                 n = sum(int(u.get(k) or 0) for k in
@@ -296,7 +303,7 @@ def read(transcript_path):
                         starts.add(c.get("id"))
                 if (checkpointed or pending) and _ends(name, START_TOOLS):   # after the checkpoint, or beside it in one turn
                     starts.add(c.get("id"))
-    if not seen:
+    if not seen and (spoke or not asked):
         return None
     return size, checkpointed, tool_uses, guard, succeeded
 
@@ -662,7 +669,8 @@ def decide(event, tool_name, tool_input, state, tk=None, blind=None):
     if (event == "PreToolUse" and tk is not None and not state[3]["booted"]
             and _ends(tool_name or "", COMMENT_TOOLS)
             and BOOT_LINE_RE.search((tool_input.get("body") or "").lstrip())):
-        why = boot_problem(tool_input.get("body") or "", state)
+        why = ("size hook: this session's first model turn is not in the transcript yet, so its boot cannot be "
+               "measured; make one other call first, then post this") if not size else boot_problem(tool_input.get("body") or "", state)
         if why:
             return _deny(why)
     if event == "PreToolUse":
@@ -901,6 +909,14 @@ def selftest():
         ("and says so, loud, to the session and the person", (lambda a: a.get("decision") == "block" and
          "blind" in a.get("reason", "") and "blind" in a.get("systemMessage", ""))(decide("PostToolUse", "Bash", {}, None))),
         ("and at a turn's end", "blind" in json.dumps(decide("Stop", None, {}, None))),
+        ("a transcript holding no model turn yet is a session at its start, not blind",
+         (lambda st: st is not None and st[0] == 0 and decide("PreToolUse", "Bash", {}, st) is None)(
+             _state([json.dumps({"type": "user", "message": {"content": "build"}})]))),
+        ("a model turn carrying no usage is still blind, after the session's first message too",
+         _state([json.dumps({"type": "user", "message": {"content": "build"}}),
+                 json.dumps({"type": "assistant", "message": {"content": [], "usage": {}}})]) is None),
+        ("a transcript holding no message at all is blind",
+         _state([json.dumps({"type": "system", "subtype": "init"})]) is None),
     ]
     _band_cases(cases, C, good)
     _successor_cases(cases, C, good)
@@ -1347,6 +1363,9 @@ def _boot_cases(cases, tk, C):
         ("a guessed ours figure is refused", _denied(decide("PreToolUse", C,
          {"body": "Resumed: clean\nBoot: platform 105k, ours 1k"}, s, tk))),
         ("a product, carrying no ticket.py, is not held", decide("PreToolUse", C, {"body": "Resumed: clean"}, s, None) is None),
+        ("at a session's start, before any model turn, no boot line passes: 0k would be a false boot",
+         (lambda st: st[0] == 0 and _denied(decide("PreToolUse", C, {"body": "Resumed: clean\n" + boot_line(st)}, st, tk)))(
+             _state([json.dumps({"type": "user", "message": {"content": "build"}})]))),
     ]
     big = small[:-2] + [_call(150_000, "Bash", {"command": "cat a"}, "c"), _read_result("c", 20_000),
                         _call(151_000, "mcp__github__issue_read", {"method": "get_comments", "issue_number": 363}, "d"),
