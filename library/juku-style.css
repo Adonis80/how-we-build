@@ -254,6 +254,21 @@ html{-webkit-text-size-adjust:100%;color-scheme:dark}
    set style="--i:n" on each, 0 for the head */
 .j-screen.is-forward .j-level.is-on .j-in{animation:j-rise var(--j-rise) var(--j-ease) both;animation-delay:calc(var(--i,0) * var(--j-rise-step))}
 @keyframes j-rise{from{opacity:0;transform:translateY(var(--j-rise-y))}to{opacity:1;transform:none}}
+/* the desktop composition (the CTO's, on his word of 14 November 2026, #427): on a window at least two boards and a
+   gutter either side wide (808px, the one breakpoint), a screen with .is-fill that has opened a level stands two boards
+   wide, the opened level on the right and the level it came from beside it on the left, read clear and still inert; the
+   bar spans both; a level two behind leaves. Desktop spends its width on context, not extras (HyperSolid, Screen law 19):
+   same levels, same order, same states. At the top level it is one board, as on a phone. No new value but the breakpoint. */
+@media (min-width:808px){
+  .j-screen.is-fill{transition:max-width var(--j-t-slow) var(--j-ease)}
+  .j-screen.is-fill:has(.j-level.is-behind-1){max-width:calc(2 * 390px)}
+  .j-screen.is-fill .j-level{transition:left var(--j-t-slow) var(--j-ease),right var(--j-t-slow) var(--j-ease),transform var(--j-t-slow) var(--j-ease),
+    opacity var(--j-t-slow) var(--j-ease),filter var(--j-t-slow) var(--j-ease),visibility 0s linear var(--j-t-slow)}
+  .j-screen.is-fill .j-level.is-on,.j-screen.is-fill .j-level.is-behind-1{transition-delay:0s}
+  .j-screen.is-fill:has(.j-level.is-behind-1) .j-level.is-on{left:50%}
+  .j-screen.is-fill:has(.j-level.is-behind-1) .j-level.is-behind-1{right:50%;opacity:1;filter:none;transform:none}
+  .j-screen.is-fill .j-level.is-behind-2{visibility:hidden;opacity:0}
+}
 @media (prefers-reduced-motion:reduce){
   .j-level{transition:none!important}
   .j-in{animation:none!important}
