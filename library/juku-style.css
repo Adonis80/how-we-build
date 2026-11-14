@@ -204,8 +204,9 @@ html{-webkit-text-size-adjust:100%;color-scheme:dark}
   transition:color var(--j-t-fast) var(--j-ease),border-color var(--j-t-fast) var(--j-ease)}
 .j-btn:hover{color:var(--j-ink);border-color:var(--j-line-strong)}
 .j-btn.is-on{color:var(--j-gold);border-color:var(--j-gold-edge)}  /* Button B, his pick of 12 Nov 2026: outline only, 13.5px, no fill resting or selected */
-/* Done [.tbtn.pf-done] — green text and green edge */
-.j-done{gap:6px;color:var(--j-green);border-color:var(--j-green-edge)}
+/* Done [.tbtn.pf-done] — green text and green edge, at the size he approved on the formula screen
+   (11.5px, 8px by 11px), not Button B's: his word of 14 Nov 2026, "Done A" (#423) */
+.j-done{gap:6px;color:var(--j-green);border-color:var(--j-green-edge);font-size:var(--j-fs-ctl);padding:8px 11px}
 .j-done svg{width:14px;height:14px}           /* path "M5 12.5l4.5 4.5L19 7.5", stroke 2.6 */
 /* a typed line — Field B, his pick of 12 Nov 2026: no box, a faint line under it that turns gold while it has focus */
 .j-field{width:100%;background:none;border:0;border-bottom:1px solid var(--j-line);border-radius:0;padding:0;min-height:var(--j-field-h);
