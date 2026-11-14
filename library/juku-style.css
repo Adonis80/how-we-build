@@ -158,11 +158,11 @@ html{-webkit-text-size-adjust:100%;color-scheme:dark}
 .j-page::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;background:var(--j-wash)}
 .j-page input,.j-page button,.j-page textarea,.j-page select{font-family:inherit;font-size:inherit;letter-spacing:inherit}
 
-/* the screen [.r6.pf] — boards are 390 × 844; a build may let it fill the viewport (generalised) */
+/* the screen [.r6.pf] — boards are 390 × 844; a build fills the window with .is-fill (generalised) */
 .j-screen{width:390px;height:844px;position:relative;overflow:hidden;background:var(--j-ground);color:var(--j-ink);
   font-family:var(--j-body);font-size:var(--j-fs-body);line-height:var(--j-lh-body);font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
-/* DRAFT, his to approve by looking: the screen filling the window on a real phone, capped at the board's width and
-   centred on anything wider. No new value: 390px is the board's own. 100vh first for a browser without dvh. */
+/* the screen filling the window (his word, 14 November 2026: "Fill the screen to the window", #424), capped at the
+   board's width and centred on anything wider. No new value: 390px is the board's own. 100vh first for a browser without dvh. */
 .j-screen.is-fill{width:100%;max-width:390px;height:100vh;height:100dvh;margin:0 auto}
 .j-screen button:focus-visible,.j-screen input:focus-visible{outline:1px solid var(--j-gold);outline-offset:2px}
 /* the press — a damped mechanical switch, not a spring */
