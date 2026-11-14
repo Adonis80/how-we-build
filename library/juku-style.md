@@ -30,7 +30,7 @@ Words and figures sit straight on a near-black ground, like a private-bank state
 | Brand (top level only) | 9.5px / 600 capitals, .2em, `#BFB9A9` | `.j-brand` |
 | Bar rule | 1px line `rgba(255,255,255,.055)` filling the gap | `.j-bar-rule` |
 | (i) button | 44×44, 1px `rgba(255,255,255,.10)` border, 2px corners, icon 17px | `.j-icon-btn` |
-| Done | bordered control, green text, green border at 45% | `.j-btn .j-done` |
+| Done | bordered control, green text, green border at 45%; 11.5px text, 8px by 11px sides, as on the formula screen he approved on 4 and 5 November 2026, not Button B's 13.5px and 14px (his word of 14 November 2026, by picture, on [issue 423](https://github.com/Adonis80/how-we-build/issues/423): *"Done A"*) | `.j-btn .j-done` |
 | Explainer (behind the (i)) | `#131417` sheet under the bar, 12.5px / 1.55 `#E0DCCE`, shadow `0 30px 50px -20px rgba(0,0,0,.95)` | `.j-info` |
 | Level | padding 76px top, 14px sides, 26px bottom; scrolls without a scrollbar | `.j-level` |
 | Deeper level veil | ground at 66% fading to 38% | `.j-level.is-deep` |
