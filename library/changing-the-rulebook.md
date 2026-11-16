@@ -14,6 +14,6 @@ By pull request only; `main` is protected. `check.sh` runs in CI and refuses a f
 
 **Batches.** Word changes go in several small pull requests, each one dependency-coherent and asked once per round (his brief, 9 October 2026: small reviews cost cents). A page is moved, merged or reworded whenever that removes stale, duplicated or conflicting text, every operative condition kept whole at its owner and each conflict listed in its pull request, inside a change that touches it or as cleanup of its own ([decision 0017](../juku-library/DECISION-0017-SIZE-SIGNALS-AND-RECONCILIATION.md), his goal of 8 October 2026: dead text *"deleted so that the rulebook will always be completely up to date and current"*; [decision 0016](../juku-library/DECISION-0016-LOCALISED-REVIEWS.md) H). Rulings made under the lifted tidying freezes stay quoted in their own pull requests and records.
 
-**A ruling of his about how we build is not on the record until it is in this repository**, exactly as a product decision is not until it is in that product's.
+**A ruling of his about how we build is not on the record until it is in this repository**, exactly as a product decision is not until it is in that product's; the session he gives it to writes it there, in that same session (`HOW-WE-BUILD.md`, *Changing a rule*).
 
 **The upgrade log.** A pull request that changes what runs adds its one line to `library/upgrade-log.md` in the same pull request; the gate is red until the pull request changes that page, and the cold review reads that the change is its line.

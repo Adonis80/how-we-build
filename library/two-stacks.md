@@ -33,8 +33,7 @@ flowchart LR
 **Whichever stack leads, his part is only a tap no hand may make.** The hands may not sign in for him, type a password or a secret into a web page, get past an are-you-human check, pay, or approve a sign-in key on his account by themselves; nor can they send his opener or make the one whole-file edit the platform keeps from every session (`library/his-opener.md`, which says that only a session he opened asks him for either). A session takes such a job to that one tap and hands him the tap alone — the link, what he will see, the words to reply — never the job, and never a choice of how.
 
 **The effort ladder** (his ruling, 28 September 2026, quoted whole on [#124](https://github.com/Adonis80/how-we-build/pull/124)).
-- **Medium** for small, clear fixes.
-- **High** is the default for product slices, and the lead runs there.
+- **High** is where every session runs, a small fix's included (`HOW-WE-BUILD.md`, *Sessions*, which withdrew the Medium step this ruling gave small, clear fixes).
 - **Max** only for knotty work with several interlocking business rules, or a failure diagnosed as a reasoning limit. The lead stays at high and hands that one bounded piece to the product's max subagent, at the model and effort of the registry's `max-subagent` role (library/max-subagent.md). **xhigh** is a middle step where it fits.
 - **Never step up just because a check failed.** Diagnose first: a broken setup, missing product truth, a dependency, an oversized slice. Fix the cause or shrink the slice, and step back down once the hard part is done.
 
