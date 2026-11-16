@@ -89,9 +89,10 @@ time is a clock and never wakes a session"), wherever this file runs:
   evidence, since an update that omits the fields can leave an old schedule
   standing; one whose result is silent on them leaves the task unknown.
 
-The effort lock (his instruction of 16 November 2026, on record only in the
-CTO's words: library/session-changeover.md, *The daisy chain*; every session
-runs at high effort, one a session starts included), wherever this file runs:
+The effort lock (his instruction of 16 November 2026, put to him in the CTO's
+words and answered "Go": library/session-changeover.md, *The daisy chain*;
+every session runs at high effort, one a session starts included), wherever
+this file runs:
 
 - Before a call, a `create_session` whose `effort` is not `high`, or that names
   no `source_url` (its one repository), is refused.
