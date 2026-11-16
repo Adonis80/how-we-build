@@ -89,6 +89,19 @@ time is a clock and never wakes a session"), wherever this file runs:
   evidence, since an update that omits the fields can leave an old schedule
   standing; one whose result is silent on them leaves the task unknown.
 
+The effort lock (his instruction of 16 November 2026, on record only in the
+CTO's words: library/session-changeover.md, *The daisy chain*; every session
+runs at high effort, one a session starts included), wherever this file runs:
+
+- Before a call, a `create_session` whose `effort` is not `high`, or that names
+  no `source_url` (its one repository), is refused.
+- Before a call, once the transcript shows this session's own newest turn ran
+  below high (`perTurnEffort`, else `effort`, on a main-thread model turn: low
+  or medium), every call is refused but a comment and loading a tool, so the
+  session says so once and stops. A level above high is his to set and is left
+  alone; a transcript that records no effort refuses nothing, and a subagent's
+  turn is never the session's.
+
 The boot measured (his ruling, 5 November 2026, 18:15, on #363, "I agree to
 your upgrade": every fresh session, before any work, posts one line on its
 issue, its starting size split into what the platform loads and what we made
@@ -144,7 +157,10 @@ SLACK_K = 20        # a Size: line's figure may sit this many k off the real one
 
 COMMENT_TOOLS = ("__add_issue_comment", "__update_issue_comment")
 START_TOOLS = ("__fire_trigger", "__create_session")   # a successor start, for the successor lock
-SUCCESSOR_TOOLS = ("__create_trigger", "__update_trigger", "__fire_trigger", "__list_triggers")
+SUCCESSOR_TOOLS = ("__create_trigger", "__update_trigger", "__fire_trigger", "__list_triggers", "__create_session")
+SPAWN_TOOLS = ("__create_session",)   # the daisy chain's start, for the effort lock
+EFFORT = "high"                       # every session's effort
+BELOW = ("low", "medium")             # the levels a running session is refused at
 ALWAYS = ("ToolSearch",)
 WORDS_TOOLS = ("__create_trigger", "__update_trigger")
 LIST_TOOLS = ("__list_triggers",)
@@ -233,7 +249,7 @@ def read(transcript_path):
     pending = set()   # checkpoint calls made past the line, awaiting their result
     succeeded = False
     starts = set()    # successor starts after it, and checkpoints naming none, awaiting their result
-    guard = {"first": None, "booted": False, "words": None, "reads": [], "tasks": {}}
+    guard = {"first": None, "booted": False, "words": None, "reads": [], "tasks": {}, "effort": None}
     boot_calls, word_calls, labels, task_calls = set(), {}, {}, {}
     with f:
         for raw in f:
@@ -274,6 +290,9 @@ def read(transcript_path):
             if d.get("type") != "assistant":
                 continue
             spoke = True
+            ran = d.get("perTurnEffort") or d.get("effort")
+            if isinstance(ran, str):
+                guard["effort"] = ran   # the newest main-thread turn's, for the effort lock
             u = m.get("usage")
             if isinstance(u, dict):
                 n = sum(int(u.get(k) or 0) for k in
@@ -422,6 +441,26 @@ def clock(tool_name, tool_input, state):
     if known:
         return _deny(f"size hook: `{tid}` still carries a clock (`{'`, `'.join(known)}`), and a task with one never "
                      f"wakes a session (library/session-changeover.md; #378). Clear it with `update_trigger` first")
+    return None
+
+
+def effort_lock(tool_name, tool_input, state):
+    """The effort lock's refusal, or None."""
+    name = tool_name or ""
+    ran = state[3].get("effort") if state else None
+    if ran in BELOW and name not in ALWAYS and not _ends(name, COMMENT_TOOLS):
+        return _deny(f"size hook: this session runs at {ran} effort, and every session runs at high (HOW-WE-BUILD.md, "
+                     f"*Sessions*). Say so once, on the item it was started for or to him, and stop: every other call "
+                     f"is refused until its turns run at high")
+    if not _ends(name, SPAWN_TOOLS):
+        return None
+    if tool_input.get("effort") != EFFORT:
+        return _deny(f"size hook: a session is started at `effort: \"high\"` (HOW-WE-BUILD.md, *Sessions*; "
+                     f"library/session-changeover.md, *The daisy chain*); this call carries "
+                     f"`{tool_input.get('effort') or 'none'}`. Pass it")
+    if not tool_input.get("source_url"):
+        return _deny("size hook: a session is started on one repository, named in `source_url` "
+                     "(library/session-changeover.md, *The daisy chain*). Pass it")
     return None
 
 
@@ -651,7 +690,7 @@ def keep_asked(path, asked, stops=STOPS):
 def decide(event, tool_name, tool_input, state, tk=None, blind=None):
     """The hook's JSON answer, or None to stay silent."""
     tool_input = tool_input if isinstance(tool_input, dict) else {}
-    refused = clock(tool_name, tool_input, state) if event == "PreToolUse" else None
+    refused = (clock(tool_name, tool_input, state) or effort_lock(tool_name, tool_input, state)) if event == "PreToolUse" else None
     if refused:
         return refused
     refused = guard(event, tool_name, tool_input, state, tk)
@@ -684,7 +723,7 @@ def decide(event, tool_name, tool_input, state, tk=None, blind=None):
             return None
         if checkpointed:
             return _deny(f"size hook: {k}, past the hard stop of 350k with the checkpoint written; the only "
-                         f"actions left are starting the successor (create/update/fire_trigger) and ending the turn")
+                         f"actions left are starting the successor (create/update/fire_trigger, or create_session) and ending the turn")
         return _deny(f"size hook: {k}, past the hard stop of 350k; every action is refused but writing "
                      f"the handover checkpoint, posted with the issue-comment tool (`add_issue_comment`), its first line `Checkpoint:`, with its `Size:` line")
     demand = (f"size hook: {k}, past the 280k line. Write the handover checkpoint now "
@@ -922,6 +961,7 @@ def selftest():
     _successor_cases(cases, C, good)
     _path_cases(cases)
     ok = _guard_cases(cases)
+    _effort_cases(cases, C, good)
     here = os.path.dirname(os.path.abspath(__file__))
     try:
         hooks = json.load(open(os.path.join(here, "settings.json"))).get("hooks", {})
@@ -985,6 +1025,43 @@ def _clock_cases(cases, U, F, T):
         ("a list after a clearing update decides", _denied(decide("PreToolUse", F, T, _state(
             [_turn(96_000, "Bash"), _call(97_000, U, T, "u"), _trig_result("u", clear),
              _call(98_000, L, {}, "l"), _trig_result("l", json.dumps([{"id": "trig_X", "cron_expression": None, "run_once_at": "2026-11-07T09:00:00Z"}]))])))),
+    ]
+
+
+def _effort_cases(cases, C, good):
+    """The effort lock (his instruction, 16 November 2026): a session runs at high, and starts one at nothing else."""
+    S = "mcp__claude-code-remote__create_session"
+    def at(level, sidechain=False):
+        d = json.loads(_turn(96_000, "Bash", sidechain=sidechain))
+        d.update({"effort": level, "perTurnEffort": level})
+        return json.dumps(d)
+    s0 = _state([_turn(96_000, "Bash")])
+    low = _state([at("medium")])
+    start = {"prompt": "p", "effort": "high", "source_url": "https://github.com/Adonis80/how-we-build"}
+    cases += [
+        ("a session whose turns run at medium is refused its calls", _denied(decide("PreToolUse", "Bash", {}, low))),
+        ("and a start of another, even at high", _denied(decide("PreToolUse", S, start, low))),
+        ("but may say so in a comment", decide("PreToolUse", C, {"body": "This session came up at medium; stopping."}, low) is None),
+        ("and may load a tool", decide("PreToolUse", "ToolSearch", {}, low) is None),
+        ("a session at low is refused too", _denied(decide("PreToolUse", "Edit", {}, _state([at("low")])))),
+        ("a session at high is not", decide("PreToolUse", "Bash", {}, _state([at("high")])) is None),
+        ("nor one he set above high", decide("PreToolUse", "Bash", {}, _state([at("max")])) is None),
+        ("a transcript recording no effort refuses nothing", s0[3]["effort"] is None and decide("PreToolUse", "Bash", {}, s0) is None),
+        ("the newest turn decides: set to high, the session works again",
+         decide("PreToolUse", "Bash", {}, _state([at("medium"), at("high")])) is None),
+        ("a subagent's turn is not the session's effort",
+         decide("PreToolUse", "Bash", {}, _state([at("high"), at("medium", sidechain=True)])) is None),
+        ("a start at high on one repository passes", decide("PreToolUse", S, start, s0) is None),
+        ("a start naming no effort is refused", _denied(decide("PreToolUse", S, {k: v for k, v in start.items() if k != "effort"}, s0))),
+        ("a start at medium is refused", _denied(decide("PreToolUse", S, dict(start, effort="medium"), s0))),
+        ("a start at max is refused", _denied(decide("PreToolUse", S, dict(start, effort="max"), s0))),
+        ("a start naming no repository is refused", _denied(decide("PreToolUse", S, {"prompt": "p", "effort": "high"}, s0))),
+        ("and refused with an unreadable transcript too", _denied(decide("PreToolUse", S, {"prompt": "p"}, None))),
+    ]
+    s = _state([_turn(96_000, "Bash"), _turn(355_000, C, good.replace("310k", "355k"), id="cp"), _result("cp")])
+    cases += [
+        ("past the hard stop, with the checkpoint written, a start at high passes", decide("PreToolUse", S, start, s) is None),
+        ("and other work is still refused there", _denied(decide("PreToolUse", "Bash", {}, s))),
     ]
 
 
