@@ -13,7 +13,7 @@
 # machinery while the newest canary on main is red, or a change to what runs that adds
 # no line to library/upgrade-log.md, and, through product-reads/rules-check.py,
 # a rule change without its Replaces: line or a constitution off its headings,
-# a size hook (.claude/size.py) that no longer holds his 300k/350k lines,
+# a size hook (.claude/size.py) that no longer holds his size lines,
 # a ticket check (product-reads/ticket.py) that no longer refuses a ticket that
 # does not resolve or is over its cap, and a design brief check (product-reads/brief-check.py) that no longer refuses
 # a brief that plans the screen, overloads it or skips its slots, and a style lock
@@ -290,7 +290,7 @@ python3 -I product-reads/style-lock.py --selftest || { echo "FAIL: product-reads
 python3 -I product-reads/style-lock.py kit . || { echo "FAIL: the Juku style kit loads something from outside, or its page names a value its stylesheet does not hold — see above."; fail=1; }
 python3 -I product-reads/setup.py --selftest || { echo "FAIL: product-reads/setup.py no longer sets a product up as decision 0013 says — see the case above."; fail=1; }
 python3 -I product-reads/ticket.py --selftest || { echo "FAIL: product-reads/ticket.py no longer refuses a ticket that does not resolve or hands a successor more than its cap — see the case above."; fail=1; }
-python3 -I .claude/size.py --selftest || { echo "FAIL: .claude/size.py no longer holds a session to his 300k/350k lines, or is no longer wired before and after every tool call — see the case above."; fail=1; }
+python3 -I .claude/size.py --selftest || { echo "FAIL: .claude/size.py no longer holds a session to his size lines, or is no longer wired before and after every tool call — see the case above."; fail=1; }
 python3 -I product-reads/kit/review-gate.py --selftest || { echo "FAIL: the starter kit's gate no longer counts what it must — see the case above."; fail=1; }
 fi
 # WHICH EVENTS THE GATE RUNS ON, WRITTEN AS WHAT IT SKIPS RATHER THAN WHAT IT
