@@ -13,13 +13,14 @@ at 280k, a warn band from 250k, a look at the end of every turn, and blind fails
 closed. His word of 18 November 2026, about 12:30 UTC, in the coordinator's chat,
 on why the line sat near 300,000 (Anthropic's own guidance): "if we can try
 building up to 500,000 tokens and see if the degradation is serious or
-negligible." The three figures set under it, warn 440,000, checkpoint 470,000,
-hard stop 500,000, are the coordinator's.
+negligible." (filed on Adonis80/how-we-build#433, comment 6984338028). The three
+figures set under it, warn 440,000, checkpoint 470,000, hard stop 500,000, are the
+coordinator's.
 
 A TRIAL, not a settled line. Quality before and after 300k is being measured
 (blocking review findings and rework, set against the size each checkpoint's
-`Size:` line records), and rolling the three figures back is allowed if quality
-drops. A rollback is those three numbers and the pages that state them
+`Size:` line records), and the CTO may roll the three figures back if quality
+drops, recording it on #433. A rollback is those three numbers and the pages that state them
 (`library/session-changeover.md`, `HOW-WE-BUILD.md`, *Sessions*).
 
 `.claude/settings.json` runs this file before (PreToolUse) and after
