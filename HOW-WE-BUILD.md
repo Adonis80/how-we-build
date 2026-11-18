@@ -30,7 +30,7 @@
 
 **The pull request is the handover**: `Lead stack`, `Reviewed by`, objective, acceptance criteria, done, remaining, checks, evidence, preview, next action, rollback. Kept current when work stops. Truth is the repository and the running product, never conversation.
 
-**Sessions.** Weigh staying against starting fresh at each boundary; hand over at a met brief, degradation, 280,000 tokens (warned from 250,000; past 350,000, or while it cannot measure, the size hook refuses all but the handover); no smaller size is a reason to hand over (his word, 9 November 2026: *"The limit is anything over 300,000."*, moved to 280,000 by his word of 12 November 2026, *"I agree with all of your suggestions"*; `library/session-changeover.md`).
+**Sessions.** Weigh staying against starting fresh at each boundary; hand over at a met brief, degradation, 470,000 tokens (warned from 440,000; past 500,000, or while it cannot measure, the size hook refuses all but the handover); no smaller size is a reason to hand over. The figures are a trial, rolled back if quality drops (his word, 9 November 2026: *"The limit is anything over 300,000."*, moved to 280,000 by his word of 12 November 2026, *"I agree with all of your suggestions"*, and to 470,000 by his word of 18 November 2026: *"if we can try building up to 500,000 tokens and see if the degradation is serious or negligible"*; `library/session-changeover.md`).
 
 **When something goes wrong**: reproduce; repair or delete the cause; add the smallest regression test; shrink the slice; change method after two identical failures; start fresh on a file you keep changing, or a rule restated not applied. Never answer a failure with a new rule or agent.
 
