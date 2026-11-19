@@ -100,6 +100,26 @@ time is a clock and never wakes a session"), wherever this file runs:
   evidence, since an update that omits the fields can leave an old schedule
   standing; one whose result is silent on them leaves the task unknown.
 
+The relay lock (his ruling, 18 November 2026: "You should not be doing any
+thinking. You should only be relaying my messages"; library/session-changeover.md,
+*An assistant relays*), wherever this file runs and the rulebook's registry is
+reachable:
+
+- Before a call, in a session whose newest main-thread model turn ran on the
+  model the registry's `assistant` role holds (that id, or a dated or
+  context-suffixed spelling of it), a write to a repository is refused: an
+  `Edit`, `Write` or `NotebookEdit` of a file inside a git work tree; a shell
+  command that runs `git commit`, `git push` or `git merge`; and a tool that
+  writes a branch or opens or merges a pull request (`create_pull_request`,
+  `push_files`, `create_or_update_file`, `delete_file`, `merge_pull_request`,
+  `enable_pr_auto_merge`, `create_branch`, `update_pull_request_branch`).
+- It leaves the assistant what a relay needs: every read, a comment, a file
+  outside any work tree, a pull request's own words, a workflow run, loading a
+  tool, and every session tool (a message sent, a session started or archived).
+- It is silent where the session's model or the registry's `assistant` role
+  cannot be read, so a lead is never locked by a guess; and it speaks only
+  before a call the other locks let through, so a refusal of theirs stands.
+
 The boot measured (his ruling, 5 November 2026, 18:15, on #363, "I agree to
 your upgrade": every fresh session, before any work, posts one line on its
 issue, its starting size split into what the platform loads and what we made
@@ -230,7 +250,8 @@ def read(transcript_path):
     succeeded: after that checkpoint, a successor start went through, or a checkpoint past the line
     carrying `Successor: none — <reason>` did;
     guard = {"first": the first message's text, "booted": its boot line went
-    through, "words": the newest trigger words that went through}."""
+    through, "words": the newest trigger words that went through, "model": the
+    model of the newest main-thread model turn that names one, for the relay lock}."""
     try:
         f = open(transcript_path, encoding="utf-8")
     except (OSError, TypeError):
@@ -244,7 +265,7 @@ def read(transcript_path):
     pending = set()   # checkpoint calls made past the line, awaiting their result
     succeeded = False
     starts = set()    # successor starts after it, and checkpoints naming none, awaiting their result
-    guard = {"first": None, "booted": False, "words": None, "reads": [], "tasks": {}}
+    guard = {"first": None, "booted": False, "words": None, "reads": [], "tasks": {}, "model": None}
     boot_calls, word_calls, labels, task_calls = set(), {}, {}, {}
     with f:
         for raw in f:
@@ -285,6 +306,8 @@ def read(transcript_path):
             if d.get("type") != "assistant":
                 continue
             spoke = True
+            if isinstance(m.get("model"), str) and m["model"] not in ("", "<synthetic>"):   # the platform's own notices name no model
+                guard["model"] = m["model"]
             u = m.get("usage")
             if isinstance(u, dict):
                 n = sum(int(u.get(k) or 0) for k in
@@ -433,6 +456,67 @@ def clock(tool_name, tool_input, state):
     if known:
         return _deny(f"size hook: `{tid}` still carries a clock (`{'`, `'.join(known)}`), and a task with one never "
                      f"wakes a session (library/session-changeover.md; #378). Clear it with `update_trigger` first")
+    return None
+
+
+# ---- the relay lock ---------------------------------------------------------
+
+RELAY_EDITS = {"Edit": "file_path", "Write": "file_path", "NotebookEdit": "notebook_path"}   # each with its target's key
+RELAY_TOOLS = ("__create_pull_request", "__push_files", "__create_or_update_file", "__delete_file",
+               "__merge_pull_request", "__enable_pr_auto_merge", "__create_branch", "__update_pull_request_branch")
+# `git`, its own options (`-C path`, `-c k=v`, `--no-pager`), then commit, push or merge as the subcommand.
+# It reads the command's words and no more: a deliberate disguise is not its business.
+RELAY_GIT_RE = re.compile(r"(?<![\w.-])git(?:\s+(?:-[Cc]\s+\S+|--?[\w-]+(?:=\S+)?))*\s+(?:commit|push|merge)(?![\w-])")
+RELAY = ("size hook: this session runs on the assistant's model, and an assistant relays: it does not change a "
+         "repository, open a pull request or merge one. Send the lead the goal in one message and let it do the work. "
+         "To push back, tell him why you are better placed than the lead for this work "
+         "(library/session-changeover.md, *An assistant relays*).")
+
+
+def role_model(role):
+    """The model a role holds in the rulebook's registry, the one file that names a model, or None
+    where it cannot be read: no rulebook reachable, no registry, one that will not parse, no such role."""
+    try:
+        with open(os.path.join(_rulebook_root(), "model-registry", "registry.json"), encoding="utf-8") as f:
+            model = json.load(f)["roles"][role]["model"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    return model if isinstance(model, str) and model else None
+
+
+def is_assistant(model, assistant):
+    """True when a session's model is the assistant role's: that id, or a dated (`<id>-...`) or
+    context-suffixed (`<id>[...]`) spelling of it. With either unknown it is not: a lead is never locked by a guess."""
+    if not (isinstance(model, str) and model and isinstance(assistant, str) and assistant):
+        return False
+    return model == assistant or model.startswith((assistant + "-", assistant + "["))
+
+
+def _in_work_tree(path):
+    """True when a path lies inside a git work tree: one of its parents holds a `.git` entry, file or directory."""
+    if not isinstance(path, str) or not path:
+        return False
+    at = os.path.dirname(os.path.realpath(path if os.path.isabs(path) else os.path.join(os.getcwd(), path)))
+    while True:
+        if os.path.lexists(os.path.join(at, ".git")):
+            return True
+        up = os.path.dirname(at)
+        if up == at:
+            return False
+        at = up
+
+
+def relay(tool_name, tool_input, state, assistant):
+    """The relay lock's refusal, or None: in a session whose newest main-thread model turn ran on the
+    assistant's model (`assistant`, the registry's), a write to a repository."""
+    if state is None or not is_assistant(state[3].get("model"), assistant):
+        return None
+    name = tool_name or ""
+    cmd = tool_input.get("command")
+    if (_ends(name, RELAY_TOOLS)
+            or (name in RELAY_EDITS and _in_work_tree(tool_input.get(RELAY_EDITS[name])))
+            or (name == "Bash" and isinstance(cmd, str) and RELAY_GIT_RE.search(cmd) is not None)):
+        return _deny(RELAY)
     return None
 
 
@@ -659,8 +743,18 @@ def keep_asked(path, asked, stops=STOPS):
     return True
 
 
-def decide(event, tool_name, tool_input, state, tk=None, blind=None):
-    """The hook's JSON answer, or None to stay silent."""
+def decide(event, tool_name, tool_input, state, tk=None, blind=None, assistant=None):
+    """The hook's JSON answer, or None to stay silent. `assistant` is the model the registry's
+    `assistant` role holds, None where it is not known. The relay lock speaks only before a call
+    every other lock lets through, so a refusal of theirs stands as it was."""
+    a = _decide(event, tool_name, tool_input, state, tk, blind)
+    if a is None and event == "PreToolUse":
+        return relay(tool_name, tool_input if isinstance(tool_input, dict) else {}, state, assistant)
+    return a
+
+
+def _decide(event, tool_name, tool_input, state, tk=None, blind=None):
+    """Every lock's answer but the relay lock's."""
     tool_input = tool_input if isinstance(tool_input, dict) else {}
     refused = clock(tool_name, tool_input, state) if event == "PreToolUse" else None
     if refused:
@@ -782,7 +876,8 @@ def answer(h, note=NOTE, stops=STOPS):
         why = f"{path} could not be opened" if not os.path.isfile(path) else f"{path} carries no usage"
     event = h.get("hook_event_name")
     if event != "Stop":
-        return decide(event, h.get("tool_name"), h.get("tool_input"), state, _ticket(), why)
+        return decide(event, h.get("tool_name"), h.get("tool_input"), state, _ticket(), why,
+                      role_model("assistant") if event == "PreToolUse" else None)
     kept = bool(h.get("stop_hook_active"))
     asked = [] if not kept else asked_at(path, stops) if state else None   # a turn's first end opens a new run
     a = decide(event, None, {"stop_hook_active": kept, "asked": asked}, state, _ticket(), why)
@@ -932,6 +1027,7 @@ def selftest():
     _band_cases(cases, C, good)
     _successor_cases(cases, C, good)
     _path_cases(cases)
+    _relay_cases(cases)
     ok = _guard_cases(cases)
     here = os.path.dirname(os.path.abspath(__file__))
     try:
@@ -997,6 +1093,125 @@ def _clock_cases(cases, U, F, T):
             [_turn(96_000, "Bash"), _call(97_000, U, T, "u"), _trig_result("u", clear),
              _call(98_000, L, {}, "l"), _trig_result("l", json.dumps([{"id": "trig_X", "cron_expression": None, "run_once_at": "2026-11-07T09:00:00Z"}]))])))),
     ]
+
+
+def _spoke(model, n=96_000, sidechain=False):
+    """One model turn that names its model, as the platform's transcript does."""
+    d = json.loads(_turn(n, "Bash", sidechain=sidechain))
+    d["message"]["model"] = model
+    return json.dumps(d)
+
+
+def _relay_cases(cases):
+    """The relay lock (his ruling, 18 November 2026): a session on the assistant's model changes no repository.
+    The two ids are invented: the registry alone names a model, and the lock is handed its id."""
+    global ROOT
+    A, Ld, G, R = "assistant-model-x", "lead-model-y", "mcp__github", "mcp__claude-code-remote"
+    on = lambda *models: _state([_spoke(m) for m in models])
+    sa, sl, plain = on(A), on(Ld), _state([_turn(96_000, "Bash")])
+    pre = lambda tool, inp, s=sa, a=A: decide("PreToolUse", tool, inp, s, assistant=a)
+    sh = lambda cmd, s=sa: pre("Bash", {"command": cmd}, s)
+    home = ROOT
+    with tempfile.TemporaryDirectory() as d:
+        tree, linked, out = os.path.join(d, "repo"), os.path.join(d, "linked"), os.path.join(d, "out")
+        for p in (os.path.join(tree, ".git"), os.path.join(tree, "library"), linked, out):
+            os.makedirs(p)
+        with open(os.path.join(linked, ".git"), "w") as f:   # a linked work tree's `.git` is a file
+            f.write("gitdir: elsewhere\n")
+        page, note = {"file_path": os.path.join(tree, "library", "page.md")}, {"file_path": os.path.join(out, "note.md")}
+        clear = not _in_work_tree(note["file_path"])   # false only where the temporary directory itself sits in a work tree
+        cases += [
+            ("a session's model is its newest main-thread model turn's", sa[3]["model"] == A and on(A, Ld)[3]["model"] == Ld),
+            ("reading the model changes no measurement", sa[:3] == plain[:3] and plain[3]["model"] is None),
+            ("an assistant's edit inside a work tree is refused", _denied(pre("Edit", page))),
+            ("and told to send the lead the goal", "Send the lead the goal" in json.dumps(pre("Edit", page))),
+            ("an assistant's new file inside a work tree is refused", _denied(pre("Write", {"file_path": os.path.join(tree, "new.md")}))),
+            ("an assistant's notebook edit inside a work tree is refused",
+             _denied(pre("NotebookEdit", {"notebook_path": os.path.join(tree, "n.ipynb")}))),
+            ("a linked work tree, its `.git` a file, is a work tree", _denied(pre("Edit", {"file_path": os.path.join(linked, "x.md")}))),
+            ("a lead's edit inside a work tree passes", pre("Edit", page, sl) is None),
+            ("a session whose model is unknown is not locked", pre("Edit", page, plain) is None),
+            ("a session at its start, no model turn yet, is not locked",
+             pre("Edit", page, _state([json.dumps({"type": "user", "message": {"content": "build"}})])) is None),
+            ("with no assistant id known, nobody is locked", pre("Edit", page, sa, None) is None),
+            ("an assistant's file outside any work tree passes",
+             not clear or (pre("Write", note) is None and pre("Edit", note) is None)),
+            ("an edit naming no file is left to the platform", pre("Edit", {}) is None),
+            ("an assistant's `git commit` is refused", _denied(sh("git commit -m 'x'"))),
+            ("an assistant's `git push` is refused", _denied(sh("git push -u origin work"))),
+            ("an assistant's `git -C x push` is refused", _denied(sh("git -C x push"))),
+            ("an assistant's `git -c k=v commit` is refused", _denied(sh("git -c user.name=x commit -m y"))),
+            ("an assistant's `git merge` is refused", _denied(sh("git merge origin/main"))),
+            ("and one chained after another command", _denied(sh("cd repo && git add -A && git --no-pager commit -m x"))),
+            ("an assistant's `git status`, `git log --merges`, `git fetch`, `git diff` and `git clone` pass",
+             all(sh(c) is None for c in ("git status", "git log --merges", "git fetch origin", "git diff --stat",
+                                         "git -C x log -1", "git clone https://example.com/x.git"))),
+            ("a subcommand that only begins or ends like one passes",
+             all(sh(c) is None for c in ("git merge-base a b", "git stash push", "git log --grep push", "legit push"))),
+            ("each tool that writes a branch or opens or merges a pull request is refused",
+             all(_denied(pre(G + suffix, {})) for suffix in RELAY_TOOLS) and len(RELAY_TOOLS) == 8),
+            ("a comment, a pull request's words, a workflow run, a session tool, a read and loading a tool pass",
+             all(pre(t, {}) is None for t in (
+                 G + "__add_issue_comment", G + "__update_issue_comment", G + "__update_pull_request",
+                 G + "__actions_run_trigger", G + "__pull_request_read", R + "__send_message", R + "__create_session",
+                 R + "__archive_session", "Read", "Grep", "ToolSearch"))),
+            ("a lead's `git push`, and its pull request, pass",
+             sh("git push", sl) is None and pre(G + "__create_pull_request", {}, sl) is None),
+            ("a dated spelling of the assistant's id is the assistant", _denied(pre("Edit", page, on(A + "-20261101")))),
+            ("a context-suffixed spelling is too", _denied(pre("Edit", page, on(A + "[1m]")))),
+            ("a longer id that only shares its opening is not", pre("Edit", page, on(A + "y")) is None),
+            ("nor a shorter one", pre("Edit", page, on(A[:-2])) is None),
+            ("a subagent's turn does not set the session's model",
+             pre("Edit", page, _state([_spoke(Ld), _spoke(A, sidechain=True)])) is None),
+            ("a `<synthetic>` turn is skipped, and one naming no model",
+             _denied(pre("Edit", page, _state([_spoke(A), _spoke("<synthetic>"), _spoke(""), _turn(97_000, "Bash")])))),
+            ("the newest model turn decides: a session switched to the lead is unlocked", pre("Edit", page, on(A, Ld)) is None),
+            ("and one switched to the assistant is locked", _denied(pre("Edit", page, on(Ld, A)))),
+            ("after a call the assistant is answered as any session is",
+             decide("PostToolUse", "Edit", page, sa, assistant=A) == decide("PostToolUse", "Edit", page, sa)),
+            ("and at a turn's end", decide("Stop", None, {}, sa, assistant=A) is None),
+            ("past 500k the hard stop's refusal stands, not the relay's",
+             "hard stop" in json.dumps(pre("Edit", page, _state([_spoke(A), _spoke(A, 502_000)])))),
+            ("blind, the blind refusal stands", "blind" in json.dumps(pre("Edit", page, None))),
+        ]
+        # the registry, read through the rulebook's clone: any failure is None, and the lock is silent
+        reg = os.path.join(d, "how-we-build", "model-registry", "registry.json")
+        os.makedirs(os.path.join(d, "how-we-build", "product-reads"))
+        os.makedirs(os.path.dirname(reg))
+        open(os.path.join(d, "how-we-build", "product-reads", "ticket.py"), "w").close()
+        held = lambda text: (open(reg, "w").write(text), role_model("assistant"))[1]
+        try:
+            ROOT = os.path.join(d, "alone", "product")   # no rulebook beside it
+            cases.append(("with no rulebook reachable the assistant's id is unknown", role_model("assistant") is None))
+            ROOT = out                                   # a product, the rulebook cloned beside it
+            cases += [
+                ("with no registry in the rulebook's clone it is unknown", role_model("assistant") is None),
+                ("a registry that will not parse leaves it unknown", held("not json") is None),
+                ("a registry with no such role leaves it unknown", held(json.dumps({"roles": {"other": {"model": A}}})) is None),
+                ("a registry that is no object leaves it unknown", held("[]") is None),
+                ("a role naming no model leaves it unknown", held(json.dumps({"roles": {"assistant": {"model": None}}})) is None),
+                ("a product reads the assistant's id from the rulebook cloned beside it",
+                 held(json.dumps({"roles": {"assistant": {"model": A}}})) == A),
+            ]
+        finally:
+            ROOT = home
+        # the registry as it stands, and the hook's own path through it; the ids are compared, never printed
+        real, lead = role_model("assistant"), role_model("lead-session")
+        if _rulebook_root() is None:
+            cases.append(("a repository with no rulebook reachable has no relay lock", real is None))
+            return
+        cases.append(("the registry's `assistant` and `lead-session` roles each hold a model, and not the same one",
+                      bool(real) and bool(lead) and real != lead and not is_assistant(lead, real)))
+        t = os.path.join(d, "s.jsonl")
+        def through(model):
+            with open(t, "w") as f:
+                f.write(_spoke(model or "") + "\n")
+            return answer({"hook_event_name": "PreToolUse", "tool_name": "Edit", "tool_input": page,
+                           "transcript_path": t}, os.path.join(d, "note"))
+        cases += [
+            ("through the hook: a session on the registry's assistant model is refused an edit in a work tree", _denied(through(real))),
+            ("through the hook: one on the lead's is not", through(lead) is None),
+        ]
 
 
 def _first(text):

@@ -1,6 +1,6 @@
 {
   "about": "The one place a model is named (decision 0008, issue #103, on the 18 September consensus in juku-library/). Every other file asks for a role. How to ask, inspect and switch: library/model-registry.md. A switch is one edit to this file, reviewed like any other change to the gate, unless the pinned reviewer tool does not know the new model: then the pin moves in both reviewers too, proved first on a full-size read (#130). The reviewer roles are decision 0008's own assignment, except that no reader is the lead's own model, and since the bake-off of 9 October 2026 (his ask that day) reviewer-main is GLM 5.3 Flash at max. reviewer-risky is Claude Opus 5.5 at high on the Claude plan, his ruling of 9 October 2026, whole: \"opus 5.5 at hight effort only for rare risky cases\" (decision 0019), which amends for that role alone his rulings of 5 and 6 October 2026 that only open-weight models review, of 28 September that every read is at max, and of 29 September that no reader is the lead's own model. Nothing stands behind either reviewer: when one does not answer, the commit stays unread, the Chairman is told at once, and the work is to find why the connection was lost and fix it. reviewer-main's effort is the Chairman's ruling of 28 September 2026, every read at max. The max-subagent role is what every product's max subagent file is set to, his ruling of the same day (library/max-subagent.md). The conversation roles (decision 0015) are held in a chat app, never called: kind conversation, an app and a picker label in place of a provider and a credential, and the assignment recorded apart from its proof (status assigned until that seat is read back; proved names the evidence). No caller sends one a request.",
-  "version": "2026-10-09.1",
+  "version": "2026-11-19.1",
   "reviewed": "2026-09-25",
   "decision": "https://github.com/Adonis80/how-we-build/issues/103",
   "providers": {
@@ -108,6 +108,15 @@
       "efforts": ["low", "medium", "high", "xhigh", "max"],
       "checked": "2026-09-29",
       "source": "Proved before it merged (#130's two reads): on 29 September 2026 a replica of a full risky read (this pull request's diff and every .md/.sh/.py/.yml file whole, 651,863 bytes; review.yml's system prompt and schema; -p --model claude-sonnet-5-5 --effort max --tools \"\" --restricted --strict-mcp-config --disable-slash-commands --no-session-persistence --permission-prompts none --output-format json --json-schema --system-prompt) failed on Claude Code 2.1.280, which does not know the model (unrecognized_model at compaction; no verdict after 1,009 s), and answered on 2.1.285: success, verdict advisory, 1,330 s, USD 4.10. The 2.1.280 run saw a 200,000-token window for this model and compacted; the 2.1.285 run saw 1,000,000, took all 484,810 input tokens into context whole (cache creation), logged nothing, and did not compact. So both reviewers pin 2.1.285 and give a read 40 minutes. Run on the build session's credential on his account, not the reviewer environment's token"
+    },
+    "claude-fable-5-2": {
+      "name": "Claude Fable 5.2",
+      "provider": "anthropic",
+      "open_weight": false,
+      "status": "active",
+      "efforts": ["low", "medium", "high", "xhigh", "max"],
+      "checked": "2026-11-19",
+      "source": "Anthropic's model id as the rulebook writer's cloud session names it, read on 19 November 2026 from that session's own transcript (every main-thread turn carries it)"
     },
     "z-ai/glm-5.3": {
       "name": "GLM 5.3",
@@ -237,6 +246,18 @@
       "effort": "max",
       "fallback": null,
       "use": "The effort ladder's max step: the project subagent every product carries as .claude/agents/max-subagent.md, whose model and effort are this role's (library/max-subagent.md; his ruling, 28 September 2026). No fallback: a product's file names one model."
+    },
+    "lead-session": {
+      "model": "claude-fable-5-2",
+      "effort": "high",
+      "fallback": {"model": "claude-opus-5-5", "effort": "high"},
+      "use": "The lead's seat in a working cloud session (a builder, the rulebook writer): the thinking and the work, rules included. No caller: a session's model is set when it is started, and `.claude/size.py` reads this role only to know the assistant apart. The fallback is his word of 19 November 2026, on the lead's weekly limit: \"if we hit further weekly fable limits we will switch to opus. 5.5\" (library/session-changeover.md, *An assistant relays*)."
+    },
+    "assistant": {
+      "model": "claude-sonnet-5-5",
+      "effort": "high",
+      "fallback": null,
+      "use": "The assistant's seat (the coordinator, the review dispatcher): it relays his messages to the lead and organises his thoughts into messages, starts the sessions he asks for, asks for reads on request and brings results back; it never does the lead's work (his ruling, 18 November 2026; library/session-changeover.md, *An assistant relays*). No caller: `.claude/size.py` reads this role's model and refuses a repository write in a session whose main thread runs on it."
     },
     "lead": {
       "kind": "conversation",
