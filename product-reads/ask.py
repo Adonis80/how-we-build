@@ -10,7 +10,8 @@ repository's own token, which reads the runs asked for already and, with
 --dispatch, may start a workflow here.
 
 It lists the product's open pull requests and picks out each whose head is the
-builder's ready mark, whose own checks let a read start (product-reads/reads.py), and which has never been
+builder's ready mark, whose own checks let a read start (product-reads/reads.py: at the mark
+itself where it names the product, else once `verify` has passed), and which has never been
 read. Those are the very three things review-product.yml checks again before it
 pays for a read, and they are asked of the same rules in reads.py, so the asker
 cannot ask for what the reviewer would refuse. A draft is asked for like any
@@ -80,8 +81,9 @@ def ready_to_read(call, repo, sha, app_id, now):
         parents = commit.get("parents") or []
         parent = get("commits/%s" % parents[0]["sha"]) if len(parents) == 1 else {}
         reads.ready(commit, parent, sha)
-        # The quick `checks` and the full `verify`, asked apart and judged together: a read
-        # starts alongside the tests (his word, 2 November 2026).
+        # The quick `checks` and the full `verify`, asked apart and judged together: where
+        # reads.EARLY names the product a read starts at the mark, beside them (his go of
+        # 19 November 2026); anywhere else, once `verify` has passed.
         reads.verified([r for name in (reads.QUICK, reads.VERIFY) for r in reads._runs(
             get("commits/%s/check-runs?check_name=%s&filter=all&per_page=100" % (sha, name)))], sha, now, repo)
         reads.unread(get("commits/%s/check-runs?check_name=%s&app_id=%s&filter=all&per_page=100"
@@ -95,7 +97,7 @@ def ready_to_read(call, repo, sha, app_id, now):
     return None
 
 
-# A ready mark whose product check is still running: the asker looks again in a minute.
+# A ready mark whose `verify` is waited for and still running: the asker looks again in a minute.
 PENDING = "is still running on this commit"
 PENDING_LEFT = "a ready mark whose check is still running"
 
@@ -146,8 +148,9 @@ def dispatch(call, repo, number, sha):
 
 def note_pending(left, where=None):
     """THE QUICK LOOK (D, 21 October 2026: the reviewer starts on the event). A ready mark whose
-    product check is still running leaves a note in the run's temporary folder, and the asker's
-    loop looks again a minute later rather than ten. Nothing else is in the note."""
+    product check is waited for and still running leaves a note in the run's temporary folder, and
+    the asker's loop looks again a minute later rather than ten. A mark read beside its checks
+    (reads.EARLY) is asked for at once and leaves none. Nothing else is in the note."""
     waiting = left.get(PENDING_LEFT, 0)
     where = where if where is not None else os.environ.get("RUNNER_TEMP")
     if waiting and where:
@@ -200,6 +203,10 @@ def _selftest():
     bad = []
     now = reads.NOW
     app, repo = reads.APP, "Adonis80/Hemz-OS"
+    # Every case names for itself which product is read at the mark, so none leans on today's list:
+    # the list is emptied here and put back for the last case, which is Hemz OS as the list has it.
+    listed_early = dict(reads.EARLY)
+    reads.EARLY.clear()
 
     def want(what, got, expected):
         if got != expected:
@@ -295,7 +302,7 @@ def _selftest():
     want("the log counts what it left, by reason", "2 to ask, 2 left" in said and "fork" in said, True)
     # THE QUICK LOOK: a ready mark whose check is still running leaves a note, and nothing else does.
     note = os.path.join(os.environ["RUNNER_TEMP"], "ask-pending")
-    # Cases 54, 55, 57 and 58 need a product read early, which none is today: one is named for them alone.
+    # Cases 54, 55, 57, 58 and 61 need a product read at the mark: one is named for them alone.
     E = "Adonis80/myst"
     reads.EARLY[E] = "the selftest's own"
     for what, prs, noted in (
@@ -304,8 +311,8 @@ def _selftest():
             ("a head that is no mark, its check running", [make(52, commit={"message": "just a fix"},
               verify=[reads._run(name=reads.VERIFY, sha="%040x" % 52, status="in_progress", conclusion=None)])], None),
             ("a mark ready to read", [make(53)], None),
-            ("a mark whose quick checks are still running", [make(54, fork=E, verify=[], checks=[reads._run(name=reads.QUICK, sha="%040x" % 54, status="in_progress", conclusion=None, ago=3)])], "1\n"),
-            ("a mark whose checks passed, its verify still running", [make(55, fork=E, checks=[reads._run(name=reads.QUICK, sha="%040x" % 55, ago=9)],
+            ("a mark read at the mark, its quick checks still running: asked at once, so no note", [make(54, fork=E, verify=[], checks=[reads._run(name=reads.QUICK, sha="%040x" % 54, status="in_progress", conclusion=None, ago=3)])], None),
+            ("a mark read at the mark, its checks passed, its verify still running", [make(55, fork=E, checks=[reads._run(name=reads.QUICK, sha="%040x" % 55, ago=9)],
               verify=[reads._run(name=reads.VERIFY, sha="%040x" % 55, status="in_progress", conclusion=None, ago=8)])], None),
             ("a mark whose check has run past the hour", [make(56, verify=[reads._run(name=reads.VERIFY, sha="%040x" % 56, status="in_progress", conclusion=None, ago=61)])], None)):
         if os.path.exists(note):
@@ -313,15 +320,18 @@ def _selftest():
         go(prs, dispatch_=True, product=prs[0]["api"]["head"]["repo"]["full_name"])
         got = open(note, encoding="utf-8").read() if os.path.exists(note) else None
         want("the quick-look note for %s" % what, got, noted)
-    # A read alongside the tests (2 November 2026): checks passed and verify still going is asked.
-    n, api, _ = go([make(57, fork=E, checks=[reads._run(name=reads.QUICK, sha="%040x" % 57, ago=9)],
-                         verify=[reads._run(name=reads.VERIFY, sha="%040x" % 57, status="in_progress", conclusion=None, ago=8)]),
+    # A read at the mark (19 November 2026): asked with no check begun, with its checks still
+    # running, and not once a check has failed.
+    n, api, _ = go([make(57, fork=E, verify=[]),
+                    make(61, fork=E, checks=[reads._run(name=reads.QUICK, sha="%040x" % 61, status="in_progress", conclusion=None, ago=1)],
+                         verify=[reads._run(name=reads.VERIFY, sha="%040x" % 61, status="in_progress", conclusion=None, ago=1)]),
                     make(58, fork=E, checks=[reads._run(name=reads.QUICK, sha="%040x" % 58, ago=9)],
-                         verify=[reads._run(name=reads.VERIFY, sha="%040x" % 58, conclusion="failure", ago=2)])], dispatch_=True, product=E)
-    want("asked alongside the tests, and not once verify has failed", [d["inputs"]["pr"] for d in api.dispatched], ["57"])
+                         verify=[reads._run(name=reads.VERIFY, sha="%040x" % 58, conclusion="failure", ago=2)]),
+                    make(62, fork=E, verify=[], checks=[reads._run(name=reads.QUICK, sha="%040x" % 62, conclusion="failure", ago=1)])], dispatch_=True, product=E)
+    want("asked at the mark, beside its checks, and not once one has failed", [d["inputs"]["pr"] for d in api.dispatched], ["57", "61"])
     reads.EARLY.pop(E)
-    # #299's read: only a product reads.EARLY names is read early; another, Hemz OS among them
-    # (Hemz-OS#329, item 12), waits for its verify, with a quick look, and is asked once verify has passed.
+    # #299's read: only a product reads.EARLY names is read at the mark; another waits for its
+    # verify, with a quick look, and is asked once verify has passed.
     if os.path.exists(note):
         os.remove(note)
     n, api, _ = go([make(59, checks=[reads._run(name=reads.QUICK, sha="%040x" % 59, ago=9)],
@@ -446,13 +456,18 @@ def _selftest():
     want("the pull request that could be read was still asked", [d["inputs"]["pr"] for d in api.dispatched], ["66"])
     # And a rule's refusal is not that: every case above that was left alone left the run green.
 
+    # The list as it stands: Hemz OS is read at the mark, so its mark is asked for with no check begun.
+    reads.EARLY.update(listed_early)
+    n, api, _ = go([make(80, verify=[])], dispatch_=True)
+    want("Hemz OS, as reads.EARLY has it, is asked at the mark", [d["inputs"]["pr"] for d in api.dispatched], ["80"])
+
     if bad:
         for b in bad:
             print("  ask selftest: %s" % b)
         print("ask selftest failed: %d case(s)" % len(bad))
         return 1
     print("ok: the asker asks, once and exactly, only for a commit that is the ready mark whose own "
-          "checks let a read start (early only where reads.EARLY names the product) and no read begun, asks for a draft carrying its mark, leaves a fork, a read begun or lost, notes a mark still in its checks for a quick look, never asks "
+          "checks let a read start (at the mark itself only where reads.EARLY names the product) and no read begun, asks for a draft carrying its mark, leaves a fork, a read begun or lost, notes a mark waiting on its verify for a quick look, never asks "
           "about a commit twice or retries a read that went wrong across seven timed runs, and fails "
           "the run when GitHub will not answer")
     return 0

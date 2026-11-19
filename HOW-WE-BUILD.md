@@ -24,7 +24,7 @@
 2. From latest `main`: read open pull requests, run the product, find the smallest seam, branch, open a draft pull request, publish the item `building` on `main` by pull request.
 3. Build. Replace rather than wrap. One implementation per business rule. No speculative abstraction.
 4. Prove it: build, tests, the Playwright journey on phone and desktop, a preview. A screenshot is not proof.
-5. Free checks green, self-review, then one cold read by the reviewer, asked once per round, fixes in one push, two rounds at most. No read: the slice parks and the next begins. The gate never opens unread.
+5. Free checks green (in a product read at its mark, the tests the change can reach, its whole check running beside the read: `library/product-joins.md`, 6), self-review, then one cold read by the reviewer, asked once per round, fixes in one push, two rounds at most. No read: the slice parks and the next begins. The gate never opens unread.
 6. Send him the preview, what changed, the journey to try, and "Decision needed: … or none".
 7. Checks green, and his acceptance where a material user-facing change owes it (`CHARTER.md` §12; for a screen built with no picture round and outside the kit and his look guide, his tap-through of its preview; in a product whose look is agreed a user-facing change that stays inside them owes none (save what that section keeps his) and merges on its checks and read, step 6 only telling him what shipped, `library/hypersolid.md`, *His look guide*): merge yourself (his standing permission); else another session does, never him. Deploy, smoke-test, roll back on failure. Delete residue. Leave `roadmap.json` fit to start on *build* alone.
 
