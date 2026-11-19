@@ -119,6 +119,12 @@ reachable:
 - It is silent where the session's model or the registry's `assistant` role
   cannot be read, so a lead is never locked by a guess; and it speaks only
   before a call the other locks let through, so a refusal of theirs stands.
+- A session at its start is the one exception: its first call runs before its
+  first model turn is written (below), so no model can be read yet, and an
+  assistant's first call was an edit that went through (shown on 19 November
+  2026, #436: the test session's first call, an `Edit`, passed; its next, a
+  `git commit`, was refused). There the same writes wait one call, for the lead
+  and the assistant alike, and the refusal says to make a read first.
 
 The boot measured (his ruling, 5 November 2026, 18:15, on #363, "I agree to
 your upgrade": every fresh session, before any work, posts one line on its
@@ -251,7 +257,8 @@ def read(transcript_path):
     carrying `Successor: none — <reason>` did;
     guard = {"first": the first message's text, "booted": its boot line went
     through, "words": the newest trigger words that went through, "model": the
-    model of the newest main-thread model turn that names one, for the relay lock}."""
+    model of the newest main-thread model turn that names one, and "spoke": such a
+    turn is there at all, both for the relay lock}."""
     try:
         f = open(transcript_path, encoding="utf-8")
     except (OSError, TypeError):
@@ -339,6 +346,7 @@ def read(transcript_path):
                     starts.add(c.get("id"))
     if not seen and (spoke or not asked):
         return None
+    guard["spoke"] = spoke
     return size, checkpointed, tool_uses, guard, succeeded
 
 
@@ -471,6 +479,9 @@ RELAY = ("size hook: this session runs on the assistant's model, and an assistan
          "repository, open a pull request or merge one. Send the lead the goal in one message and let it do the work. "
          "To push back, tell him why you are better placed than the lead for this work "
          "(library/session-changeover.md, *An assistant relays*).")
+RELAY_START = ("size hook: this session's first model turn is not in the transcript yet, so the hook cannot tell the "
+               "lead's session from an assistant's, and a write to a repository waits one call: make any read first, "
+               "then make this call again (library/session-changeover.md, *An assistant relays*).")
 
 
 def role_model(role):
@@ -509,14 +520,17 @@ def _in_work_tree(path):
 def relay(tool_name, tool_input, state, assistant):
     """The relay lock's refusal, or None: in a session whose newest main-thread model turn ran on the
     assistant's model (`assistant`, the registry's), a write to a repository."""
-    if state is None or not is_assistant(state[3].get("model"), assistant):
+    if state is None or not (isinstance(assistant, str) and assistant):
+        return None
+    start = state[3].get("spoke") is False    # a session at its start: its first call runs before its model is written
+    if not start and not is_assistant(state[3].get("model"), assistant):
         return None
     name = tool_name or ""
     cmd = tool_input.get("command")
     if (_ends(name, RELAY_TOOLS)
             or (name in RELAY_EDITS and _in_work_tree(tool_input.get(RELAY_EDITS[name])))
             or (name == "Bash" and isinstance(cmd, str) and RELAY_GIT_RE.search(cmd) is not None)):
-        return _deny(RELAY)
+        return _deny(RELAY_START if start else RELAY)
     return None
 
 
@@ -1119,6 +1133,7 @@ def _relay_cases(cases):
         with open(os.path.join(linked, ".git"), "w") as f:   # a linked work tree's `.git` is a file
             f.write("gitdir: elsewhere\n")
         page, note = {"file_path": os.path.join(tree, "library", "page.md")}, {"file_path": os.path.join(out, "note.md")}
+        fresh = _state([json.dumps({"type": "user", "message": {"content": "build"}})])   # a session at its start
         clear = not _in_work_tree(note["file_path"])   # false only where the temporary directory itself sits in a work tree
         cases += [
             ("a session's model is its newest main-thread model turn's", sa[3]["model"] == A and on(A, Ld)[3]["model"] == Ld),
@@ -1131,8 +1146,15 @@ def _relay_cases(cases):
             ("a linked work tree, its `.git` a file, is a work tree", _denied(pre("Edit", {"file_path": os.path.join(linked, "x.md")}))),
             ("a lead's edit inside a work tree passes", pre("Edit", page, sl) is None),
             ("a session whose model is unknown is not locked", pre("Edit", page, plain) is None),
-            ("a session at its start, no model turn yet, is not locked",
-             pre("Edit", page, _state([json.dumps({"type": "user", "message": {"content": "build"}})])) is None),
+            ("a session at its start, no model turn yet, waits one call for a write to a repository",
+             "waits one call" in json.dumps(pre("Edit", page, fresh)) and _denied(pre("Edit", page, fresh))
+             and _denied(sh("git push", fresh)) and _denied(pre(G + "__push_files", {}, fresh))),
+            ("and its reads, comments and files outside a work tree pass",
+             pre("Read", page, fresh) is None and sh("git status", fresh) is None
+             and pre(G + "__add_issue_comment", {"body": "x"}, fresh) is None and (not clear or pre("Write", note, fresh) is None)),
+            ("and with no assistant id known a session at its start is not held", pre("Edit", page, fresh, None) is None),
+            ("once its first model turn is written, a lead's write passes and an assistant's is refused",
+             pre("Edit", page, sl) is None and "Send the lead the goal" in json.dumps(pre("Edit", page, sa))),
             ("with no assistant id known, nobody is locked", pre("Edit", page, sa, None) is None),
             ("an assistant's file outside any work tree passes",
              not clear or (pre("Write", note) is None and pre("Edit", note) is None)),
