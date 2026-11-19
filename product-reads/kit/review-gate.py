@@ -19,8 +19,8 @@ and a run still going, says nothing. A commit is judged by the worst thing said
 about it, so asking again never retires a finding: the answer to one is a push.
 
 AND ITS TESTS PASSED (his word, 2 November 2026: "implement Ideas 1 and 2"). A read
-may start alongside the tests, once a product's quick `checks` pass, so a clean read
-no longer means `verify` has finished. The gate opens only when `verify`, run by
+may start beside the tests, at the ready mark itself for a product the rulebook's
+reads.py names (19 November 2026), so a clean read no longer means `verify` has finished. The gate opens only when `verify`, run by
 GitHub Actions on this very commit, has passed as well: nothing merges with failing
 tests, so long as `verify` is the product's own: a branch can edit that job, and
 the reviewer's read of the diff, not this file, is what stops it. The latest
