@@ -109,10 +109,13 @@ reachable:
   model the registry's `assistant` role holds (that id, or a dated or
   context-suffixed spelling of it), a write to a repository is refused: an
   `Edit`, `Write` or `NotebookEdit` of a file inside a git work tree; a shell
-  command that runs `git commit`, `git push` or `git merge`; and a tool that
+  command that runs `git commit`, `git push`, `git merge`, `gh pr create` or
+  `gh pr merge`; and a tool that
   writes a branch or opens or merges a pull request (`create_pull_request`,
   `push_files`, `create_or_update_file`, `delete_file`, `merge_pull_request`,
   `enable_pr_auto_merge`, `create_branch`, `update_pull_request_branch`).
+- It reads a shell command's words and no more: a file a shell command
+  writes, or a write dressed as something else, is not its business.
 - It leaves the assistant what a relay needs: every read, a comment, a file
   outside any work tree, a pull request's own words, a workflow run, loading a
   tool, and every session tool (a message sent, a session started or archived).
@@ -475,6 +478,8 @@ RELAY_TOOLS = ("__create_pull_request", "__push_files", "__create_or_update_file
 # `git`, its own options (`-C path`, `-c k=v`, `--no-pager`), then commit, push or merge as the subcommand.
 # It reads the command's words and no more: a deliberate disguise is not its business.
 RELAY_GIT_RE = re.compile(r"(?<![\w.-])git(?:\s+(?:-[Cc]\s+\S+|--?[\w-]+(?:=\S+)?))*\s+(?:commit|push|merge)(?![\w-])")
+# The ordinary command-line route to a pull request, held the same way.
+RELAY_GH_RE = re.compile(r"(?<![\w.-])gh\s+pr\s+(?:create|merge)(?![\w-])")
 RELAY = ("size hook: this session runs on the assistant's model, and an assistant relays: it does not change a "
          "repository, open a pull request or merge one. Send the lead the goal in one message and let it do the work. "
          "To push back, tell him why you are better placed than the lead for this work "
@@ -529,7 +534,8 @@ def relay(tool_name, tool_input, state, assistant):
     cmd = tool_input.get("command")
     if (_ends(name, RELAY_TOOLS)
             or (name in RELAY_EDITS and _in_work_tree(tool_input.get(RELAY_EDITS[name])))
-            or (name == "Bash" and isinstance(cmd, str) and RELAY_GIT_RE.search(cmd) is not None)):
+            or (name == "Bash" and isinstance(cmd, str)
+                and (RELAY_GIT_RE.search(cmd) is not None or RELAY_GH_RE.search(cmd) is not None))):
         return _deny(RELAY_START if start else RELAY)
     return None
 
@@ -1152,6 +1158,9 @@ def _relay_cases(cases):
             ("and its reads, comments and files outside a work tree pass",
              pre("Read", page, fresh) is None and sh("git status", fresh) is None
              and pre(G + "__add_issue_comment", {"body": "x"}, fresh) is None and (not clear or pre("Write", note, fresh) is None)),
+            ("an assistant's `gh pr create` and `gh pr merge` are refused, a lead's pass, and `gh pr view` passes",
+             _denied(sh("gh pr create --fill")) and _denied(sh("cd x && gh pr merge 5 --squash")) and sh("gh pr merge 5", sl) is None
+             and sh("gh pr view 5") is None and sh("gh pr list") is None),
             ("and with no assistant id known a session at its start is not held", pre("Edit", page, fresh, None) is None),
             ("once its first model turn is written, a lead's write passes and an assistant's is refused",
              pre("Edit", page, sl) is None and "Send the lead the goal" in json.dumps(pre("Edit", page, sa))),
