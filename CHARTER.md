@@ -144,7 +144,7 @@ Business invariants such as pricing, permissions or transformations should be ex
 
 **One path for business logic.** Pricing, rates, permissions, calculations and other protected rules have one canonical implementation. Interfaces import it; they never carry their own figures. For pricing the minimum is: staff and customer surfaces import the same function and the same rate source; contract tests prove matching totals, rate propagation and VAT exactly once; and tests prove a customer sees only locked lines, with no internal working exposed. Critical journeys are covered by a real browser suite — Playwright, where the product has one — not by a screenshot.
 
-Material user-facing design is accepted by Dhayan by looking at the working result. He is not asked to inspect code. In a product whose look is agreed, a user-facing change that stays inside the kit and his look guide is not put to him first (his ruling, 18 November 2026, `library/hypersolid.md`, *His look guide*).
+Material user-facing design is accepted by Dhayan by looking at the working result. He is not asked to inspect code. In a product whose look is agreed, a user-facing change that stays inside the kit and his look guide is not put to him first, save what that section keeps his (his ruling, 18 November 2026, `library/hypersolid.md`, *His look guide*).
 
 Independent cold review is required where `HOW-WE-BUILD.md` says so. Review is a check on the change, not a second permanent CTO.
 
@@ -182,7 +182,7 @@ Secrets belong in provider or repository secret stores, never ordinary repositor
 
 Dhayan must approve new spending, wider permissions, raw-secret exposure, destructive production-data changes, domains/DNS/legal commitments and other irreversible/high-consequence actions.
 
-The lead may never: write directly to protected `main` or force-push it; disable, weaken or skip a required check to make work pass; quarantine or delete a test to go green; expose a secret in a prompt, a log or a repository file; delete a repository, an archive or production data; grant itself wider permissions; or merge a material user-facing change before the Chairman has accepted it, save, in a product whose look is agreed, a user-facing change that stays inside the kit and his look guide (`library/hypersolid.md`, *His look guide*).
+The lead may never: write directly to protected `main` or force-push it; disable, weaken or skip a required check to make work pass; quarantine or delete a test to go green; expose a secret in a prompt, a log or a repository file; delete a repository, an archive or production data; grant itself wider permissions; or merge a material user-facing change before the Chairman has accepted it, save, in a product whose look is agreed, a user-facing change that stays inside the kit and his look guide, what that section keeps his still his (`library/hypersolid.md`, *His look guide*).
 
 ## 13. Changing the development system
 
