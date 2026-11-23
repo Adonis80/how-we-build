@@ -97,10 +97,10 @@ run-name: Review ${{ inputs.repo }}#${{ inputs.pr }} at ${{ inputs.sha }}
 #   - that commit is the builder's ready mark: one commit that changes no file
 #     and names the commit beneath it, so a read is never asked of work that is
 #     still moving. An earlier mark in the history is no concern of this check;
-#   - the product's own quick `checks` passed on it, or its `verify` where it has no
-#     `checks`, and no `verify` has failed: a read starts alongside the tests (his
-#     word, 2 November 2026), only for a product reads.py names as one whose gate
-#     waits for `verify` (#299's read); any other, once its `verify` passed;
+#   - for a product reads.py names as one whose gate waits for `verify` (#299's
+#     read), neither its `checks` nor its `verify` has failed on it: the read
+#     starts at the mark, beside the checks and not after them (his go of 19
+#     November 2026); for any other, its `verify` passed;
 #   - it has not been read, is not being read, and did not fail to be read in a
 #     way nobody has looked at. `again` is a builder's word that someone has.
 # The rules are in product-reads/reads.py, once; this file asks it, and the

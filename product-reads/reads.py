@@ -4,7 +4,7 @@
     reads.py product OWNER/NAME [README]          a product this rulebook lists?
     reads.py list [README]                         every product it lists, one a line
     reads.py ready COMMIT PARENT SHA               is that commit the ready mark?
-    reads.py verify REPO CHECKRUNS... SHA          may a read start alongside its tests?
+    reads.py verify REPO CHECKRUNS... SHA          may a read start, beside its checks or after them?
     reads.py state CHECKRUNS SHA APPID [--again]   has that commit been read?
     reads.py marked REPO BASE HEAD CHANGED_NUL     does the change leave its marked spans alone?
     reads.py --selftest
@@ -32,17 +32,21 @@ can write it, and the check that matters is the reviewer's own, on the commit it
 read. The same is true of the product's `verify`: it is the product's, so whoever
 can push there can make it pass, and a name is all this checks.
 
-A READ ALONGSIDE THE TESTS (his word, 2 November 2026: "implement Ideas 1 and
-2"). A read starts once the product's quick `checks` job has passed on the mark,
-not after its full `verify`: the read and the slow suites run side by side. A
-product with no `checks` job (the starter kit's) still waits for `verify`, and
-a `verify` that has already failed stops the read, since nothing could merge.
-What makes this safe is the product's own gate, which opens on a commit whose
-`verify` passed as well as a clean read, and this file cannot see a gate. So it
-reads early only the products EARLY names, each beside where its gate was shown
-to need `verify`; any other product is read on its `verify` alone, its `checks`
-unread, as before (#299's read). A read begun early whose `verify` then fails
-still spent its round.
+A READ AT THE MARK (his word of 19 November 2026, "Go.", to the one-shot road as
+it was put to him: "One full check, with the end review running inside it."). For
+a product EARLY names, the read is asked for on the ready mark itself, with no
+check passed or even begun, so the read and the product's checks run side by
+side from the mark; a `checks` or a `verify` that has already finished any way
+but passing stops the read, since nothing could merge. It replaces the read
+begun once the quick `checks` had passed (his word, 2 November 2026: "implement
+Ideas 1 and 2") and the read in sequence, after `verify` (Hemz-OS#329, item 12,
+11 November 2026). What makes this safe is the product's own gate, which opens
+on a commit whose `verify` passed as well as a clean read, and this file cannot
+see a gate. So it reads at the mark only the products EARLY names, each beside
+where its gate was shown to need `verify`; any other product is read once its
+`verify` has passed, its `checks` unread (#299's read). A read begun at the mark
+whose checks then fail still spent its round, so a builder runs the tests its
+change can reach before it marks.
 
 THREE KINDS OF "NOT READ". A commit with a verdict on it has been read. One whose
 check run is still opening or reading is being read. One whose run ended
@@ -80,12 +84,15 @@ REVIEWER_CHECK = "juku-reviewer"
 # running brings the asker back in a minute, for as long as the check runs, but a
 # check running past this has stuck, and earns the ten-minute look again.
 QUICK_LOOKS_FOR = timedelta(minutes=60)
-# THE PRODUCTS READ EARLY (#299's read): a read begun on `checks` is safe only where
-# the product's own gate also needs `verify` passed, and nothing here can see that
-# gate, so each product is named with where its gate was shown to. A product joins
-# by a pull request here, which the reviewer reads; no name, no early read.
-# None is named: Hemz OS left on Hemz-OS#329 (item 12), so its read waits for verify.
-EARLY = {}
+# THE PRODUCTS READ AT THE MARK (#299's read): a read begun before `verify` has
+# passed is safe only where the product's own gate also needs `verify` passed, and
+# nothing here can see that gate, so each product is named with where its gate was
+# shown to. A product joins by a pull request here, which the reviewer reads; no
+# name, no read before `verify`. Hemz OS left on Hemz-OS#329 (item 12) and is back
+# on his go of 19 November 2026.
+EARLY = {
+    "Adonis80/Hemz-OS": "Adonis80/Hemz-OS#260, merged 2 November 2026: its gate needs verify passed",
+}
 # The reviewer's job is held to 55 minutes. A run still in progress an hour
 # after it started has lost its runner and will not sign.
 STALE = timedelta(minutes=60)
@@ -211,35 +218,35 @@ def _latest(runs, name, sha):
 def verified(answer, sha, now=None, repo=None):
     """Refused unless the product's own checks let a read start on `sha`.
 
-    For a product EARLY names, the quick `checks` passing is enough, or `verify`
-    passing where it has no `checks`; any other product, `verify` alone, its
-    `checks` unread. A `checks` or a `verify` that has finished any other way
-    refuses. The latest run
+    For a product EARLY names, the mark is enough: no check need have passed or
+    begun, and only a `checks` or a `verify` that has finished any way but
+    passing refuses. Any other product, `verify` passed, its `checks` unread.
+    The latest run
     of each name by when it started decides, so a re-run that is still going or
-    has failed is not hidden behind an older green one. A check still running is
-    refused in the words the asker's quick look watches for, unless it started
-    longer ago than QUICK_LOOKS_FOR or has no start time to tell (#299's read).
+    has failed is not hidden behind an older green one. Where `verify` is waited
+    for, one still running is refused in the words the asker's quick look watches
+    for, unless it started longer ago than QUICK_LOOKS_FOR or has no start time
+    to tell (#299's read).
     """
     runs = _runs(answer)
     full = _latest(runs, VERIFY, sha)
-    quick = _latest(runs, QUICK, sha) if repo in EARLY else None
-    if quick is not None and quick.get("status") == "completed" and quick.get("conclusion") != "success":
-        raise Refused("the product's own check, %s, did not pass on this commit" % QUICK)
-    if full is not None and full.get("status") == "completed":
+    if repo in EARLY:
+        for name, last in ((QUICK, _latest(runs, QUICK, sha)), (VERIFY, full)):
+            if last is not None and last.get("status") == "completed" and last.get("conclusion") != "success":
+                raise Refused("the product's own check, %s, did not pass on this commit" % name)
+        return
+    if full is None:
+        raise Refused("the product's own check, %s, has not run on this commit" % VERIFY)
+    if full.get("status") == "completed":
         if full.get("conclusion") != "success":
             raise Refused("the product's own check, %s, did not pass on this commit" % VERIFY)
         return
-    if quick is not None and quick.get("status") == "completed":
-        return
-    going = quick if quick is not None else full
-    if going is None:
-        raise Refused("the product's own check, %s, has not run on this commit" % VERIFY)
-    began = _when(going.get("started_at"))
+    began = _when(full.get("started_at"))
     if now is not None and began is None:
-        raise Refused("the product's own check, %s, has no start time on this commit" % going.get("name"))
+        raise Refused("the product's own check, %s, has no start time on this commit" % VERIFY)
     if now is not None and now - began > QUICK_LOOKS_FOR:
-        raise Refused("the product's own check, %s, has run over an hour on this commit" % going.get("name"))
-    raise Refused("the product's own check, %s, is still running on this commit" % going.get("name"))
+        raise Refused("the product's own check, %s, has run over an hour on this commit" % VERIFY)
+    raise Refused("the product's own check, %s, is still running on this commit" % VERIFY)
 
 
 def read_state(answer, app_id, sha, now):
@@ -660,55 +667,68 @@ def _selftest():
     want("a re-run that passed after a failure", _asks(verified, {"check_runs": [
         _run(name=VERIFY, conclusion="failure", ago=20), _run(name=VERIFY, ago=2)]}, HEAD), "ok")
     refuses("not a list", verified, {"check_runs": "none"}, HEAD)
-    # A read alongside the tests (2 November 2026): the quick `checks` passing is enough,
-    # for a product EARLY names (#299's read); any other waits for `verify`, its `checks` unread.
+    # A read at the mark (19 November 2026): for a product EARLY names the mark is enough, whatever
+    # its checks are doing short of failing; any other waits for `verify`, its `checks` unread (#299's read).
     q = lambda **kw: _run(name=QUICK, **kw)
     v = lambda **kw: _run(name=VERIFY, **kw)
     going = dict(status="in_progress", conclusion=None)
-    want("each product read early named exactly, beside where its gate was shown to need verify",
-         all(isinstance(why, str) and why for why in EARLY.values()) and all(REPO.match(r) for r in EARLY), True)
+    want("each product read at the mark named exactly, beside where its gate was shown to need verify, Hemz OS among them",
+         "Adonis80/Hemz-OS" in EARLY and all(isinstance(why, str) and why for why in EARLY.values())
+         and all(REPO.match(r) for r in EARLY), True)
     E = "Adonis80/early-example"   # a product named for these cases alone
     EARLY[E] = "the selftest's own"
-    early = lambda answer: _asks(verified, answer, HEAD, None, E)
-    want("checks passed, verify still running", early({"check_runs": [q(ago=9), v(ago=8, **going)]}), "ok")
-    want("checks passed, verify not begun", early({"check_runs": [q(ago=9)]}), "ok")
-    want("checks passed, verify passed", early({"check_runs": [q(ago=30), v(ago=9)]}), "ok")
-    want("the two answers given apart, as the callers give them", early([q(ago=9), v(ago=8, **going)]), "ok")
-    for who in (None, "Adonis80/Hemz-OS", "Adonis80/myst", "Adonis80/early-Example", "Evil/early-example"):
+    for what, runs in (("no check begun", []),
+                       ("checks queued", [q(ago=0, status="queued", conclusion=None)]),
+                       ("checks still running", [q(ago=3, **going)]),
+                       ("checks still running beside verify", [q(ago=3, **going), v(ago=2, **going)]),
+                       ("verify still running with no checks", [v(ago=3, **going)]),
+                       ("checks passed, verify still running", [q(ago=9), v(ago=8, **going)]),
+                       ("checks passed, verify not begun", [q(ago=9)]),
+                       ("checks passed, verify passed", [q(ago=30), v(ago=9)]),
+                       ("a check on another commit, none on this one", [q(sha="c" * 40, ago=9, conclusion="failure")]),
+                       ("a check running past the hour", [v(ago=61, **going)]),
+                       ("a check with no start time", [dict(q(**going), started_at=None)]),
+                       ("a re-run that passed after a failure", [q(ago=20, conclusion="failure"), q(ago=2)])):
+        want("at the mark: %s" % what, _asks(verified, {"check_runs": runs}, HEAD, NOW, E), "ok")
+    want("the two answers given apart, as the callers give them", _asks(verified, [q(ago=3, **going), v(ago=2, **going)], HEAD, None, E), "ok")
+    for what, runs in (("checks passed, verify failed", [q(ago=30), v(ago=9, conclusion="failure")]),
+                       ("checks passed, verify skipped", [q(ago=30), v(ago=9, conclusion="skipped")]),
+                       ("checks failed", [q(ago=9, conclusion="failure")]),
+                       ("checks cancelled", [q(ago=9, conclusion="cancelled")]),
+                       ("checks ended with no conclusion", [q(ago=9, conclusion=None)]),
+                       ("verify failed with no checks", [v(ago=9, conclusion="failure")]),
+                       ("checks re-run and failing after a pass", [q(ago=20), q(ago=2, conclusion="failure")]),
+                       ("checks failed, verify passed", [q(ago=30, conclusion="failure"), v(ago=9)])):
+        refuses("at the mark: %s" % what, verified, {"check_runs": runs}, HEAD, NOW, E)
+    for who in (None, "Adonis80/myst", "Adonis80/early-Example", "Evil/early-example", "Adonis80/hemz-os"):
+        refuses("%s: no check begun, its gate unknown" % who, verified, {"check_runs": []}, HEAD, None, who)
         refuses("%s: checks passed, verify still running, its gate unknown" % who, verified,
                 {"check_runs": [q(ago=9), v(ago=8, **going)]}, HEAD, None, who)
         refuses("%s: checks passed, verify not begun, its gate unknown" % who, verified, {"check_runs": [q(ago=9)]}, HEAD, None, who)
         want("%s: its checks unread, verify passed" % who,
              _asks(verified, {"check_runs": [q(ago=30, conclusion="failure"), v(ago=9)]}, HEAD, None, who), "ok")
-    for what, runs in (("checks passed, verify failed", [q(ago=30), v(ago=9, conclusion="failure")]),
-                       ("checks passed, verify skipped", [q(ago=30), v(ago=9, conclusion="skipped")]),
-                       ("checks failed", [q(ago=9, conclusion="failure")]),
-                       ("checks cancelled", [q(ago=9, conclusion="cancelled")]),
-                       ("checks on another commit", [q(sha="c" * 40, ago=9)]),
-                       ("checks re-run and failing after a pass", [q(ago=20), q(ago=2, conclusion="failure")]),
-                       ("checks failed, verify passed", [q(ago=30, conclusion="failure"), v(ago=9)])):
-        refuses(what, verified, {"check_runs": runs}, HEAD, None, E)
-    for what, runs, who in (("checks still running", [q(ago=3, **going)], E),
-                            ("checks still running beside verify", [q(ago=3, **going), v(ago=2, **going)], E),
-                            ("verify still running with no checks", [v(ago=3, **going)], E),
-                            ("checks queued", [q(ago=3, status="queued", conclusion=None)], E),
-                            ("verify still running, its checks unread", [q(ago=9), v(ago=3, **going)], "Adonis80/myst")):
+    EARLY.pop(E)
+    # Where `verify` is waited for, one still running is said in the words the quick look watches
+    # for, and one that has stuck or has no start time is not.
+    for what, runs in (("verify still running", [v(ago=3, **going)]),
+                       ("verify queued", [v(ago=3, status="queued", conclusion=None)]),
+                       ("verify still running, its checks unread", [q(ago=9), v(ago=3, **going)])):
         try:
-            verified({"check_runs": runs}, HEAD, NOW, who)
+            verified({"check_runs": runs}, HEAD, NOW, "Adonis80/myst")
             bad.append("%s: let a read start" % what)
         except Refused as why:
             if "is still running on this commit" not in str(why):
                 bad.append("%s: not said in the words the quick look watches for" % what)
-    for what, runs in (("checks running past the hour", [q(ago=61, **going)]), ("verify running past the hour", [v(ago=61, **going)]),
-                       ("checks with no start time", [dict(q(**going), started_at=None)]),
-                       ("verify with a start time that does not parse", [dict(v(**going), started_at="soon")])):
+    for what, runs in (("verify running past the hour", [v(ago=61, **going)]),
+                       ("verify with no start time", [dict(v(**going), started_at=None)]),
+                       ("verify with a start time that does not parse", [dict(v(**going), started_at="soon")]),
+                       ("checks still running, verify not begun", [q(ago=3, **going)])):
         try:
-            verified({"check_runs": runs}, HEAD, NOW, E)
+            verified({"check_runs": runs}, HEAD, NOW, "Adonis80/myst")
             bad.append("%s: let a read start" % what)
         except Refused as why:
             if "is still running on this commit" in str(why):
                 bad.append("%s: still earns quick looks" % what)
-    EARLY.pop(E)
 
     # Has it been read: every state, and who may ask again.
     def state(*runs):
@@ -776,7 +796,9 @@ def _selftest():
         want("cli: verified", cli("verify", "Adonis80/alpha", put("v", green), HEAD)[0], 0)
         want("cli: not verified", cli("verify", "Adonis80/alpha", put("v2", {"check_runs": []}), HEAD)[0], 1)
         early_ = [put("q", {"check_runs": [_run(name=QUICK, ago=0)]}), put("v3", {"check_runs": []})]
-        want("cli: Hemz OS, checks passed, waits for verify (Hemz-OS#329, item 12)", cli("verify", "Adonis80/Hemz-OS", *early_, HEAD)[0], 1)
+        want("cli: Hemz OS, read at the mark, verify not begun", cli("verify", "Adonis80/Hemz-OS", *early_, HEAD)[0], 0)
+        want("cli: Hemz OS, read at the mark, no check begun", cli("verify", "Adonis80/Hemz-OS", put("v6", {"check_runs": []}), HEAD)[0], 0)
+        want("cli: Hemz OS, its verify failed", cli("verify", "Adonis80/Hemz-OS", put("v7", {"check_runs": [_run(name=VERIFY, conclusion="failure")]}), HEAD)[0], 1)
         want("cli: checks passed, verify awaited where it does not", cli("verify", "Adonis80/alpha", *early_, HEAD)[0], 1)
         want("cli: no product named", cli("verify", put("v4", green), HEAD)[0], 2)
         want("cli: a product named with a path", cli("verify", "Adonis80/Hemz-OS/../x", put("v5", green), HEAD)[0], 2)
