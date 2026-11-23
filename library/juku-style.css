@@ -123,6 +123,8 @@
   --j-study-ease:cubic-bezier(.2,.7,.2,1);
   --j-t-field:180ms;                  /* field line and tab word colour */
   --j-t-tab:250ms;                    /* the tab line sliding */
+  /* a rail of options: awaiting his tap-through in a product's preview (library/juku-style.md, *Not covered by his approval*) */
+  --j-option-w:304px;                 /* an option's widest: the 390px board less two gutters, one gap and a 44px peek, kept on a wider window */
 }
 
 /* light — porcelain, from the shared sheet, verbatim */
@@ -233,6 +235,35 @@ html{-webkit-text-size-adjust:100%;color-scheme:dark}
   font:inherit;font-size:var(--j-fs-ctl);font-weight:var(--j-fw-medium);letter-spacing:var(--j-ls-ctl);cursor:pointer}
 .j-add svg{width:14px;height:14px}            /* path "M12 5v14M5 12h14", stroke 2 */
 .j-add-row{padding-left:var(--j-indent)}      /* INLINE wrapper: lines the add up with the names */
+/* a rail of options — a small set of choices, each a title, a figure and a one-line effect, spaced on one line the
+   thumb swipes sideways; it settles on an option, the next option's edge (44px) showing so a first-time reader knows
+   there is more. Native radios inside labels, so keyboard (Tab in, arrows choose) and screen reader come with them;
+   the group is named by its band (role="radiogroup" aria-labelledby). It bleeds through the level's gutters to the
+   screen's edges, so only the rail scrolls sideways, never the page. On a wider window each option keeps its phone
+   width (--j-option-w) and the set sits on one line. Awaiting his tap-through (library/juku-style.md). */
+.j-rail{display:flex;gap:var(--j-gutter);margin:0 calc(-1 * var(--j-gutter));padding:var(--j-step-pad) var(--j-gutter);
+  overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;scroll-padding-inline:var(--j-gutter);
+  scroll-behavior:smooth;scrollbar-width:none}
+.j-rail::-webkit-scrollbar{display:none}
+.j-option{position:relative;flex:0 0 min(calc(100% - var(--j-target) - var(--j-gutter)),var(--j-option-w));scroll-snap-align:start;
+  display:flex;flex-direction:column;gap:var(--j-gap);padding:var(--j-hero-pad-top) var(--j-gutter);
+  background:none;border:1px solid var(--j-line);border-radius:var(--j-r-control);cursor:pointer;-webkit-tap-highlight-color:transparent;
+  transition:border-color var(--j-t-fast) var(--j-ease)}
+.j-option>input{position:absolute;top:0;left:0;width:1px;height:1px;margin:0;opacity:0;pointer-events:none}   /* the radio itself: unseen, still focused and read */
+.j-option-name{display:block;padding-right:var(--j-op-w);font-size:var(--j-fs-name);font-weight:var(--j-fw-medium);line-height:var(--j-lh-name);
+  color:var(--j-mute);transition:color var(--j-t-fast) var(--j-ease)}
+.j-option-fig{display:block;font-size:var(--j-fs-big);font-weight:var(--j-fw-medium);line-height:var(--j-lh-tight);white-space:nowrap}  /* colour by meaning; a unit in .j-fig-unit */
+.j-option-line{display:block;font-size:var(--j-fs-lead);line-height:var(--j-lh-lead);color:var(--j-mute-2)}   /* the effect, one line */
+.j-option:hover{border-color:var(--j-line-strong)}
+/* the chosen option: gold edge, gold title and the kit's tick (Done's path), so colour is never the only sign */
+.j-option:has(>input:checked){border-color:var(--j-gold-edge)}
+.j-option:has(>input:checked) .j-option-name{color:var(--j-gold)}
+.j-option:has(>input:checked)::after{content:"";position:absolute;top:var(--j-hero-pad-top);right:var(--j-gutter);width:14px;
+  height:calc(var(--j-fs-name) * var(--j-lh-name));background:var(--j-gold);
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center/14px no-repeat;
+  mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center/14px no-repeat}
+.j-option:has(>input:focus-visible){outline:1px solid var(--j-gold);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.j-rail{scroll-behavior:auto}.j-option,.j-option-name{transition:none}}
 
 /* (i) explainer sheet under the bar [.pf-info] — the only filled, shadowed surface */
 .j-info{position:absolute;left:0;right:0;top:var(--j-bar-h);z-index:19;padding:14px var(--j-gutter) 16px;display:flex;flex-direction:column;gap:8px;
