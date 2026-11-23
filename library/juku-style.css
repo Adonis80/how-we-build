@@ -124,7 +124,9 @@
   --j-t-field:180ms;                  /* field line and tab word colour */
   --j-t-tab:250ms;                    /* the tab line sliding */
   /* a rail of options: awaiting his tap-through in a product's preview (library/juku-style.md, *Not covered by his approval*) */
-  --j-option-w:304px;                 /* an option's widest: the 390px board less two gutters, one gap and a 44px peek, kept on a wider window */
+  --j-option-w:318px;                 /* an option's widest: the 390px board less its left gutter, one gap and a 44px peek (the rail bleeds to the right edge), kept on a wider window */
+  --j-option-pad:18px;                /* an option's inside, top and bottom (the hero total row's 18px, the rail's own) */
+  --j-option-tick:14px;               /* the chosen option's tick (the kit's 14px icon, the rail's own) */
 }
 
 /* light — porcelain, from the shared sheet, verbatim */
@@ -245,12 +247,12 @@ html{-webkit-text-size-adjust:100%;color-scheme:dark}
   overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;scroll-padding-inline:var(--j-gutter);
   scroll-behavior:smooth;scrollbar-width:none}
 .j-rail::-webkit-scrollbar{display:none}
-.j-option{position:relative;flex:0 0 min(calc(100% - var(--j-target) - var(--j-gutter)),var(--j-option-w));scroll-snap-align:start;
-  display:flex;flex-direction:column;gap:var(--j-gap);padding:var(--j-hero-pad-top) var(--j-gutter);
+.j-option{position:relative;flex:0 0 min(calc(100% - var(--j-target)),var(--j-option-w));scroll-snap-align:start;
+  display:flex;flex-direction:column;gap:var(--j-gap);padding:var(--j-option-pad) var(--j-gutter);
   background:none;border:1px solid var(--j-line);border-radius:var(--j-r-control);cursor:pointer;-webkit-tap-highlight-color:transparent;
   transition:border-color var(--j-t-fast) var(--j-ease)}
 .j-option>input{position:absolute;top:0;left:0;width:1px;height:1px;margin:0;opacity:0;pointer-events:none}   /* the radio itself: unseen, still focused and read */
-.j-option-name{display:block;padding-right:var(--j-op-w);font-size:var(--j-fs-name);font-weight:var(--j-fw-medium);line-height:var(--j-lh-name);
+.j-option-name{display:block;padding-right:calc(var(--j-option-tick) + var(--j-gap));font-size:var(--j-fs-name);font-weight:var(--j-fw-medium);line-height:var(--j-lh-name);
   color:var(--j-mute);transition:color var(--j-t-fast) var(--j-ease)}
 .j-option-fig{display:block;font-size:var(--j-fs-big);font-weight:var(--j-fw-medium);line-height:var(--j-lh-tight);white-space:nowrap}  /* colour by meaning; a unit in .j-fig-unit */
 .j-option-line{display:block;font-size:var(--j-fs-lead);line-height:var(--j-lh-lead);color:var(--j-mute-2)}   /* the effect, one line */
@@ -258,10 +260,10 @@ html{-webkit-text-size-adjust:100%;color-scheme:dark}
 /* the chosen option: gold edge, gold title and the kit's tick (Done's path), so colour is never the only sign */
 .j-option:has(>input:checked){border-color:var(--j-gold-edge)}
 .j-option:has(>input:checked) .j-option-name{color:var(--j-gold)}
-.j-option:has(>input:checked)::after{content:"";position:absolute;top:var(--j-hero-pad-top);right:var(--j-gutter);width:14px;
+.j-option:has(>input:checked)::after{content:"";position:absolute;top:var(--j-option-pad);right:var(--j-gutter);width:var(--j-option-tick);
   height:calc(var(--j-fs-name) * var(--j-lh-name));background:var(--j-gold);
-  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center/14px no-repeat;
-  mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center/14px no-repeat}
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center/var(--j-option-tick) no-repeat;
+  mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center/var(--j-option-tick) no-repeat}
 .j-option:has(>input:focus-visible){outline:1px solid var(--j-gold);outline-offset:2px}
 @media (prefers-reduced-motion:reduce){.j-rail{scroll-behavior:auto}.j-option,.j-option-name{transition:none}}
 
