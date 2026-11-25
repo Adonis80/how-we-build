@@ -1,34 +1,10 @@
 #!/usr/bin/env bash
-# The rulebook's own guard. CI runs it on every push and pull request.
-# It refuses: a front-end guide that is not HyperSolid alone, a root or library
-# file that is not on its list or missing from it, a library page unscoped, a
-# link to a page that does not exist,
-# an index row that opens its first page on words that page does not say,
-# anything that looks like a secret (naming the place, never the value), a
-# model named anywhere but the registry, a review gate that no longer matches the reviewer's answers or has drifted from
-# the workflows that fetch them, a Roadmap that no longer renders as
-# decision 0007 says, a product read's rules that no longer refuse what decision
-# 0013 says they must, and, in a pull request, a commit no reviewer
-# has read clean — unread, or read and left a blocking finding on — or a change to the review
-# machinery while the newest canary on main is red, or a change to what runs that adds
-# no line to library/upgrade-log.md, and, through product-reads/rules-check.py,
-# a rule change without its Replaces: line or a constitution off its headings,
-# a size hook (.claude/size.py) that no longer holds his size lines,
-# a ticket check (product-reads/ticket.py) that no longer refuses a ticket that
-# does not resolve or is over its cap, and a design brief check (product-reads/brief-check.py) that no longer refuses
-# a brief that plans the screen, overloads it or skips its slots, and a style lock
-# (product-reads/style-lock.py) that no longer flags a box round content, or a kit
-# that loads from outside or whose page names a value its stylesheet lacks.
-# Nothing else. A read by anybody the
-# gate does not count is unread, not a shape of its own.
-# A third shape, "read clean by a reviewer the rulebook does not allow to
-# clear this change", was real while two vendors were on the register and is
-# gone with the second: see review-gate.py on CROSS_VENDOR. A header describing
-# a state the file can no longer reach is the drift this guard exists to catch,
-# so it is corrected here rather than left for the next reader to discover.
-# The Replaces: line and a product constitution's shape are
-# product-reads/rules-check.py's, run below. No page is held to a word count (his
-# ruling, 4 November 2026, decision 0026): the hierarchy is the guard, 2c below.
+# The rulebook's own guard. CI runs it on every push and pull request. Each
+# numbered part below says what it refuses and why; in a pull request it also
+# refuses a commit no reviewer has read clean (unread, or read and left a
+# blocking finding on). A read by anybody the gate does not count is unread.
+# No page is held to a word count (his ruling, 4 November 2026, decision 0026):
+# the hierarchy is the guard, 2c below.
 set -euo pipefail
 cd "$(dirname "$0")"
 fail=0
@@ -41,14 +17,14 @@ part="${CHECK_PART:-whole}"
 case "$part" in whole|selftest|gate) ;; *) echo "FAIL: CHECK_PART is '$part'; it is selftest, gate or unset."; exit 1 ;; esac
 if [ "$part" != gate ]; then
 
-# 1. The rules' own guard: the Replaces: line in a pull request that changes a
-# rule page, and its own selftest.
+# 1. The rules' own guard: every kept or moved LEDGER.md row's anchor still in its
+# home, and its own selftest.
 python3 -I product-reads/rules-check.py --selftest || fail=1
 python3 -I product-reads/rules-check.py || { echo "FAIL: see product-reads/rules-check.py's reason above."; fail=1; }
 
 # 2. Only these files exist at the root (plus .git and .github).
 list_fail=0
-allowed=" .claude AGENTS.md CHARTER.md HOW-WE-BUILD.md README.md RICH-DATA.md board check.sh juku-library library model-registry product-reads review-gate.py "
+allowed=" .claude AGENTS.md CHARTER.md HOW-WE-BUILD.md LEDGER.md README.md RICH-DATA.md board check.sh juku-library library model-registry product-reads review-gate.py "
 while IFS= read -r f; do
   case "$f" in .git|.github) continue ;; esac
   case "$allowed" in

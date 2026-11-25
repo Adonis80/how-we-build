@@ -1,4 +1,4 @@
-Rulebook: https://github.com/Adonis80/how-we-build — read HOW-WE-BUILD.md before anything else, then What every product carries in its README.
+Rulebook: https://github.com/Adonis80/how-we-build — read HOW-WE-BUILD.md first.
 
 # This product
 

@@ -20,13 +20,11 @@ A ticket names this rulebook's pieces and, for a product's successor, one produc
 repository named as the README's *Products under this rulebook* spells it (`Hemz-OS:`),
 never a paused one. Decision 0015's reads, by address: the product's `AGENTS.md` whole;
 `PRODUCT.md` and `roadmap.json` never whole, at least one passage of each, none over BIG
-tokens and half its file but a note; each of the roadmap's top-level notes it has (NOTES:
-how its order is set, money milestones), by key; and CARRIES whole, read at every product
-session's start.
+tokens and half its file but a note; and each of the roadmap's top-level notes it has (NOTES:
+how its order is set, money milestones), by key.
 
   Ticket:
   - how-we-build:library/session-changeover.md#The ticket
-  - how-we-build:library/carries-sessions.md
   - Hemz-OS:AGENTS.md
   - Hemz-OS:PRODUCT.md#1
   - Hemz-OS:roadmap.json#_what_this_is
@@ -41,7 +39,8 @@ does not resolve, an address naming more than one piece, a path outside its repo
 piece naming no repository, a repository neither how-we-build nor a live product on the
 README's map, two products in one ticket, a product ticket short of decision 0015's reads
 above, a piece in juku-library/ (never loaded into a working session), a ticket without
-OWN (the rule it boots by), and a total over CAP
+OWN (the rule it boots by), words that hand over a method (STEPS: a brief is the goal, how
+it is judged, the hard limits and the facts, HOW-WE-BUILD.md), and a total over CAP
 tokens (bytes / 4, rounded up: an estimate a check can repeat, never a session's real
 size, which the size hook reads). Too big: the outgoing session splits the job; the
 successor is never handed the excess. Exit 0 passes; 1 names each fault.
@@ -61,7 +60,27 @@ ITEM = re.compile(r"^\s*[-*]\s+(\S.*?)\s*$")
 MAP_LINE = re.compile(r"^- \*\*[^*]+\*\* — `https://github\.com/Adonis80/([\w.-]+)`\s*(\([^)]*\))?", re.M)
 NOTES = ("_what_this_is", "order_set", "money_milestones")   # a roadmap's top-level notes (decision 0015)
 WHOLE_NEVER = ("PRODUCT.md", "roadmap.json")                    # read by passage, never whole (decision 0015)
-CARRIES = "library/carries-sessions.md"   # "each session reads this list at its start" (that page)
+STEPS = ("a brief is the goal, how it is judged, the hard limits and the facts, never the method "
+         "(HOW-WE-BUILD.md, *The pull request is the handover*); cut the how-to: %s")
+# Imperative how-to openers, as Hemz OS's .claude/guard.py lists them; two or more items opening on one is a method.
+HOWTO = set("add build create write use put open run move make call edit implement wire copy replace delete remove rename "
+            "install refactor split extract insert change update set push mark merge spawn read go click first then next "
+            "finally start commit branch deploy fetch clone".split())
+HOWTO_ITEM = re.compile(r"^\s*(?:[-*]|\d+[.)]|step\s*\d+[:.)]?)\s+(?:\*\*)?([A-Za-z]+)", re.I | re.M)
+METHOD = re.compile(r"^\s*(?:#+\s*|\*\*)?(steps|how to|method|implementation plan|to do|todo)\b\s*(?:\*\*)?\s*:?\s*$|"
+                    r"^\s*(?:\*\*)?(steps|method|implementation plan)\s*:(?:\*\*)?", re.I | re.M)
+
+
+def steps(words):
+    """None when the words are a goal; else what makes them a method. His words, in double quotes, are exempt."""
+    text = re.sub(r'"[^"\n]*"|“[^”\n]*”', '""', str(words or ""))
+    m = METHOD.search(text)
+    if m:
+        return STEPS % ("a '%s' section" % (m.group(1) or m.group(2)))
+    hits = [v for v in HOWTO_ITEM.findall(text) if v.lower() in HOWTO]
+    if len(hits) >= 2:
+        return STEPS % ("%d list items open on an instruction (%s)" % (len(hits), ", ".join(hits[:4])))
+    return None
 BIG = 2_000   # a passage this many tokens or fewer is never "whole in all but name": a small file costs nothing
 
 
@@ -245,8 +264,6 @@ def product_faults(entries, repos):
     p = named[0]
     mine = [split(e)[1:] for e in entries if split(e)[0] == p]
     paths = lambda f: [a for path, a in mine if os.path.normpath(path) == f]
-    if not any(split(e)[0] == RULEBOOK and os.path.normpath(split(e)[1]) == CARRIES and not split(e)[2] for e in entries):
-        faults.append(f"no '{RULEBOOK}:{CARRIES}' piece, whole: each product session reads its list at its start")
     if "" not in paths("AGENTS.md"):
         faults.append(f"'{p}:AGENTS.md' is not on it whole: a product session reads its AGENTS.md whole (decision 0015)")
     for f in WHOLE_NEVER:
@@ -297,6 +314,8 @@ def check(words, repos):
     if entries and entries[0] != OWN:
         faults.append(f"'{OWN}' is not first: every ticket carries the rule its session boots by, first")
     faults += product_faults(entries, repos)
+    if steps(words):
+        faults.append(steps(words))
     for e in entries:
         if split(e)[0] == RULEBOOK and (os.path.normpath(split(e)[1]) + "/").startswith(ARCHIVE):
             faults.append(f"'{e}': '{ARCHIVE}' is never loaded into a working session (library/rulebook-files.md); read it at work, as `Added:`")
@@ -400,8 +419,7 @@ def selftest():
         os.makedirs(os.path.join(rule, os.path.dirname(own)))
         open(os.path.join(rule, own), "w").write("# Changeover\n\n**The ticket** (his ruling). Reads.\n")
         T = "Ticket:\n- " + OWN + "\n"
-        open(os.path.join(rule, CARRIES), "w").write("# What every product carries\n\nThe list.\n")
-        P = T + "- how-we-build:" + CARRIES + "\n- Hemz-OS:AGENTS.md\n- Hemz-OS:PRODUCT.md#5\n- Hemz-OS:roadmap.json#_what_this_is\n- Hemz-OS:roadmap.json#P62\n"
+        P = T + "- Hemz-OS:AGENTS.md\n- Hemz-OS:PRODUCT.md#5\n- Hemz-OS:roadmap.json#_what_this_is\n- Hemz-OS:roadmap.json#P62\n"
         drop = lambda line: P.replace(line + "\n", "")
         real = products(HERE)
         good = "Ticket:\n- " + OWN + "\n- how-we-build:notes/page.md#After a wait\n- how-we-build:README.md#What every product carries\n\nRest of the words.\n- not an item of the ticket: nope.md\n"
@@ -428,10 +446,9 @@ def selftest():
             ("no roadmap item fails", check(drop("- Hemz-OS:roadmap.json#P62"), repos)[0], lambda f: any("item the job builds" in x for x in f)),
             ("a product not given by --repo fails", check(P, {"how-we-build": rule})[0], lambda f: any("no repository named 'Hemz-OS'" in x for x in f)),
             ("this README's map parses: at least one product, each live or paused", real, lambda r: len(r) >= 1 and all(isinstance(v, bool) for v in r.values())),
-            ("a product ticket without the carries list fails", check(drop("- how-we-build:" + CARRIES), repos)[0], lambda f: any("carries-sessions" in x for x in f)),
-            ("a product ticket with only part of the carries list fails",
-             check(P.replace("- how-we-build:" + CARRIES + "\n", "- how-we-build:" + CARRIES + "#What every product carries\n"), repos)[0],
-             lambda f: any("whole" in x for x in f)),
+            ("a brief of goal and limits passes", check(good + "Goal: the formula screen, whole.\n- Never a typed price.\n- No new check.\n", repos)[0], lambda f: f == []),
+            ("a brief planting how-to steps fails", check(good + "- Read the old screen.\n- Then build the new one.\n", repos)[0], lambda f: any("never the method" in x for x in f)),
+            ("a brief with a Steps section fails", check(good + "\n## Steps\nThe list.\n", repos)[0], lambda f: any("'Steps' section" in x for x in f)),
             ("a required note is never refused as over half its file", check(P, {**repos, "Hemz-OS": noted})[0], lambda f: f == []),
             ("a ticket without The ticket fails", check("Ticket:\n- how-we-build:notes/page.md#Part two\n", repos)[0], lambda f: any("boots by" in x for x in f)),
             ("The ticket not first fails", check("Ticket:\n- how-we-build:notes/page.md#Part two\n- " + OWN + "\n", repos)[0], lambda f: any("first" in x for x in f)),

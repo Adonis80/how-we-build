@@ -6,7 +6,7 @@ The rulebook for every product Dhayan's AI studio builds. This repository says *
 
 **Three files matter.**
 
-- `HOW-WE-BUILD.md` — the operating page, short, with no word limit: it routes, and the README's index sends a session on (decision 0026). The first thing a working session loads, then the README.
+- `HOW-WE-BUILD.md` — the operating page, short, with no word limit: it routes, and the README's index sends a session on (decision 0026). The first thing every session loads; the README is its index.
 - `CHARTER.md` — the Systems Blueprint, the reasoning behind the page. Read once, never loaded into a working session.
 - `RICH-DATA.md` — the method for what a product learns from and how we know its AI got smarter. Read on its row in the README's index, and not otherwise.
 
