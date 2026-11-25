@@ -1,42 +1,15 @@
 #!/usr/bin/env bash
-# The rulebook's own guard. CI runs it on every push and pull request.
-# It refuses: a front-end guide that is not HyperSolid alone, a root or library
-# file that is not on its list or missing from it, a library page unscoped, a
-# link to a page that does not exist,
-# an index row that opens its first page on words that page does not say,
-# anything that looks like a secret (naming the place, never the value), a
-# model named anywhere but the registry, a review gate that no longer matches the reviewer's answers or has drifted from
-# the workflows that fetch them, a Roadmap that no longer renders as
-# decision 0007 says, a product read's rules that no longer refuse what decision
-# 0013 says they must, and, in a pull request, a commit no reviewer
-# has read clean — unread, or read and left a blocking finding on — or a change to the review
-# machinery while the newest canary on main is red, or a change to what runs that adds
-# no line to library/upgrade-log.md, and, through product-reads/rules-check.py,
-# a rule change without its Replaces: line or a constitution off its headings,
-# a size hook (.claude/size.py) that no longer holds his size lines,
-# a ticket check (product-reads/ticket.py) that no longer refuses a ticket that
-# does not resolve or is over its cap, and a design brief check (product-reads/brief-check.py) that no longer refuses
-# a brief that plans the screen, overloads it or skips its slots, and a style lock
-# (product-reads/style-lock.py) that no longer flags a box round content, or a kit
-# that loads from outside or whose page names a value its stylesheet lacks.
-# Nothing else. A read by anybody the
-# gate does not count is unread, not a shape of its own.
-# A third shape, "read clean by a reviewer the rulebook does not allow to
-# clear this change", was real while two vendors were on the register and is
-# gone with the second: see review-gate.py on CROSS_VENDOR. A header describing
-# a state the file can no longer reach is the drift this guard exists to catch,
-# so it is corrected here rather than left for the next reader to discover.
-# The Replaces: line and a product constitution's shape are
-# product-reads/rules-check.py's, run below. No page is held to a word count (his
-# ruling, 4 November 2026, decision 0026): the hierarchy is the guard, 2c below.
+# The rulebook's own guard. CI runs it on every push and pull request. Each
+# numbered part below says what it refuses and why; in a pull request it also
+# refuses a commit no reviewer has read clean (unread, or read and left a
+# blocking finding on). A read by anybody the gate does not count is unread.
+# No page is held to a word count (his ruling, 4 November 2026, decision 0026):
+# the hierarchy is the guard, 2c below.
 set -euo pipefail
 cd "$(dirname "$0")"
 fail=0
-# TWO STEPS, ONE CHECK (his ask, 7 October 2026: the full self-test ran on
-# every pull request and again when the verdict landed, about 22 minutes each).
-# check.yml runs this file twice in the one `check` job: CHECK_PART=selftest for
-# everything but the gate, then CHECK_PART=gate for the gate alone, so a re-run
-# can see which half an earlier attempt passed. Unset, by hand, it runs whole.
+# TWO STEPS, ONE CHECK (his ask, 7 October 2026): check.yml runs CHECK_PART=selftest,
+# then CHECK_PART=gate, in the one `check` job; unset, by hand, it runs whole.
 part="${CHECK_PART:-whole}"
 case "$part" in whole|selftest|gate) ;; *) echo "FAIL: CHECK_PART is '$part'; it is selftest, gate or unset."; exit 1 ;; esac
 if [ "$part" != gate ]; then
@@ -180,19 +153,9 @@ while IFS= read -r hit; do
   # refuses is above: a control character in a path reaches a public log.
   [ -f "$f" ] || { printf "FAIL: %q links '%s', which does not exist.\n" "${hit%:*}" "$f"; lib_fail=1; }
 done < <(grep -r -o -I -P --exclude-dir=.git "(?<![A-Za-z0-9._-])$page_re" . | sed 's|^\./||' | sort -u || true)
-# The index holds its pages in words as well as in names. Decision 0005
-# (issue #75: his ruling of 23 September 2026, and his challenge "machine
-# first, reading last") made the map "one line per topic saying when to open
-# it", and ruled that what a machine can check "becomes a shared check the
-# same day". So this holds a settled rule rather than adding one. A page's
-# trigger lives twice: in the index row a session scans to decide what to
-# open, and on the page it opens. Nothing held the two equal (#83's read),
-# so a row edited alone would send a session to a page on words the page
-# does not say. Each row's "Open when" must be the first page it names',
-# less the final full stop. The other pages of a several-page row carry
-# lines of their own and are held only to being named. The text is
-# repository text, but it reaches a public log, so control characters are
-# dropped before it is printed.
+# Each index row's "Open when" must be the first page it names', less the final
+# full stop (decision 0005, #83's read): a row edited alone would send a session to a
+# page on words the page does not say. Control characters are dropped before printing.
 while IFS='|' read -r _ cell when _; do
   first=$( { grep -o -E "$page_re" <<< "$cell" || true; } | head -n 1)
   [ -f "$first" ] || continue
