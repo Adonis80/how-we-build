@@ -62,10 +62,11 @@ NOTES = ("_what_this_is", "order_set", "money_milestones")   # a roadmap's top-l
 WHOLE_NEVER = ("PRODUCT.md", "roadmap.json")                    # read by passage, never whole (decision 0015)
 STEPS = ("a brief is the goal, how it is judged, the hard limits and the facts, never the method "
          "(HOW-WE-BUILD.md, *The pull request is the handover*); cut the how-to: %s")
-# Imperative how-to openers, as Hemz OS's .claude/guard.py lists them; two or more items opening on one is a method.
-HOWTO = set("add build create write use put open run move make call edit implement wire copy replace delete remove rename "
-            "install refactor split extract insert change update set push mark merge spawn read go click first then next "
-            "finally start commit branch deploy fetch clone".split())
+# Imperative how-to openers, Hemz OS's .claude/guard.py list less the words a successor's words are asked to
+# carry (read, first, build, merge, next, start: *A session starts its own successor*); two items on one is a method.
+HOWTO = set("add create write use put open run move make call edit implement wire copy replace delete remove rename "
+            "install refactor split extract insert change update set push mark spawn click then finally commit "
+            "branch deploy fetch clone".split())
 HOWTO_ITEM = re.compile(r"^\s*(?:[-*]|\d+[.)]|step\s*\d+[:.)]?)\s+(?:\*\*)?([A-Za-z]+)", re.I | re.M)
 METHOD = re.compile(r"^\s*(?:#+\s*|\*\*)?(steps|how to|method|implementation plan|to do|todo)\b\s*(?:\*\*)?\s*:?\s*$|"
                     r"^\s*(?:\*\*)?(steps|method|implementation plan)\s*:(?:\*\*)?", re.I | re.M)
@@ -447,7 +448,8 @@ def selftest():
             ("a product not given by --repo fails", check(P, {"how-we-build": rule})[0], lambda f: any("no repository named 'Hemz-OS'" in x for x in f)),
             ("this README's map parses: at least one product, each live or paused", real, lambda r: len(r) >= 1 and all(isinstance(v, bool) for v in r.values())),
             ("a brief of goal and limits passes", check(good + "Goal: the formula screen, whole.\n- Never a typed price.\n- No new check.\n", repos)[0], lambda f: f == []),
-            ("a brief planting how-to steps fails", check(good + "- Read the old screen.\n- Then build the new one.\n", repos)[0], lambda f: any("never the method" in x for x in f)),
+            ("a brief planting how-to steps fails", check(good + "- Open the old screen.\n- Copy its layout into the new one.\n", repos)[0], lambda f: any("never the method" in x for x in f)),
+            ("the items a successor's words carry pass", check(good + "- Read HOW-WE-BUILD.md whole first.\n- Build P62 to its criteria.\n- Merge #441 once read clean.\n- Next: the top ready item.\n", repos)[0], lambda f: f == []),
             ("a brief with a Steps section fails", check(good + "\n## Steps\nThe list.\n", repos)[0], lambda f: any("'Steps' section" in x for x in f)),
             ("a required note is never refused as over half its file", check(P, {**repos, "Hemz-OS": noted})[0], lambda f: f == []),
             ("a ticket without The ticket fails", check("Ticket:\n- how-we-build:notes/page.md#Part two\n", repos)[0], lambda f: any("boots by" in x for x in f)),

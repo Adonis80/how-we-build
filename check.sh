@@ -14,14 +14,14 @@ part="${CHECK_PART:-whole}"
 case "$part" in whole|selftest|gate) ;; *) echo "FAIL: CHECK_PART is '$part'; it is selftest, gate or unset."; exit 1 ;; esac
 if [ "$part" != gate ]; then
 
-# 1. The rules' own guard: every kept or moved LEDGER.md row's anchor still in its
-# home, and its own selftest.
+# 1. The rules' own guard: the Replaces: line in a pull request that changes a
+# rule page, and its own selftest.
 python3 -I product-reads/rules-check.py --selftest || fail=1
 python3 -I product-reads/rules-check.py || { echo "FAIL: see product-reads/rules-check.py's reason above."; fail=1; }
 
 # 2. Only these files exist at the root (plus .git and .github).
 list_fail=0
-allowed=" .claude AGENTS.md CHARTER.md HOW-WE-BUILD.md LEDGER.md README.md RICH-DATA.md board check.sh juku-library library model-registry product-reads review-gate.py "
+allowed=" .claude AGENTS.md CHARTER.md HOW-WE-BUILD.md README.md RICH-DATA.md board check.sh juku-library library model-registry product-reads review-gate.py "
 while IFS= read -r f; do
   case "$f" in .git|.github) continue ;; esac
   case "$allowed" in

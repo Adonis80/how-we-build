@@ -2,6 +2,8 @@ Rulebook: https://github.com/Adonis80/how-we-build — read HOW-WE-BUILD.md firs
 
 # This product
 
+Read next: nothing yet; as pages every session here needs are written, they are named on this line.
+
 New. What is true only here goes below this line, as it becomes true; what is true of every product is in the rulebook.
 
 ## Review guidelines
