@@ -6,7 +6,7 @@ The rulebook for every product Dhayan's AI studio builds: **how** we work. Each 
 
 ## Products under this rulebook
 
-To read one (decision 0015): its `AGENTS.md` whole; from `PRODUCT.md`, its purpose, the rules it holds across every slice and the passages the task needs, with what they reference; where its `AGENTS.md` names its plan page (`HOW-WE-BUILD.md`, *The unit of work*), that page's top ready item and what the item names, with the money milestones from wherever the product keeps them; else, from `roadmap.json`, how its order is set (its `_what_this_is` and order note), money milestones, open items with their `next` lines, the `retired` notes when an ideas review is due, and a `done` item only when its evidence is needed. A session whose task carries a ticket reads instead only the pieces its ticket names (`library/session-changeover.md`, *The ticket*).
+To read one (decision 0015): its `AGENTS.md` whole; from `PRODUCT.md`, its purpose, the rules it holds across every slice and the passages the task needs, with what they reference; from `roadmap.json`, how its order is set (its `_what_this_is` and order note), money milestones, open items with their `next` lines, the `retired` notes when an ideas review is due, and a `done` item only when its evidence is needed. A session whose task carries a ticket reads instead only the pieces its ticket names (`library/session-changeover.md`, *The ticket*).
 
 - **Myst** — `https://github.com/Adonis80/myst` (private; paused 28 Oct 2026, his word). The App for Perfume Collectors: a Personal Nose that learns a person's taste, samples picked for them, and the value on collectors' shelves.
 - **Hemz OS** — `https://github.com/Adonis80/Hemz-OS` (private). The operating system for an alterations business, grown out of Alma's Alterations in Brighton.
@@ -18,10 +18,9 @@ A repository not listed here is not under this rulebook; `Adonis80/juku-site`, w
 ## Where each product's plan lives
 
 - **Juku OS** (this rulebook) — its open pull requests, ready first, then priority, then oldest, then its agreed `proposal` issues.
-- **Hemz OS** — its [`QUEUE.md`](https://github.com/Adonis80/Hemz-OS/blob/main/QUEUE.md) on `main`, the page its `AGENTS.md` names (`HOW-WE-BUILD.md`, *The unit of work*).
-- **Each other product** — its `roadmap.json` on `main`: [Myst](https://github.com/Adonis80/myst/blob/main/roadmap.json), [Phena](https://github.com/Adonis80/phena/blob/main/roadmap.json), [Fixed](https://github.com/Adonis80/fixed/blob/main/roadmap.json).
+- **Each product** — its `roadmap.json` on `main`: [Hemz OS](https://github.com/Adonis80/Hemz-OS/blob/main/roadmap.json), [Myst](https://github.com/Adonis80/myst/blob/main/roadmap.json), [Phena](https://github.com/Adonis80/phena/blob/main/roadmap.json), [Fixed](https://github.com/Adonis80/fixed/blob/main/roadmap.json).
 
-The Roadmap at roadmap.juku.pro shows each `roadmap.json` and this rulebook's pull requests; a plan page a product names instead it does not yet read (`library/roadmap.md`).
+The Roadmap at roadmap.juku.pro shows them all (`library/roadmap.md`).
 
 ## What every product carries
 
