@@ -6197,6 +6197,10 @@ def _check_product_wiring(review=None, product=None, readme=None, quiet=False):
     if lost:
         fault("must carry the slice's own pages by rule and name what it leaves out; it has lost %s"
               % "; ".join(lost))
+    lost = brick_faults(product)
+    if lost:
+        fault("must carry the slice's brick by rule and name what it leaves out; it has lost %s"
+              % "; ".join(lost))
     lost = link_faults(product)
     if lost:
         fault("must carry the source a change imports, one hop, and print nothing of it; it has "
@@ -9022,6 +9026,235 @@ def _check_pick_loosenings():
     return bad
 
 
+# THE SLICE'S BRICK, PICKED BY RULE (Hemz-OS#445). A product that plans in
+# QUEUE.md bricks titles its slices by brick ("B5 · ..."), and no roadmap item
+# matches such a title, so its reader was given nothing of the brick unless the
+# change touched it. Now a title that opens with a brick id the head's QUEUE.md
+# holds also carries that brick's entry whole, the card its Card line names
+# (through `add`, a path inside the product alone), and the MAP.md records its
+# Map lines name, naming every other brick with its size and a record named and
+# not there as missing. Held as the picker is: run here, not read, against the
+# cases below, so a brick read out of the middle of a title, a card outside the
+# product, a record cut short or run on, or a summary that prints the product's
+# words into the public log each turns the check red.
+BRICK_CALL = ("if python3 - \"$t/title.txt\" \"$t/carried.QUEUE.md\" \"$t/carried.MAP.md\" "
+              "\"$t/bricked.txt\" \"$t/card.txt\" 2>/dev/null <<'PY'")
+BRICK_FEED = ('for f in QUEUE.md MAP.md; do g show "$SHA:$f" > "$t/carried.$f" 2>/dev/null '
+              '|| : > "$t/carried.$f"; done')
+BRICK_TAKEN = 'cat "$t/bricked.txt" >> "$pages"'
+BRICK_CARD = ('else add "$card" || printf \'\\n===== %s: named by the brick\'"\'"\'s Card line, and not in '
+              'this product =====\\n\' "$card" >> "$pages"; fi')
+BRICK_FAILED = ('echo "the slice\'s brick could not be picked, so this read carries QUEUE.md and MAP.md '
+                'only where the change touches them"')
+BRICK_FAILED_READ = ("printf '\\n===== the slice'\"'\"'s brick could not be picked; QUEUE.md and MAP.md "
+                     "are carried only where the change touches them =====\\n' >> \"$pages\"")
+BRICK_TOLD = ('echo "A title that opens with a brick id (B5) also carries that brick\'s QUEUE.md entry, '
+              'its card and the MAP.md records it names."')
+BRICK_TITLE_GONE = 'rm -f "$t/carried.roadmap.json" "$t/carried.PRODUCT.md" "$t/picked.txt" "$t/title.txt"'
+BRICK_SAID = re.compile(r"^bricked: (the slice's brick|no brick); \d+ of \d+ MAP record\(s\) carried; "
+                        r"(a card named|no card); \d+ of \d+ bytes\n$")
+BRICK_OPENING = "# QUEUE\n\nHow the queue is worked: OPENING-WORDS.\n\n"
+# (the heading, the entry's lines). B51 stands ahead of B5, so a heading
+# matched by its start alone takes the wrong brick.
+BRICK_BRICKS = (
+    ("B1 · First brick", "Status: live\nCard: cards/B1.md\nMap:\n- A1 · The first job, here.\n"
+                         "- docs/plan.md · a path, not a record\nDone when: ONE-DONE\n\n"),
+    ("B51 · Out of bounds", "Status: planned\nCard: cards/../../outside.md\nMap: none\n\n"),
+    ("B5 · Fifth brick", "Status: building\nCard: `cards/B5.md`\nMap:\n- A1 · The first job again.\n"
+                         "- C2b · The second job.\n- Z9 · Named, and no record.\n- none\n"
+                         "Locked:\n- E3 · a locked line, not the map\nDone when: FIVE-DONE\n\n"),
+    ("B52 · Rooted", "Status: planned\nCard: /etc/cards/B52.md\nMap: D4 · On the field's own line.\n\n"),
+    ("B6 · No card", "Status: planned\nMap: none\nDone when: SIX-DONE\n"),
+)
+BRICK_QUEUE = BRICK_OPENING + "".join("## %s\n%s" % b for b in BRICK_BRICKS)
+# (the id, its record's own words, words after it that are not its record)
+BRICK_RECORDS = (("A1", "**A1 · The first job** — rank 1.\nALPHA-RECORD\n\n**An aside in bold**, still A1's.\n"
+                  "ALPHA-TAIL\n"),
+                 ("C2b", "**C2b · The second job**\nCHARLIE-RECORD\n\n"),
+                 ("D4", "**D4 · A job left out**\nDELTA-RECORD\n"),
+                 ("E3", "**E3 · A locked job**\nECHO-RECORD\n"))
+BRICK_MAP = ("# MAP\n\nMAP-OPENING\n\n## Home one\n\n" + BRICK_RECORDS[0][1] + BRICK_RECORDS[1][1]
+             + "## Home two\nHOME-TWO-WORDS\n" + BRICK_RECORDS[2][1] + BRICK_RECORDS[3][1])
+# (the title, QUEUE.md, MAP.md, the brick carried or "", the records carried,
+# the records named as missing, the card named or "")
+BRICK_CASES = (
+    ("B5 · Fifth brick lands", BRICK_QUEUE, BRICK_MAP, "B5", ["A1", "C2b"], ["Z9"], "cards/B5.md"),
+    ("B5: the colon form", BRICK_QUEUE, BRICK_MAP, "B5", ["A1", "C2b"], ["Z9"], "cards/B5.md"),
+    ("B1 · First brick", BRICK_QUEUE, BRICK_MAP, "B1", ["A1"], [], "cards/B1.md"),
+    ("B5 · with no map page", BRICK_QUEUE, "", "B5", [], ["A1", "C2b", "Z9"], "cards/B5.md"),
+    ("B51 · out of bounds", BRICK_QUEUE, BRICK_MAP, "B51", [], [], ""),
+    ("B52 · rooted", BRICK_QUEUE, BRICK_MAP, "B52", ["D4"], [], ""),
+    ("B6 · no card", BRICK_QUEUE, BRICK_MAP, "B6", [], [], ""),
+    ("B5x lands", BRICK_QUEUE, BRICK_MAP, "", [], [], ""),
+    ("Fix: B5 lands", BRICK_QUEUE, BRICK_MAP, "", [], [], ""),
+    ("The fix B5 needed", BRICK_QUEUE, BRICK_MAP, "", [], [], ""),
+    ("B7 · not in the queue", BRICK_QUEUE, BRICK_MAP, "", [], [], ""),
+    ("B5 · with no queue", "", BRICK_MAP, "", [], [], ""),
+    ("P2b lands", BRICK_QUEUE, BRICK_MAP, "", [], [], ""),
+    ("", BRICK_QUEUE, BRICK_MAP, "", [], [], ""),
+)
+
+
+def bricks(program, cases):
+    """Run the brick picker on each case. Per case, (exit status, what it printed, the pages
+    it wrote, the card it named)."""
+    with tempfile.TemporaryDirectory() as d:
+        argvs = []
+        for n, (title, queue, plan) in enumerate(cases):
+            names = [os.path.join(d, "%s%d" % (k, n)) for k in ("title", "queue", "map", "out", "card")]
+            for name, body in zip(names, (title, queue, plan)):
+                with open(name, "w", encoding="utf-8") as f:
+                    f.write(body)
+            argvs.append(names)
+        for name, body in (("program", program), ("cases", json.dumps(argvs)),
+                           ("harness", PICK_HARNESS)):
+            with open(os.path.join(d, name), "w", encoding="utf-8") as f:
+                f.write(body)
+        try:
+            p = subprocess.run([sys.executable, os.path.join(d, "harness"), os.path.join(d, "program"),
+                                os.path.join(d, "cases")], capture_output=True, text=True, timeout=60)
+            said = json.loads(p.stdout)
+        except (OSError, subprocess.SubprocessError, ValueError):
+            return [None] * len(cases)
+        got = []
+        for (rc, printed), argv in zip(said, argvs):
+            try:
+                pages = open(argv[3], encoding="utf-8").read()
+                card = open(argv[4], encoding="utf-8").read()
+            except OSError:
+                pages = card = None
+            got.append((rc, printed, pages, card))
+    return got
+
+
+def brick_faults(text):
+    """What a product read has lost of carrying the slice's brick by rule, and saying so."""
+    lost = []
+    gather, read = _step_span(text, "Gather what the reviewer reads"), _step_span(text, "Read it")
+    g = text[gather[0]:gather[1]] if gather else ""
+    for line, why in ((BRICK_FEED, "QUEUE.md and MAP.md read from the head the read is of"),
+                      (BRICK_TAKEN, "the brick's pages carried, so the pages picked are the pages read"),
+                      (BRICK_CARD, "the card carried through `add`, under the same budget, and named when "
+                                   "the product does not hold it"),
+                      (BRICK_FAILED, "a failed brick pick said, in words that name nothing of the product's"),
+                      (BRICK_FAILED_READ, "a failed brick pick said to the reader too, not only the log")):
+        if line not in g:
+            lost.append("%s (`%s`)" % (why, line))
+    if not read or BRICK_TOLD not in text[read[0]:read[1]]:
+        lost.append("the reviewer told a brick's title carries its entry, card and records (`%s`)" % BRICK_TOLD)
+    calls = [i for i, l in enumerate(g.splitlines()) if l.strip() == BRICK_CALL]
+    gone = [i for i, l in enumerate(g.splitlines()) if l.strip() == BRICK_TITLE_GONE]
+    if calls and (not gone or gone[0] < calls[0]):
+        lost.append("the title kept until the brick is picked (`%s` after the brick's call)" % BRICK_TITLE_GONE)
+    program = _picker(text, BRICK_CALL)
+    if program is None:
+        lost.append("the brick picker, called as `%s` — the title and the two pages, never the diff, "
+                    "its errors kept out of this public log" % BRICK_CALL)
+        return lost
+    runs = bricks(program, [c[:3] for c in BRICK_CASES])
+    for (title, queue, plan, brick, records, missing, card), got in zip(BRICK_CASES, runs):
+        case = "on a title %r%s%s" % (title, "" if queue else ", with no QUEUE.md",
+                                       "" if plan else ", with no MAP.md")
+        if got is None:
+            lost.append("a brick picker that can be run %s" % case)
+            continue
+        rc, printed, pages, named = got
+        if rc != 0 or pages is None:
+            lost.append("a brick pick made %s (it exited %s)" % (case, rc))
+            continue
+        if not BRICK_SAID.match(printed) or (title and title in printed) or "B5" in printed:
+            lost.append("a summary of numbers alone %s (it printed %r)" % (case, printed))
+        if named != card:
+            lost.append("card %r named %s (it named %r)" % (card or "none", case, named))
+        if not brick:
+            if pages.count("\n===== ") > 1 or pages.count("\n") > 2 or "QUEUE.md" not in pages:
+                lost.append("no brick carried, in one line saying so, %s (it wrote %r)" % (case, pages))
+            continue
+        heads = re.findall(r"^## (B\d+) · ", pages, re.M)
+        if heads != [brick]:
+            lost.append("brick %s's entry carried alone %s (it carried %s)" % (brick, case, heads))
+        for heading, body in BRICK_BRICKS:
+            part = "## %s\n%s" % (heading, body)
+            named_out = "\n===== QUEUE.md, %s: %d bytes, left out: " % (heading, len(part.encode()))
+            mine = heading.startswith(brick + " · ")
+            if mine and (part not in pages or named_out in pages):
+                lost.append("brick %s's entry carried whole %s" % (brick, case))
+            if not mine and (named_out not in pages or part in pages):
+                lost.append("%s named with its size and left out %s" % (heading, case))
+        if "OPENING-WORDS" in pages or "\n===== QUEUE.md's opening: %d bytes, left out: " \
+                % len(BRICK_OPENING.encode()) not in pages:
+            lost.append("QUEUE.md's opening named with its size and left out %s" % case)
+        for rid, words in BRICK_RECORDS:
+            if (rid in records) != (words in pages):
+                lost.append("record %s %s %s" % (rid, "carried whole" if rid in records else "left out", case))
+        for words in ("MAP-OPENING", "HOME-TWO-WORDS"):
+            if words in pages:
+                lost.append("a record ended at the next record or heading %s" % case)
+        said_missing = re.findall(r"^===== MAP\.md (\S+): named by the brick's Map, and no such record =====$",
+                                  pages, re.M)
+        if said_missing != missing:
+            lost.append("exactly the records named and not there named as missing %s (it named %s, not %s)"
+                        % (case, said_missing, missing))
+    return lost
+
+
+# Each must turn the brick's hold red on review-product.yml.
+BRICK_LOOSENINGS = (
+    ("a brick found anywhere in the title", lambda t: t.replace('brick = re.match(r"B\\d+", title)', 'brick = re.search(r"B\\d+", title)', 1)),
+    ("a brick id read as the start of a longer word", lambda t: t.replace("if brick and title[brick.end():][:1].isalnum():", "if False:", 1)),
+    ("a brick's heading matched by its start alone", lambda t: t.replace('p.startswith("## %s · " % brick.group())', 'p.startswith("## %s" % brick.group())', 1)),
+    ("a left-out brick unnamed", lambda t: t.replace("bytes, left out: not the slice's brick\"\n", "bytes\"\n", 1)),
+    ("a brick's size misstated", lambda t: t.replace("% (other.splitlines()[0][3:].strip(), len(other.encode())))", "% (other.splitlines()[0][3:].strip(), len(other)))", 1)),
+    ("a card climbing out of the product", lambda t: t.replace(' or ".." in path.split("/")', "", 1)),
+    ("a rooted card carried", lambda t: t.replace('path.startswith("/") or ', "", 1)),
+    ("a list outside Map read as the map", lambda t: t.replace('listing = field.group() == "Map:"', "listing = True", 1)),
+    ("Map's own line ignored", lambda t: t.replace('line = "- " + line[4:].strip() if listing else line', "pass", 1)),
+    ("a path read as a record", lambda t: t.replace('named = re.match(r"- ([A-Z]+\\d+[a-z]?) · ", line)', 'named = re.match(r"- (\\S+) · ", line)', 1)),
+    ("a record cut at any bold line", lambda t: t.replace('if RECORD.match(lines[n]) or lines[n].startswith("#")', 'if lines[n].startswith("**") or lines[n].startswith("#")', 1)),
+    ("a record run past a heading", lambda t: t.replace('if RECORD.match(lines[n]) or lines[n].startswith("#")', "if RECORD.match(lines[n])", 1)),
+    ("a missing record not named", lambda t: t.replace("named by the brick's Map, and no such record", "", 1)),
+    ("the summary naming the brick", lambda t: t.replace('% ("the slice\'s brick" if entry is not None and brick', '% (brick.group() if entry is not None and brick', 1)),
+    ("the diff handed to the brick picker", lambda t: t.replace(BRICK_CALL, BRICK_CALL.replace('"$t/card.txt"', '"$t/card.txt" "$t/diff.txt"'), 1)),
+    ("the brick picker's errors printed", lambda t: t.replace(BRICK_CALL, BRICK_CALL.replace(" 2>/dev/null", ""), 1)),
+    ("the queue read from main", lambda t: t.replace(BRICK_FEED, BRICK_FEED.replace('"$SHA:$f"', '"origin/$MAIN:$f"'), 1)),
+    ("the brick's pages dropped", lambda t: t.replace(BRICK_TAKEN, "true", 1)),
+    ("the card shown past the budget", lambda t: t.replace(BRICK_CARD, 'else g show "$SHA:$card" >> "$pages"; fi', 1)),
+    ("a failed brick pick unsaid", lambda t: t.replace(BRICK_FAILED, "true", 1)),
+    ("a failed brick pick unsaid to the reader", lambda t: t.replace(BRICK_FAILED_READ, "true", 1)),
+    ("the reviewer not told", lambda t: t.replace(BRICK_TOLD, 'echo "."', 1)),
+    ("the title gone before the brick is picked", lambda t: t.replace("          " + BRICK_TITLE_GONE + "\n", "", 1).replace(
+        "          " + BRICK_FEED + "\n", "          " + BRICK_TITLE_GONE + "\n          " + BRICK_FEED + "\n", 1)),
+)
+
+
+def _check_brick_loosenings():
+    """Every loosening above, applied to review-product.yml, must be refused."""
+    try:
+        product = _read(PRODUCT_WORKFLOW)
+    except OSError as e:
+        print("  wiring: %s" % e)
+        return 1
+    if brick_faults(product):
+        return 1  # the wiring checks say what
+    bad = 0
+    for what, loosen in BRICK_LOOSENINGS:
+        changed = loosen(product)
+        if changed == product:
+            print("  wiring: the loosening '%s' no longer applies to %s — rewrite it against the "
+                  "file as it stands, or it proves nothing" % (what, PRODUCT_WORKFLOW))
+            bad += 1
+        elif not brick_faults(changed):
+            print("  wiring: %s with %s passes the brick's hold — the guard for it is gone"
+                  % (PRODUCT_WORKFLOW, what))
+            bad += 1
+    if not bad:
+        print("ok: a product read whose pull request's title opens with a brick carries its QUEUE.md "
+              "entry, the card its Card line names and the MAP.md records its Map names, naming every "
+              "other part with its size and printing numbers alone; the brick picker was run on %d "
+              "case(s), and each of %d loosenings was refused" % (len(BRICK_CASES), len(BRICK_LOOSENINGS)))
+    return bad
+
+
 # THE SOURCE THE CHANGE IMPORTS, ONE HOP (decision 0010, 1a). A product read
 # carried the diff and every file it touches, and nothing those files call, so
 # a reader judged a call it could not see. Now each touched JS, TS or Python
@@ -9887,7 +10120,8 @@ SELFTEST_PARTS = (
                      "_check_review_loosenings", "_check_registry", "_check_selftest_plan", "_check_conversation",
                      "_check_caller", "_check_context", "_check_brief", "_check_canary", "_check_alert",
                      "_check_expressions", "_check_rulebook_pages", "_check_context_loosenings",
-                     "_check_pick_loosenings", "_check_link_loosenings", "_check_fanned"),
+                     "_check_pick_loosenings", "_check_brick_loosenings", "_check_link_loosenings",
+                     "_check_fanned"),
      # The selector is run on the real tree, so the core reads every page, paper and script.
      ("*.md", "library/*.md", "juku-library/*.md", "model-registry/ask.py", "model-registry/context.py",
       "model-registry/registry.json", "model-registry/resolve.py", "product-reads/ask.py", "product-reads/reads.py",

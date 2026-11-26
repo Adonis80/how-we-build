@@ -641,6 +641,121 @@ jobs:
             echo "the slice's pages could not be picked, so roadmap.json and PRODUCT.md are carried as any page is"
             for f in roadmap.json PRODUCT.md; do add "$f" || echo "carried page not found in $REPO: $f"; done
           fi
+          # THE SLICE'S BRICK, PICKED BY RULE (Hemz-OS#445). A product that plans
+          # in QUEUE.md bricks titles its slices by brick ("B5 · ..."), and no roadmap
+          # item matches such a title. So a read whose title opens with a brick id
+          # (whole, as an item's is) that the head's QUEUE.md holds also carries that
+          # brick's entry whole, the card its Card line names (through `add`, and only
+          # a relative path inside the product), and the MAP.md records its Map lines
+          # name; every other brick is named with its size, and a record named and not
+          # there is named as missing. Any other title or product gets one line saying
+          # no brick was carried. Like the picker it is handed the title and the two
+          # pages, never the diff, and prints numbers alone. Should it fail, the read
+          # goes on without it and says so. review-gate.py runs it against the cases
+          # it holds.
+          for f in QUEUE.md MAP.md; do g show "$SHA:$f" > "$t/carried.$f" 2>/dev/null || : > "$t/carried.$f"; done
+          if python3 - "$t/title.txt" "$t/carried.QUEUE.md" "$t/carried.MAP.md" "$t/bricked.txt" "$t/card.txt" 2>/dev/null <<'PY'
+          import re, sys
+          title_file, queue_file, map_file, out_file, card_file = sys.argv[1:6]
+          title = open(title_file, encoding="utf-8").read().strip()
+          queue = open(queue_file, encoding="utf-8").read()
+          plan = open(map_file, encoding="utf-8").read()
+          pages, card, records, missing = [], "", [], []
+          RECORD = re.compile(r"\*\*([A-Z]+\d+[a-z]?) · ")
+
+          def say(line):
+              pages.append("\n===== %s =====\n" % line)
+
+          brick = re.match(r"B\d+", title)
+          if brick and title[brick.end():][:1].isalnum():
+              brick = None
+          parts = re.split(r"(?m)^(?=## )", queue)
+          entry = None
+          if brick:
+              entry = next((p for p in parts[1:] if p.startswith("## %s · " % brick.group())), None)
+          if not queue.strip():
+              say("QUEUE.md: not in this product, so no brick is carried")
+          elif not brick:
+              say("QUEUE.md: %d bytes, left out: this pull request's title opens with no brick id"
+                  % len(queue.encode()))
+          elif entry is None:
+              say("QUEUE.md: %d bytes, left out: it holds no brick this pull request's title opens with"
+                  % len(queue.encode()))
+          else:
+              say("QUEUE.md: %d bytes; carried: brick %s alone, the one this pull request's title opens with; "
+                  "every other part is named below with its size and left out" % (len(queue.encode()), brick.group()))
+              pages.append(entry)
+              say("QUEUE.md's opening: %d bytes, left out: not the slice's brick" % len(parts[0].encode()))
+              for other in parts[1:]:
+                  if other is not entry:
+                      say("QUEUE.md, %s: %d bytes, left out: not the slice's brick"
+                          % (other.splitlines()[0][3:].strip(), len(other.encode())))
+              ids, listing = [], False
+              for line in entry.splitlines():
+                  field = re.match(r"[A-Z][A-Za-z ]*:", line)
+                  if field:
+                      listing = field.group() == "Map:"
+                      line = "- " + line[4:].strip() if listing else line
+                  elif not line.startswith("- "):
+                      listing = False
+                  named = re.match(r"- ([A-Z]+\d+[a-z]?) · ", line) if listing else None
+                  if named and named.group(1) not in ids:
+                      ids.append(named.group(1))
+              named_card = re.search(r"(?m)^Card:[ \t]*`?([^`\s]*)", entry)
+              path = named_card.group(1) if named_card else ""
+              if not named_card or not path:
+                  say("QUEUE.md, brick %s: names no card" % brick.group())
+              elif path.startswith("/") or "\\" in path or ".." in path.split("/") or "." in path.split("/"):
+                  say("QUEUE.md, brick %s: its Card line names no path inside this product, so no card is carried"
+                      % brick.group())
+              else:
+                  card = path
+                  say("QUEUE.md, brick %s: its card, %s, follows as a page" % (brick.group(), card))
+              lines = plan.splitlines(True)
+              starts = {}
+              for n, line in enumerate(lines):
+                  found = RECORD.match(line)
+                  if found and found.group(1) not in starts:
+                      starts[found.group(1)] = n
+              if not ids:
+                  say("MAP.md: the brick's Map names no record")
+              elif not plan.strip():
+                  say("MAP.md: not in this product; the brick's Map names %d record(s)" % len(ids))
+              else:
+                  carried = [i for i in ids if i in starts]
+                  say("MAP.md: %d bytes; carried: the %d record(s) the brick's Map names that it holds; left out: "
+                      "its other %d record(s) and every other part" % (len(plan.encode()), len(carried),
+                                                                   len(starts) - len(carried)))
+              for i in ids:
+                  if i not in starts:
+                      missing.append(i)
+                      continue
+                  end = next((n for n in range(starts[i] + 1, len(lines))
+                              if RECORD.match(lines[n]) or lines[n].startswith("#")), len(lines))
+                  records.append(i)
+                  pages.append("".join(lines[starts[i]:end]))
+              for i in missing:
+                  say("MAP.md %s: named by the brick's Map, and no such record" % i)
+          text = "".join(pages)
+          open(out_file, "w", encoding="utf-8").write(text)
+          open(card_file, "w", encoding="utf-8").write(card)
+          print("bricked: %s; %d of %d MAP record(s) carried; %s; %d of %d bytes"
+                % ("the slice's brick" if entry is not None and brick else "no brick", len(records),
+                   len(records) + len(missing), "a card named" if card else "no card",
+                   len(text.encode()), len(queue.encode()) + len(plan.encode())))
+          PY
+          then
+            cat "$t/bricked.txt" >> "$pages"
+            added=$((added + $(wc -c < "$t/bricked.txt")))
+            card=$(cat "$t/card.txt" 2>/dev/null || true)
+            if [ -z "$card" ]; then :
+            elif grep -qzxF -- "$card" "$t/touched.txt"; then printf '\n===== %s: the brick'"'"'s card, carried below with the files the change touches =====\n' "$card" >> "$pages"
+            else add "$card" || printf '\n===== %s: named by the brick'"'"'s Card line, and not in this product =====\n' "$card" >> "$pages"; fi
+          else
+            echo "the slice's brick could not be picked, so this read carries QUEUE.md and MAP.md only where the change touches them"
+            printf '\n===== the slice'"'"'s brick could not be picked; QUEUE.md and MAP.md are carried only where the change touches them =====\n' >> "$pages"
+          fi
+          rm -f "$t/carried.QUEUE.md" "$t/carried.MAP.md" "$t/bricked.txt" "$t/card.txt"
           rm -f "$t/carried.roadmap.json" "$t/carried.PRODUCT.md" "$t/picked.txt" "$t/title.txt"
           # The other pages every product carries are not the slice's own. The
           # brief is already the reader's instructions, read from the product's
@@ -896,6 +1011,7 @@ jobs:
             echo "title opens with and the PRODUCT.md sections that item names; every other part of"
             echo "them is named below with its size and left out. If judging it needed a"
             echo "left-out part, that is a finding: say which."
+            echo "A title that opens with a brick id (B5) also carries that brick's QUEUE.md entry, its card and the MAP.md records it names."
             echo "A file this change touches is whole up to 40 KB; past that, and the roadmap and PRODUCT.md"
             echo "whenever touched, it is the parts the change touches: the roadmap's touched items, each alone."
             echo "A re-read may ask for one unit alone: PRODUCT.md#<heading>, roadmap.json#<item id>, or path#function."
