@@ -13,15 +13,13 @@ at 280k, a warn band from 250k, a look at the end of every turn, and blind fails
 closed. His word of 18 November 2026, about 12:30 UTC, in the coordinator's chat,
 on why the line sat near 300,000 (Anthropic's own guidance): "if we can try
 building up to 500,000 tokens and see if the degradation is serious or
-negligible." (filed on Adonis80/how-we-build#433, comment 6984338028). The three
-figures set under it, warn 440,000, checkpoint 470,000, hard stop 500,000, are the
-coordinator's.
-
-A TRIAL, not a settled line. Quality before and after 300k is being measured
-(blocking review findings and rework, set against the size each checkpoint's
-`Size:` line records), and the CTO may roll the three figures back if quality
-drops, recording it on #433. A rollback is those three numbers and the pages that state them
-(`library/session-changeover.md`, `HOW-WE-BUILD.md`, *Sessions*).
+negligible." (filed on Adonis80/how-we-build#433, comment 6984338028). His word
+of 26 November 2026, relayed by the assistant and filed on #433, ended that
+trial with a figure of his own: "we should be handing over to a fresh session
+at the 400,000 token mark." The handover line is his, 400,000; the warn band
+from 370,000 and the hard stop at 430,000 are the CTO's, set to fit it. The
+three numbers below and the pages that state them
+(`library/session-changeover.md`, `HOW-WE-BUILD.md`, *Sessions*) move together.
 
 `.claude/settings.json` runs this file before (PreToolUse) and after
 (PostToolUse) every tool call, and at the end of every turn (Stop), so a turn
@@ -29,17 +27,17 @@ that makes no tool call is measured too. The size is the context of the newest
 main-thread model turn in the transcript: its input, cache-write, cache-read
 and output tokens, as the model's own usage reports them.
 
-- After a call, from 440,000: the session is warned, on every call, that the
-  line is near. At 470,000 or more with no checkpoint written since the line
+- After a call, from 370,000: the session is warned, on every call, that the
+  line is near. At 400,000 or more with no checkpoint written since the line
   was crossed: the session is told, on every call until it writes one, to write
   its handover checkpoint now.
-- At the end of a turn, the same: past 470,000 with no checkpoint the turn is
+- At the end of a turn, the same: past 400,000 with no checkpoint the turn is
   kept going to write it (once: a turn already kept going ends, so a checkpoint
-  that cannot be posted never loops), and from 440,000 the person is warned.
+  that cannot be posted never loops), and from 370,000 the person is warned.
 - The successor lock (his word, 12 November 2026, about 09:25 UTC: "Yes, I agree
   to all of your fixes implement them now while I evaluate the app", after a
   session checkpointed at 280k on Adonis80/Hemz-OS#333 and ended starting none):
-  once a checkpoint has gone through past 470,000, a turn's end is kept going,
+  once a checkpoint has gone through past 400,000, a turn's end is kept going,
   once, until a successor start has gone through after it (`fire_trigger`, or
   `create_session`) or a checkpoint past the line carrying
   `Successor: none — <reason>` has, the reason being nothing ready, the platform
@@ -53,14 +51,14 @@ and output tokens, as the model's own usage reports them.
   checkpoint first written in a kept-going turn end with no successor). Kept
   going, it asks only what it has first recorded, so nothing is asked twice;
   where the record cannot be read or kept, a turn already kept going ends.
-- Before a call, at 500,000 or more: every call is refused but the checkpoint
+- Before a call, at 430,000 or more: every call is refused but the checkpoint
   itself, loading a tool (ToolSearch), and, once a checkpoint has gone through
-  past 470,000, starting the successor (`library/session-changeover.md`,
+  past 400,000, starting the successor (`library/session-changeover.md`,
   *A session starts its own successor*).
 - A checkpoint counts as written only when its call went through: a refused
   or failed call (its result an error) does not. It is a comment whose first
   line opens `Checkpoint:`, posted by a comment tool. A shell command is never
-  a checkpoint, so past 500k the shell is refused like everything else and the
+  a checkpoint, so past 430k the shell is refused like everything else and the
   refusal names the comment tool.
 - Before a call, at any size: a checkpoint comment without a `Size:` line
   whose `end`/`now` figure is within 20k of the real one is refused, with the
@@ -99,6 +97,10 @@ time is a clock and never wakes a session"), wherever this file runs:
   `list_triggers` entry for it with both empty. An update's input is never
   evidence, since an update that omits the fields can leave an old schedule
   standing; one whose result is silent on them leaves the task unknown.
+- It reads a standing task's calls and no others: the reminder the assistant
+  sets in its own session for its sweep (his word, 26 November 2026: "And yes,
+  resweep every 30 minutes."; that page, *The assistant's sweep*) is not one,
+  and this lock neither refuses nor holds it.
 
 The relay lock (his ruling, 18 November 2026: "You should not be doing any
 thinking. You should only be relaying my messages"; library/session-changeover.md,
@@ -177,9 +179,9 @@ import re
 import sys
 import tempfile
 
-WARN = 440_000      # the session and the person are warned
-LINE = 470_000      # the handover checkpoint is required
-HARD = 500_000      # everything but the checkpoint is refused
+WARN = 370_000      # the session and the person are warned
+LINE = 400_000      # the handover checkpoint is required
+HARD = 430_000      # everything but the checkpoint is refused
 SLACK_K = 20        # a Size: line's figure may sit this many k off the real one
 
 COMMENT_TOOLS = ("__add_issue_comment", "__update_issue_comment")
@@ -808,14 +810,14 @@ def _decide(event, tool_name, tool_input, state, tk=None, blind=None):
         if checkpointed and _ends(tool_name or "", SUCCESSOR_TOOLS):
             return None
         if checkpointed:
-            return _deny(f"size hook: {k}, past the hard stop of 500k with the checkpoint written; the only "
+            return _deny(f"size hook: {k}, past the hard stop of 430k with the checkpoint written; the only "
                          f"actions left are starting the successor (create/update/fire_trigger) and ending the turn")
-        return _deny(f"size hook: {k}, past the hard stop of 500k; every action is refused but writing "
+        return _deny(f"size hook: {k}, past the hard stop of 430k; every action is refused but writing "
                      f"the handover checkpoint, posted with the issue-comment tool (`add_issue_comment`), its first line `Checkpoint:`, with its `Size:` line")
-    demand = (f"size hook: {k}, past the 470k line. Write the handover checkpoint now "
+    demand = (f"size hook: {k}, past the 400k line. Write the handover checkpoint now "
               f"(`Checkpoint:`, `Size: ... end {k} (transcript) ...`, `Planned:`, the session's link), "
-              f"then start the successor. At 500k every other action is refused.")
-    warn = f"size hook: {k}, in the warn band from 440k; the checkpoint is due at 470k: bring the work to a boundary."
+              f"then start the successor. At 430k every other action is refused.")
+    warn = f"size hook: {k}, in the warn band from 370k; the checkpoint is due at 400k: bring the work to a boundary."
     if event == "Stop":
         ask = owed(state, tool_input.get("stop_hook_active"), tool_input.get("asked"))
         if ask == "checkpoint":
@@ -952,7 +954,7 @@ def _denied(a):
 def selftest():
     ok = True
     C = "mcp__github__add_issue_comment"
-    good = "**Checkpoint: boundary — slice complete.**\n- `Size: cloud boot 96k end 490k (transcript) items #1 S`"
+    good = "**Checkpoint: boundary — slice complete.**\n- `Size: cloud boot 96k end 420k (transcript) items #1 S`"
     cases = []
     s = _state([_turn(96_000, "ToolSearch")])
     cases += [
@@ -962,17 +964,17 @@ def selftest():
     ]
     s = _state([_turn(96_000, "Bash"), _turn(250_000, "Bash"), _turn(120_000, "Bash", sidechain=True)])
     cases.append(("a subagent's turn is not the session's size", s[0] == 250_000))
-    s = _state([_turn(96_000, "Bash"), _turn(485_000, "Bash")])
+    s = _state([_turn(96_000, "Bash"), _turn(415_000, "Bash")])
     post = decide("PostToolUse", "Bash", {}, s)
     cases += [
         ("past the line without a checkpoint, the checkpoint is demanded", bool(post) and post.get("decision") == "block"),
         ("between the lines work is not refused", decide("PreToolUse", "Bash", {}, s) is None),
         ("a checkpoint with no Size: line is refused", _denied(decide("PreToolUse", C, {"body": "Checkpoint: boundary"}, s))),
-        ("a guessed Size: figure is refused", _denied(decide("PreToolUse", C, {"body": good.replace("490k", "200k")}, s))),
+        ("a guessed Size: figure is refused", _denied(decide("PreToolUse", C, {"body": good.replace("420k", "200k")}, s))),
         ("a Size: line with no figure is refused", _denied(decide("PreToolUse", C, {"body": "Checkpoint: x\nSize: as at 01:45"}, s))),
         ("a true checkpoint passes", decide("PreToolUse", C, {"body": good}, s) is None),
         ("the Size: line is the one that opens with it, not a mention in prose",
-         decide("PreToolUse", C, {"body": "Checkpoint: x\n- a `Size:` figure is refused\n- `Size: boot 96k now 485k (transcript)`"}, s) is None),
+         decide("PreToolUse", C, {"body": "Checkpoint: x\n- a `Size:` figure is refused\n- `Size: boot 96k now 415k (transcript)`"}, s) is None),
         ("a release needs no Size: line", decide("PreToolUse", C, {"body": "Checkpoint: released — link"}, s) is None),
         ("an ordinary comment is not a checkpoint", decide("PreToolUse", C, {"body": "Resumed: clean"}, s) is None),
     ]
@@ -982,33 +984,33 @@ def selftest():
         ("a shell command is never a checkpoint, even one naming one", decide("PreToolUse", "Bash",
          {"command": "gh api repos/x/y/issues/363/comments --jq 'Checkpoint:'"}, s) is None),
     ]
-    s = _state([_turn(96_000, "Bash"), _turn(485_000, "Bash"), _turn(490_000, C, good, id="cp"), _result("cp")])
+    s = _state([_turn(96_000, "Bash"), _turn(415_000, "Bash"), _turn(420_000, C, good, id="cp"), _result("cp")])
     cases += [
         ("a checkpoint past the line stops the demand", decide("PostToolUse", "Bash", {}, s) is None),
-        ("after it, below 500k, work is not refused", decide("PreToolUse", "Bash", {}, s) is None),
+        ("after it, below 430k, work is not refused", decide("PreToolUse", "Bash", {}, s) is None),
     ]
-    s = _state([_turn(96_000, "Bash"), _turn(485_000, "Bash"), _turn(490_000, C, good, id="cp"), _result("cp", error=True)])
+    s = _state([_turn(96_000, "Bash"), _turn(415_000, "Bash"), _turn(420_000, C, good, id="cp"), _result("cp", error=True)])
     cases.append(("a refused or failed checkpoint is not written", s[1] is False and
                   bool(decide("PostToolUse", "Bash", {}, s))))
     U, F = "mcp__claude-code-remote__update_trigger", "mcp__claude-code-remote__fire_trigger"
     CLEAR = json.dumps({"trigger": {"id": "trig_X", "cron_expression": None, "run_once_at": None}})
     T = {"trigger_id": "trig_X"}
-    s = _state([_turn(96_000, "Bash"), _turn(490_000, C, good, id="cp"), _result("cp"),
-                _call(492_000, U, T, "u"), _trig_result("u", CLEAR), _turn(501_000, "Bash")])
+    s = _state([_turn(96_000, "Bash"), _turn(420_000, C, good, id="cp"), _result("cp"),
+                _call(422_000, U, T, "u"), _trig_result("u", CLEAR), _turn(431_000, "Bash")])
     cases += [
-        ("past 500k after it, work is refused", _denied(decide("PreToolUse", "Bash", {}, s))),
-        ("past 500k a shell command that posts a checkpoint is still refused", _denied(decide("PreToolUse", "Bash",
-         {"command": "make && gh issue comment 363 --body 'Checkpoint: x\nSize: end 501k'"}, s))),
-        ("past 500k after it, the successor may start", decide("PreToolUse", F, T, s) is None),
-        ("past 500k after it, a tool may be loaded", decide("PreToolUse", "ToolSearch", {}, s) is None),
+        ("past 430k after it, work is refused", _denied(decide("PreToolUse", "Bash", {}, s))),
+        ("past 430k a shell command that posts a checkpoint is still refused", _denied(decide("PreToolUse", "Bash",
+         {"command": "make && gh issue comment 363 --body 'Checkpoint: x\nSize: end 431k'"}, s))),
+        ("past 430k after it, the successor may start", decide("PreToolUse", F, T, s) is None),
+        ("past 430k after it, a tool may be loaded", decide("PreToolUse", "ToolSearch", {}, s) is None),
     ]
-    s = _state([_turn(96_000, C, good), _turn(200_000, "Bash"), _turn(502_000, "Bash")])
+    s = _state([_turn(96_000, C, good), _turn(200_000, "Bash"), _turn(432_000, "Bash")])
     cases += [
         ("a checkpoint before the line does not count", s[1] is False),
-        ("past 500k every action is refused", _denied(decide("PreToolUse", "Bash", {}, s))),
-        ("past 500k an edit is refused", _denied(decide("PreToolUse", "Edit", {}, s))),
-        ("past 500k the successor waits on the checkpoint", _denied(decide("PreToolUse", "mcp__claude-code-remote__fire_trigger", {}, s))),
-        ("past 500k the checkpoint itself passes", decide("PreToolUse", C, {"body": good.replace("490k", "502k")}, s) is None),
+        ("past 430k every action is refused", _denied(decide("PreToolUse", "Bash", {}, s))),
+        ("past 430k an edit is refused", _denied(decide("PreToolUse", "Edit", {}, s))),
+        ("past 430k the successor waits on the checkpoint", _denied(decide("PreToolUse", "mcp__claude-code-remote__fire_trigger", {}, s))),
+        ("past 430k the checkpoint itself passes", decide("PreToolUse", C, {"body": good.replace("420k", "432k")}, s) is None),
     ]
     _clock_cases(cases, U, F, T)
     cases += [
@@ -1201,8 +1203,8 @@ def _relay_cases(cases):
             ("after a call the assistant is answered as any session is",
              decide("PostToolUse", "Edit", page, sa, assistant=A) == decide("PostToolUse", "Edit", page, sa)),
             ("and at a turn's end", decide("Stop", None, {}, sa, assistant=A) is None),
-            ("past 500k the hard stop's refusal stands, not the relay's",
-             "hard stop" in json.dumps(pre("Edit", page, _state([_spoke(A), _spoke(A, 502_000)])))),
+            ("past 430k the hard stop's refusal stands, not the relay's",
+             "hard stop" in json.dumps(pre("Edit", page, _state([_spoke(A), _spoke(A, 432_000)])))),
             ("blind, the blind refusal stands", "blind" in json.dumps(pre("Edit", page, None))),
         ]
         # the registry, read through the rulebook's clone: any failure is None, and the lock is silent
@@ -1391,25 +1393,25 @@ def _product_cases(cases, tk, U, F, C):
 
 
 def _band_cases(cases, C, good):
-    """The warn band from 440k, the line at 470k, and the end of a turn (his words, 12 and 18 November 2026)."""
-    s = _state([_turn(96_000, "Bash"), _turn(430_000, "Bash")])
-    cases += [("below 440k no warning", decide("PostToolUse", "Bash", {}, s) is None),
-              ("below 440k a turn ends quietly", decide("Stop", None, {}, s) is None)]
-    s = _state([_turn(96_000, "Bash"), _turn(450_000, "Bash")])
+    """The warn band from 370k, the line at 400k, and the end of a turn (his words, 12 and 26 November 2026)."""
+    s = _state([_turn(96_000, "Bash"), _turn(360_000, "Bash")])
+    cases += [("below 370k no warning", decide("PostToolUse", "Bash", {}, s) is None),
+              ("below 370k a turn ends quietly", decide("Stop", None, {}, s) is None)]
+    s = _state([_turn(96_000, "Bash"), _turn(380_000, "Bash")])
     post = decide("PostToolUse", "Bash", {}, s) or {}
     cases += [
-        ("from 440k every call is warned", "warn band" in json.dumps(post) and post.get("decision") is None),
-        ("from 440k a turn's end warns the person", "warn band" in decide("Stop", None, {}, s).get("systemMessage", "")),
-        ("from 440k nothing is refused", decide("PreToolUse", "Bash", {}, s) is None),
+        ("from 370k every call is warned", "warn band" in json.dumps(post) and post.get("decision") is None),
+        ("from 370k a turn's end warns the person", "warn band" in decide("Stop", None, {}, s).get("systemMessage", "")),
+        ("from 370k nothing is refused", decide("PreToolUse", "Bash", {}, s) is None),
     ]
-    s = _state([_turn(96_000, "Bash"), _turn(475_000, "Bash")])
+    s = _state([_turn(96_000, "Bash"), _turn(405_000, "Bash")])
     cases += [
-        ("past 470k the checkpoint is demanded after a call", (decide("PostToolUse", "Bash", {}, s) or {}).get("decision") == "block"),
-        ("past 470k a turn with no checkpoint is kept going to write it", (decide("Stop", None, {}, s) or {}).get("decision") == "block"),
+        ("past 400k the checkpoint is demanded after a call", (decide("PostToolUse", "Bash", {}, s) or {}).get("decision") == "block"),
+        ("past 400k a turn with no checkpoint is kept going to write it", (decide("Stop", None, {}, s) or {}).get("decision") == "block"),
         ("but only once, so it never loops", decide("Stop", None, {"stop_hook_active": True}, s) is None),
-        ("a checkpoint at 475k carries its figure", decide("PreToolUse", C, {"body": good.replace("490k", "475k")}, s) is None),
+        ("a checkpoint at 405k carries its figure", decide("PreToolUse", C, {"body": good.replace("420k", "405k")}, s) is None),
     ]
-    s = _state([_turn(96_000, "Bash"), _turn(475_000, C, good.replace("490k", "475k"), id="cp"), _result("cp"), _turn(480_000, "Bash")])
+    s = _state([_turn(96_000, "Bash"), _turn(405_000, C, good.replace("420k", "405k"), id="cp"), _result("cp"), _turn(410_000, "Bash")])
     cases += [("after the checkpoint a turn ends once it has said so", decide("Stop", None, {"stop_hook_active": True}, s) is None),
               ("after the checkpoint no call is nagged", decide("PostToolUse", "Bash", {}, s) is None)]
 
@@ -1417,55 +1419,55 @@ def _band_cases(cases, C, good):
 def _successor_cases(cases, C, good):
     """The successor lock (his word, 12 November 2026): a checkpoint past the line is followed by a start, or says why none."""
     F, S = "mcp__claude-code-remote__fire_trigger", "mcp__claude-code-remote__create_session"
-    cp = [_turn(96_000, "Bash"), _turn(475_000, C, good.replace("490k", "475k"), id="cp"), _result("cp")]
-    none = lambda why: good.replace("490k", "476k") + "\nSuccessor: none — " + why
+    cp = [_turn(96_000, "Bash"), _turn(405_000, C, good.replace("420k", "405k"), id="cp"), _result("cp")]
+    none = lambda why: good.replace("420k", "406k") + "\nSuccessor: none — " + why
     end = lambda lines, **i: (decide("Stop", None, i, _state(lines)) or {}).get("decision") == "block"
     cases += [
         ("a checkpoint past the line with no successor keeps the turn going", end(cp)),
         ("and says how to end it", "Successor: none" in json.dumps(decide("Stop", None, {}, _state(cp)))),
         ("but only once, so it never loops", not end(cp, stop_hook_active=True)),
-        ("a fire after the checkpoint lets the turn end", not end(cp + [_call(476_000, F, {"trigger_id": "trig_X"}, "f"), _result("f")])),
-        ("a create_session after it lets the turn end", not end(cp + [_call(476_000, S, {"prompt": "p"}, "n"), _result("n")])),
-        ("a refused fire does not", end(cp + [_call(476_000, F, {"trigger_id": "trig_X"}, "f"), _result("f", error=True)])),
+        ("a fire after the checkpoint lets the turn end", not end(cp + [_call(406_000, F, {"trigger_id": "trig_X"}, "f"), _result("f")])),
+        ("a create_session after it lets the turn end", not end(cp + [_call(406_000, S, {"prompt": "p"}, "n"), _result("n")])),
+        ("a refused fire does not", end(cp + [_call(406_000, F, {"trigger_id": "trig_X"}, "f"), _result("f", error=True)])),
         ("a fire beside the checkpoint in one turn lets the turn end, whichever result comes first",
-         all(not end(cp[:1] + [_pair(475_000, C, good.replace("490k", "475k"), F)] + r) for r in
+         all(not end(cp[:1] + [_pair(405_000, C, good.replace("420k", "405k"), F)] + r) for r in
              ([_result("cp"), _result("f")], [_result("f"), _result("cp")]))),
         ("a fire beside a refused checkpoint still leaves the checkpoint owed",
-         end(cp[:1] + [_pair(475_000, C, good.replace("490k", "475k"), F), _result("cp", error=True), _result("f")])),
-        ("a fire before the checkpoint does not", end(cp[:1] + [_call(472_000, F, {"trigger_id": "trig_X"}, "f"), _result("f")] + cp[1:])),
+         end(cp[:1] + [_pair(405_000, C, good.replace("420k", "405k"), F), _result("cp", error=True), _result("f")])),
+        ("a fire before the checkpoint does not", end(cp[:1] + [_call(402_000, F, {"trigger_id": "trig_X"}, "f"), _result("f")] + cp[1:])),
         ("`Successor: none — nothing ready` lets the turn end",
-         not end(cp + [_turn(476_000, C, none("nothing ready"), id="n"), _result("n")])),
+         not end(cp + [_turn(406_000, C, none("nothing ready"), id="n"), _result("n")])),
         ("`Successor: none — the platform refused <what>` lets the turn end",
-         not end(cp + [_turn(476_000, C, none("the platform refused fire_trigger (no task tools)"), id="n"), _result("n")])),
-        ("`Successor: none — blind` lets the turn end", not end(cp + [_turn(476_000, C, none("blind"), id="n"), _result("n")])),
+         not end(cp + [_turn(406_000, C, none("the platform refused fire_trigger (no task tools)"), id="n"), _result("n")])),
+        ("`Successor: none — blind` lets the turn end", not end(cp + [_turn(406_000, C, none("blind"), id="n"), _result("n")])),
         ("the line in the first checkpoint itself lets the turn end",
-         not end(cp[:1] + [_turn(476_000, C, none("nothing ready"), id="n"), _result("n")])),
-        ("a refused checkpoint naming none does not", end(cp + [_turn(476_000, C, none("nothing ready"), id="n"), _result("n", error=True)])),
+         not end(cp[:1] + [_turn(406_000, C, none("nothing ready"), id="n"), _result("n")])),
+        ("a refused checkpoint naming none does not", end(cp + [_turn(406_000, C, none("nothing ready"), id="n"), _result("n", error=True)])),
         ("a checkpoint naming another reason is refused",
          _denied(decide("PreToolUse", C, {"body": none("the next session takes over")}, _state(cp)))),
         ("the platform refused, unnamed, is refused", _denied(decide("PreToolUse", C, {"body": none("the platform refused")}, _state(cp)))),
         ("a checkpoint naming a good reason passes", decide("PreToolUse", C, {"body": none("nothing ready")}, _state(cp)) is None),
         ("below the line a checkpoint does not hold the turn",
-         not end([_turn(96_000, "Bash"), _turn(150_000, C, good.replace("490k", "150k"), id="cp"), _result("cp")])),
+         not end([_turn(96_000, "Bash"), _turn(150_000, C, good.replace("420k", "150k"), id="cp"), _result("cp")])),
         # Adonis80/Hemz-OS#363's read: the two asks shared the platform's one flag, so the first used up the second
         ("a turn kept going for the checkpoint, which then writes it, is still asked for its successor",
          end(cp, stop_hook_active=True, asked=["checkpoint"])),
         ("a turn kept going by another hook is still asked for its successor", end(cp, stop_hook_active=True, asked=[])),
-        ("and for its checkpoint", end(cp[:1] + [_turn(475_000, "Bash")], stop_hook_active=True, asked=[])),
+        ("and for its checkpoint", end(cp[:1] + [_turn(405_000, "Bash")], stop_hook_active=True, asked=[])),
         ("each is asked once in a run: the successor", not end(cp, stop_hook_active=True, asked=["checkpoint", "successor"])),
         ("each is asked once in a run: the checkpoint",
-         not end(cp[:1] + [_turn(475_000, "Bash")], stop_hook_active=True, asked=["checkpoint"])),
+         not end(cp[:1] + [_turn(405_000, "Bash")], stop_hook_active=True, asked=["checkpoint"])),
     ]
     with tempfile.TemporaryDirectory() as d:
         t, stops = os.path.join(d, "s.jsonl"), os.path.join(d, "stops")
         say = lambda lines: open(t, "w").write("\n".join(lines) + "\n")
         stop = lambda kept=False, s=stops: (answer({"hook_event_name": "Stop", "transcript_path": t, "stop_hook_active": kept},
                                                    os.path.join(d, "note"), s) or {}).get("decision") == "block"
-        say(cp[:1] + [_turn(475_000, "Bash")])
+        say(cp[:1] + [_turn(405_000, "Bash")])
         first = stop()
         say(cp)   # the checkpoint is first written in the turn the hook kept going
         second, third = stop(kept=True), stop(kept=True)
-        say(cp[:1] + [_turn(475_000, "Bash")])
+        say(cp[:1] + [_turn(405_000, "Bash")])
         nowhere = os.path.join(d, "gone", "stops")   # a record that cannot be kept
         stuck = os.path.join(d, "stuck")             # one that can be read and no longer written
         keep_asked(t, [], stuck)
@@ -1497,14 +1499,14 @@ def _path_cases(cases):
     with tempfile.TemporaryDirectory() as d:
         t, note = os.path.join(d, "s.jsonl"), os.path.join(d, "note")
         with open(t, "w") as f:
-            f.write(_turn(96_000, "Bash") + "\n" + _turn(485_000, "Bash") + "\n")
+            f.write(_turn(96_000, "Bash") + "\n" + _turn(415_000, "Bash") + "\n")
         cwd = os.getcwd()
         os.chdir(d)   # a working directory with no project of its own, as after a session's cd
         try:
             post = lambda **h: answer(dict(hook_event_name="PostToolUse", tool_name="Bash", tool_input={}, **h), note) or {}
             hit = post(transcript_path=t)
             cases += [
-                ("the size is the transcript_path's, whatever the cwd", "485k, past the 470k line" in hit.get("reason", "")),
+                ("the size is the transcript_path's, whatever the cwd", "415k, past the 400k line" in hit.get("reason", "")),
                 ("the hook records the transcript_path it was given", remembered(note) == t),
                 ("no transcript_path is blind, and says so", "blind, the hook was given no transcript_path" in post().get("reason", "")),
                 ("a transcript_path that will not open is blind, naming it",
@@ -1523,7 +1525,7 @@ def _path_cases(cases):
             with open(os.path.join(d, ".claude", "size-hook-transcript"), "w") as f:
                 f.write(t)
             r = now()
-            cases.append(("--now reads the transcript the hook was last given", (r.returncode, r.stdout) == (0, "485k (transcript)\n")))
+            cases.append(("--now reads the transcript the hook was last given", (r.returncode, r.stdout) == (0, "415k (transcript)\n")))
             r = subprocess.run([sys.executable, "-I", me], input="not json", env=env, capture_output=True, text=True)
             cases.append(("input that is not JSON is blind, and says so", "blind" in r.stdout))
             pre = lambda **h: answer(dict(hook_event_name="PreToolUse", **h), note)
@@ -1561,7 +1563,7 @@ def _user_cases(cases):
     with tempfile.TemporaryDirectory() as d:
         t = os.path.join(d, "s.jsonl")
         with open(t, "w") as f:
-            f.write(_turn(96_000, "Bash") + "\n" + _turn(485_000, "Bash") + "\n")
+            f.write(_turn(96_000, "Bash") + "\n" + _turn(415_000, "Bash") + "\n")
         link, settings = os.path.join(d, ".claude", "size.py"), os.path.join(d, ".claude", "settings.json")
         os.makedirs(os.path.dirname(settings))
         other = {"type": "command", "command": "other.sh"}
@@ -1585,7 +1587,7 @@ def _user_cases(cases):
         r = hook(out, post)
         cases += [
             ("a hook input whose cwd is outside any repo, with transcript_path given, is still measured",
-             "485k, past the 470k line" in r.stdout),
+             "415k, past the 400k line" in r.stdout),
             ("the user-level run is quiet where the project already wires the hook", hook(ROOT, post).stdout == ""),
             # a product's copy with no rulebook beside it (its CI) reaches no ticket.py and so has no guard: there the
             # same call goes through, and the selftest stays green (Hemz-OS#362: it was red on every such run)

@@ -39,7 +39,7 @@ The replacements are deliberately ordinary:
 | Swarms and default parallel agents | One active lead per slice |
 | Large persistent instruction stacks | Small canonical files; replace obsolete text |
 | Chat memory and prose handovers as project state | Repository + PR as handover |
-| Nightly or timed agents rereading the system | Event/user-started bounded sessions; no polling |
+| Nightly or timed agents rereading the system | Event/user-started bounded sessions; no polling, save the assistant's sweep of sessions, which he ruled (`library/session-changeover.md`) |
 | Permanent “best” model or vendor | Provider adapters around the same GitHub truth |
 | Screenshot or model explanation as proof | Tests, real journey, preview, smoke test and rollback |
 | Building governance before product | Add system machinery only for a demonstrated need |
