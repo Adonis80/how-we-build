@@ -7,6 +7,7 @@
     reads.py verify REPO CHECKRUNS... SHA          may a read start, beside its checks or after them?
     reads.py state CHECKRUNS SHA APPID [--again]   has that commit been read?
     reads.py marked REPO BASE HEAD CHANGED_NUL     does the change leave its marked spans alone?
+    reads.py pictures REPO HEAD CHANGED_NUL        does a changed screen carry its pictures?
     reads.py --selftest
 
 Each answers by its exit status: 0 go ahead, 1 refused with one line, 2 a
@@ -378,6 +379,40 @@ def marked(repo, base, head, changed):
         touches(diff, blob(since, f), blob(head, f))
 
 
+# A CHANGED SCREEN CARRIES ITS PICTURES (library/reviewer.md, *Screens*): a change to a
+# file a screen is drawn from adds or changes at least one picture of a pair
+# `pictures/<screen>.artifact.png` and `pictures/<screen>.live.png`, both at its head,
+# each a PNG 390 px wide. Which screens a pair must cover is the reviewer's to judge; that one is there,
+# whole, is this rule's. review-product.yml signs a read that would open the gate
+# blocking on any answer but ok.
+SCREEN = (".html", ".htm", ".css", ".scss", ".jsx", ".tsx", ".vue", ".svelte")
+NOT_SCREEN = re.compile(r"(^|/)(tests?|e2e|__tests__|spec)/|\.(test|spec)\.[^/]*$", re.I)
+PICTURE = re.compile(r"^pictures/([^/]+)\.(artifact|live)\.png$")
+
+
+def pictures(repo, head, changed):
+    """`reads.py pictures REPO HEAD CHANGED_NUL`: ok when no screen changed, or its pictures came with it."""
+    def blob(f):
+        p = subprocess.run(["git", "--literal-pathspecs", "-C", repo, "cat-file", "blob", "%s:%s" % (head, f)],
+                           capture_output=True, timeout=60)
+        return p.stdout if p.returncode == 0 else None
+    with open(changed, "rb") as f:
+        files = [p.decode("utf-8") for p in f.read().split(b"\0") if p]
+    screens = [f for f in files if f.lower().endswith(SCREEN) and not NOT_SCREEN.search(f) and blob(f) is not None]
+    if not screens:
+        return
+    names = {m.group(1) for m in map(PICTURE.match, files) if m and blob(m.group(0)) is not None}
+    if not names:
+        raise Refused("a changed screen carries no pictures")
+    for name in names:
+        kinds = [blob("pictures/%s.%s.png" % (name, k)) for k in ("artifact", "live")]
+        if None in kinds:
+            raise Refused("a picture came without its pair")
+        for data in kinds:
+            if data[:8] != b"\x89PNG\r\n\x1a\n" or data[12:16] != b"IHDR" or int.from_bytes(data[16:20], "big") != 390:
+                raise Refused("a picture is not a PNG 390 px wide")
+
+
 def _load(path):
     with open(path, encoding="utf-8") as f:
         return json.load(f)
@@ -403,6 +438,8 @@ def main(argv):
             verified([r for f in argv[3:-1] for r in _runs(_load(f))], argv[-1], now, repo=argv[2])
         elif argv[1:2] == ["marked"] and len(argv) == 6:
             marked(*argv[2:6])
+        elif argv[1:2] == ["pictures"] and len(argv) == 5:
+            pictures(*argv[2:5])
         elif argv[1:2] == ["state"] and len(argv) in (5, 6) and (len(argv) == 5 or argv[5] == "--again"):
             if not argv[4].isdigit():
                 raise ValueError("the App's id is a number")
@@ -580,6 +617,57 @@ def _mark_repo(d, head):
         fh.write(subprocess.run(["git", "-C", d, "diff", "-z", "--name-only", "--no-renames", "origin/main...HEAD"],
                                 capture_output=True, check=True, timeout=60).stdout)
     return git("rev-parse", "HEAD"), changed
+
+
+def _png(width):
+    return b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR" + width.to_bytes(4, "big") + b"\0\0\x03\x4c\x08\x06\0\0\0"
+
+
+# (what, the files a change adds or edits, the files it deletes; refused?)
+PICTURE_CASES = (
+    ("a screen changed with its pair", {"app/home.html": "<p>b</p>", "pictures/home.artifact.png": _png(390),
+                                        "pictures/home.live.png": _png(390)}, (), False),
+    ("a screen changed with no pictures", {"app/home.html": "<p>b</p>"}, (), True),
+    ("a stylesheet changed with no pictures", {"app/kit.css": "p{}"}, (), True),
+    ("a new live picture beside the board on main", {"app/home.html": "<p>b</p>", "pictures/home.live.png": _png(390)},
+     (), False),
+    ("a live picture with no board beside it", {"app/menu.html": "<p>b</p>", "pictures/menu.live.png": _png(390)}, (),
+     True),
+    ("a picture drawn at another width", {"app/home.html": "<p>b</p>", "pictures/home.artifact.png": _png(780),
+                                          "pictures/home.live.png": _png(390)}, (), True),
+    ("a picture that is no PNG", {"app/home.html": "<p>b</p>", "pictures/home.artifact.png": b"GIF89a" + _png(390),
+                                  "pictures/home.live.png": _png(390)}, (), True),
+    ("a pair deleted is no pair", {"app/home.html": "<p>b</p>"}, ("pictures/home.artifact.png", "pictures/home.live.png"),
+     True),
+    ("a script changed alone", {"app/run.js": "let b;"}, (), False),
+    ("a test page changed alone", {"tests/home.html": "<p>b</p>", "app/home.test.tsx": "x"}, (), False),
+    ("a screen deleted", {}, ("app/home.html",), False),
+)
+
+
+def _picture_repo(d, edits, gone):
+    """A product's repository in d with a screen and a pair on main, then `edits` and `gone` on top. (head, changed)."""
+    def git(*args):
+        return subprocess.run(["git", "-C", d, "-c", "user.name=t", "-c", "user.email=t@t"] + list(args),
+                              capture_output=True, check=True, timeout=60).stdout.strip()
+    git("init", "-q", "-b", "main")
+    for files in ({"app/home.html": "<p>a</p>", "pictures/home.artifact.png": _png(390) + b"main",
+                   "pictures/home.live.png": _png(390) + b"main"}, edits):
+        for f, body in files.items():
+            os.makedirs(os.path.dirname(os.path.join(d, f)), exist_ok=True)
+            with open(os.path.join(d, f), "wb") as fh:
+                fh.write(body if isinstance(body, bytes) else body.encode("utf-8"))
+        if files is edits:
+            for f in gone:
+                os.remove(os.path.join(d, f))
+        git("add", "-A")
+        git("commit", "-qm", "x", "--allow-empty")
+        if files is not edits:
+            git("update-ref", "refs/remotes/origin/main", "HEAD")
+    changed = os.path.join(d, ".changed")
+    with open(changed, "wb") as fh:
+        fh.write(git("diff", "-z", "--name-only", "--no-renames", "origin/main...HEAD"))
+    return git("rev-parse", "HEAD").decode(), changed
 
 
 def _selftest():
@@ -848,6 +936,16 @@ def _selftest():
             if what.startswith("an unmarked file"):
                 want("cli: an unmarked change goes ahead", cli("marked", d, "origin/main", sha, changed)[0], 0)
 
+    for what, edits, gone, refused in PICTURE_CASES:
+        with tempfile.TemporaryDirectory() as d:
+            sha, changed = _picture_repo(d, edits, gone)
+            if (_asks(pictures, d, sha, changed) != "ok") != refused:
+                bad.append("pictures: %s: expected %s" % (what, "refused" if refused else "ok"))
+            if what == "a screen changed with no pictures":
+                want("cli: a screen without pictures is a refusal", cli("pictures", d, sha, changed)[0], 1)
+            if what == "a screen changed with its pair":
+                want("cli: a screen with its pair goes ahead", cli("pictures", d, sha, changed)[0], 0)
+
     if bad:
         for b in bad:
             print("  reads selftest: %s" % b)
@@ -855,8 +953,9 @@ def _selftest():
         return 1
     print("ok: the product read's rules — the README's list read exactly (and the real one read), the "
           "ready mark, the product's own check, the three kinds of not read, and a change to a product's "
-          "marked spans (%d changes replayed, %d loosenings refused) — refuse every case put to them and quote "
-          "nothing a product holds" % (len(MARK_CASES), len(MARK_LOOSENINGS)))
+          "marked spans (%d changes replayed, %d loosenings refused), and a changed screen's pictures (%d "
+          "cases) — refuse every case put to them and quote nothing a product holds"
+          % (len(MARK_CASES), len(MARK_LOOSENINGS), len(PICTURE_CASES)))
     return 0
 
 

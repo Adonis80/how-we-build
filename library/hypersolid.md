@@ -49,7 +49,7 @@ How the map (step 2) is made (his paper, `juku-library/Juku_Complexity_Distillat
 
 ## Screen law
 
-How every screen, in every product, earns its look, and so does a prototype or picture of one put to the Chairman. Reviewers judge by this; nobody re-explains it.
+How every screen, in every product, earns its look, and so does a prototype or picture of one put to the Chairman. The reviewer judges a changed screen by this from its pictures (`library/reviewer.md`, *Screens*); nobody re-explains it.
 
 ### Comprehension
 
