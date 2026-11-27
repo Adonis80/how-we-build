@@ -460,6 +460,15 @@ jobs:
           # cut-down Hemz-OS#159.
           [ "$risky" = yes ] || python3 -I "$GITHUB_WORKSPACE/product-reads/reads.py" marked "$work" "origin/$MAIN" "$SHA" "$t/changed.txt" || risky=yes
           [ "$risky" = no ] || class=risky
+          # A CHANGED SCREEN CARRIES ITS PICTURES (library/reviewer.md, *Screens*):
+          # reads.py says the rule; any answer but ok, a failure to ask included,
+          # signs a read that would open the gate blocking, below.
+          if python3 -I "$GITHUB_WORKSPACE/product-reads/reads.py" pictures "$work" "$SHA" "$t/changed.txt" > "$t/pictures.txt"; then
+            echo "pictures=ok" >> "$GITHUB_OUTPUT"
+          else
+            printf 'pictures=%s\n' "$(head -c 200 "$t/pictures.txt" | tr -d '\r\n')" >> "$GITHUB_OUTPUT"
+          fi
+          echo "pictures: $(head -c 200 "$t/pictures.txt" | tr -d '\r\n')"
           case "$class" in words|code) role=reviewer-main ;; *) role=reviewer-risky ;; esac
           echo "class=$class" >> "$GITHUB_OUTPUT"
           echo "role=$role" >> "$GITHUB_OUTPUT"
@@ -1376,6 +1385,7 @@ jobs:
           EFFORT: ${{ steps.read.outputs.effort }}
           SPENT: ${{ steps.read.outputs.spent }}
           SPEND: ${{ steps.read.outputs.spend }}
+          PICTURES: ${{ steps.gather.outputs.pictures }}
           REVIEWER_APP_ID: ${{ secrets.REVIEWER_APP_ID }}
         run: |
           set -euo pipefail
@@ -1404,6 +1414,13 @@ jobs:
             conclusion=failure
             title="Blocking findings on this commit (read as $CLASS at effort $EFFORT${SPENT:+; $SPENT})"
             cp "$t/review.md" "$t/verdict.md"
+          fi
+          # A read that would open the gate on a changed screen with no pictures is
+          # blocking (library/reviewer.md, *Screens*): the machine's finding, not the model's.
+          if [ "$conclusion" = success ] && [ "${PICTURES:-}" != ok ]; then
+            conclusion=failure
+            title="Blocking: a changed screen carries no pictures (${PICTURES:-not asked})"
+            printf '\n---\n- **blocking**: %s. A change to a screen carries pictures/<screen>.artifact.png and pictures/<screen>.live.png, 390 px wide (library/reviewer.md, *Screens*).\n' "${PICTURES:-the pictures were not asked}" >> "$t/verdict.md"
           fi
           # The spend line goes on every verdict, read or not (decision 0008).
           [ -z "${SPEND:-}" ] || printf '\n---\nSpend: %s\n' "$SPEND" >> "$t/verdict.md"
