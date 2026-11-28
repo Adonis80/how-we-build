@@ -34,7 +34,7 @@ The list, and how a repository makes itself current: `library/carries-sessions.m
 | `library/juku-style.md`: *HyperSolid: the Juku style* | a screen is designed, built or reviewed, or a design brief is written |
 | `library/voice-native.md`: *Voice Native* | work touches a product's assistant or its actions, or a screen's spoken path is mapped or built |
 | `library/carries-sessions.md`: *What every product carries* | starting or stopping a product session, merging, setting up or checking a product's repository or what its checks run, or a slice touches money milestones, evidence or the product's own pages |
-| `library/session-changeover.md`: *Session changeover* | the Juku OS Project's session starts, deciding to stay or start fresh, before leaving one, and when a session relays for him as an assistant |
+| `library/session-changeover.md`: *Session changeover* | the Juku OS Project's session starts, deciding to stay or start fresh, before starting a session or leaving one, and when a session relays for him as an assistant |
 | `library/his-opener.md`: *His opener* | a session he opens starts, the platform's consent guard refuses an act, or a session leaves with an act parked for his consent |
 | `library/two-stacks.md`: *The two stacks* | choosing the lead or its effort, starting, handing over or finishing work in either stack, deciding whether a job needs code mode, or a job that needs hands |
 | `library/max-subagent.md`: *The max subagent* | a lead hands its max piece on, or a product sets up or checks its max subagent file |
