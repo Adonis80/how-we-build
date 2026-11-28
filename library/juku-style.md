@@ -120,17 +120,17 @@ Words and figures sit straight on a near-black ground, like a private-bank state
 4. **Use only `.j-` classes.** Write no inline styles (save step 5's `--i`, `--j-tab-x` and `--j-tab-w`) and no new values. If something has no class here, it is a design question: it goes to the designer by HyperSolid's steps 3 to 6, and don't invent a fix (*What the kit does not draw yet*).
 5. **Wire the drill-in.** Tapping a row sets the levels to `.is-on`, `.is-behind-1` or `.is-behind-2` (`.is-off` for anything else) and puts `.is-forward` on the screen. Back drops the class from the screen and sets the leaving level to `.is-off`. Mark each arriving row `.j-in` with `--i`. Make the levels behind `inert`. On a row of choices, set `--j-tab-x` and `--j-tab-w` on `.j-tabs` to the chosen tab's left offset and width, so the gold line slides under it. A small set of options, each with a figure and its effect, sits under its band as a rail: `<div class="j-rail" role="radiogroup" aria-labelledby="<the band's id>">` holding one `<label class="j-option"><input type="radio" name="<a name no other rail on the screen shares>" value="…">` with `.j-option-name`, `.j-option-fig` and `.j-option-line` per option, one `checked`; it sits in a level, whose gutters it bleeds through. On `change`, scroll the chosen option into view (`scrollIntoView({inline:"nearest",block:"nearest"})`). Several rails stack down the level, one per band.
 
-## (e) Self-check: the six counts, then yes to all ten
+## (e) Self-check: sixteen counts
 
-First give the six counts of *His beauty standards* (above) for the screen, each beside its limit. Then:
+Count the screen and give each count with its pull request; a count is a number, never a yes. First the six of *His beauty standards* (above), each beside its limit. Then these ten, every one of which reads 0:
 
-1. Is every piece of content sitting on the ground, with no boxes, cards, borders or row dividers?
-2. Is there exactly one hairline per total, directly above it, and no other line in the content but a control's own (a choice's border, a typed line, the tabs' line, an option's edge)?
-3. Does each money figure appear in the money colour and each measured figure and its unit in the measure colour (on Hemz, gold and turquoise), with neither used for anything else, save the action colour where his picture shares it with money (Hemz's gold)?
-4. Is the serif used only for the hero money?
-5. On a level that adds up, do the operators sit in one 22px column, with the names lined up even where there is no operator?
-6. Do the working rows sit at the bottom of the screen, within thumb reach, with every target at least 44px?
-7. Are the crumbs, bands and total labels in spaced capitals, and only the title in sentence case?
-8. Are back, add and a selected choice shown as text in the action colour (on Hemz, gold), and a chosen tab as ink over the gold line, with no flat button in it anywhere?
-9. Does tapping a part make it the whole view, with the parent blurred behind and Back naming the parent, and does it simply switch with no movement when reduced motion is on?
-10. Is every size, colour, gap and timing on the screen one of the values in `library/juku-style.css` (colours, the product's own), with no inline styles save each arriving row's `--i` stagger index and a row of choices' `--j-tab-x` and `--j-tab-w` (step (d)5)?
+1. Pieces of content in a box, card, border or row divider.
+2. Totals without their one hairline directly above them, and lines in the content that are neither that hairline nor a control's own (a choice's border, a typed line, the tabs' line, an option's edge).
+3. Money figures not in the money colour, measured figures or units not in the measure colour (on Hemz, gold and turquoise), and uses of either colour for anything else, save the action colour where his picture shares it with money (Hemz's gold).
+4. Serif text other than the hero money.
+5. On a level that adds up, operators outside the one 22px column, and names out of line where a row has no operator.
+6. Working rows not at the bottom of the screen, within thumb reach, and targets under 44px.
+7. Crumbs, bands and total labels not in spaced capitals, and titles not in sentence case.
+8. Back, add or a selected choice not shown as text in the action colour (on Hemz, gold), a chosen tab not shown as ink over the gold line, and flat buttons in the action colour.
+9. Tapped parts that do not become the whole view with the parent blurred behind and Back naming the parent, and movement left when reduced motion is on.
+10. Sizes, colours, gaps and timings not among the values in `library/juku-style.css` (colours, the product's own), and inline styles other than each arriving row's `--i` stagger index and a row of choices' `--j-tab-x` and `--j-tab-w` (step (d)5).
