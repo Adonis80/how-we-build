@@ -60,7 +60,7 @@ How every screen, in every product, earns its look, and so does a prototype or p
 
 ### Efficiency
 
-5. Useful density with clear hierarchy beats emptiness; what is used together sits together.
+5. Few words and objects at one time, clearly ranked, with space between them; what is used together sits together (his words of 27 and 28 November 2026, counted in `library/juku-style.md`, *His beauty standards*; they replace *Useful density … beats emptiness*, which stood here).
 6. Remove duplicated concepts before hiding or rearranging them.
 7. Known information is never asked for twice; sensible defaults over questions.
 8. Optimise total effort — confidence, speed, error-avoidance — never tap count alone.
